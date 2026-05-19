@@ -19,7 +19,7 @@ class KoreanLoginView(LoginView):
 
 def register(request):
     if request.method == 'POST':
-        form = StudentSignUpForm(request.POST)
+        form = StudentSignUpForm(request.POST, request.FILES)
         if form.is_valid():
             form.save()
             messages.info(

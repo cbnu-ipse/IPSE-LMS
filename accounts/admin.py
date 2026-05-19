@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.utils.html import format_html
 from .models import User, Student
 
 
@@ -13,6 +14,18 @@ def approve_users(modeladmin, request, queryset):
 def deactivate_users(modeladmin, request, queryset):
     updated = queryset.filter(is_active=True).update(is_active=False)
     modeladmin.message_user(request, f"{updated}명의 계정이 비활성화되었습니다.")
+
+
+@admin.action(description="선택한 학생의 동아리원 인증을 완료합니다 (is_verified=True)")
+def verify_students(modeladmin, request, queryset):
+    updated = queryset.filter(is_verified=False).update(is_verified=True)
+    modeladmin.message_user(request, f"{updated}명의 동아리원 인증이 완료되었습니다.")
+
+
+@admin.action(description="선택한 학생의 동아리원 인증을 취소합니다 (is_verified=False)")
+def unverify_students(modeladmin, request, queryset):
+    updated = queryset.filter(is_verified=True).update(is_verified=False)
+    modeladmin.message_user(request, f"{updated}명의 인증이 취소되었습니다.")
 
 
 # 1. 기본 사용자(User) 관리 설정
@@ -30,9 +43,10 @@ class CustomUserAdmin(UserAdmin):
 
 # 2. 학생(Student) 관리 설정
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('student', 'get_id_no', 'get_is_active')
-    list_filter = ('student__is_active',)
+    list_display = ('student', 'get_id_no', 'get_is_active', 'is_verified', 'get_document_link')
+    list_filter = ('student__is_active', 'is_verified')
     search_fields = ('student__username', 'student__first_name')
+    actions = [verify_students, unverify_students]
 
     def get_id_no(self, obj):
         return obj.student.username
@@ -40,8 +54,17 @@ class StudentAdmin(admin.ModelAdmin):
 
     def get_is_active(self, obj):
         return obj.student.is_active
-    get_is_active.short_description = '승인 여부'
+    get_is_active.short_description = '계정 승인'
     get_is_active.boolean = True
+
+    def get_document_link(self, obj):
+        if obj.verification_document:
+            return format_html(
+                '<a href="{}" target="_blank">서류 보기</a>',
+                obj.verification_document.url,
+            )
+        return "—"
+    get_document_link.short_description = '인증 서류'
 
 
 # 관리자 페이지에 등록
