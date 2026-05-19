@@ -96,6 +96,16 @@ class Student(models.Model):
     blog_url = models.URLField(blank=True, verbose_name="블로그 주소")
     level = models.IntegerField(default=1, verbose_name="현재 레벨")
 
+    # 동아리원 인증 필드
+    is_verified = models.BooleanField(default=False, verbose_name="동아리원 인증 여부")
+    verification_document = models.FileField(
+        upload_to="verification_docs/%y/%m/%d/",
+        null=True,
+        blank=True,
+        verbose_name="인증 서류",
+        help_text="재학증명서 또는 학생증 사진 (JPG, PNG, PDF)",
+    )
+
     class Meta:
         ordering = ("-student__date_joined",)
 
