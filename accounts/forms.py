@@ -59,6 +59,12 @@ class StudentSignUpForm(UserCreationForm):
             "placeholder": "이메일을 입력하세요"
         })
     )
+    verification_document = forms.FileField(
+        required=False,
+        label="인증 서류 (선택)",
+        help_text="재학증명서 또는 학생증 사진 (JPG, PNG, PDF, 최대 10MB)",
+        widget=forms.FileInput(attrs={"accept": ".jpg,.jpeg,.png,.pdf"}),
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
@@ -75,6 +81,16 @@ class StudentSignUpForm(UserCreationForm):
 
         return student_id
 
+    def clean_verification_document(self):
+        f = self.cleaned_data.get("verification_document")
+        if f:
+            if f.size > 10 * 1024 * 1024:
+                raise forms.ValidationError("파일 크기가 10MB를 초과합니다.")
+            allowed = (".jpg", ".jpeg", ".png", ".pdf")
+            if not any(f.name.lower().endswith(ext) for ext in allowed):
+                raise forms.ValidationError("JPG, PNG, PDF 파일만 업로드할 수 있습니다.")
+        return f
+
     @transaction.atomic()
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -89,6 +105,9 @@ class StudentSignUpForm(UserCreationForm):
             student = user.student
             student.student_number = int(self.cleaned_data.get("username").strip())
             student.nickname = self.cleaned_data.get("nickname", "").strip()
+            doc = self.cleaned_data.get("verification_document")
+            if doc:
+                student.verification_document = doc
             student.save()
 
         return user
