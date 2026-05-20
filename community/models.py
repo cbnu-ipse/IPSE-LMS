@@ -59,6 +59,7 @@ class Poll(models.Model):
     is_multiple = models.BooleanField(default=False, verbose_name="복수 선택 허용")
     is_anonymous = models.BooleanField(default=False, verbose_name="익명 투표")
     is_active = models.BooleanField(default=True, verbose_name="활성 여부")
+    show_as_notice = models.BooleanField(default=False, verbose_name="공지사항에 표시")
 
     class Meta:
         ordering = ["-created_at"]
@@ -107,6 +108,19 @@ class PollVote(models.Model):
 
     class Meta:
         unique_together = ("poll", "voter", "choice")
+
+
+class PollComment(models.Model):
+    poll = models.ForeignKey(Poll, related_name="comments", on_delete=models.CASCADE)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField(verbose_name="댓글 내용")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.poll}"
 
     def __str__(self):
         return f"{self.voter} → {self.choice}"

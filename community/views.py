@@ -8,16 +8,19 @@ from django.core.files.storage import FileSystemStorage
 from django.http import JsonResponse
 from django.contrib import messages
 from django.utils import timezone
-from .models import NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote
+from .models import NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment
 
 
 @login_required
 def community_main(request):
     notices = NewsAndEvents.objects.filter(posted_as='News').order_by('-upload_time')[:5]
-    # 💡 수정됨: 빈 리스트였던 activities에 실제 Event 데이터를 불러옴
     activities = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:6]
-    
-    context = {'notices': notices, 'activities': activities}
+    # 공지쪽으로 등록된 진행 중 투표만 표시
+    active_polls = Poll.objects.filter(is_active=True, show_as_notice=True).exclude(
+        ends_at__lte=timezone.now()
+    ).order_by('-created_at')
+
+    context = {'notices': notices, 'activities': activities, 'active_polls': active_polls}
     return render(request, 'community/community_main.html', context)
 
 @staff_member_required
@@ -214,23 +217,53 @@ def poll_detail(request, poll_id):
     )
     is_closed = poll.is_closed
 
-    if request.method == 'POST' and not is_closed:
-        choice_ids = request.POST.getlist('choice')
-        if not choice_ids:
-            messages.error(request, '항목을 선택해주세요.')
-            return redirect('poll_detail', poll_id=poll_id)
-        if not poll.is_multiple and len(choice_ids) > 1:
-            messages.error(request, '단일 선택 투표입니다.')
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        if action == 'add_comment':
+            content = request.POST.get('content', '').strip()
+            if content:
+                PollComment.objects.create(poll=poll, author=request.user, content=content)
             return redirect('poll_detail', poll_id=poll_id)
 
-        PollVote.objects.filter(poll=poll, voter=request.user).delete()
-        for cid in choice_ids:
-            choice = get_object_or_404(PollChoice, id=int(cid), poll=poll)
-            PollVote.objects.create(poll=poll, choice=choice, voter=request.user)
+        if action == 'delete_comment':
+            comment_id = request.POST.get('comment_id')
+            comment = get_object_or_404(PollComment, id=comment_id, poll=poll)
+            can_delete = request.user == comment.author or (
+                request.user.is_staff and not comment.author.is_staff
+            )
+            if can_delete:
+                comment.delete()
+            return redirect('poll_detail', poll_id=poll_id)
 
-        messages.success(request, '투표가 완료됐습니다.')
+        if action == 'edit_comment':
+            comment_id = request.POST.get('comment_id')
+            comment = get_object_or_404(PollComment, id=comment_id, poll=poll)
+            if request.user == comment.author:
+                new_content = request.POST.get('content', '').strip()
+                if new_content:
+                    comment.content = new_content
+                    comment.save(update_fields=['content'])
+            return redirect('poll_detail', poll_id=poll_id)
+
+        if not is_closed:
+            choice_ids = request.POST.getlist('choice')
+            if not choice_ids:
+                messages.error(request, '항목을 선택해주세요.')
+                return redirect('poll_detail', poll_id=poll_id)
+            if not poll.is_multiple and len(choice_ids) > 1:
+                messages.error(request, '단일 선택 투표입니다.')
+                return redirect('poll_detail', poll_id=poll_id)
+
+            PollVote.objects.filter(poll=poll, voter=request.user).delete()
+            for cid in choice_ids:
+                choice = get_object_or_404(PollChoice, id=int(cid), poll=poll)
+                PollVote.objects.create(poll=poll, choice=choice, voter=request.user)
+
+            messages.success(request, '투표가 완료됐습니다.')
         return redirect('poll_detail', poll_id=poll_id)
 
+    comments = poll.comments.select_related('author').all()
     return render(request, 'community/poll_detail.html', {
         'poll': poll,
         'choices': choices,
@@ -238,6 +271,7 @@ def poll_detail(request, poll_id):
         'user_voted_choice_ids': user_voted_choice_ids,
         'has_voted': bool(user_voted_choice_ids),
         'is_closed': is_closed,
+        'comments': comments,
     })
 
 
@@ -282,6 +316,7 @@ def poll_create(request):
             is_anonymous=is_anonymous,
             starts_at=starts_at,
             ends_at=ends_at,
+            show_as_notice=request.POST.get('show_as_notice') == 'on',
         )
         for i, txt in enumerate(choice_texts):
             PollChoice.objects.create(poll=poll, text=txt, order=i)
@@ -312,6 +347,26 @@ def poll_delete(request, poll_id):
     if request.method == 'POST':
         get_object_or_404(Poll, id=poll_id).delete()
     return redirect('poll_list')
+
+
+@staff_member_required
+def poll_votes(request, poll_id):
+    """투표 결과 상세 뷰 (staff 전용) — 누가 어떤 항목에 투표했는지 확인"""
+    poll = get_object_or_404(Poll, id=poll_id)
+    choices = poll.choices.prefetch_related('votes__voter').all()
+    choice_data = []
+    for choice in choices:
+        voters = choice.votes.select_related('voter').order_by('voted_at')
+        choice_data.append({
+            'choice': choice,
+            'voters': voters,
+        })
+    context = {
+        'poll': poll,
+        'choice_data': choice_data,
+        'total_voters': poll.total_voters,
+    }
+    return render(request, 'community/poll_votes.html', context)
 
 
 @login_required
