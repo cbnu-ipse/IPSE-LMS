@@ -1,3 +1,4 @@
+import datetime as dt_module
 from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -6,6 +7,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.storage import FileSystemStorage
 from django.http import JsonResponse
 from django.contrib import messages
+from django.utils import timezone
 from .models import NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote
 
 
@@ -245,7 +247,8 @@ def poll_create(request):
         description = request.POST.get('description', '').strip()
         is_multiple = request.POST.get('is_multiple') == 'on'
         is_anonymous = request.POST.get('is_anonymous') == 'on'
-        ends_at_str = request.POST.get('ends_at', '').strip()
+        ends_at_date = request.POST.get('ends_at_date', '').strip()
+        ends_at_time = request.POST.get('ends_at_time', '').strip()
         choice_texts = [t.strip() for t in request.POST.getlist('choices') if t.strip()]
 
         if not title:
@@ -255,8 +258,14 @@ def poll_create(request):
             messages.error(request, '선택 항목을 2개 이상 입력해주세요.')
             return redirect('poll_create')
 
-        from django.utils.dateparse import parse_datetime
-        ends_at = parse_datetime(ends_at_str) if ends_at_str else None
+        ends_at = None
+        if ends_at_date:
+            try:
+                d = dt_module.date.fromisoformat(ends_at_date)
+                t = dt_module.time.fromisoformat(ends_at_time) if ends_at_time else dt_module.time(23, 59)
+                ends_at = timezone.make_aware(dt_module.datetime.combine(d, t))
+            except (ValueError, TypeError):
+                ends_at = None
 
         poll = Poll.objects.create(
             title=title,
@@ -278,8 +287,15 @@ def poll_create(request):
 def poll_toggle(request, poll_id):
     if request.method == 'POST':
         poll = get_object_or_404(Poll, id=poll_id)
-        poll.is_active = not poll.is_active
-        poll.save(update_fields=['is_active'])
+        if poll.is_closed:
+            # 재개: 활성화하고, 만료된 ends_at이면 초기화
+            poll.is_active = True
+            if poll.ends_at and poll.ends_at < timezone.now():
+                poll.ends_at = None
+            poll.save(update_fields=['is_active', 'ends_at'])
+        else:
+            poll.is_active = False
+            poll.save(update_fields=['is_active'])
     return redirect('poll_detail', poll_id=poll_id)
 
 

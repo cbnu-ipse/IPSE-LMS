@@ -138,8 +138,8 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="text-xs font-semibold px-4 py-2 rounded-xl border transition
-                        {% if poll.is_active %}border-amber-300 text-amber-600 hover:bg-amber-50{% else %}border-emerald-300 text-emerald-600 hover:bg-emerald-50{% endif %}">
-                    {% if poll.is_active %}투표 종료{% else %}투표 재개{% endif %}
+                        {% if is_closed %}border-emerald-300 text-emerald-600 hover:bg-emerald-50{% else %}border-amber-300 text-amber-600 hover:bg-amber-50{% endif %}">
+                    {% if is_closed %}투표 재개{% else %}투표 종료{% endif %}
                 </button>
             </form>
             <form method="post" action="{% url 'poll_delete' poll.id %}"
