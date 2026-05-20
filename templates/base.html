@@ -43,28 +43,18 @@
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
                         대회
                     </a>
-                    <!-- 커뮤니티 드롭다운 -->
-                    <div class="relative h-full group">
-                        <button type="button"
-                                class="h-full flex items-end pb-[18px] gap-1.5 border-b-2 border-transparent group-hover:border-emerald-600 group-hover:text-emerald-700 transition">
-                            커뮤니티
-                            <i class="fa-solid fa-chevron-down text-[9px] self-center mb-[2px]"></i>
-                        </button>
-                        <div class="absolute top-full left-0 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-150 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 min-w-[9rem] z-[60]">
-                            <a href="{% url 'community_main' %}"
-                               class="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">
-                                <i class="fa-regular fa-newspaper text-slate-400 text-xs w-3.5 text-center"></i> 커뮤니티
-                            </a>
-                            <a href="{% url 'schedule_list' %}"
-                               class="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">
-                                <i class="fa-regular fa-calendar text-slate-400 text-xs w-3.5 text-center"></i> 동아리 일정
-                            </a>
-                            <a href="{% url 'poll_list' %}"
-                               class="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">
-                                <i class="fa-solid fa-chart-column text-slate-400 text-xs w-3.5 text-center"></i> 투표
-                            </a>
-                        </div>
-                    </div>
+                    <a href="{% url 'community_main' %}"
+                       class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                        커뮤니티
+                    </a>
+                    <a href="{% url 'schedule_list' %}"
+                       class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                        동아리 일정
+                    </a>
+                    <a href="{% url 'poll_list' %}"
+                       class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                        투표
+                    </a>
                     <a href="{% url 'ranking:home' %}"
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
                         랭킹
