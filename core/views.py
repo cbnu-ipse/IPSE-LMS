@@ -5,7 +5,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.db.models import Q
-from community.models import NewsAndEvents
+from community.models import NewsAndEvents, Poll
 from .models import ActivityLog, Schedule 
 from ranking.utils import sync_user_profile_metrics
 
@@ -24,6 +24,12 @@ def home_view(request):
     
     # 1. 오른쪽 위 공지사항 (News)
     notices = NewsAndEvents.objects.filter(posted_as='News').order_by('-upload_time')[:5]
+
+    # 1b. 진행 중인 투표 (홈 새로운 소식 섹션용)
+    from django.utils import timezone
+    active_polls = Poll.objects.filter(is_active=True).exclude(
+        ends_at__lte=timezone.now()
+    ).order_by('-created_at')[:3]
     
     # 2. 왼쪽 아래 달력용 데이터 (Event)
     events = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:5]
@@ -34,6 +40,7 @@ def home_view(request):
 
     context = {
         'notices': notices,
+        'active_polls': active_polls,
         'events': events,
         'activity_logs': activity_logs,
         'learning_level': metrics['level'],
@@ -48,9 +55,8 @@ def home_view(request):
 @login_required
 def get_schedules_api(request):
     """달력에 표시할 일정들을 JSON으로 반환하는 API"""
-    # 핵심 필터링 로직: '전체 동아리 일정(is_global=True)' 이거나 '내가 작성한 일정(user=request.user)'만 가져옴
     schedules = Schedule.objects.filter(Q(is_global=True) | Q(user=request.user))
-    
+
     events = []
     for s in schedules:
         events.append({
@@ -58,12 +64,33 @@ def get_schedules_api(request):
             'title': s.title,
             'start': s.start_date.isoformat(),
             'end': s.end_date.isoformat() if s.end_date else None,
-            'color': '#10b981' if s.is_global else '#a855f7', 
+            'color': '#10b981' if s.is_global else '#a855f7',
             'extendedProps': {
                 'description': s.description,
-                'is_global': s.is_global
+                'is_global': s.is_global,
+                'event_type': 'schedule',
             }
         })
+
+    # 투표 이벤트: ends_at(마감일)을 기준일로 캘린더에 표시
+    polls = Poll.objects.all()
+    for p in polls:
+        start = p.ends_at or p.starts_at or p.created_at
+        events.append({
+            'id': f'poll-{p.id}',
+            'title': f'[투표] {p.title}',
+            'start': start.isoformat(),
+            'end': None,
+            'color': '#6366f1',
+            'extendedProps': {
+                'description': p.description,
+                'is_global': True,
+                'event_type': 'poll',
+                'poll_id': p.id,
+                'is_closed': p.is_closed,
+            }
+        })
+
     return JsonResponse(events, safe=False)
 
 @login_required

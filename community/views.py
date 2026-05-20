@@ -1,19 +1,27 @@
+import csv
+import datetime as dt_module
+from datetime import date
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.storage import FileSystemStorage
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
-from .models import NewsAndEvents, NewsAndEventsComment
+from django.utils import timezone
+from .models import NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment
 
 
 @login_required
 def community_main(request):
     notices = NewsAndEvents.objects.filter(posted_as='News').order_by('-upload_time')[:5]
-    # 💡 수정됨: 빈 리스트였던 activities에 실제 Event 데이터를 불러옴
     activities = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:6]
-    
-    context = {'notices': notices, 'activities': activities}
+    # 공지쪽으로 등록된 진행 중 투표만 표시
+    active_polls = Poll.objects.filter(is_active=True, show_as_notice=True).exclude(
+        ends_at__lte=timezone.now()
+    ).order_by('-created_at')
+
+    context = {'notices': notices, 'activities': activities, 'active_polls': active_polls}
     return render(request, 'community/community_main.html', context)
 
 @staff_member_required
@@ -178,3 +186,266 @@ def upload_editor_image(request):
         # 저장된 주소를 에디터(프론트엔드)로 반환
         return JsonResponse({'url': image_url})
     return JsonResponse({'error': '업로드 실패'}, status=400)
+
+
+@login_required
+def schedule_list(request):
+    return render(request, 'community/schedule_list.html')
+
+
+# ─────────────────────────────────────────────
+# 투표 (Poll)
+# ─────────────────────────────────────────────
+
+@login_required
+def poll_list(request):
+    all_polls = Poll.objects.prefetch_related('choices', 'votes')
+    active_polls = [p for p in all_polls if not p.is_closed]
+    closed_polls = [p for p in all_polls if p.is_closed]
+    return render(request, 'community/poll_list.html', {
+        'active_polls': active_polls,
+        'closed_polls': closed_polls,
+    })
+
+
+@login_required
+def poll_detail(request, poll_id):
+    poll = get_object_or_404(Poll, id=poll_id)
+    choices = poll.choices.prefetch_related('votes').all()
+    total_voters = poll.total_voters
+    user_voted_choice_ids = list(
+        poll.votes.filter(voter=request.user).values_list('choice_id', flat=True)
+    )
+    is_closed = poll.is_closed
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        if action == 'add_comment':
+            content = request.POST.get('content', '').strip()
+            if content:
+                PollComment.objects.create(poll=poll, author=request.user, content=content)
+            return redirect('poll_detail', poll_id=poll_id)
+
+        if action == 'delete_comment':
+            comment_id = request.POST.get('comment_id')
+            comment = get_object_or_404(PollComment, id=comment_id, poll=poll)
+            can_delete = request.user == comment.author or (
+                request.user.is_staff and not comment.author.is_staff
+            )
+            if can_delete:
+                comment.delete()
+            return redirect('poll_detail', poll_id=poll_id)
+
+        if action == 'edit_comment':
+            comment_id = request.POST.get('comment_id')
+            comment = get_object_or_404(PollComment, id=comment_id, poll=poll)
+            if request.user == comment.author:
+                new_content = request.POST.get('content', '').strip()
+                if new_content:
+                    comment.content = new_content
+                    comment.save(update_fields=['content'])
+            return redirect('poll_detail', poll_id=poll_id)
+
+        if not is_closed:
+            choice_ids = request.POST.getlist('choice')
+            if not choice_ids:
+                messages.error(request, '항목을 선택해주세요.')
+                return redirect('poll_detail', poll_id=poll_id)
+            if not poll.is_multiple and len(choice_ids) > 1:
+                messages.error(request, '단일 선택 투표입니다.')
+                return redirect('poll_detail', poll_id=poll_id)
+
+            PollVote.objects.filter(poll=poll, voter=request.user).delete()
+            for cid in choice_ids:
+                choice = get_object_or_404(PollChoice, id=int(cid), poll=poll)
+                PollVote.objects.create(poll=poll, choice=choice, voter=request.user)
+
+            messages.success(request, '투표가 완료됐습니다.')
+        return redirect('poll_detail', poll_id=poll_id)
+
+    comments = poll.comments.select_related('author').all()
+    return render(request, 'community/poll_detail.html', {
+        'poll': poll,
+        'choices': choices,
+        'total_voters': total_voters,
+        'user_voted_choice_ids': user_voted_choice_ids,
+        'has_voted': bool(user_voted_choice_ids),
+        'is_closed': is_closed,
+        'comments': comments,
+    })
+
+
+@staff_member_required
+def poll_create(request):
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        is_multiple = request.POST.get('is_multiple') == 'on'
+        is_anonymous = request.POST.get('is_anonymous') == 'on'
+        starts_at_date = request.POST.get('starts_at_date', '').strip()
+        starts_at_time = request.POST.get('starts_at_time', '').strip()
+        ends_at_date = request.POST.get('ends_at_date', '').strip()
+        ends_at_time = request.POST.get('ends_at_time', '').strip()
+        choice_texts = [t.strip() for t in request.POST.getlist('choices') if t.strip()]
+
+        if not title:
+            messages.error(request, '제목을 입력해주세요.')
+            return redirect('poll_create')
+        if len(choice_texts) < 2:
+            messages.error(request, '선택 항목을 2개 이상 입력해주세요.')
+            return redirect('poll_create')
+
+        def _parse_dt(d_str, t_str, default_time):
+            if not d_str:
+                return None
+            try:
+                d = dt_module.date.fromisoformat(d_str)
+                t = dt_module.time.fromisoformat(t_str) if t_str else default_time
+                return timezone.make_aware(dt_module.datetime.combine(d, t))
+            except (ValueError, TypeError):
+                return None
+
+        starts_at = _parse_dt(starts_at_date, starts_at_time, dt_module.time(0, 0))
+        ends_at = _parse_dt(ends_at_date, ends_at_time, dt_module.time(23, 59))
+
+        poll = Poll.objects.create(
+            title=title,
+            description=description,
+            created_by=request.user,
+            is_multiple=is_multiple,
+            is_anonymous=is_anonymous,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            show_as_notice=request.POST.get('show_as_notice') == 'on',
+        )
+        for i, txt in enumerate(choice_texts):
+            PollChoice.objects.create(poll=poll, text=txt, order=i)
+
+        return redirect('poll_detail', poll_id=poll.id)
+
+    return render(request, 'community/poll_create.html')
+
+
+@staff_member_required
+def poll_toggle(request, poll_id):
+    if request.method == 'POST':
+        poll = get_object_or_404(Poll, id=poll_id)
+        if poll.is_closed:
+            # 재개: 활성화하고, 만료된 ends_at이면 초기화
+            poll.is_active = True
+            if poll.ends_at and poll.ends_at < timezone.now():
+                poll.ends_at = None
+            poll.save(update_fields=['is_active', 'ends_at'])
+        else:
+            poll.is_active = False
+            poll.save(update_fields=['is_active'])
+    return redirect('poll_detail', poll_id=poll_id)
+
+
+@staff_member_required
+def poll_delete(request, poll_id):
+    if request.method == 'POST':
+        get_object_or_404(Poll, id=poll_id).delete()
+    return redirect('poll_list')
+
+
+@staff_member_required
+def poll_votes(request, poll_id):
+    """투표 결과 상세 뷰 (staff 전용) — 누가 어떤 항목에 투표했는지 확인"""
+    poll = get_object_or_404(Poll, id=poll_id)
+    choices = poll.choices.prefetch_related('votes__voter').all()
+    choice_data = []
+    for choice in choices:
+        voters = choice.votes.select_related('voter').order_by('voted_at')
+        choice_data.append({
+            'choice': choice,
+            'voters': voters,
+        })
+    context = {
+        'poll': poll,
+        'choice_data': choice_data,
+        'total_voters': poll.total_voters,
+    }
+    return render(request, 'community/poll_votes.html', context)
+
+
+@staff_member_required
+def poll_votes_export(request, poll_id):
+    """투표 결과 CSV 다운로드 (staff 전용)"""
+    poll = get_object_or_404(Poll, id=poll_id)
+
+    filename = f"poll_{poll.id}_votes_{timezone.localtime().strftime('%Y%m%d_%H%M')}.csv"
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+
+    if poll.is_anonymous:
+        # 익명 투표: 항목별 득표 수만
+        writer.writerow(['선택 항목', '득표 수'])
+        for choice in poll.choices.all():
+            writer.writerow([choice.text, choice.vote_count])
+    else:
+        writer.writerow(['이름', '학번(username)', '선택 항목', '투표 일시'])
+        for choice in poll.choices.prefetch_related('votes__voter').all():
+            for vote in choice.votes.select_related('voter').order_by('voted_at'):
+                voter = vote.voter
+                full_name = voter.get_full_name or voter.username
+                voted_at_local = timezone.localtime(vote.voted_at).strftime('%Y-%m-%d %H:%M:%S')
+                writer.writerow([full_name, voter.username, choice.text, voted_at_local])
+
+    return response
+
+
+@login_required
+def schedule_detail(request, schedule_id):
+    schedule = get_object_or_404(NewsAndEvents, id=schedule_id)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "add_comment":
+            content = request.POST.get("content", "").strip()
+            if not content:
+                messages.error(request, "댓글 내용을 입력해주세요.")
+                return redirect("schedule_detail", schedule_id=schedule.id)
+            NewsAndEventsComment.objects.create(post=schedule, author=request.user, content=content)
+            return redirect("schedule_detail", schedule_id=schedule.id)
+
+        if action in {"edit_comment", "delete_comment"}:
+            comment_id = request.POST.get("comment_id")
+            comment = get_object_or_404(NewsAndEventsComment, id=comment_id, post=schedule)
+
+            can_edit = request.user == comment.author
+            can_delete = request.user == comment.author or (
+                request.user.is_staff and not comment.author.is_staff
+            )
+
+            if action == "edit_comment":
+                if not can_edit:
+                    messages.error(request, "댓글 수정 권한이 없습니다.")
+                    return redirect("schedule_detail", schedule_id=schedule.id)
+                new_content = request.POST.get("content", "").strip()
+                if not new_content:
+                    messages.error(request, "댓글 내용을 입력해주세요.")
+                    return redirect("schedule_detail", schedule_id=schedule.id)
+                comment.content = new_content
+                comment.save(update_fields=["content"])
+                return redirect("schedule_detail", schedule_id=schedule.id)
+
+            if not can_delete:
+                messages.error(request, "댓글 삭제 권한이 없습니다.")
+                return redirect("schedule_detail", schedule_id=schedule.id)
+            comment.delete()
+            return redirect("schedule_detail", schedule_id=schedule.id)
+
+    return render(
+        request,
+        'community/schedule_detail.html',
+        {
+            'schedule': schedule,
+            'comments': schedule.comments.select_related('author').all(),
+            'today': date.today(),
+        },
+    )

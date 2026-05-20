@@ -1,0 +1,472 @@
+{% extends 'base.html' %}
+{% block title %}동아리 일정 - IPSE{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-12">
+    <div class="space-y-8">
+        <div class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
+            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">COMMUNITY</p>
+            <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">IPSE 소식과 활동 아카이브</h1>
+            <p class="mt-2 text-sm text-slate-500">공지사항, 활동 기록, 토론을 한 곳에서 확인하고 공유하세요.</p>
+        </div>
+
+        <!-- 서브 탭 네비게이션 -->
+        <div class="flex gap-1 border-b border-slate-200">
+            <a href="{% url 'community_main' %}"
+               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px">
+                소식 / 활동 기록
+            </a>
+            <a href="{% url 'schedule_list' %}"
+               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-emerald-600 text-emerald-700 -mb-px bg-white">
+                동아리 일정
+            </a>
+            <a href="{% url 'poll_list' %}"
+               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px">
+                투표
+            </a>
+        </div>
+
+        <div>
+            {% if user.is_staff %}
+            <div class="flex justify-end mb-4">
+                <button id="open-add-btn"
+                        class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                    <i class="fa-solid fa-plus text-xs"></i> 일정 추가
+                </button>
+            </div>
+            {% endif %}
+
+            <!-- 범례 -->
+            <div class="flex items-center gap-5 mb-5 text-xs font-semibold text-slate-500">
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> 동아리 공식</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span> 개인 일정</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block"></span> 투표</span>
+            </div>
+
+            <!-- 전체 캘린더 -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                <div id="calendar"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 날짜 클릭 패널 (화면 중앙 고정 오버레이) -->
+<div id="day-overlay" class="fixed inset-0 z-[800] hidden flex items-center justify-center">
+    <div id="day-overlay-bg" class="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]"></div>
+    <div id="day-panel"
+         class="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-200 w-80 max-h-[70vh] flex flex-col overflow-hidden transition-all duration-200 opacity-0 scale-95">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <div>
+                <p id="panel-weekday" class="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-0.5"></p>
+                <h2 id="panel-date" class="text-lg font-bold text-slate-800"></h2>
+            </div>
+            <button id="close-day-panel" class="text-slate-300 hover:text-slate-600 transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div id="panel-event-list" class="flex-1 overflow-y-auto py-2 space-y-0"></div>
+        <div id="panel-empty" class="hidden flex-1 flex flex-col items-center justify-center py-10 text-slate-400">
+            <i class="fa-regular fa-calendar text-2xl mb-2"></i>
+            <p class="text-sm">일정이 없습니다.</p>
+        </div>
+    </div>
+</div>
+
+{% if user.is_staff %}
+<!-- 일정 추가 모달 -->
+<div id="add-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center opacity-0 transition-opacity duration-200">
+    <div id="add-modal-content" class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 scale-95 transition-transform duration-200 overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+            <h3 class="text-sm font-semibold text-slate-500">새 일정</h3>
+            <button id="close-add-btn" class="text-slate-400 hover:text-slate-700 transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <!-- 탭 -->
+        <div class="flex border-b border-slate-100">
+            <button id="tab-schedule" type="button"
+                    class="flex-1 py-2.5 text-sm font-semibold text-emerald-700 border-b-2 border-emerald-500 transition">일반 일정</button>
+            <button id="tab-poll" type="button"
+                    class="flex-1 py-2.5 text-sm font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition">투표</button>
+        </div>
+        <!-- 일반 일정 폼 -->
+        <form id="add-form" class="p-5 space-y-4">
+            {% csrf_token %}
+            <input type="text" id="add-title" required placeholder="제목"
+                   class="w-full text-xl font-semibold text-slate-800 outline-none placeholder-slate-200 border-b border-slate-100 pb-2 focus:border-emerald-400 transition bg-transparent">
+            <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center gap-2.5 text-slate-600">
+                    <i class="fa-regular fa-sun w-4 text-center text-slate-400"></i>
+                    <span class="font-medium">하루 종일</span>
+                </div>
+                <button type="button" id="allday-toggle"
+                        class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none bg-slate-200"
+                        role="switch" aria-checked="false">
+                    <span id="allday-dot" class="inline-block h-4 w-4 translate-x-1 rounded-full bg-white shadow-sm transition-transform duration-200"></span>
+                </button>
+            </div>
+            <div id="datetime-row" class="space-y-2">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                    <input type="datetime-local" id="add-start"
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                </div>
+                <div class="flex items-center gap-2.5 pl-6">
+                    <input type="datetime-local" id="add-end"
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                </div>
+            </div>
+            <div id="dateonly-row" class="hidden">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-regular fa-calendar w-4 text-center text-slate-400 text-sm"></i>
+                    <input type="date" id="add-date-only"
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                </div>
+            </div>
+            <div class="flex items-start gap-2.5">
+                <i class="fa-regular fa-note-sticky w-4 text-center text-slate-400 text-sm mt-2"></i>
+                <textarea id="add-desc" rows="2" placeholder="메모"
+                          class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none resize-none focus:border-emerald-400 transition placeholder-slate-300"></textarea>
+            </div>
+            <div class="flex items-center gap-2.5 text-sm border-t border-slate-100 pt-3">
+                <i class="fa-solid fa-users w-4 text-center text-emerald-500"></i>
+                <span class="flex-1 font-medium text-slate-700">동아리 전체 공개 (공식 일정)</span>
+                <input type="checkbox" id="add-is-global" checked class="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400">
+            </div>
+            <button type="submit" class="w-full py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition">추가</button>
+        </form>
+        <!-- 투표 영역 -->
+        <div id="poll-form-area" class="hidden p-5">
+            <p class="text-sm text-slate-500 mb-3">투표는 시작/마감 일시가 자동으로 캘린더에 표시됩니다.</p>
+            <a href="{% url 'poll_create' %}"
+               class="block w-full text-center py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition">
+               투표 만들기 페이지로 이동
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 일정 수정 모달 -->
+<div id="edit-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center opacity-0 transition-opacity duration-200">
+    <div id="edit-modal-content" class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 scale-95 transition-transform duration-200 overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+            <h3 class="text-sm font-semibold text-slate-500">일정 수정</h3>
+            <button id="close-edit-btn" class="text-slate-400 hover:text-slate-700 transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="edit-form" class="p-5 space-y-4">
+            {% csrf_token %}
+            <input type="hidden" id="edit-id">
+            <input type="text" id="edit-title" required
+                   class="w-full text-xl font-semibold text-slate-800 outline-none border-b border-slate-100 pb-2 focus:border-emerald-400 transition bg-transparent">
+            <div class="space-y-2">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                    <input type="datetime-local" id="edit-start"
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                </div>
+                <div class="flex items-center gap-2.5 pl-6">
+                    <input type="datetime-local" id="edit-end"
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                </div>
+            </div>
+            <div class="flex items-start gap-2.5">
+                <i class="fa-regular fa-note-sticky w-4 text-center text-slate-400 text-sm mt-2"></i>
+                <textarea id="edit-desc" rows="2"
+                          class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none resize-none focus:border-emerald-400 transition"></textarea>
+            </div>
+            <div class="flex items-center gap-2.5 text-sm border-t border-slate-100 pt-3">
+                <i class="fa-solid fa-users w-4 text-center text-emerald-500"></i>
+                <span class="flex-1 font-medium text-slate-700">동아리 전체 공개</span>
+                <input type="checkbox" id="edit-is-global" class="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400">
+            </div>
+            <div class="flex gap-3">
+                <button type="button" id="delete-btn"
+                        class="px-4 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 text-sm font-semibold rounded-xl hover:bg-rose-100 transition">삭제</button>
+                <button type="submit"
+                        class="flex-1 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition">수정 완료</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.fc-theme-standard td,.fc-theme-standard th{border-color:#f1f5f9!important}
+.fc-scrollgrid{border:none!important}
+.fc-col-header-cell-cushion{text-decoration:none!important;color:#64748b!important;font-weight:700!important;font-size:.8rem!important}
+.fc-daygrid-day-top{justify-content:flex-start!important;padding-top:4px!important;padding-left:4px!important}
+.fc-daygrid-day-number{text-decoration:none!important;color:#334155!important;font-weight:600!important;font-size:.7rem!important;cursor:pointer}
+.fc-day-sun .fc-daygrid-day-number,.fc-day-sun .fc-col-header-cell-cushion{color:#ef4444!important}
+.fc-day-sat .fc-daygrid-day-number,.fc-day-sat .fc-col-header-cell-cushion{color:#3b82f6!important}
+.fc-day-today{background-color:transparent!important}
+.fc-day-today .fc-daygrid-day-number{background-color:#059669!important;color:white!important;border-radius:50%;width:20px!important;height:20px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
+.fc-daygrid-event{background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important}
+.fc-daygrid-day-events{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:1px;margin-top:2px!important;overflow:hidden!important}
+.fc-daygrid-event-harness{width:100%!important;display:flex;justify-content:flex-start}
+.fc-daygrid-day-frame{min-height:90px!important;max-height:90px!important;overflow:hidden!important}
+.fc-event-main{width:100%!important}
+.fc-daygrid-day{cursor:pointer}
+.fc-toolbar-title{font-size:1rem!important;font-weight:700!important;color:#334155!important}
+.fc-button{border-radius:8px!important;font-size:.75rem!important;font-weight:600!important}
+.fc-button-primary{background-color:#f8fafc!important;border-color:#e2e8f0!important;color:#475569!important}
+.fc-button-primary:hover{background-color:#f1f5f9!important}
+.fc-button-primary:not(:disabled).fc-button-active{background-color:#059669!important;border-color:#059669!important;color:white!important}
+</style>
+
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const WEEKDAYS = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
+    let allEvents = [];
+    const isStaff = {{ user.is_staff|yesno:'true,false' }};
+
+    function getTodayStr() {
+        const d = new Date();
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    }
+    function openModal(m,c){ m.classList.remove('hidden'); requestAnimationFrame(()=>{ m.classList.remove('opacity-0'); c.classList.remove('scale-95'); }); }
+    function closeModal(m,c){ m.classList.add('opacity-0'); c.classList.add('scale-95'); setTimeout(()=>m.classList.add('hidden'),200); }
+
+    // ── 날짜 hover 패널 ──
+    const dayOverlay = document.getElementById('day-overlay');
+    const dayPanel   = document.getElementById('day-panel');
+
+    function openDayPanel(dateStr, anchorEl) {
+        const parts = dateStr.split('-');
+        const d = new Date(+parts[0], +parts[1]-1, +parts[2]);
+        const isToday = dateStr === getTodayStr();
+        document.getElementById('panel-weekday').textContent = (isToday ? 'TODAY · ' : '') + WEEKDAYS[d.getDay()];
+        document.getElementById('panel-date').textContent = parts[0]+'. '+(+parts[1])+'. '+(+parts[2])+'.';
+
+        const dayEvs = allEvents.filter(ev => {
+            const s = ev.start ? ev.start.slice(0,10) : null;
+            const e = ev.end   ? ev.end.slice(0,10)   : null;
+            if (!s) return false;
+            return e ? (s <= dateStr && dateStr <= e) : s === dateStr;
+        }).sort((a, b) => (a.start||'').localeCompare(b.start||''));
+
+        const list  = document.getElementById('panel-event-list');
+        const empty = document.getElementById('panel-empty');
+        list.innerHTML = '';
+
+        if (dayEvs.length === 0) {
+            empty.classList.remove('hidden'); list.classList.add('hidden');
+        } else {
+            empty.classList.add('hidden'); list.classList.remove('hidden');
+            const now = new Date();
+            dayEvs.forEach((ev, idx) => {
+                const type = ev.extendedProps && ev.extendedProps.event_type;
+                const isLast = idx === dayEvs.length - 1;
+
+                // 과거 여부
+                const evDt = (ev.start && ev.start.length > 10)
+                    ? new Date(ev.start)
+                    : new Date((ev.start || dateStr) + 'T23:59:59');
+                const isPast = evDt < now;
+
+                // 색상
+                let dotCls = 'bg-violet-500', lineCls = 'bg-violet-100';
+                if (isPast) {
+                    dotCls = 'bg-slate-300'; lineCls = 'bg-slate-100';
+                } else if (type === 'poll') {
+                    dotCls = 'bg-indigo-500'; lineCls = 'bg-indigo-100';
+                } else if (ev.extendedProps && ev.extendedProps.is_global) {
+                    dotCls = 'bg-emerald-500'; lineCls = 'bg-emerald-100';
+                }
+                const titleCls = isPast ? 'text-slate-400' : 'text-slate-800';
+                const timeStr  = (ev.start && ev.start.length > 10) ? ev.start.slice(11,16) : '하루 종일';
+
+                const item = document.createElement('div');
+                item.className = 'flex gap-3 px-3 py-1 rounded-xl hover:bg-slate-50 transition'
+                    + (isPast ? ' opacity-60' : '');
+                item.innerHTML =
+                    '<div class="flex flex-col items-center w-4 shrink-0">'
+                    + '<span class="w-2.5 h-2.5 rounded-full '+dotCls+' shrink-0 mt-1.5"></span>'
+                    + (!isLast ? '<div class="w-px flex-1 '+lineCls+' mt-1 min-h-[14px]"></div>' : '')
+                    + '</div>'
+                    + '<div class="flex-1 min-w-0 pb-3">'
+                    + '<p class="text-[11px] font-medium text-slate-400 mb-0.5">'+timeStr+'</p>'
+                    + '<p class="text-sm font-semibold '+titleCls+' truncate">'+ev.title+'</p>'
+                    + '</div>';
+
+                if (type === 'poll' && ev.extendedProps.poll_id) {
+                    item.classList.add('cursor-pointer');
+                    item.addEventListener('click', () => { window.location.href = '/community/polls/'+ev.extendedProps.poll_id+'/'; });
+                } else if (isStaff && !isPast) {
+                    item.classList.add('cursor-pointer');
+                    item.addEventListener('click', () => { closeDayPanel(); openEditModal(ev); });
+                }
+                list.appendChild(item);
+            });
+        }
+
+        dayOverlay.classList.remove('hidden');
+        requestAnimationFrame(()=>{ dayPanel.classList.remove('opacity-0','scale-95'); });
+    }
+
+    function closeDayPanel() {
+        dayPanel.classList.add('opacity-0','scale-95');
+        setTimeout(()=>dayOverlay.classList.add('hidden'),150);
+    }
+
+    document.getElementById('close-day-panel').addEventListener('click', closeDayPanel);
+    document.getElementById('day-overlay-bg').addEventListener('click', closeDayPanel);
+
+    // ── FullCalendar ──
+    const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+        initialView: 'dayGridMonth',
+        locale: 'ko',
+        customButtons: {
+            prevYear: { text: '«', click: () => calendar.incrementDate({ years: -1 }) },
+            nextYear: { text: '»', click: () => calendar.incrementDate({ years:  1 }) },
+        },
+        headerToolbar: { left: 'prevYear,prev,next,nextYear', center: 'title', right: 'today' },
+        height: 'auto',
+        fixedWeekCount: true,
+        dayMaxEvents: 3,
+        moreLinkContent: args => ({ html: `<span class="text-[9px] font-semibold text-slate-400 px-1">+${args.num}…</span>` }),
+        events: '/api/schedules/',
+        dayCellContent: arg => ({ html: arg.dayNumberText.replace('일','') }),
+        eventContent: arg => {
+            const type = arg.event.extendedProps.event_type;
+            let c = 'bg-violet-500';
+            if (type === 'poll') c = 'bg-indigo-500';
+            else if (arg.event.extendedProps.is_global) c = 'bg-emerald-500';
+            return { html: `<div class="flex items-center gap-1 px-1 w-full min-w-0 overflow-hidden"><span class="w-1.5 h-1.5 shrink-0 rounded-full ${c}"></span><span class="text-[10px] font-medium text-slate-700 truncate leading-tight">${arg.event.title}</span></div>` };
+        },
+        eventsSet: function(events) {
+            allEvents = events.map(ev => ({
+                id: ev.id, title: ev.title,
+                start: ev.startStr, end: ev.endStr||null,
+                extendedProps: {...ev.extendedProps}
+            }));
+        },
+        dateClick: function(info) { openDayPanel(info.dateStr, info.dayEl); },
+        eventClick: function(info) {
+            info.jsEvent.preventDefault();
+            info.jsEvent.stopPropagation();
+            const dateStr = info.event.startStr.slice(0, 10);
+            const dayEl = document.querySelector('.fc-daygrid-day[data-date="' + dateStr + '"]');
+            openDayPanel(dateStr, dayEl || info.el);
+        },
+    });
+    calendar.render();
+
+    // ── Staff 전용 ──
+    if (isStaff) {
+        const addModal  = document.getElementById('add-modal');
+        const addMC     = document.getElementById('add-modal-content');
+        const addForm   = document.getElementById('add-form');
+        const pollArea  = document.getElementById('poll-form-area');
+        const tabSch    = document.getElementById('tab-schedule');
+        const tabPoll   = document.getElementById('tab-poll');
+        const alldayBtn = document.getElementById('allday-toggle');
+        const alldayDot = document.getElementById('allday-dot');
+        let isAllDay = false;
+
+        tabSch.addEventListener('click', ()=>{
+            tabSch.classList.add('text-emerald-700','border-emerald-500');
+            tabSch.classList.remove('text-slate-400','border-transparent');
+            tabPoll.classList.remove('text-emerald-700','border-emerald-500');
+            tabPoll.classList.add('text-slate-400','border-transparent');
+            addForm.classList.remove('hidden'); pollArea.classList.add('hidden');
+        });
+        tabPoll.addEventListener('click', ()=>{
+            tabPoll.classList.add('text-emerald-700','border-emerald-500');
+            tabPoll.classList.remove('text-slate-400','border-transparent');
+            tabSch.classList.remove('text-emerald-700','border-emerald-500');
+            tabSch.classList.add('text-slate-400','border-transparent');
+            pollArea.classList.remove('hidden'); addForm.classList.add('hidden');
+        });
+
+        alldayBtn.addEventListener('click', ()=>{
+            isAllDay = !isAllDay;
+            alldayBtn.setAttribute('aria-checked', String(isAllDay));
+            if (isAllDay) {
+                alldayBtn.classList.replace('bg-slate-200','bg-emerald-500');
+                alldayDot.classList.replace('translate-x-1','translate-x-6');
+                document.getElementById('datetime-row').classList.add('hidden');
+                document.getElementById('dateonly-row').classList.remove('hidden');
+            } else {
+                alldayBtn.classList.replace('bg-emerald-500','bg-slate-200');
+                alldayDot.classList.replace('translate-x-6','translate-x-1');
+                document.getElementById('datetime-row').classList.remove('hidden');
+                document.getElementById('dateonly-row').classList.add('hidden');
+            }
+        });
+
+        document.getElementById('open-add-btn').addEventListener('click', ()=>{
+            const base = getTodayStr();
+            document.getElementById('add-start').value = base+'T09:00';
+            document.getElementById('add-end').value   = base+'T10:00';
+            document.getElementById('add-date-only').value = base;
+            tabSch.click();
+            openModal(addModal, addMC);
+            setTimeout(()=>document.getElementById('add-title').focus(), 60);
+        });
+        document.getElementById('close-add-btn').addEventListener('click', ()=>closeModal(addModal, addMC));
+        addModal.addEventListener('click', e=>{ if(e.target===addModal) closeModal(addModal,addMC); });
+
+        addForm.addEventListener('submit', function(e){
+            e.preventDefault();
+            const btn = this.querySelector('[type=submit]');
+            btn.textContent = '저장 중…'; btn.disabled = true;
+            const start = isAllDay ? document.getElementById('add-date-only').value+'T00:00' : document.getElementById('add-start').value;
+            const end   = isAllDay ? null : (document.getElementById('add-end').value||null);
+            fetch('/api/schedules/add/', {
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':this.querySelector('[name=csrfmiddlewaretoken]').value},
+                body:JSON.stringify({title:document.getElementById('add-title').value, description:document.getElementById('add-desc').value, start, end, is_global:document.getElementById('add-is-global').checked}),
+            }).then(r=>r.json()).then(res=>{
+                if(res.status==='success'){ calendar.refetchEvents(); closeModal(addModal,addMC); this.reset(); if(isAllDay) alldayBtn.click(); }
+                else alert('등록 실패: '+res.message);
+            }).finally(()=>{ btn.textContent='추가'; btn.disabled=false; });
+        });
+
+        const editModal = document.getElementById('edit-modal');
+        const editMC    = document.getElementById('edit-modal-content');
+        const editForm  = document.getElementById('edit-form');
+
+        function openEditModal(ev){
+            document.getElementById('edit-id').value    = ev.id;
+            document.getElementById('edit-title').value = ev.title;
+            document.getElementById('edit-start').value = ev.start ? ev.start.slice(0,16) : '';
+            document.getElementById('edit-end').value   = ev.end   ? ev.end.slice(0,16)   : '';
+            document.getElementById('edit-desc').value  = (ev.extendedProps&&ev.extendedProps.description)||'';
+            const ig = document.getElementById('edit-is-global');
+            if(ig) ig.checked = !!(ev.extendedProps&&ev.extendedProps.is_global);
+            openModal(editModal, editMC);
+        }
+
+        document.getElementById('close-edit-btn').addEventListener('click',()=>closeModal(editModal,editMC));
+        editModal.addEventListener('click',e=>{ if(e.target===editModal) closeModal(editModal,editMC); });
+
+        editForm.addEventListener('submit',function(e){
+            e.preventDefault();
+            const id = document.getElementById('edit-id').value;
+            fetch('/api/schedules/'+id+'/update/',{
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':this.querySelector('[name=csrfmiddlewaretoken]').value},
+                body:JSON.stringify({title:document.getElementById('edit-title').value, description:document.getElementById('edit-desc').value, start:document.getElementById('edit-start').value, end:document.getElementById('edit-end').value||null, is_global:document.getElementById('edit-is-global').checked}),
+            }).then(r=>r.json()).then(res=>{
+                if(res.status==='success'){ calendar.refetchEvents(); closeModal(editModal,editMC); }
+                else alert('수정 실패: '+res.message);
+            });
+        });
+
+        document.getElementById('delete-btn').addEventListener('click',function(){
+            if(!confirm('이 일정을 삭제하시겠습니까?')) return;
+            const id = document.getElementById('edit-id').value;
+            fetch('/api/schedules/'+id+'/delete/',{
+                method:'POST',
+                headers:{'X-CSRFToken':editForm.querySelector('[name=csrfmiddlewaretoken]').value},
+            }).then(r=>r.json()).then(res=>{
+                if(res.status==='success'){ calendar.refetchEvents(); closeModal(editModal,editMC); }
+                else alert('삭제 실패: '+res.message);
+            });
+        });
+    }
+});
+</script>
+{% endblock %}
