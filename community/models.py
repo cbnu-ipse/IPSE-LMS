@@ -54,6 +54,7 @@ class Poll(models.Model):
         related_name="polls_created",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    starts_at = models.DateTimeField(null=True, blank=True, verbose_name="시작 일시")
     ends_at = models.DateTimeField(null=True, blank=True, verbose_name="마감 일시")
     is_multiple = models.BooleanField(default=False, verbose_name="복수 선택 허용")
     is_anonymous = models.BooleanField(default=False, verbose_name="익명 투표")

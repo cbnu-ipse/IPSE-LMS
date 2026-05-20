@@ -28,7 +28,7 @@ class PollVoteInline(admin.TabularInline):
 
 @admin.register(Poll)
 class PollAdmin(admin.ModelAdmin):
-    list_display = ('title', 'created_by', 'status_display', 'is_multiple', 'is_anonymous', 'participant_count', 'created_at', 'ends_at')
+    list_display = ('title', 'created_by', 'status_display', 'is_multiple', 'is_anonymous', 'participant_count', 'starts_at', 'ends_at', 'created_at')
     list_filter = ('is_active', 'is_multiple', 'is_anonymous')
     search_fields = ('title', 'created_by__username', 'created_by__first_name')
     inlines = [PollChoiceInline, PollVoteInline]

@@ -195,8 +195,9 @@ def schedule_list(request):
 
 @login_required
 def poll_list(request):
-    active_polls = Poll.objects.filter(is_active=True).prefetch_related('choices', 'votes')
-    closed_polls = Poll.objects.filter(is_active=False).prefetch_related('choices', 'votes')
+    all_polls = Poll.objects.prefetch_related('choices', 'votes')
+    active_polls = [p for p in all_polls if not p.is_closed]
+    closed_polls = [p for p in all_polls if p.is_closed]
     return render(request, 'community/poll_list.html', {
         'active_polls': active_polls,
         'closed_polls': closed_polls,
@@ -247,6 +248,8 @@ def poll_create(request):
         description = request.POST.get('description', '').strip()
         is_multiple = request.POST.get('is_multiple') == 'on'
         is_anonymous = request.POST.get('is_anonymous') == 'on'
+        starts_at_date = request.POST.get('starts_at_date', '').strip()
+        starts_at_time = request.POST.get('starts_at_time', '').strip()
         ends_at_date = request.POST.get('ends_at_date', '').strip()
         ends_at_time = request.POST.get('ends_at_time', '').strip()
         choice_texts = [t.strip() for t in request.POST.getlist('choices') if t.strip()]
@@ -258,14 +261,18 @@ def poll_create(request):
             messages.error(request, '선택 항목을 2개 이상 입력해주세요.')
             return redirect('poll_create')
 
-        ends_at = None
-        if ends_at_date:
+        def _parse_dt(d_str, t_str, default_time):
+            if not d_str:
+                return None
             try:
-                d = dt_module.date.fromisoformat(ends_at_date)
-                t = dt_module.time.fromisoformat(ends_at_time) if ends_at_time else dt_module.time(23, 59)
-                ends_at = timezone.make_aware(dt_module.datetime.combine(d, t))
+                d = dt_module.date.fromisoformat(d_str)
+                t = dt_module.time.fromisoformat(t_str) if t_str else default_time
+                return timezone.make_aware(dt_module.datetime.combine(d, t))
             except (ValueError, TypeError):
-                ends_at = None
+                return None
+
+        starts_at = _parse_dt(starts_at_date, starts_at_time, dt_module.time(0, 0))
+        ends_at = _parse_dt(ends_at_date, ends_at_time, dt_module.time(23, 59))
 
         poll = Poll.objects.create(
             title=title,
@@ -273,6 +280,7 @@ def poll_create(request):
             created_by=request.user,
             is_multiple=is_multiple,
             is_anonymous=is_anonymous,
+            starts_at=starts_at,
             ends_at=ends_at,
         )
         for i, txt in enumerate(choice_texts):

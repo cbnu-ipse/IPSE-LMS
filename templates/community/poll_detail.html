@@ -42,6 +42,7 @@
                 <span>{{ total_voters }}명 참여</span>
                 {% if poll.is_multiple %}<span>· 복수 선택 허용</span>{% endif %}
                 {% if poll.is_anonymous %}<span>· 익명 투표</span>{% endif %}
+                {% if poll.starts_at %}<span>· {{ poll.starts_at|date:"Y년 m월 d일 H:i" }} 시작</span>{% endif %}
                 {% if poll.ends_at %}<span>· {{ poll.ends_at|date:"Y년 m월 d일 H:i" }} 마감</span>{% endif %}
                 <span>· {{ poll.created_at|date:"Y.m.d" }} 등록</span>
             </div>

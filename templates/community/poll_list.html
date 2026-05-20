@@ -47,7 +47,8 @@
                         {{ poll.total_voters }}명 참여
                         {% if poll.is_multiple %} · 복수 선택{% endif %}
                         {% if poll.is_anonymous %} · 익명{% endif %}
-                        {% if poll.ends_at %} · {{ poll.ends_at|date:"Y.m.d H:i" }} 마감{% endif %}
+                        {% if poll.starts_at %} · {{ poll.starts_at|date:"m.d H:i" }} 시작{% endif %}
+                        {% if poll.ends_at %} · {{ poll.ends_at|date:"m.d H:i" }} 마감{% endif %}
                     </p>
                 </div>
                 <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-emerald-500 transition text-sm"></i>
@@ -75,7 +76,8 @@
                     <p class="text-base font-semibold text-slate-600">{{ poll.title }}</p>
                     <p class="text-xs text-slate-400 mt-1">
                         {{ poll.total_voters }}명 참여
-                        {% if poll.ends_at %} · {{ poll.ends_at|date:"Y.m.d H:i" }} 마감{% endif %}
+                        {% if poll.starts_at %} · {{ poll.starts_at|date:"m.d H:i" }} 시작{% endif %}
+                        {% if poll.ends_at %} · {{ poll.ends_at|date:"m.d H:i" }} 마감{% endif %}
                     </p>
                 </div>
                 <i class="fa-solid fa-chevron-right text-slate-300 text-sm"></i>
