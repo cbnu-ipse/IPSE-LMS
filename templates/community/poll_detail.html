@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}{{ poll.title }} - IPSE{% endblock %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto px-6 py-10">
+
+    <!-- 뒤로가기 -->
+    <a href="{% url 'poll_list' %}" class="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-600 transition mb-6">
+        <i class="fa-solid fa-arrow-left text-xs"></i> 투표 목록
+    </a>
+
+    <!-- 메시지 -->
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for message in messages %}
+        <div class="px-4 py-3 rounded-xl text-sm font-medium
+            {% if message.tags == 'success' %}bg-emerald-50 text-emerald-700 border border-emerald-200
+            {% else %}bg-red-50 text-red-700 border border-red-200{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 카드 -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+
+        <!-- 제목 · 메타 -->
+        <div class="mb-6">
+            <div class="flex items-start justify-between gap-4">
+                <h1 class="text-xl font-bold text-slate-800 leading-snug">{{ poll.title }}</h1>
+                {% if is_closed %}
+                <span class="shrink-0 inline-block bg-slate-100 text-slate-500 text-xs font-semibold px-3 py-1 rounded-full">종료</span>
+                {% else %}
+                <span class="shrink-0 inline-block bg-emerald-100 text-emerald-700 text-xs font-semibold px-3 py-1 rounded-full">진행 중</span>
+                {% endif %}
+            </div>
+            {% if poll.description %}
+            <p class="text-sm text-slate-500 mt-2">{{ poll.description }}</p>
+            {% endif %}
+            <div class="flex flex-wrap gap-3 mt-3 text-xs text-slate-400">
+                <span>{{ total_voters }}명 참여</span>
+                {% if poll.is_multiple %}<span>· 복수 선택 허용</span>{% endif %}
+                {% if poll.is_anonymous %}<span>· 익명 투표</span>{% endif %}
+                {% if poll.ends_at %}<span>· {{ poll.ends_at|date:"Y년 m월 d일 H:i" }} 마감</span>{% endif %}
+                <span>· {{ poll.created_at|date:"Y.m.d" }} 등록</span>
+            </div>
+        </div>
+
+        <hr class="border-slate-100 mb-6">
+
+        <!-- 투표 폼 혹은 결과 -->
+        {% if not is_closed and not has_voted %}
+        <!-- 미투표: 폼 표시 -->
+        <form method="post">
+            {% csrf_token %}
+            <div class="space-y-3 mb-6">
+                {% for choice in choices %}
+                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition group">
+                    <input type="{{ poll.is_multiple|yesno:'checkbox,radio' }}"
+                           name="choice" value="{{ choice.id }}"
+                           class="accent-emerald-600 w-4 h-4 shrink-0">
+                    <span class="text-sm text-slate-700 group-hover:text-emerald-700 transition">{{ choice.text }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <button type="submit"
+                    class="w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                투표하기
+            </button>
+        </form>
+
+        {% else %}
+        <!-- 투표됐거나 종료: 결과 표시 -->
+        <div class="space-y-4 mb-6">
+            {% for choice in choices %}
+            {% with count=choice.vote_count %}
+            {% if total_voters > 0 %}
+                {% widthratio count total_voters 100 as pct %}
+            {% else %}
+                {% with pct=0 %}{% endwith %}
+            {% endif %}
+            <div>
+                <div class="flex items-center justify-between text-sm mb-1">
+                    <span class="font-medium text-slate-700
+                        {% if choice.id in user_voted_choice_ids %}text-emerald-700{% endif %}">
+                        {% if choice.id in user_voted_choice_ids %}
+                        <i class="fa-solid fa-check text-xs text-emerald-600 mr-1"></i>
+                        {% endif %}
+                        {{ choice.text }}
+                    </span>
+                    <span class="text-xs text-slate-400">{{ count }}표{% if total_voters > 0 %} ({% widthratio count total_voters 100 %}%){% endif %}</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    {% if total_voters > 0 %}
+                    <div class="h-2.5 rounded-full transition-all duration-500
+                        {% if choice.id in user_voted_choice_ids %}bg-emerald-500{% else %}bg-slate-300{% endif %}"
+                         style="width: {% widthratio count total_voters 100 %}%"></div>
+                    {% else %}
+                    <div class="h-2.5 rounded-full bg-slate-200" style="width: 0%"></div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endwith %}
+            {% endfor %}
+        </div>
+
+        <!-- 재투표 (진행 중일 때만) -->
+        {% if not is_closed and has_voted %}
+        <p class="text-xs text-slate-400 text-center mb-4">재투표하려면 다시 선택 후 제출하세요.</p>
+        <form method="post">
+            {% csrf_token %}
+            <div class="space-y-3 mb-4">
+                {% for choice in choices %}
+                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition group">
+                    <input type="{{ poll.is_multiple|yesno:'checkbox,radio' }}"
+                           name="choice" value="{{ choice.id }}"
+                           {% if choice.id in user_voted_choice_ids %}checked{% endif %}
+                           class="accent-emerald-600 w-4 h-4 shrink-0">
+                    <span class="text-sm text-slate-700 group-hover:text-emerald-700 transition">{{ choice.text }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <button type="submit"
+                    class="w-full bg-slate-100 text-slate-600 py-3 rounded-xl text-sm font-semibold hover:bg-slate-200 transition">
+                재투표
+            </button>
+        </form>
+        {% endif %}
+
+        {% endif %}
+
+        <!-- 관리자 버튼 -->
+        {% if user.is_staff %}
+        <hr class="border-slate-100 my-6">
+        <div class="flex items-center gap-3">
+            <form method="post" action="{% url 'poll_toggle' poll.id %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="text-xs font-semibold px-4 py-2 rounded-xl border transition
+                        {% if poll.is_active %}border-amber-300 text-amber-600 hover:bg-amber-50{% else %}border-emerald-300 text-emerald-600 hover:bg-emerald-50{% endif %}">
+                    {% if poll.is_active %}투표 종료{% else %}투표 재개{% endif %}
+                </button>
+            </form>
+            <form method="post" action="{% url 'poll_delete' poll.id %}"
+                  onsubmit="return confirm('이 투표를 삭제하시겠습니까? 모든 투표 데이터가 삭제됩니다.')">
+                {% csrf_token %}
+                <button type="submit"
+                        class="text-xs font-semibold px-4 py-2 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 transition">
+                    삭제
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+    </div>
+</section>
+{% endblock %}

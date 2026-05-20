@@ -9,4 +9,12 @@ urlpatterns = [
     path('notice/<int:notice_id>/', views.notice_detail, name='notice_detail'),
     path('activity/<int:activity_id>/', views.activity_detail, name='activity_detail'),
     path('upload-image/', views.upload_editor_image, name='upload_editor_image'),
+    path('schedules/', views.schedule_list, name='schedule_list'),
+    path('schedule/<int:schedule_id>/', views.schedule_detail, name='schedule_detail'),
+    # 투표
+    path('polls/', views.poll_list, name='poll_list'),
+    path('polls/create/', views.poll_create, name='poll_create'),
+    path('polls/<int:poll_id>/', views.poll_detail, name='poll_detail'),
+    path('polls/<int:poll_id>/toggle/', views.poll_toggle, name='poll_toggle'),
+    path('polls/<int:poll_id>/delete/', views.poll_delete, name='poll_delete'),
 ]

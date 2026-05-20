@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 POST = (
     ('News', 'News'),
@@ -38,3 +39,73 @@ class NewsAndEventsComment(models.Model):
 
     def __str__(self):
         return f"{self.author} - {self.post}"
+
+
+# ─────────────────────────────────────────────
+# 투표 (Poll)
+# ─────────────────────────────────────────────
+
+class Poll(models.Model):
+    title = models.CharField(max_length=200, verbose_name="투표 제목")
+    description = models.TextField(blank=True, verbose_name="설명")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="polls_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    ends_at = models.DateTimeField(null=True, blank=True, verbose_name="마감 일시")
+    is_multiple = models.BooleanField(default=False, verbose_name="복수 선택 허용")
+    is_anonymous = models.BooleanField(default=False, verbose_name="익명 투표")
+    is_active = models.BooleanField(default=True, verbose_name="활성 여부")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_closed(self):
+        if not self.is_active:
+            return True
+        if self.ends_at and timezone.now() > self.ends_at:
+            return True
+        return False
+
+    @property
+    def total_voters(self):
+        return self.votes.values("voter").distinct().count()
+
+
+class PollChoice(models.Model):
+    poll = models.ForeignKey(Poll, related_name="choices", on_delete=models.CASCADE)
+    text = models.CharField(max_length=300, verbose_name="선택 항목")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "pk"]
+
+    def __str__(self):
+        return f"{self.poll.title} — {self.text}"
+
+    @property
+    def vote_count(self):
+        return self.votes.count()
+
+
+class PollVote(models.Model):
+    poll = models.ForeignKey(Poll, related_name="votes", on_delete=models.CASCADE)
+    choice = models.ForeignKey(PollChoice, related_name="votes", on_delete=models.CASCADE)
+    voter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="poll_votes",
+    )
+    voted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("poll", "voter", "choice")
+
+    def __str__(self):
+        return f"{self.voter} → {self.choice}"

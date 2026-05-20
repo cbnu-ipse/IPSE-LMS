@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}투표 - IPSE{% endblock %}
+
+{% block content %}
+<section class="max-w-4xl mx-auto px-6 py-10">
+
+    <!-- 헤더 -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700 mb-0.5">VOTE</p>
+            <h1 class="text-2xl font-semibold text-slate-800">투표</h1>
+        </div>
+        {% if user.is_staff %}
+        <a href="{% url 'poll_create' %}"
+           class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+            <i class="fa-solid fa-plus text-xs"></i> 투표 만들기
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- 메시지 -->
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for message in messages %}
+        <div class="px-4 py-3 rounded-xl text-sm font-medium
+            {% if message.tags == 'success' %}bg-emerald-50 text-emerald-700 border border-emerald-200
+            {% else %}bg-red-50 text-red-700 border border-red-200{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 진행 중인 투표 -->
+    <div class="mb-10">
+        <h2 class="text-base font-semibold text-slate-700 mb-4 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> 진행 중
+        </h2>
+        {% if active_polls %}
+        <div class="space-y-3">
+            {% for poll in active_polls %}
+            <a href="{% url 'poll_detail' poll.id %}"
+               class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm hover:shadow-md hover:border-emerald-300 transition group">
+                <div>
+                    <p class="text-base font-semibold text-slate-800 group-hover:text-emerald-700 transition">{{ poll.title }}</p>
+                    <p class="text-xs text-slate-400 mt-1">
+                        {{ poll.total_voters }}명 참여
+                        {% if poll.is_multiple %} · 복수 선택{% endif %}
+                        {% if poll.is_anonymous %} · 익명{% endif %}
+                        {% if poll.ends_at %} · {{ poll.ends_at|date:"Y.m.d H:i" }} 마감{% endif %}
+                    </p>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-emerald-500 transition text-sm"></i>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-slate-50 rounded-2xl border border-slate-200 px-6 py-8 text-center text-slate-400 text-sm">
+            진행 중인 투표가 없습니다.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 종료된 투표 -->
+    {% if closed_polls %}
+    <div>
+        <h2 class="text-base font-semibold text-slate-500 mb-4 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-slate-300 inline-block"></span> 종료됨
+        </h2>
+        <div class="space-y-3">
+            {% for poll in closed_polls %}
+            <a href="{% url 'poll_detail' poll.id %}"
+               class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm hover:shadow-md transition opacity-70 hover:opacity-100 group">
+                <div>
+                    <p class="text-base font-semibold text-slate-600">{{ poll.title }}</p>
+                    <p class="text-xs text-slate-400 mt-1">
+                        {{ poll.total_voters }}명 참여
+                        {% if poll.ends_at %} · {{ poll.ends_at|date:"Y.m.d H:i" }} 마감{% endif %}
+                    </p>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-300 text-sm"></i>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+</section>
+{% endblock %}

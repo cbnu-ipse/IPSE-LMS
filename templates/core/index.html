@@ -81,8 +81,8 @@
                             <span class="flex items-center text-emerald-600">
                                 <div class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></div>공식
                             </span>
-                            <span class="flex items-center text-amber-600">
-                                <div class="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></div>개인
+                            <span class="flex items-center text-violet-600">
+                                <div class="w-2 h-2 rounded-full bg-violet-500 mr-1.5"></div>개인
                             </span>
                         </div>
                     </div>
@@ -405,7 +405,7 @@ document.addEventListener('DOMContentLoaded', function() {
         eventContent: function(arg) {
             const isGlobal = arg.event.extendedProps.is_global;
             // 공식(초록색), 개인(주황색) Tailwind 클래스 매핑
-            const bgColorClass = isGlobal ? 'bg-emerald-500' : 'bg-amber-500';
+            const bgColorClass = isGlobal ? 'bg-emerald-500' : 'bg-violet-500';
             
             // 너비 83%(w-10/12), 두께 6px(h-1.5), 가운데 정렬(mx-auto)을 적용한 선형 HTML 반환
             return { html: `<div class="w-10/12 h-1.5 rounded-full ${bgColorClass} mx-auto"></div>` };

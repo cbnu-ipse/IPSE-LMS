@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% block title %}{{ schedule.title }} - IPSE 동아리 일정{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-6 py-12">
+    <div class="relative space-y-6">
+        {% if messages %}
+        <div class="space-y-2">
+            {% for message in messages %}
+            <div class="p-4 rounded-md text-sm font-bold border
+                {% if message.tags == 'error' %}
+                    bg-red-50 text-red-600 border-red-200
+                {% elif message.tags == 'success' %}
+                    bg-emerald-50 text-emerald-700 border-emerald-200
+                {% else %}
+                    bg-slate-50 text-slate-600 border-slate-200
+                {% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="mb-6">
+            <a href="{% url 'schedule_list' %}" class="text-sm font-semibold text-slate-500 hover:text-emerald-700 transition inline-flex items-center">
+                <i class="fa-solid fa-arrow-left mr-2"></i> 일정 목록으로
+            </a>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-10 shadow-sm relative">
+            <div class="border-b border-slate-100 pb-6 mb-8">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="px-3 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-100">동아리 일정</span>
+                    {% if schedule.event_date %}
+                        {% if schedule.event_date >= today %}
+                        <span class="px-3 py-1 rounded-md bg-blue-50 text-blue-600 text-xs font-semibold border border-blue-100">예정</span>
+                        {% else %}
+                        <span class="px-3 py-1 rounded-md bg-slate-100 text-slate-500 text-xs font-semibold border border-slate-200">완료</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                <h1 class="text-4xl font-semibold text-[#3F3F3F] mb-4">{{ schedule.title }}</h1>
+                <div class="flex flex-wrap items-center text-sm font-medium text-slate-400 gap-4">
+                    <span class="flex items-center"><i class="fa-regular fa-clock mr-1.5"></i> {{ schedule.upload_time|date:"Y.m.d H:i" }} 등록</span>
+                    {% if schedule.event_date %}
+                    <span class="flex items-center text-emerald-600"><i class="fa-regular fa-calendar mr-1.5"></i> 행사일: {{ schedule.event_date|date:"Y년 m월 d일" }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if schedule.thumbnail %}
+            <div class="mb-8 rounded-xl overflow-hidden max-h-[400px]">
+                <img src="{{ schedule.thumbnail.url }}" alt="썸네일" class="w-full h-full object-cover">
+            </div>
+            {% endif %}
+
+            {{ schedule.summary|json_script:"schedule-data" }}
+            <div id="viewer" class="text-slate-700 leading-relaxed min-h-[200px]"></div>
+
+            {% if user.is_staff %}
+            <div class="absolute bottom-6 right-8 flex space-x-3">
+                <button type="button" id="open-edit-modal-btn" class="px-5 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+                    수정
+                </button>
+                <form action="{% url 'delete_post' schedule.id %}" method="POST" onsubmit="return confirm('이 일정을 정말 삭제하시겠습니까?');">
+                    {% csrf_token %}
+                    <button type="submit" class="px-5 py-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold hover:bg-rose-100 transition">
+                        삭제
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 댓글 섹션 -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-5">
+            <div class="flex items-end justify-between border-b border-slate-200 pb-3">
+                <h2 class="text-2xl font-semibold text-[#3F3F3F]">댓글</h2>
+                <span class="text-sm font-medium text-slate-400">{{ comments|length }}개</span>
+            </div>
+
+            <form method="POST" action="{% url 'schedule_detail' schedule.id %}" class="space-y-4">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_comment">
+                <textarea name="content" rows="4" placeholder="일정 관련 의견을 남겨주세요." class="w-full px-4 py-4 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none resize-none focus:border-emerald-500"></textarea>
+                <div class="flex justify-end">
+                    <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-lg text-sm font-bold transition">댓글 등록</button>
+                </div>
+            </form>
+
+            <div class="space-y-4">
+                {% for comment in comments %}
+                <div class="p-5 rounded-xl border border-slate-200 bg-white">
+                    <div class="flex items-center justify-between gap-4 mb-3">
+                        <div class="flex items-center space-x-3">
+                            <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.username }}" class="w-10 h-10 rounded-full object-cover border border-slate-200">
+                            <div>
+                                <p class="font-bold text-sm text-slate-700">{{ comment.author.username }}</p>
+                                <p class="text-xs text-slate-400">{{ comment.created_at|date:"Y.m.d. H:i" }}</p>
+                            </div>
+                        </div>
+
+                        {% if user == comment.author or user.is_staff and not comment.author.is_staff %}
+                        <div class="flex items-center gap-2">
+                            {% if user == comment.author %}
+                            <button type="button" data-schedule-comment-toggle="{{ comment.id }}" class="text-xs font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 px-3 py-1 rounded-lg hover:bg-emerald-100 transition">수정</button>
+                            {% endif %}
+                            <form method="POST" action="{% url 'schedule_detail' schedule.id %}" onsubmit="return confirm('댓글을 삭제하시겠습니까?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="delete_comment">
+                                <input type="hidden" name="comment_id" value="{{ comment.id }}">
+                                <button type="submit" class="text-xs font-bold text-rose-700 border border-rose-200 bg-rose-50 px-3 py-1 rounded-lg hover:bg-rose-100 transition">삭제</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <p class="text-sm leading-7 text-slate-600 whitespace-pre-wrap">{{ comment.content }}</p>
+
+                    {% if user == comment.author %}
+                    <form id="schedule-comment-edit-{{ comment.id }}" method="POST" action="{% url 'schedule_detail' schedule.id %}" class="hidden mt-4 space-y-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="edit_comment">
+                        <input type="hidden" name="comment_id" value="{{ comment.id }}">
+                        <textarea name="content" rows="3" class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none resize-none focus:border-emerald-500">{{ comment.content }}</textarea>
+                        <div class="flex justify-end gap-2">
+                            <button type="button" data-schedule-comment-toggle="{{ comment.id }}" class="px-4 py-2 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition">취소</button>
+                            <button type="submit" class="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition">저장</button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <div class="text-sm text-slate-500">아직 등록된 댓글이 없습니다.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if user.is_staff %}
+<div id="edit-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center transition-opacity duration-300 opacity-0">
+    <div class="bg-white w-full max-w-4xl rounded-2xl shadow-xl overflow-hidden transform scale-95 transition-transform duration-300 border border-slate-200" id="edit-modal-content">
+        <div class="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <h3 class="text-xl font-semibold text-[#3F3F3F]">일정 수정</h3>
+            <button type="button" id="close-edit-modal-btn" class="text-slate-400 hover:text-rose-500 transition"><i class="fa-solid fa-xmark text-2xl"></i></button>
+        </div>
+        <form id="edit-form" action="{% url 'edit_post' schedule.id %}" method="POST" class="p-8">
+            {% csrf_token %}
+            <div class="mb-5">
+                <label class="block text-sm font-semibold text-slate-600 mb-2">제목</label>
+                <input type="text" name="title" value="{{ schedule.title }}" required class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-slate-700 font-medium transition">
+            </div>
+            <input type="hidden" name="summary" id="hidden-edit-content">
+            <div class="mb-6"><div id="editor"></div></div>
+            <div class="flex justify-end pt-4 border-t border-slate-100">
+                <button type="submit" class="px-8 py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition">수정 완료</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const scheduleContent = JSON.parse(document.getElementById('schedule-data').textContent);
+
+    new toastui.Editor.factory({
+        el: document.querySelector('#viewer'),
+        viewer: true,
+        initialValue: scheduleContent
+    });
+
+    // 댓글 수정 토글
+    document.querySelectorAll('[data-schedule-comment-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.scheduleCommentToggle;
+            const form = document.getElementById(`schedule-comment-edit-${id}`);
+            if (form) form.classList.toggle('hidden');
+        });
+    });
+
+    {% if user.is_staff %}
+    const editModal = document.getElementById('edit-modal');
+    const editModalContent = document.getElementById('edit-modal-content');
+    let editor;
+
+    document.getElementById('open-edit-modal-btn')?.addEventListener('click', () => {
+        editModal.classList.remove('hidden');
+        if (!editor) {
+            editor = new toastui.Editor({
+                el: document.querySelector('#editor'),
+                height: '400px',
+                initialEditType: 'markdown',
+                previewStyle: 'vertical',
+                initialValue: scheduleContent,
+                language: 'ko',
+                hooks: {
+                    addImageBlobHook: (blob, callback) => {
+                        const formData = new FormData();
+                        formData.append('image', blob);
+                        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                        fetch('/community/upload-image/', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': csrfToken },
+                            body: formData
+                        })
+                        .then(r => r.json())
+                        .then(data => callback(data.url, '이미지'));
+                    }
+                }
+            });
+        }
+        setTimeout(() => {
+            editModal.classList.remove('opacity-0');
+            editModalContent.classList.remove('scale-95');
+        }, 10);
+    });
+
+    document.getElementById('close-edit-modal-btn')?.addEventListener('click', () => {
+        editModal.classList.add('opacity-0');
+        editModalContent.classList.add('scale-95');
+        setTimeout(() => editModal.classList.add('hidden'), 300);
+    });
+
+    document.getElementById('edit-form')?.addEventListener('submit', function () {
+        document.getElementById('hidden-edit-content').value = editor.getMarkdown();
+    });
+    {% endif %}
+});
+</script>
+{% endblock %}
