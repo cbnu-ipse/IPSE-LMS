@@ -2,38 +2,60 @@
 {% block title %}동아리 일정 - IPSE{% endblock %}
 
 {% block content %}
-<section class="max-w-6xl mx-auto px-6 py-10">
-    <div class="flex items-center justify-between mb-5">
-        <div>
-            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700 mb-0.5">SCHEDULE</p>
-            <h1 class="text-2xl font-semibold text-slate-800">동아리 일정</h1>
+<section class="max-w-7xl mx-auto px-6 py-12">
+    <div class="space-y-8">
+        <div class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
+            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">COMMUNITY</p>
+            <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">IPSE 소식과 활동 아카이브</h1>
+            <p class="mt-2 text-sm text-slate-500">공지사항, 활동 기록, 토론을 한 곳에서 확인하고 공유하세요.</p>
         </div>
-        {% if user.is_staff %}
-        <button id="open-add-btn"
-                class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
-            <i class="fa-solid fa-plus text-xs"></i> 일정 추가
-        </button>
-        {% endif %}
-    </div>
 
-    <!-- 범례 -->
-    <div class="flex items-center gap-5 mb-5 text-xs font-semibold text-slate-500">
-        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> 동아리 공식</span>
-        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span> 개인 일정</span>
-        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block"></span> 투표</span>
-    </div>
+        <!-- 서브 탭 네비게이션 -->
+        <div class="flex gap-1 border-b border-slate-200">
+            <a href="{% url 'community_main' %}"
+               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px">
+                소식 / 활동 기록
+            </a>
+            <a href="{% url 'schedule_list' %}"
+               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-emerald-600 text-emerald-700 -mb-px bg-white">
+                동아리 일정
+            </a>
+            <a href="{% url 'poll_list' %}"
+               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px">
+                투표
+            </a>
+        </div>
 
-    <!-- 전체 캘린더 -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <div id="calendar"></div>
+        <div>
+            {% if user.is_staff %}
+            <div class="flex justify-end mb-4">
+                <button id="open-add-btn"
+                        class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                    <i class="fa-solid fa-plus text-xs"></i> 일정 추가
+                </button>
+            </div>
+            {% endif %}
+
+            <!-- 범례 -->
+            <div class="flex items-center gap-5 mb-5 text-xs font-semibold text-slate-500">
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> 동아리 공식</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span> 개인 일정</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block"></span> 투표</span>
+            </div>
+
+            <!-- 전체 캘린더 -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                <div id="calendar"></div>
+            </div>
+        </div>
     </div>
 </section>
 
-<!-- 날짜 클릭 hover 패널 (블러 오버레이) -->
-<div id="day-overlay" class="fixed inset-0 z-[800] hidden">
+<!-- 날짜 클릭 패널 (화면 중앙 고정 오버레이) -->
+<div id="day-overlay" class="fixed inset-0 z-[800] hidden flex items-center justify-center">
     <div id="day-overlay-bg" class="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]"></div>
     <div id="day-panel"
-         class="fixed bg-white rounded-2xl shadow-2xl border border-slate-200 w-80 max-h-[70vh] flex flex-col overflow-hidden transition-all duration-200 opacity-0 scale-95">
+         class="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-200 w-80 max-h-[70vh] flex flex-col overflow-hidden transition-all duration-200 opacity-0 scale-95">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
             <div>
                 <p id="panel-weekday" class="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-0.5"></p>
@@ -43,7 +65,7 @@
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
-        <div id="panel-event-list" class="flex-1 overflow-y-auto p-3 space-y-1"></div>
+        <div id="panel-event-list" class="flex-1 overflow-y-auto py-2 space-y-0"></div>
         <div id="panel-empty" class="hidden flex-1 flex flex-col items-center justify-center py-10 text-slate-400">
             <i class="fa-regular fa-calendar text-2xl mb-2"></i>
             <p class="text-sm">일정이 없습니다.</p>
@@ -173,15 +195,16 @@
 .fc-theme-standard td,.fc-theme-standard th{border-color:#f1f5f9!important}
 .fc-scrollgrid{border:none!important}
 .fc-col-header-cell-cushion{text-decoration:none!important;color:#64748b!important;font-weight:700!important;font-size:.8rem!important}
-.fc-daygrid-day-top{justify-content:center!important;padding-top:8px!important}
-.fc-daygrid-day-number{text-decoration:none!important;color:#334155!important;font-weight:600!important;font-size:.875rem!important;cursor:pointer}
+.fc-daygrid-day-top{justify-content:flex-start!important;padding-top:4px!important;padding-left:4px!important}
+.fc-daygrid-day-number{text-decoration:none!important;color:#334155!important;font-weight:600!important;font-size:.7rem!important;cursor:pointer}
 .fc-day-sun .fc-daygrid-day-number,.fc-day-sun .fc-col-header-cell-cushion{color:#ef4444!important}
 .fc-day-sat .fc-daygrid-day-number,.fc-day-sat .fc-col-header-cell-cushion{color:#3b82f6!important}
 .fc-day-today{background-color:transparent!important}
-.fc-day-today .fc-daygrid-day-number{background-color:#059669!important;color:white!important;border-radius:50%;width:26px!important;height:26px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
+.fc-day-today .fc-daygrid-day-number{background-color:#059669!important;color:white!important;border-radius:50%;width:20px!important;height:20px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
 .fc-daygrid-event{background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important}
-.fc-daygrid-day-events{display:flex!important;flex-direction:column!important;align-items:center!important;gap:2px;margin-top:4px!important;min-height:8px!important}
-.fc-daygrid-event-harness{width:75%!important;display:flex;justify-content:center}
+.fc-daygrid-day-events{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:1px;margin-top:2px!important;overflow:hidden!important}
+.fc-daygrid-event-harness{width:100%!important;display:flex;justify-content:flex-start}
+.fc-daygrid-day-frame{min-height:90px!important;max-height:90px!important;overflow:hidden!important}
 .fc-event-main{width:100%!important}
 .fc-daygrid-day{cursor:pointer}
 .fc-toolbar-title{font-size:1rem!important;font-weight:700!important;color:#334155!important}
@@ -221,7 +244,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const e = ev.end   ? ev.end.slice(0,10)   : null;
             if (!s) return false;
             return e ? (s <= dateStr && dateStr <= e) : s === dateStr;
-        });
+        }).sort((a, b) => (a.start||'').localeCompare(b.start||''));
 
         const list  = document.getElementById('panel-event-list');
         const empty = document.getElementById('panel-empty');
@@ -231,20 +254,47 @@ document.addEventListener('DOMContentLoaded', function () {
             empty.classList.remove('hidden'); list.classList.add('hidden');
         } else {
             empty.classList.add('hidden'); list.classList.remove('hidden');
-            dayEvs.forEach(ev => {
+            const now = new Date();
+            dayEvs.forEach((ev, idx) => {
                 const type = ev.extendedProps && ev.extendedProps.event_type;
-                let dot = 'bg-violet-500';
-                if (type === 'poll') dot = 'bg-indigo-500';
-                else if (ev.extendedProps && ev.extendedProps.is_global) dot = 'bg-emerald-500';
-                const timeStr = (ev.start && ev.start.length > 10) ? ev.start.slice(11,16) : '하루 종일';
+                const isLast = idx === dayEvs.length - 1;
+
+                // 과거 여부
+                const evDt = (ev.start && ev.start.length > 10)
+                    ? new Date(ev.start)
+                    : new Date((ev.start || dateStr) + 'T23:59:59');
+                const isPast = evDt < now;
+
+                // 색상
+                let dotCls = 'bg-violet-500', lineCls = 'bg-violet-100';
+                if (isPast) {
+                    dotCls = 'bg-slate-300'; lineCls = 'bg-slate-100';
+                } else if (type === 'poll') {
+                    dotCls = 'bg-indigo-500'; lineCls = 'bg-indigo-100';
+                } else if (ev.extendedProps && ev.extendedProps.is_global) {
+                    dotCls = 'bg-emerald-500'; lineCls = 'bg-emerald-100';
+                }
+                const titleCls = isPast ? 'text-slate-400' : 'text-slate-800';
+                const timeStr  = (ev.start && ev.start.length > 10) ? ev.start.slice(11,16) : '하루 종일';
+
                 const item = document.createElement('div');
-                item.className = 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition cursor-pointer group';
-                item.innerHTML = '<span class="w-2 h-2 rounded-full '+dot+' shrink-0"></span>'
-                    +'<div class="flex-1 min-w-0"><p class="text-sm font-semibold text-slate-800 truncate group-hover:text-emerald-700 transition">'+ev.title+'</p>'
-                    +'<p class="text-xs text-slate-400 mt-0.5">'+timeStr+'</p></div>';
+                item.className = 'flex gap-3 px-3 py-1 rounded-xl hover:bg-slate-50 transition'
+                    + (isPast ? ' opacity-60' : '');
+                item.innerHTML =
+                    '<div class="flex flex-col items-center w-4 shrink-0">'
+                    + '<span class="w-2.5 h-2.5 rounded-full '+dotCls+' shrink-0 mt-1.5"></span>'
+                    + (!isLast ? '<div class="w-px flex-1 '+lineCls+' mt-1 min-h-[14px]"></div>' : '')
+                    + '</div>'
+                    + '<div class="flex-1 min-w-0 pb-3">'
+                    + '<p class="text-[11px] font-medium text-slate-400 mb-0.5">'+timeStr+'</p>'
+                    + '<p class="text-sm font-semibold '+titleCls+' truncate">'+ev.title+'</p>'
+                    + '</div>';
+
                 if (type === 'poll' && ev.extendedProps.poll_id) {
+                    item.classList.add('cursor-pointer');
                     item.addEventListener('click', () => { window.location.href = '/community/polls/'+ev.extendedProps.poll_id+'/'; });
-                } else if (isStaff) {
+                } else if (isStaff && !isPast) {
+                    item.classList.add('cursor-pointer');
                     item.addEventListener('click', () => { closeDayPanel(); openEditModal(ev); });
                 }
                 list.appendChild(item);
@@ -252,15 +302,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         dayOverlay.classList.remove('hidden');
-        const PW = 320, PH = 380;
-        const rect = anchorEl.getBoundingClientRect();
-        let left = rect.left + rect.width/2 - PW/2;
-        let top  = rect.bottom + 8;
-        if (left+PW > window.innerWidth-16) left = window.innerWidth-PW-16;
-        if (left < 8) left = 8;
-        if (rect.bottom+PH > window.innerHeight) top = rect.top - PH - 8;
-        dayPanel.style.left = left+'px';
-        dayPanel.style.top  = top+'px';
         requestAnimationFrame(()=>{ dayPanel.classList.remove('opacity-0','scale-95'); });
     }
 
@@ -276,9 +317,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
         initialView: 'dayGridMonth',
         locale: 'ko',
-        headerToolbar: { left: 'prev,next', center: 'title', right: 'today' },
+        customButtons: {
+            prevYear: { text: '«', click: () => calendar.incrementDate({ years: -1 }) },
+            nextYear: { text: '»', click: () => calendar.incrementDate({ years:  1 }) },
+        },
+        headerToolbar: { left: 'prevYear,prev,next,nextYear', center: 'title', right: 'today' },
         height: 'auto',
-        aspectRatio: 1.9,
+        fixedWeekCount: true,
+        dayMaxEvents: 3,
+        moreLinkContent: args => ({ html: `<span class="text-[9px] font-semibold text-slate-400 px-1">+${args.num}…</span>` }),
         events: '/api/schedules/',
         dayCellContent: arg => ({ html: arg.dayNumberText.replace('일','') }),
         eventContent: arg => {
@@ -286,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function () {
             let c = 'bg-violet-500';
             if (type === 'poll') c = 'bg-indigo-500';
             else if (arg.event.extendedProps.is_global) c = 'bg-emerald-500';
-            return { html: '<div class="w-4/5 h-1.5 rounded-full '+c+' mx-auto"></div>' };
+            return { html: `<div class="flex items-center gap-1 px-1 w-full min-w-0 overflow-hidden"><span class="w-1.5 h-1.5 shrink-0 rounded-full ${c}"></span><span class="text-[10px] font-medium text-slate-700 truncate leading-tight">${arg.event.title}</span></div>` };
         },
         eventsSet: function(events) {
             allEvents = events.map(ev => ({
@@ -297,18 +344,11 @@ document.addEventListener('DOMContentLoaded', function () {
         },
         dateClick: function(info) { openDayPanel(info.dateStr, info.dayEl); },
         eventClick: function(info) {
-            const type = info.event.extendedProps.event_type;
-            if (type === 'poll') {
-                window.location.href = '/community/polls/'+info.event.extendedProps.poll_id+'/';
-                return;
-            }
-            if (isStaff) {
-                openEditModal({
-                    id: info.event.id, title: info.event.title,
-                    start: info.event.startStr, end: info.event.endStr||null,
-                    extendedProps: {...info.event.extendedProps}
-                });
-            }
+            info.jsEvent.preventDefault();
+            info.jsEvent.stopPropagation();
+            const dateStr = info.event.startStr.slice(0, 10);
+            const dayEl = document.querySelector('.fc-daygrid-day[data-date="' + dateStr + '"]');
+            openDayPanel(dateStr, dayEl || info.el);
         },
     });
     calendar.render();
