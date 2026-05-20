@@ -21,7 +21,7 @@ class PollVoteInline(admin.TabularInline):
     can_delete = False
 
     def voter_display(self, obj):
-        full = obj.voter.get_full_name()
+        full = obj.voter.get_full_name
         return f"{full} ({obj.voter.username})" if full else obj.voter.username
     voter_display.short_description = '투표자'
 
@@ -53,7 +53,7 @@ class PollVoteAdmin(admin.ModelAdmin):
     readonly_fields = ('poll', 'choice', 'voter', 'voted_at')
 
     def voter_display(self, obj):
-        full = obj.voter.get_full_name()
+        full = obj.voter.get_full_name
         return f"{full} ({obj.voter.username})" if full else obj.voter.username
     voter_display.short_description = '투표자'
 
