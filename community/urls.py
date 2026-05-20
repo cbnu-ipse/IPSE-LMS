@@ -18,4 +18,5 @@ urlpatterns = [
     path('polls/<int:poll_id>/toggle/', views.poll_toggle, name='poll_toggle'),
     path('polls/<int:poll_id>/delete/', views.poll_delete, name='poll_delete'),
     path('polls/<int:poll_id>/votes/', views.poll_votes, name='poll_votes'),
+    path('polls/<int:poll_id>/votes/export/', views.poll_votes_export, name='poll_votes_export'),
 ]

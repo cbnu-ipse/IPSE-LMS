@@ -150,6 +150,7 @@
                             {% for poll in active_polls %}
                             <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
                                 <a href="{% url 'poll_detail' poll.id %}" class="font-medium text-slate-700 hover:text-indigo-700 transition flex-1 truncate pr-4">
+                                    <span class="text-indigo-500 text-sm mr-1.5"><i class="fa-solid fa-square-poll-vertical"></i></span>
                                     {{ poll.title }}
                                 </a>
                                 <span class="text-xs text-slate-400 flex-shrink-0">

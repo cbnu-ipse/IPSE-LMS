@@ -1,3 +1,4 @@
+import csv
 import datetime as dt_module
 from datetime import date
 
@@ -5,7 +6,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.storage import FileSystemStorage
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
 from django.utils import timezone
 from .models import NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment
@@ -367,6 +368,34 @@ def poll_votes(request, poll_id):
         'total_voters': poll.total_voters,
     }
     return render(request, 'community/poll_votes.html', context)
+
+
+@staff_member_required
+def poll_votes_export(request, poll_id):
+    """투표 결과 CSV 다운로드 (staff 전용)"""
+    poll = get_object_or_404(Poll, id=poll_id)
+
+    filename = f"poll_{poll.id}_votes_{timezone.localtime().strftime('%Y%m%d_%H%M')}.csv"
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+
+    if poll.is_anonymous:
+        # 익명 투표: 항목별 득표 수만
+        writer.writerow(['선택 항목', '득표 수'])
+        for choice in poll.choices.all():
+            writer.writerow([choice.text, choice.vote_count])
+    else:
+        writer.writerow(['이름', '학번(username)', '선택 항목', '투표 일시'])
+        for choice in poll.choices.prefetch_related('votes__voter').all():
+            for vote in choice.votes.select_related('voter').order_by('voted_at'):
+                voter = vote.voter
+                full_name = voter.get_full_name or voter.username
+                voted_at_local = timezone.localtime(vote.voted_at).strftime('%Y-%m-%d %H:%M:%S')
+                writer.writerow([full_name, voter.username, choice.text, voted_at_local])
+
+    return response
 
 
 @login_required
