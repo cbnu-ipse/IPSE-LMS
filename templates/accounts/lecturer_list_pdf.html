@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>운영진 목록</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; font-size: 12px; margin: 20px; }
+        h1 { font-size: 20px; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+        th { background: #f5f5f5; font-weight: bold; }
+        tr:nth-child(even) { background: #fafafa; }
+        @media print { button { display: none; } }
+    </style>
+</head>
+<body>
+    <h1>운영진 목록</h1>
+    <p>출력일: {% now "Y년 m월 d일" %}</p>
+    <button onclick="window.print()" style="margin-bottom:16px;padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:4px;cursor:pointer;">인쇄하기</button>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>학번/ID</th>
+                <th>이름</th>
+                <th>이메일</th>
+                <th>연락처</th>
+                <th>최근 로그인</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lecturer in lecturers %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ lecturer.username }}</td>
+                <td>{{ lecturer.get_full_name }}</td>
+                <td>{{ lecturer.email }}</td>
+                <td>{{ lecturer.phone }}</td>
+                <td>{{ lecturer.last_login|date:"Y-m-d" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">운영진 없음</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <script>window.addEventListener('load', function() { window.print(); });</script>
+</body>
+</html>

@@ -72,6 +72,17 @@ class User(AbstractUser):
             pass
         return self.username
 
+    @property
+    def get_user_role(self):
+        """사이트에서 표시할 역할 문자열을 반환합니다."""
+        if self.is_superuser:
+            return "관리자"
+        elif self.is_lecturer:
+            return "운영진"
+        elif self.is_student:
+            return "동아리원"
+        return "일반 사용자"
+
     def save(self, *args, **kwargs):
         """프로필 이미지 최적화 로직 유지"""
         super().save(*args, **kwargs)
