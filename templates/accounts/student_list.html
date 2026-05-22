@@ -42,7 +42,7 @@
                     <th class="px-6 py-4 text-left">{% trans 'ID No.' %}</th>
                     <th class="px-6 py-4 text-left">{% trans 'Full Name' %}</th>
                     <th class="px-6 py-4 text-left">{% trans 'Email' %}</th>
-                    <th class="px-6 py-4 text-left">{% trans 'Program' %}</th>
+                    <th class="px-6 py-4 text-left">{% trans 'Level' %}</th>
                     {% if request.user.is_superuser %}
                     <th class="px-6 py-4 text-left">{% trans 'Action' %}</th>
                     {% endif %}
@@ -57,7 +57,7 @@
                         <a href="{% url 'profile_single' student.student.id %}" class="font-semibold text-emerald-700 hover:text-emerald-800 transition">{{ student.student.get_full_name }}</a>
                     </td>
                     <td class="px-6 py-4">{{ student.student.email }}</td>
-                    <td class="px-6 py-4">{{ student.program }}</td>
+                    <td class="px-6 py-4">{{ student.level }}</td>
                     {% if request.user.is_superuser %}
                     <td class="px-6 py-4">
                         <div class="flex flex-wrap gap-2">

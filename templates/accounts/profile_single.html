@@ -25,8 +25,8 @@
                     <a href="{% url 'student_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
                         {% trans 'Edit Profile' %}
                     </a>
-                    <a href="{% url 'student_program_edit' user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
-                        {% trans 'Change Program' %}
+                    <a href="{% url 'student_program_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+                        {% trans 'Edit Level & Info' %}
                     </a>
                     {% endif %}
                     {% if user.is_lecturer %}
@@ -74,7 +74,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-700">
                     <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'School' %}:</strong> Unity College</div>
                     <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Level' %}:</strong> {{ level.level }}</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4 md:col-span-2"><strong>{% trans 'Program' %}:</strong> {{ student.program }}</div>
+                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4 md:col-span-2"><strong>{% trans 'Level' %}:</strong> {{ level.level }}</div>
                 </div>
             </div>
             {% endif %}

@@ -125,6 +125,79 @@ class ProfileUpdateForm(UserChangeForm):
         model = User
         fields = ["first_name", "last_name", "gender", "email", "phone", "address", "picture"]
 
+class StudentEditForm(forms.ModelForm):
+    """관리자가 학생(User) 기본 정보를 수정하는 폼"""
+    first_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    last_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    gender = forms.ChoiceField(choices=[("", "---------")] + list(GENDERS), required=False, widget=forms.Select(attrs={"class": "form-control"}))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control"}))
+    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    address = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+
+    class Meta:
+        model = User
+        fields = ["email", "first_name", "last_name", "gender", "phone", "address", "picture"]
+
+
+class StaffEditForm(forms.ModelForm):
+    """관리자가 운영진(User) 기본 정보를 수정하는 폼"""
+    first_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    last_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control"}))
+    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    address = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+
+    class Meta:
+        model = User
+        fields = ["email", "first_name", "last_name", "phone", "address", "picture"]
+
+
+class AdminStudentAddForm(UserCreationForm):
+    """관리자가 직접 학생 계정을 생성하는 폼 (즉시 활성화)"""
+    first_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    last_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    gender = forms.ChoiceField(choices=[("", "---------")] + list(GENDERS), required=False, widget=forms.Select(attrs={"class": "form-control"}))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control"}))
+    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    address = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    level = forms.IntegerField(initial=1, required=False, widget=forms.NumberInput(attrs={"class": "form-control", "min": 1}))
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+
+    @transaction.atomic()
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_student = True
+        user.is_active = True
+        user.first_name = self.cleaned_data.get("first_name", "")
+        user.last_name = self.cleaned_data.get("last_name", "")
+        user.gender = self.cleaned_data.get("gender", "")
+        user.phone = self.cleaned_data.get("phone", "")
+        user.address = self.cleaned_data.get("address", "")
+        user.email = self.cleaned_data.get("email", "")
+        if commit:
+            user.save()
+            student = user.student
+            student.level = self.cleaned_data.get("level") or 1
+            student.save()
+        return user
+
+
+class StudentLevelForm(forms.ModelForm):
+    """관리자가 학생의 레벨을 수정하는 폼"""
+    class Meta:
+        model = Student
+        fields = ["level", "nickname", "bio", "github_url", "blog_url"]
+        widgets = {
+            "level": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "nickname": forms.TextInput(attrs={"class": "form-control"}),
+            "bio": forms.TextInput(attrs={"class": "form-control"}),
+            "github_url": forms.URLInput(attrs={"class": "form-control"}),
+            "blog_url": forms.URLInput(attrs={"class": "form-control"}),
+        }
+
+
 class EmailValidationOnForgotPassword(PasswordResetForm):
     def clean_email(self):
         email = self.cleaned_data["email"]

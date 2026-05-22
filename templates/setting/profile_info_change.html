@@ -6,41 +6,53 @@
 
 {% block content %}
 
-<nav style="--bs-breadcrumb-divider: '>';" aria-label="breadcrumb">
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="/">{% trans 'Home' %}</a></li>
-        <li class="breadcrumb-item active" aria-current="page">{% trans 'Account setting' %}</li>
-    </ol>
-</nav>
+<section class="max-w-7xl mx-auto px-6 py-10">
+    <div class="space-y-8">
+        <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
+            <p class="text-sm font-medium text-slate-400 mb-3">
+                <a href="/" class="hover:text-emerald-700 transition">{% trans 'Home' %}</a>
+                <span class="mx-2">/</span>
+                <a href="{% url 'profile' %}" class="hover:text-emerald-700 transition">{% trans 'Profile' %}</a>
+                <span class="mx-2">/</span>
+                <span>{% trans 'Edit' %}</span>
+            </p>
+            <h1 class="text-4xl font-semibold text-[#3F3F3F]">{% trans 'Edit Profile' %}</h1>
+        </div>
 
-<p class="title-1"><i class="fas fa-user-edit"></i>{% trans 'Account Settings' %}</p>
+        {% include 'snippets/messages.html' %}
 
-{% include 'snippets/messages.html' %}
+        <form action="" method="POST" enctype="multipart/form-data" class="space-y-6">{% csrf_token %}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
+                    <h2 class="text-2xl font-semibold text-[#3F3F3F] mb-6">{% trans 'Email' %} &amp; {% trans 'Personal Info' %}</h2>
+                    <div class="space-y-4">
+                        {{ form.email }}
+                        {{ form.first_name }}
+                        {{ form.last_name }}
+                        {{ form.gender }}
+                        {{ form.phone }}
+                        {{ form.address }}
+                    </div>
+                </div>
 
-<form action="" method="POST" enctype="multipart/form-data">{% csrf_token %}
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="form-title">{% trans 'Email' %} &amp; {% trans 'Personal Info' %}</div>
-                <div class="card-body">
-                    {{ form.email }}
-                    {{ form.first_name }}
-                    {{ form.last_name }}
-                    {{ form.gender }}
-                    {{ form.phone }}
-                    {{ form.address }}
+                <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
+                    <h2 class="text-2xl font-semibold text-[#3F3F3F] mb-6">{% trans 'Profile Picture' %}</h2>
+                    <div class="space-y-4">
+                        {{ form.picture }}
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <p class="form-title">{% trans 'Others' %}</p>
-                <div class="card-body">
-                    {{ form.picture }}
-                </div>
+
+            <div class="flex justify-end gap-3">
+                <a href="{% url 'profile' %}" class="inline-flex items-center justify-center px-6 py-3 rounded-md bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+                    {% trans 'Cancel' %}
+                </a>
+                <button type="submit" class="inline-flex items-center justify-center px-6 py-3 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
+                    {% trans 'Update Profile' %}
+                </button>
             </div>
-        </div>
+        </form>
     </div>
-    <button class="btn btn-primary" type="submit">{% trans 'Update Profile' %}</button>
-</form>
+</section>
+
 {% endblock content %}

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load i18n %}
 {% block title %}{{ title }} | Learning management system{% endblock title %}
 
 {% load static %}
@@ -13,23 +14,28 @@
                 <span class="mx-2">/</span>
                 <a href="{% url 'student_list' %}" class="hover:text-emerald-700 transition">Students</a>
                 <span class="mx-2">/</span>
-                <span>Update</span>
+                <span>Update Level</span>
             </p>
-            <h1 class="text-4xl font-semibold text-[#3F3F3F]">Student Program Update Form</h1>
+            <h1 class="text-4xl font-semibold text-[#3F3F3F]">Student Level Update Form</h1>
         </div>
 
         {% include 'snippets/messages.html' %}
 
-        <form action="" method="POST" enctype="multipart/form-data" class="space-y-6">{% csrf_token %}
+        <form action="" method="POST" class="space-y-6">{% csrf_token %}
             <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm max-w-3xl">
-                <h2 class="text-2xl font-semibold text-[#3F3F3F] mb-4">Program</h2>
+                <h2 class="text-2xl font-semibold text-[#3F3F3F] mb-4">{% trans 'Level & Profile Info' %}</h2>
+                {% if student %}
                 <p class="text-slate-500 mb-5">
-                    Change
-                    <a href="{{ student.student.get_absolute_url }}" class="font-semibold text-emerald-700 hover:text-emerald-800 transition">{{ student.student.get_full_name }}</a>
-                    program
+                    Update
+                    <a href="{% url 'profile_single' student.student.id %}" class="font-semibold text-emerald-700 hover:text-emerald-800 transition">{{ student.student.get_full_name }}</a>'s level and profile information.
                 </p>
+                {% endif %}
                 <div class="space-y-4">
-                    {{ form.program }}
+                    {{ form.level }}
+                    {{ form.nickname }}
+                    {{ form.bio }}
+                    {{ form.github_url }}
+                    {{ form.blog_url }}
                 </div>
             </div>
 
