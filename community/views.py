@@ -9,6 +9,10 @@ from django.core.files.storage import FileSystemStorage
 from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
 from django.utils import timezone
+from django.core import signing
+from django.db import models as db_models
+from icalendar import Calendar, Event as ICalEvent
+from core.models import Schedule
 from .models import NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment
 
 
@@ -449,3 +453,73 @@ def schedule_detail(request, schedule_id):
             'today': date.today(),
         },
     )
+
+
+# ─── iCal 피드 ────────────────────────────────────────────────────────────────
+
+def _build_calendar(schedules, cal_name):
+    """Schedule 쿼리셋으로 Calendar 객체를 생성합니다."""
+    cal = Calendar()
+    cal.add('prodid', '-//IPSE LMS//ipse.kr//')
+    cal.add('version', '2.0')
+    cal.add('x-wr-calname', cal_name)
+    cal.add('x-wr-timezone', 'Asia/Seoul')
+    cal.add('x-wr-caldesc', 'IPSE 동아리 일정 자동 동기화 피드')
+
+    for schedule in schedules:
+        event = ICalEvent()
+        event.add('uid', f'ipse-schedule-{schedule.pk}@ipse.kr')
+        event.add('summary', schedule.title)
+        event.add('dtstart', schedule.start_date)
+        event.add('dtend', schedule.end_date or schedule.start_date)
+        if schedule.description:
+            event.add('description', schedule.description)
+        event.add('dtstamp', timezone.now())
+        cal.add_component(event)
+
+    return cal
+
+
+def global_calendar_feed(request):
+    """동아리 전체 공개 일정 iCal 피드 (로그인 불필요, 전체 일정만 포함)"""
+    schedules = Schedule.objects.filter(is_global=True).order_by('start_date')
+    cal = _build_calendar(schedules, 'IPSE 동아리 전체 일정')
+    return HttpResponse(
+        cal.to_ical(),
+        content_type='text/calendar; charset=utf-8',
+        headers={'Content-Disposition': 'inline; filename="ipse-global.ics"'},
+    )
+
+
+def personal_calendar_feed(request, token):
+    """개인 일정 + 전체 일정 iCal 피드. 토큰으로 유저를 식별합니다."""
+    try:
+        user_pk = signing.loads(token, salt='ical-feed', max_age=60 * 60 * 24 * 365)
+    except signing.BadSignature:
+        return HttpResponse('유효하지 않은 토큰입니다.', status=403, content_type='text/plain')
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    user = get_object_or_404(User, pk=user_pk)
+
+    schedules = Schedule.objects.filter(
+        db_models.Q(is_global=True) | db_models.Q(user=user)
+    ).order_by('start_date')
+
+    cal = _build_calendar(schedules, f'IPSE 일정 ({user.display_name})')
+    return HttpResponse(
+        cal.to_ical(),
+        content_type='text/calendar; charset=utf-8',
+        headers={'Content-Disposition': f'inline; filename="ipse-{user.username}.ics"'},
+    )
+
+
+@login_required
+def calendar_subscribe(request):
+    """구독용 iCal URL을 보여주는 페이지"""
+    from django.core import signing
+    token = signing.dumps(request.user.pk, salt='ical-feed')
+    return render(request, 'community/calendar_subscribe.html', {
+        'title': '캘린더 동기화',
+        'token': token,
+    })
