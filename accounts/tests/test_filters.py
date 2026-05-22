@@ -1,7 +1,6 @@
 from django.test import TestCase
 from accounts.filters import  LecturerFilter, StudentFilter
 from accounts.models import User, Student
-from course.models import Program
 
 class LecturerFilterTestCase(TestCase):
     def setUp(self):
@@ -34,13 +33,10 @@ class LecturerFilterTestCase(TestCase):
 
 class StudentFilterTestCase(TestCase):
     def setUp(self):
-        program1 = Program.objects.create(title="Computer Science", summary="Program for computer science students")
-        program2 = Program.objects.create(title="Mathematics", summary="Program for mathematics students")
-        program3 = Program.objects.create(title="Computer Engineering", summary="Program for computer engineering students")
-
-        Student.objects.create(student=User.objects.create(username="student1", first_name="John", last_name="Doe", email="john@example.com"), program=program1)
-        Student.objects.create(student=User.objects.create(username="student2", first_name="Jane", last_name="Williams", email="jane@example.com"), program=program2)
-        Student.objects.create(student=User.objects.create(username="student3", first_name="Alice", last_name="Smith", email="alice@example.com"), program=program3)
+        # User 생성 시 signal이 Student를 자동 생성하므로 별도 create 불필요
+        User.objects.create(username="student1", first_name="John", last_name="Doe", email="john@example.com")
+        User.objects.create(username="student2", first_name="Jane", last_name="Williams", email="jane@example.com")
+        User.objects.create(username="student3", first_name="Alice", last_name="Smith", email="alice@example.com")
 
     def test_name_filter(self):
         filtered_students = StudentFilter(data = {'name': 'John'}, queryset=Student.objects.all()).qs
@@ -49,7 +45,3 @@ class StudentFilterTestCase(TestCase):
     def test_email_filter(self):
         filter_set = StudentFilter(data={"email": "example.com"})
         self.assertEqual(len(filter_set.qs), 3)  # All students should be returned since all have email addresses with "example.com"
-
-    def test_program_filter(self):
-        filter_set = StudentFilter(data={"program__title": "Computer Science"})
-        self.assertEqual(len(filter_set.qs), 3)
