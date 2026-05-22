@@ -2,7 +2,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 import json
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.db.models import Q
 from community.models import NewsAndEvents, Poll
@@ -156,6 +157,21 @@ def update_schedule_api(request, sch_id):
         return JsonResponse({"status": "success"})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
-        
 
+
+def manifest_json(request):
+    content = render_to_string('manifest.json', {}, request=request)
+    return HttpResponse(content, content_type='application/manifest+json')
+
+
+def service_worker(request):
+    content = render_to_string('sw.js', {}, request=request)
+    response = HttpResponse(content, content_type='application/javascript')
+    response['Service-Worker-Allowed'] = '/'
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+
+def offline_view(request):
+    return render(request, 'offline.html')
 

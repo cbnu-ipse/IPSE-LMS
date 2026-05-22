@@ -13,6 +13,13 @@
     <title>IPSE | {% block title %}{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse.svg' %}">
     <link rel="alternate icon" type="image/png" href="{% static 'img/IPSE-LOGO.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'img/icons/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% url 'manifest_json' %}">
+    <meta name="theme-color" content="#059669">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="IPSE">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -95,6 +102,13 @@
         &copy; 2026 IPSE Club. Intelligent Pioneer of Software Engineering.
     </footer>
     {% block extra_js %}{% endblock %}
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
 </body>
 
 </html>
