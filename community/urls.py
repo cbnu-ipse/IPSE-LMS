@@ -19,4 +19,8 @@ urlpatterns = [
     path('polls/<int:poll_id>/delete/', views.poll_delete, name='poll_delete'),
     path('polls/<int:poll_id>/votes/', views.poll_votes, name='poll_votes'),
     path('polls/<int:poll_id>/votes/export/', views.poll_votes_export, name='poll_votes_export'),
+    # iCal 캘린더 피드
+    path('schedules/calendar.ics', views.global_calendar_feed, name='global_calendar_feed'),
+    path('schedules/personal/<str:token>/calendar.ics', views.personal_calendar_feed, name='personal_calendar_feed'),
+    path('schedules/subscribe/', views.calendar_subscribe, name='calendar_subscribe'),
 ]

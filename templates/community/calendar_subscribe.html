@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}{{ title }} | {% trans 'Learning management system' %}{% endblock title %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-10 space-y-8">
+
+    <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
+        <p class="text-sm font-medium text-slate-400 mb-3">
+            <a href="/" class="hover:text-emerald-700 transition">홈</a>
+            <span class="mx-2">/</span>
+            <a href="{% url 'schedule_list' %}" class="hover:text-emerald-700 transition">일정</a>
+            <span class="mx-2">/</span>
+            <span>캘린더 동기화</span>
+        </p>
+        <h1 class="text-4xl font-semibold text-[#3F3F3F]">캘린더 동기화</h1>
+        <p class="mt-2 text-slate-500">아래 URL을 복사해 구글/애플/ 아웃룩 캘린더에 구독 등록하면 IPSE 일정이 자동으로 동기화됩니다.</p>
+    </div>
+
+    {# ── 개인 구독 URL (로그인 유저 전용) ── #}
+    <div class="bg-white border border-emerald-200 rounded-md p-8 shadow-sm">
+        <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm">개인</span>
+            <h2 class="text-xl font-semibold text-[#3F3F3F]">내 개인 구독 주소 (전체 + 개인 일정 포함)</h2>
+        </div>
+        <div class="flex gap-2">
+            <input id="personal-url"
+                   type="text"
+                   readonly
+                   value="{{ request.scheme }}://{{ request.get_host }}{% url 'personal_calendar_feed' token=token %}"
+                   class="w-full rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-mono text-slate-700 focus:outline-none">
+            <button onclick="copyUrl('personal-url', this)"
+                    class="shrink-0 px-4 py-3 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
+                복사
+            </button>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">⚠️ 이 주소는 본인만 알고 있어야 합니다. 유출 시 타인이 내 일정을 볼 수 있습니다.</p>
+    </div>
+
+    {# ── 공개 전체 일정 URL ── #}
+    <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
+        <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold text-sm">전체</span>
+            <h2 class="text-xl font-semibold text-[#3F3F3F]">동아리 공개 일정 주소 (전체 공개 일정만)</h2>
+        </div>
+        <div class="flex gap-2">
+            <input id="global-url"
+                   type="text"
+                   readonly
+                   value="{{ request.scheme }}://{{ request.get_host }}{% url 'global_calendar_feed' %}"
+                   class="w-full rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-mono text-slate-700 focus:outline-none">
+            <button onclick="copyUrl('global-url', this)"
+                    class="shrink-0 px-4 py-3 rounded-md bg-slate-600 text-white text-sm font-semibold hover:bg-slate-700 transition">
+                복사
+            </button>
+        </div>
+    </div>
+
+    {# ── 등록 방법 안내 ── #}
+    <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm space-y-6">
+        <h2 class="text-2xl font-semibold text-[#3F3F3F]">📱 캘린더 앱에 등록하는 방법</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {# 구글 #}
+            <div class="border border-slate-100 rounded-md p-5 space-y-3">
+                <div class="flex items-center gap-2">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21.9 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.6c-.2 1.3-1 2.4-2.1 3.1v2.6h3.4c2-1.8 3.1-4.5 3.1-7.5z" fill="#4285F4"/>
+                        <path d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6C4.7 19.9 8.1 22 12 22z" fill="#34A853"/>
+                        <path d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1C2.4 8.7 2 10.3 2 12s.4 3.3 1.1 4.6L6.4 14z" fill="#FBBC05"/>
+                        <path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8C16.9 2.9 14.7 2 12 2 8.1 2 4.7 4.1 3.1 7.4l3.3 2.5C7.2 7.6 9.4 5.9 12 5.9z" fill="#EA4335"/>
+                    </svg>
+                    <h3 class="font-semibold text-[#3F3F3F]">구글 캘린더</h3>
+                </div>
+                <ol class="text-sm text-slate-600 space-y-1 list-decimal list-inside">
+                    <li>구글 캘린더 웹 열기</li>
+                    <li>왼쪽 하단 <strong>"다른 캘린더+"</strong> 클릭</li>
+                    <li><strong>"URL로 추가"</strong> 선택</li>
+                    <li>위 URL 붙여넣기 후 <strong>"캘린더 추가"</strong></li>
+                </ol>
+                <p class="text-xs text-slate-400">갱신 주기: 약 6~24시간</p>
+            </div>
+
+            {# 애플 #}
+            <div class="border border-slate-100 rounded-md p-5 space-y-3">
+                <div class="flex items-center gap-2">
+                    <svg class="w-6 h-6 text-slate-800" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.7 12.4c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-3 .9-3.7.9-.8 0-2-.9-3.2-.8-1.6 0-3.1.9-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.5 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.7 1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.4-.9-2.4-3.6v.5z"/>
+                        <path d="M16.3 5.6c.7-.8 1.1-2 1-3.1-1 .1-2.1.7-2.8 1.5-.6.7-1.2 1.9-1 3 1.1 0 2.1-.6 2.8-1.4z"/>
+                    </svg>
+                    <h3 class="font-semibold text-[#3F3F3F]">애플 캘린더</h3>
+                </div>
+                <ol class="text-sm text-slate-600 space-y-1 list-decimal list-inside">
+                    <li>캘린더 앱 열기</li>
+                    <li>상단 메뉴 <strong>파일 → 새로운 캘린더 구독</strong></li>
+                    <li>위 URL 붙여넣기 후 <strong>"구독"</strong></li>
+                    <li>갱신 주기, 알림 등 설정</li>
+                </ol>
+                <p class="text-xs text-slate-400">갱신 주기: 수동 설정 가능</p>
+            </div>
+
+            {# 아웃룩 #}
+            <div class="border border-slate-100 rounded-md p-5 space-y-3">
+                <div class="flex items-center gap-2">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="2" y="2" width="20" height="20" rx="2" fill="#0078D4"/>
+                        <text x="5" y="16" font-size="10" fill="white" font-family="Arial" font-weight="bold">OL</text>
+                    </svg>
+                    <h3 class="font-semibold text-[#3F3F3F]">Outlook</h3>
+                </div>
+                <ol class="text-sm text-slate-600 space-y-1 list-decimal list-inside">
+                    <li>Outlook 웹 또는 앱 열기</li>
+                    <li><strong>캘린더 보기</strong> → <strong>캘린더 추가</strong></li>
+                    <li><strong>"URL 구독"</strong> 선택</li>
+                    <li>위 URL 붙여넣기 후 가져오기</li>
+                </ol>
+                <p class="text-xs text-slate-400">갱신 주기: 약 1~4시간</p>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<script>
+function copyUrl(inputId, btn) {
+    const input = document.getElementById(inputId);
+    navigator.clipboard.writeText(input.value).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '복사됨 ✓';
+        btn.classList.replace('bg-emerald-600', 'bg-slate-400');
+        btn.classList.replace('bg-slate-600', 'bg-slate-400');
+        setTimeout(() => {
+            btn.textContent = orig;
+            btn.classList.replace('bg-slate-400', inputId === 'personal-url' ? 'bg-emerald-600' : 'bg-slate-600');
+        }, 2000);
+    });
+}
+</script>
+{% endblock content %}
