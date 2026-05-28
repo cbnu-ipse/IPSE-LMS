@@ -38,7 +38,7 @@ jobs:
           SECRET_KEY: ci-only-dummy-secret-key-not-used-in-production
           DEBUG: 'True'
           DJANGO_SETTINGS_MODULE: config.settings
-          DATABASE_URL: sqlite:///test.db
+          # DATABASE_URL 미설정 → settings.py가 SQLite 폴백 사용 (psycopg2 불필요)
         run: python manage.py check
 
   # ── 2. 이미지 빌드 & GHCR 푸시 (GitHub-hosted) ────────────────────
