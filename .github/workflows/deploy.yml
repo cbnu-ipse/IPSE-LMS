@@ -100,8 +100,7 @@ jobs:
           $env:ENV_DOCKER | Set-Content -Encoding UTF8 .env.docker
 
       - name: Log in to GHCR
-        run: |
-          "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GHCR_TOKEN }}"
 
       - name: Pull latest image
         run: docker compose pull web
