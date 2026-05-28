@@ -101,7 +101,7 @@ jobs:
 
       - name: Log in to GHCR
         run: |
-          "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Pull latest image
         run: docker compose pull web
