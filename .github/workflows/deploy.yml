@@ -81,6 +81,8 @@ jobs:
     # GitHub 저장소 Settings → Environments → production 을 생성하면
     # 여기서 "Required reviewers" 설정으로 수동 승인 게이트 추가 가능
     environment: production
+    permissions:
+      packages: read
     defaults:
       run:
         shell: powershell
