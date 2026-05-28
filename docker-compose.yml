@@ -46,7 +46,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate --url http://nginx:80 run
     env_file:
       - .env.docker   # TUNNEL_TOKEN 을 여기서 읽음
     depends_on:
