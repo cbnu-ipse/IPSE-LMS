@@ -14,7 +14,7 @@ services:
       retries: 5
 
   web:
-    image: ghcr.io/jjjjjjong/ipse-lms:latest  # CI/CD: GHCR에서 pull. 로컬은 아래 build 사용
+    image: ghcr.io/cbnu-ipse/ipse-lms:latest  # CI/CD: GHCR에서 pull. 로컬은 아래 build 사용
     build:
       context: .
       dockerfile: Dockerfile
