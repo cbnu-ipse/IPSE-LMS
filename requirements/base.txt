@@ -23,4 +23,5 @@ django-tailwind>=3.8.0  # 🌟 Tailwind CSS 연동을 위한 필수 패키지
 # ==========================================
 djangorestframework>=3.15.0
 django-cors-headers>=4.3.1
+icalendar==7.1.1
 
