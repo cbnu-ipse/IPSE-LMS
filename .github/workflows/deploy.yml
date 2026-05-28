@@ -15,7 +15,7 @@ on:
   workflow_dispatch:   # 수동 배포 허용
 
 env:
-  IMAGE: ghcr.io/jjjjjjong/ipse-lms
+  IMAGE: ghcr.io/cbnu-ipse/ipse-lms
 
 jobs:
   # ── 1. 테스트 (GitHub-hosted) ──────────────────────────────────────
