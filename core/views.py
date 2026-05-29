@@ -60,10 +60,13 @@ def get_schedules_api(request):
 
     events = []
     for s in schedules:
+        # 하루 종일 이벤트: end가 없고 시작 시각이 자정(00:00:00)인 경우
+        is_all_day = (s.end_date is None and s.start_date.hour == 0
+                      and s.start_date.minute == 0 and s.start_date.second == 0)
         events.append({
             'id': s.id,
             'title': s.title,
-            'start': s.start_date.isoformat(),
+            'start': s.start_date.date().isoformat() if is_all_day else s.start_date.isoformat(),
             'end': s.end_date.isoformat() if s.end_date else None,
             'color': '#10b981' if s.is_global else '#a855f7',
             'extendedProps': {
