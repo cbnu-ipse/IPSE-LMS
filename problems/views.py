@@ -45,6 +45,7 @@ def problem_list(request):
                 filter=Q(solve_records__status='SOLVED')
             )
         )
+        .filter(problem_score__gt=0)
         .order_by('-problem_score', 'username')[:10]
     )
 

@@ -4,14 +4,6 @@
 
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-12">
-    <div id="dashboard-banner" class="mb-8 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm relative">
-        <button id="banner-close" class="absolute top-3 right-4 text-slate-400 hover:text-slate-600 transition" aria-label="닫기">
-            <i class="fa-solid fa-xmark"></i>
-        </button>
-        <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">IPSE DASHBOARD</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">오늘의 학습 흐름을 한 번에 확인해보세요.</h1>
-        <p class="mt-2 text-sm text-slate-500">프로필, 일정, 공지, 활동 기록이 실시간으로 연결됩니다.</p>
-    </div>
     <div>
         
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -484,23 +476,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ==========================================
-    // 대시보드 배너 닫기 (처음에만 표시)
+    // 대시보드 배너 닫기 로직은 base.html로 이전됨
     // ==========================================
-    (function() {
-        const BANNER_KEY = 'ipse_banner_dismissed';
-        const banner = document.getElementById('dashboard-banner');
-        if (!banner) return;
-        if (localStorage.getItem(BANNER_KEY)) {
-            banner.remove();
-        } else {
-            document.getElementById('banner-close').addEventListener('click', function() {
-                banner.style.transition = 'opacity 0.2s';
-                banner.style.opacity = '0';
-                setTimeout(() => banner.remove(), 200);
-                localStorage.setItem(BANNER_KEY, '1');
-            });
-        }
-    })();
 });
 </script>
 {% endblock %}
