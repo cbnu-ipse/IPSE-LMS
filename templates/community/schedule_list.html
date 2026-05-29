@@ -420,6 +420,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.textContent = '저장 중…'; btn.disabled = true;
             const start = isAllDay ? document.getElementById('add-date-only').value+'T00:00' : document.getElementById('add-start').value;
             const end   = isAllDay ? null : (document.getElementById('add-end').value||null);
+            // TODO: start가 end보다 뒤에 있을 경우 에러 처리 필요 (날짜/시간 순서 검증)
             fetch('/api/schedules/add/', {
                 method:'POST',
                 headers:{'Content-Type':'application/json','X-CSRFToken':this.querySelector('[name=csrfmiddlewaretoken]').value},
