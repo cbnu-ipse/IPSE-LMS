@@ -4,6 +4,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView
 from .forms import StudentSignUpForm, KoreanAuthenticationForm
 import json
+import urllib.request
+import urllib.parse
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
@@ -11,7 +13,8 @@ from django.contrib.auth.views import PasswordResetView
 from django.contrib.admin.views.decorators import staff_member_required
 from django.urls import reverse_lazy
 from django.core.mail import BadHeaderError
-from .models import Student, User
+from .models import Student, User, LMSToken
+from core.models import Schedule
 from .forms import (
     EmailValidationOnForgotPassword,
     ProfileUpdateForm,
@@ -382,4 +385,162 @@ def lecturer_list_pdf(request):
     return render(request, 'accounts/lecturer_list_pdf.html', {
         'title': '운영진 목록',
         'lecturers': lecturers,
+    })
+
+
+# ─── LMS API Integration ──────────────────────────────────────────────────────
+
+LMS_TOKEN_URL = "https://lms.chungbuk.ac.kr/login/token.php"
+LMS_API_URL   = "https://lms.chungbuk.ac.kr/webservice/rest/server.php"
+
+
+def _lms_call(token, wsfunction, **params):
+    """Moodle REST API를 호출하고 JSON 결과를 반환합니다. 실패 시 예외를 발생시킵니다."""
+    payload = {"wstoken": token, "wsfunction": wsfunction, "moodlewsrestformat": "json"}
+    payload.update(params)
+    data = urllib.parse.urlencode(payload).encode()
+    req = urllib.request.Request(LMS_API_URL, data=data, method="POST")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.loads(resp.read())
+    if isinstance(result, dict) and result.get("exception"):
+        raise ValueError(result.get("message", "LMS API 오류"))
+    return result
+
+
+@login_required
+def lms_page(request):
+    """LMS 연동 페이지: 연결/해제, 성적 조회, 과제 가져오기"""
+    lms_token_obj = getattr(request.user, "lms_token", None)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        # ── 연결 ──────────────────────────────────────────────────
+        if action == "connect":
+            lms_id = request.POST.get("lms_id", "").strip()
+            lms_pw = request.POST.get("lms_pw", "").strip()
+            if not lms_id or not lms_pw:
+                messages.error(request, "아이디와 비밀번호를 모두 입력해주세요.")
+                return redirect("lms_page")
+            try:
+                params = urllib.parse.urlencode({
+                    "username": lms_id,
+                    "password": lms_pw,
+                    "service": "moodle_mobile_app",
+                }).encode()
+                req = urllib.request.Request(LMS_TOKEN_URL, data=params, method="POST")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read())
+                if "token" not in data:
+                    messages.error(request, "LMS 로그인 실패: 아이디 또는 비밀번호를 확인해주세요.")
+                    return redirect("lms_page")
+                token = data["token"]
+                # Moodle 사용자 ID 가져오기
+                site_info = _lms_call(token, "core_webservice_get_site_info")
+                moodle_uid = site_info.get("userid")
+                if lms_token_obj:
+                    lms_token_obj.token = token
+                    lms_token_obj.lms_username = lms_id
+                    lms_token_obj.moodle_user_id = moodle_uid
+                    lms_token_obj.save()
+                else:
+                    LMSToken.objects.create(
+                        user=request.user,
+                        token=token,
+                        lms_username=lms_id,
+                        moodle_user_id=moodle_uid,
+                    )
+                messages.success(request, "충북대 LMS에 성공적으로 연동되었습니다.")
+            except Exception as e:
+                messages.error(request, f"연동 중 오류가 발생했습니다: {e}")
+            return redirect("lms_page")
+
+        # ── 연결 해제 ──────────────────────────────────────────────
+        if action == "disconnect" and lms_token_obj:
+            lms_token_obj.delete()
+            messages.success(request, "LMS 연동이 해제되었습니다.")
+            return redirect("lms_page")
+
+        # ── 과제 캘린더 가져오기 ───────────────────────────────────
+        if action == "import_assignments" and lms_token_obj:
+            token = lms_token_obj.token
+            moodle_uid = lms_token_obj.moodle_user_id
+            try:
+                courses = _lms_call(token, "core_enrol_get_users_courses", userid=moodle_uid)
+                course_ids = [c["id"] for c in courses]
+                if not course_ids:
+                    messages.info(request, "등록된 강의가 없습니다.")
+                    return redirect("lms_page")
+                # mod_assign_get_assignments는 courseids[] 배열을 받음
+                params = {f"courseids[{i}]": cid for i, cid in enumerate(course_ids)}
+                assign_data = _lms_call(token, "mod_assign_get_assignments", **params)
+                imported = 0
+                skipped = 0
+                from django.utils import timezone
+                import datetime
+                for course in assign_data.get("courses", []):
+                    course_name = course["fullname"]
+                    for assign in course.get("assignments", []):
+                        duedate_ts = assign.get("duedate", 0)
+                        if not duedate_ts:
+                            skipped += 1
+                            continue
+                        external_id = f"lms:assign:{assign['id']}"
+                        if Schedule.objects.filter(user=request.user, external_id=external_id).exists():
+                            skipped += 1
+                            continue
+                        due_dt = datetime.datetime.fromtimestamp(duedate_ts, tz=datetime.timezone.utc)
+                        Schedule.objects.create(
+                            user=request.user,
+                            title=f"[과제] {assign['name']}",
+                            description=f"{course_name}\n마감: {due_dt.strftime('%Y-%m-%d %H:%M')}",
+                            start_date=due_dt,
+                            end_date=None,
+                            is_global=False,
+                            external_id=external_id,
+                        )
+                        imported += 1
+                messages.success(request, f"과제 {imported}개를 캘린더에 추가했습니다. (중복 {skipped}개 건너뜀)")
+            except Exception as e:
+                messages.error(request, f"과제 가져오기 실패: {e}")
+            return redirect("lms_page")
+
+    # ── GET: 성적 조회 ─────────────────────────────────────────────
+    grade_courses = []
+    error_msg = None
+    if lms_token_obj:
+        try:
+            token = lms_token_obj.token
+            moodle_uid = lms_token_obj.moodle_user_id
+            courses = _lms_call(token, "core_enrol_get_users_courses", userid=moodle_uid)
+            for course in courses:
+                try:
+                    grade_items = _lms_call(
+                        token,
+                        "gradereport_user_get_grade_items",
+                        courseid=course["id"],
+                        userid=moodle_uid,
+                    )
+                    items = grade_items.get("usergrades", [{}])[0].get("gradeitems", [])
+                    grade_courses.append({
+                        "name": course["fullname"],
+                        "items": [
+                            {
+                                "name": it.get("itemname") or "최종 점수",
+                                "grade": it.get("gradeformatted", "-"),
+                                "max": it.get("grademax"),
+                                "pass": it.get("gradehiddenbydate", False) is False,
+                            }
+                            for it in items
+                        ],
+                    })
+                except Exception:
+                    grade_courses.append({"name": course["fullname"], "items": []})
+        except Exception as e:
+            error_msg = str(e)
+
+    return render(request, "accounts/lms.html", {
+        "lms_token": lms_token_obj,
+        "grade_courses": grade_courses,
+        "error_msg": error_msg,
     })

@@ -26,6 +26,10 @@
                     <a class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition" href="{% url 'change_password' %}">
                         {% trans 'Change password' %}
                     </a>
+                    <a class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-md bg-sky-50 border border-sky-200 text-sky-700 text-sm font-semibold hover:bg-sky-100 transition" href="{% url 'lms_page' %}">
+                        <i class="fa-solid fa-graduation-cap text-xs"></i>
+                        {% if user.lms_token %}LMS 연동됨{% else %}LMS 연동하기{% endif %}
+                    </a>
                 </div>
             </div>
         </div>

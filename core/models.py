@@ -71,6 +71,8 @@ class Schedule(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     # True면 동아리 전체 일정(관리자만 생성 가능), False면 개인 일정
     is_global = models.BooleanField(default=False, verbose_name="동아리 전체 일정 여부")
+    # 외부 시스템(LMS 등)에서 가져온 일정의 중복 방지용 ID (예: "lms:assign:123")
+    external_id = models.CharField(max_length=100, blank=True, default="", verbose_name="외부 ID")
 
     class Meta:
         ordering = ['start_date']

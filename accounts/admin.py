@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
-from .models import User, Student
+from .models import User, Student, LMSToken
 
 
 @admin.action(description="선택한 사용자 계정을 승인합니다 (is_active=True)")
@@ -71,3 +71,10 @@ class StudentAdmin(admin.ModelAdmin):
 # 관리자 페이지에 등록
 admin.site.register(User, CustomUserAdmin)
 admin.site.register(Student, StudentAdmin)
+
+
+@admin.register(LMSToken)
+class LMSTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'lms_username', 'moodle_user_id', 'created_at', 'last_used_at')
+    search_fields = ('user__username', 'lms_username')
+    readonly_fields = ('token', 'created_at', 'last_used_at')
