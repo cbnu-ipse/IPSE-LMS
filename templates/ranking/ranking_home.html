@@ -74,6 +74,9 @@
 
                     <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}" class="w-24 h-24 rounded-full border-4 border-slate-100 object-cover mx-auto mb-4">
                     <p class="text-xl font-bold text-slate-800">{{ row.user.display_name }}</p>
+                    {% if row.user.role_badge_label %}
+                    <span class="mt-1 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
+                    {% endif %}
 
                     <div class="mt-4 grid grid-cols-2 gap-3">
                         <div class="rounded-lg bg-slate-50 py-2">
@@ -124,7 +127,12 @@
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-3">
                                         <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}" class="w-9 h-9 rounded-full border border-slate-200 object-cover">
-                                        <span class="font-semibold text-slate-800">{{ row.user.display_name }}</span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold text-slate-800">{{ row.user.display_name }}</span>
+                                            {% if row.user.role_badge_label %}
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 text-center font-bold text-emerald-600">{{ row.score }}</td>
