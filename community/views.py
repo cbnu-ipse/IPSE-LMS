@@ -470,8 +470,18 @@ def _build_calendar(schedules, cal_name):
         event = ICalEvent()
         event.add('uid', f'ipse-schedule-{schedule.pk}@ipse.kr')
         event.add('summary', schedule.title)
-        event.add('dtstart', schedule.start_date)
-        event.add('dtend', schedule.end_date or schedule.start_date)
+        is_all_day = (
+            schedule.end_date is None
+            and schedule.start_date.hour == 0
+            and schedule.start_date.minute == 0
+            and schedule.start_date.second == 0
+        )
+        if is_all_day:
+            event.add('dtstart', schedule.start_date.date())
+            event.add('dtend', schedule.start_date.date() + dt_module.timedelta(days=1))
+        else:
+            event.add('dtstart', schedule.start_date)
+            event.add('dtend', schedule.end_date or schedule.start_date)
         if schedule.description:
             event.add('description', schedule.description)
         event.add('dtstamp', timezone.now())

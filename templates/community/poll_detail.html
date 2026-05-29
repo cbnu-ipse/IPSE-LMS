@@ -36,7 +36,8 @@
                 {% endif %}
             </div>
             {% if poll.description %}
-            <p class="text-sm text-slate-500 mt-2">{{ poll.description }}</p>
+            {{ poll.description|json_script:"poll-desc-data" }}
+            <div id="poll-desc-viewer" class="text-slate-700 leading-relaxed mt-2"></div>
             {% endif %}
             <div class="flex flex-wrap gap-3 mt-3 text-xs text-slate-400">
                 <span>{{ total_voters }}명 참여</span>
@@ -241,6 +242,24 @@ document.querySelectorAll('[data-poll-comment-cancel]').forEach(btn => {
         document.getElementById('comment-text-' + id).classList.remove('hidden');
         document.getElementById('comment-edit-form-' + id).classList.add('hidden');
     });
+});
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const descDataEl = document.getElementById('poll-desc-data');
+    if (descDataEl) {
+        const descContent = JSON.parse(descDataEl.textContent);
+        new toastui.Editor.factory({
+            el: document.getElementById('poll-desc-viewer'),
+            viewer: true,
+            initialValue: descContent || '',
+        });
+    }
 });
 </script>
 {% endblock %}
