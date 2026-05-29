@@ -43,6 +43,9 @@ class User(AbstractUser):
     username_validator = ASCIIUsernameValidator()
     objects = CustomUserManager()
     total_points = models.IntegerField(default=0, verbose_name="누적 포인트")
+    is_president = models.BooleanField(default=False, verbose_name="회장")
+    is_vice_president = models.BooleanField(default=False, verbose_name="부회장")
+    is_executive = models.BooleanField(default=False, verbose_name="임원진")
     class Meta:
         ordering = ("-date_joined",)
 
@@ -77,11 +80,37 @@ class User(AbstractUser):
         """사이트에서 표시할 역할 문자열을 반환합니다."""
         if self.is_superuser:
             return "관리자"
-        elif self.is_lecturer:
-            return "운영진"
+        elif self.is_president:
+            return "회장"
+        elif self.is_vice_president:
+            return "부회장"
+        elif self.is_executive or self.is_lecturer:
+            return "임원진"
         elif self.is_student:
             return "동아리원"
         return "일반 사용자"
+
+    @property
+    def role_badge_label(self):
+        """커뮤니티/랭킹 등에 노출할 역할 뱃지 텍스트를 반환합니다."""
+        if self.is_president:
+            return "회장"
+        elif self.is_vice_president:
+            return "부회장"
+        elif self.is_executive or self.is_lecturer:
+            return "임원진"
+        return ""
+
+    @property
+    def role_badge_class(self):
+        """역할 뱃지에 적용할 Tailwind CSS 클래스를 반환합니다."""
+        if self.is_president:
+            return "bg-yellow-100 text-yellow-800 border border-yellow-200"
+        elif self.is_vice_president:
+            return "bg-amber-100 text-amber-700 border border-amber-200"
+        elif self.is_executive or self.is_lecturer:
+            return "bg-violet-100 text-violet-700 border border-violet-200"
+        return ""
 
     def save(self, *args, **kwargs):
         """프로필 이미지 최적화 로직 유지"""

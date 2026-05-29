@@ -294,7 +294,9 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <p class="font-bold text-sm text-slate-700">{{ problem.author.username }}</p>
-                        {% if problem.author.is_staff %}
+                        {% if problem.author.role_badge_label %}
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ problem.author.role_badge_class }}">{{ problem.author.role_badge_label }}</span>
+                        {% elif problem.author.is_staff %}
                         <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">ADMIN</span>
                         {% endif %}
                     </div>

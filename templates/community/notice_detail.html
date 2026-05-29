@@ -80,7 +80,12 @@
                         <div class="flex items-center space-x-3">
                             <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.username }}" class="w-10 h-10 rounded-full object-cover border border-slate-200">
                             <div>
-                                <p class="font-bold text-sm text-slate-700">{{ comment.author.username }}</p>
+                                <div class="flex items-center gap-2">
+                                    <p class="font-bold text-sm text-slate-700">{{ comment.author.username }}</p>
+                                    {% if comment.author.role_badge_label %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ comment.author.role_badge_class }}">{{ comment.author.role_badge_label }}</span>
+                                    {% endif %}
+                                </div>
                                 <p class="text-xs text-slate-400">{{ comment.created_at|date:"Y.m.d. H:i" }}</p>
                             </div>
                         </div>

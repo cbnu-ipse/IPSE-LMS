@@ -30,11 +30,12 @@ def unverify_students(modeladmin, request, queryset):
 
 # 1. 기본 사용자(User) 관리 설정
 class CustomUserAdmin(UserAdmin):
-    list_display = ('username', 'email', 'first_name', 'last_name', 'is_active', 'is_student', 'is_lecturer', 'is_staff')
-    list_filter = ('is_active', 'is_student', 'is_lecturer', 'is_staff')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_active', 'is_student', 'is_lecturer', 'is_staff', 'is_president', 'is_vice_president', 'is_executive')
+    list_filter = ('is_active', 'is_student', 'is_lecturer', 'is_staff', 'is_president', 'is_vice_president', 'is_executive')
     actions = [approve_users, deactivate_users]
     fieldsets = UserAdmin.fieldsets + (
         (None, {'fields': ('is_student', 'is_lecturer', 'gender', 'phone', 'address', 'picture')}),
+        ('동아리 역할 뱃지', {'fields': ('is_president', 'is_vice_president', 'is_executive')}),
     )
     add_fieldsets = UserAdmin.add_fieldsets + (
         (None, {'fields': ('is_student', 'is_lecturer', 'gender', 'phone', 'address', 'picture')}),
