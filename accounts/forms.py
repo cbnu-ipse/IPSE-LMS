@@ -52,6 +52,24 @@ class StudentSignUpForm(UserCreationForm):
             "placeholder": "닉네임을 입력하세요"
         })
     )
+    last_name = forms.CharField(
+        required=True,
+        max_length=50,
+        label="성",
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "성을 입력하세요"
+        })
+    )
+    first_name = forms.CharField(
+        required=True,
+        max_length=100,
+        label="이름",
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "이름을 입력하세요"
+        })
+    )
     email = forms.EmailField(
         required=True,
         widget=forms.EmailInput(attrs={
@@ -68,7 +86,7 @@ class StudentSignUpForm(UserCreationForm):
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("username", "nickname", "email")
+        fields = ("username", "nickname", "last_name", "first_name", "email")
 
     def clean_username(self):
         student_id = self.cleaned_data.get("username", "").strip()
@@ -98,6 +116,8 @@ class StudentSignUpForm(UserCreationForm):
         user.is_active = False  # 어드민 승인 전까지 로그인 불가
         user.username = self.cleaned_data.get("username", "").strip()
         user.email = self.cleaned_data.get("email")
+        user.last_name = self.cleaned_data.get("last_name", "").strip()
+        user.first_name = self.cleaned_data.get("first_name", "").strip()
 
         if commit:
             user.save()
