@@ -151,3 +151,25 @@ class Student(models.Model):
 
     def __str__(self):
         return self.student.get_full_name
+
+
+class LMSToken(models.Model):
+    """충북대 LMS(Moodle) 연동 토큰 저장 모델"""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lms_token",
+        verbose_name="사용자",
+    )
+    token = models.CharField(max_length=200, verbose_name="LMS 토큰")
+    lms_username = models.CharField(max_length=100, blank=True, verbose_name="LMS 아이디")
+    moodle_user_id = models.IntegerField(null=True, blank=True, verbose_name="Moodle 사용자 ID")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="연동 일시")
+    last_used_at = models.DateTimeField(auto_now=True, verbose_name="마지막 사용")
+
+    class Meta:
+        verbose_name = "LMS 토큰"
+        verbose_name_plural = "LMS 토큰"
+
+    def __str__(self):
+        return f"{self.user.username} - LMS 연동"

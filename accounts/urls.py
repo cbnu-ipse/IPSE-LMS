@@ -68,4 +68,7 @@ urlpatterns = [
     path('lecturers/<int:pk>/edit/', views.staff_edit, name='staff_edit'),
     path('lecturers/<int:pk>/delete/', views.lecturer_delete, name='lecturer_delete'),
     path('lecturers/pdf/', views.lecturer_list_pdf, name='lecturer_list_pdf'),
+
+    # ─── LMS Integration ───────────────────────────────────────────────────────
+    path('lms/', views.lms_page, name='lms_page'),
 ]

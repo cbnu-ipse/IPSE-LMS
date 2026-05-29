@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block title %}LMS 연동 - IPSE{% endblock %}
+
+{% block content %}
+<section class="max-w-4xl mx-auto px-6 py-12">
+    <div class="space-y-8">
+
+        <!-- 헤더 -->
+        <div class="rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50 via-white to-slate-50 px-8 py-7 shadow-sm">
+            <p class="text-xs font-semibold tracking-[0.18em] text-sky-700">MY PAGE</p>
+            <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">충북대 LMS 연동</h1>
+            <p class="mt-2 text-sm text-slate-500">충북대학교 LMS에 연동하여 성적을 확인하고 과제 마감일을 캘린더에 자동 추가할 수 있습니다.</p>
+        </div>
+
+        {% include 'snippets/messages.html' %}
+
+        {% if not lms_token %}
+        <!-- ── 미연결 상태: 연결 폼 ── -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+                <span class="text-sm font-semibold text-slate-500">미연동 상태</span>
+            </div>
+            <h2 class="text-lg font-bold text-slate-800 mb-1">LMS 계정 연결</h2>
+            <p class="text-sm text-slate-500 mb-6">충북대 LMS(lms.chungbuk.ac.kr) 아이디와 비밀번호를 입력하세요. 비밀번호는 서버에 저장되지 않습니다.</p>
+            <form method="POST" class="space-y-4 max-w-sm">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="connect">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">LMS 아이디</label>
+                    <input type="text" name="lms_id" required autocomplete="username"
+                           class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-sky-400 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">LMS 비밀번호</label>
+                    <input type="password" name="lms_pw" required autocomplete="current-password"
+                           class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-sky-400 transition">
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-sky-600 text-white text-sm font-semibold rounded-xl hover:bg-sky-700 transition">
+                    연결하기
+                </button>
+            </form>
+        </div>
+
+        {% else %}
+        <!-- ── 연결된 상태 ── -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-3">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-700">연동됨: <span class="text-emerald-700">{{ lms_token.lms_username }}</span></p>
+                        <p class="text-xs text-slate-400">연동일: {{ lms_token.created_at|date:"Y.m.d" }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <!-- 과제 가져오기 -->
+                    <form method="POST">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="import_assignments">
+                        <button type="submit"
+                                class="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-violet-700 transition">
+                            <i class="fa-solid fa-calendar-plus text-xs"></i> 과제 캘린더 가져오기
+                        </button>
+                    </form>
+                    <!-- 연동 해제 -->
+                    <form method="POST" onsubmit="return confirm('LMS 연동을 해제하시겠습니까?')">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="disconnect">
+                        <button type="submit"
+                                class="inline-flex items-center gap-2 bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-rose-100 transition">
+                            <i class="fa-solid fa-link-slash text-xs"></i> 연동 해제
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 성적 탭 ── -->
+        {% if error_msg %}
+        <div class="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-sm text-rose-700 font-medium">
+            <i class="fa-solid fa-circle-exclamation mr-2"></i>성적을 불러오는 중 오류가 발생했습니다: {{ error_msg }}
+        </div>
+        {% elif grade_courses %}
+        <div class="space-y-4">
+            <h2 class="text-lg font-bold text-slate-800">성적 현황</h2>
+            {% for course in grade_courses %}
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-100">
+                    <p class="font-semibold text-slate-800 text-sm">{{ course.name }}</p>
+                </div>
+                {% if course.items %}
+                <div class="divide-y divide-slate-100">
+                    {% for item in course.items %}
+                    <div class="px-6 py-3 flex items-center justify-between">
+                        <span class="text-sm text-slate-600">{{ item.name }}</span>
+                        <div class="flex items-center gap-3">
+                            {% if item.max %}
+                            <span class="text-xs text-slate-400">/ {{ item.max|floatformat:0 }}</span>
+                            {% endif %}
+                            <span class="text-sm font-bold
+                                {% if item.grade == '-' %}text-slate-400
+                                {% else %}text-emerald-600{% endif %}">
+                                {{ item.grade }}
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="px-6 py-4 text-sm text-slate-400">성적 항목이 없습니다.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center text-slate-400">
+            <i class="fa-regular fa-clipboard text-2xl mb-2 block"></i>
+            <p class="text-sm">등록된 강의나 성적 데이터가 없습니다.</p>
+        </div>
+        {% endif %}
+        {% endif %}
+
+    </div>
+</section>
+{% endblock %}
