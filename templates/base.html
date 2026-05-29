@@ -70,7 +70,7 @@
                     <span class="self-center text-slate-300 text-[22px] leading-none -translate-y-[1px]">|</span>
                 </div>
                 {% if user.is_authenticated %}
-                <div class="flex items-center space-x-2 bg-slate-50 px-2 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
+                <div class="hidden md:flex items-center space-x-2 bg-slate-50 px-2 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
                     <div class="w-7 h-7 bg-emerald-600 rounded-full flex items-center justify-center text-[10px] text-white font-medium shadow-sm">
                         LV.{{ user.student.level|default:"1" }}
                     </div>
@@ -78,8 +78,7 @@
                         {{ user.display_name }}님
                     </a>
                 </div>
-
-                <form action="{% url 'logout' %}" method="post" class="inline">
+                <form action="{% url 'logout' %}" method="post" class="hidden md:inline">
                     {% csrf_token %}
                     <button type="submit" class="text-slate-400 hover:text-red-500 transition px-2" title="로그아웃">
                         <i class="fa-solid fa-right-from-bracket"></i>
@@ -87,10 +86,41 @@
                 </form>
                 {% else %}
                 <a href="{% url 'login' %}"
-                         class="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition">로그인</a>
+                         class="hidden md:inline bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition">로그인</a>
                 {% endif %}
+
+                <!-- 모바일 햄버거 버튼 -->
+                <button id="mobile-menu-btn" class="md:hidden flex items-center justify-center w-10 h-10 rounded-lg text-slate-600 hover:bg-slate-100 transition">
+                    <i class="fa-solid fa-bars text-lg"></i>
+                </button>
             </div>
         </div>
+
+        <!-- 모바일 드롭다운 메뉴 -->
+        <div id="mobile-menu" class="md:hidden hidden border-t border-slate-100 bg-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 py-3 space-y-1">
+                <a href="{% url 'course_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">학습</a>
+                <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">문제</a>
+                <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">대회</a>
+                <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">커뮤니티</a>
+                <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">랭킹</a>
+                <a href="{% url 'introduce' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소개</a>
+                <div class="border-t border-slate-100 pt-2 mt-2">
+                    {% if user.is_authenticated %}
+                    <div class="flex items-center justify-between px-4 py-2">
+                        <span class="text-sm font-medium text-slate-700">{{ user.display_name }}님 (LV.{{ user.student.level|default:"1" }})</span>
+                        <form action="{% url 'logout' %}" method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="text-xs text-slate-400 hover:text-red-500 transition">로그아웃</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <a href="{% url 'login' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition text-center">로그인</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
     </nav>
     {% endblock %}
 
@@ -106,6 +136,14 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+      // 모바일 햄버거 메뉴
+      const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+      const mobileMenu = document.getElementById('mobile-menu');
+      if (mobileMenuBtn && mobileMenu) {
+        mobileMenuBtn.addEventListener('click', () => {
+          mobileMenu.classList.toggle('hidden');
         });
       }
     </script>

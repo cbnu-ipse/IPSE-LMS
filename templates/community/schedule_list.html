@@ -27,7 +27,7 @@
         </div>
 
         <div>
-            <div class="flex justify-end items-center gap-2 mb-4">
+            <div class="flex flex-wrap justify-end items-center gap-2 mb-4">
                 {% if user.is_authenticated %}
                 <a href="{% url 'calendar_subscribe' %}"
                    class="inline-flex items-center gap-2 bg-white border border-slate-300 text-slate-600 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 hover:border-slate-400 transition shadow-sm">

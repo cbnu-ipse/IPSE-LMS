@@ -59,6 +59,7 @@ def ranking_home(request):
 				}
 			)
 
+		ranking_rows = [row for row in ranking_rows if row["solved_count"] > 0]
 		ranking_rows.sort(key=lambda row: (-row["score"], row["user"].username.lower()))
 
 		context = {
