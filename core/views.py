@@ -76,15 +76,23 @@ def get_schedules_api(request):
             }
         })
 
-    # 투표 이벤트: ends_at(마감일)을 기준일로 캘린더에 표시
+    # 투표 이벤트: starts_at ~ ends_at 기간을 캘린더 스팬으로 표시
+    from datetime import timedelta
     polls = Poll.objects.all()
     for p in polls:
-        start = p.ends_at or p.starts_at or p.created_at
+        if p.starts_at and p.ends_at and p.ends_at.date() > p.starts_at.date():
+            # 다중일 투표: 날짜 문자열로 allDay 스패닝 바 표시 (FullCalendar end는 exclusive)
+            p_start = p.starts_at.date().isoformat()
+            p_end = (p.ends_at.date() + timedelta(days=1)).isoformat()
+        else:
+            anchor = p.ends_at or p.starts_at or p.created_at
+            p_start = anchor.isoformat()
+            p_end = None
         events.append({
             'id': f'poll-{p.id}',
             'title': f'[투표] {p.title}',
-            'start': start.isoformat(),
-            'end': None,
+            'start': p_start,
+            'end': p_end,
             'color': '#6366f1',
             'extendedProps': {
                 'description': p.description,

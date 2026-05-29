@@ -207,7 +207,9 @@
 .fc-day-sat .fc-daygrid-day-number,.fc-day-sat .fc-col-header-cell-cushion{color:#3b82f6!important}
 .fc-day-today{background-color:transparent!important}
 .fc-day-today .fc-daygrid-day-number{background-color:#059669!important;color:white!important;border-radius:50%;width:20px!important;height:20px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
-.fc-daygrid-event{background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important}
+.fc-daygrid-event:not(.fc-daygrid-block-event){background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important}
+.fc-daygrid-block-event{border:none!important;box-shadow:none!important;border-radius:3px!important;overflow:hidden!important}
+.fc-daygrid-block-event .fc-event-main{font-size:10px!important;font-weight:600!important;padding:1px 4px!important;color:white!important}
 .fc-daygrid-day-events{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:1px;margin-top:2px!important;overflow:hidden!important}
 .fc-daygrid-event-harness{width:100%!important;display:flex;justify-content:flex-start}
 .fc-daygrid-day-frame{min-height:90px!important;max-height:90px!important;overflow:hidden!important}
@@ -335,6 +337,9 @@ document.addEventListener('DOMContentLoaded', function () {
         events: '/api/schedules/',
         dayCellContent: arg => ({ html: arg.dayNumberText.replace('일','') }),
         eventContent: arg => {
+            const start = arg.event.start;
+            const end = arg.event.end;
+            if (end && (end - start) > 24 * 60 * 60 * 1000) return null;
             const type = arg.event.extendedProps.event_type;
             let c = 'bg-violet-500';
             if (type === 'poll') c = 'bg-indigo-500';
@@ -402,6 +407,16 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
+        // 시작 시간이 종료보다 뒤이면 자동 맞춤
+        document.getElementById('add-start').addEventListener('change', function() {
+            const endEl = document.getElementById('add-end');
+            if (endEl.value && this.value > endEl.value) endEl.value = this.value;
+        });
+        document.getElementById('edit-start').addEventListener('change', function() {
+            const endEl = document.getElementById('edit-end');
+            if (endEl.value && this.value > endEl.value) endEl.value = this.value;
+        });
+
         document.getElementById('open-add-btn').addEventListener('click', ()=>{
             const base = getTodayStr();
             document.getElementById('add-start').value = base+'T09:00';
@@ -420,7 +435,6 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.textContent = '저장 중…'; btn.disabled = true;
             const start = isAllDay ? document.getElementById('add-date-only').value+'T00:00' : document.getElementById('add-start').value;
             const end   = isAllDay ? null : (document.getElementById('add-end').value||null);
-            // TODO: start가 end보다 뒤에 있을 경우 에러 처리 필요 (날짜/시간 순서 검증)
             fetch('/api/schedules/add/', {
                 method:'POST',
                 headers:{'Content-Type':'application/json','X-CSRFToken':this.querySelector('[name=csrfmiddlewaretoken]').value},
