@@ -14,7 +14,7 @@
         <div class="lg:col-span-4">
             <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm sticky top-24">
                 <div class="text-center">
-                    <img src="{{ user.picture.url }}" alt="{{ user.get_full_name }}" class="w-full max-w-[260px] mx-auto rounded-md border border-slate-200 mb-5">
+                    <img src="{{ user.get_picture }}" alt="{{ user.get_full_name }}" class="w-full max-w-[260px] mx-auto rounded-md border border-slate-200 mb-5">
                     <h2 class="text-2xl font-semibold text-[#3F3F3F]">{{ user.get_full_name|title }}</h2>
                     <p class="mt-2 text-slate-500">{{ user.get_user_role }}</p>
                 </div>

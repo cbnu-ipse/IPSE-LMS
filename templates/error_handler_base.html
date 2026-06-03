@@ -1,0 +1,24 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}오류{% endblock %} | IPSE</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse.svg' %}">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <style>
+        body { background: linear-gradient(180deg, #f8fafc 0%, #ffffff 45%, #f8fafc 100%); }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+    <main class="min-h-screen flex items-center justify-center px-6 py-10">
+        <section class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-sm p-8 md:p-10 text-center">
+            <div class="mx-auto w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mb-5">
+                !
+            </div>
+            {% block content %}{% endblock %}
+        </section>
+    </main>
+</body>
+</html>
