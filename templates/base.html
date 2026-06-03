@@ -4,9 +4,9 @@
 
 <head>
     <style>
-    html {
-        font-size: 90%; 
-    }
+    html { font-size: 90%; }
+    /* FOUC 방지: tailwind.css 로드 전에도 흰 배경 유지 */
+    html, body { background-color: #f8fafc; }
 </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -22,6 +22,8 @@
     <meta name="apple-mobile-web-app-title" content="IPSE">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- 페이지 전환 로딩 바 -->
+    <div id="page-loader" style="position:fixed;top:0;left:0;width:0%;height:3px;background:linear-gradient(90deg,#059669,#34d399);z-index:99999;transition:width 0.3s ease,opacity 0.4s ease;opacity:0;pointer-events:none;"></div>
 </head>
 
 <body class="bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
@@ -125,15 +127,6 @@
     {% endblock %}
 
     <main class="flex-grow">
-        <!-- 전체 탭 공지 배너 (한 번 닫으면 영구 숨김) -->
-        <div id="site-banner" class="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-6 py-3.5 relative">
-            <button id="banner-close" class="absolute top-1.5 right-4 text-slate-400 hover:text-slate-600 transition text-sm" aria-label="닫기">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-            <div class="max-w-7xl mx-auto">
-                <p class="text-xs font-semibold text-emerald-700">IPSE 포털에 오신 것을 환영합니다! &nbsp;·&nbsp; <span class="font-normal text-slate-500">프로필, 일정, 공지, 활동 기록이 실시간으로 연결됩니다.</span></p>
-            </div>
-        </div>
         {% block content %}{% endblock %}
     </main>
 
@@ -142,6 +135,31 @@
     </footer>
     {% block extra_js %}{% endblock %}
     <script>
+      // 페이지 전환 로딩 바
+      (function(){
+        const bar = document.getElementById('page-loader');
+        function showBar(){
+          bar.style.opacity='1'; bar.style.width='0%';
+          requestAnimationFrame(()=>{ bar.style.width='70%'; });
+        }
+        function finishBar(){
+          bar.style.width='100%';
+          setTimeout(()=>{ bar.style.opacity='0'; setTimeout(()=>{ bar.style.width='0%'; },400); },200);
+        }
+        // 링크 클릭 시 바 시작
+        document.addEventListener('click',function(e){
+          const a = e.target.closest('a[href]');
+          if(!a) return;
+          const href = a.getAttribute('href');
+          if(!href||href.startsWith('#')||href.startsWith('javascript')||a.target==='_blank'||a.hasAttribute('download')) return;
+          if(href.startsWith('http')&&!href.includes(location.hostname)) return;
+          showBar();
+        });
+        // 폼 제출 시 바 시작
+        document.addEventListener('submit',function(){ showBar(); });
+        // 페이지 로드 완료 시 바 마무리
+        window.addEventListener('pageshow',function(){ finishBar(); });
+      })();
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -155,26 +173,6 @@
           mobileMenu.classList.toggle('hidden');
         });
       }
-      // 사이트 배너 닫기 (모든 탭에서 지속)
-      (function() {
-        const BANNER_KEY = 'ipse_banner_dismissed';
-        const banner = document.getElementById('site-banner');
-        if (!banner) return;
-        if (localStorage.getItem(BANNER_KEY)) {
-          banner.remove();
-        } else {
-          document.getElementById('banner-close').addEventListener('click', function() {
-            banner.style.transition = 'opacity 0.2s';
-            banner.style.opacity = '0';
-            setTimeout(() => banner.remove(), 200);
-            localStorage.setItem(BANNER_KEY, '1');
-          });
-          // 다른 탭에서 닫핬 경우 실시간 숨김
-          window.addEventListener('storage', function(e) {
-            if (e.key === BANNER_KEY && e.newValue) banner.remove();
-          });
-        }
-      })();
     </script>
 </body>
 
