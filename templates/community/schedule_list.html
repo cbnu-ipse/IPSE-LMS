@@ -383,6 +383,8 @@ document.addEventListener('DOMContentLoaded', function () {
         lazyFetching: false,
         fixedWeekCount: true,
         dayMaxEvents: 3,
+        eventOrder: 'start,-duration,allDay,title,id',
+        eventOrderStrict: true,
         moreLinkContent: args => ({ html: `<span class="text-[9px] font-semibold text-slate-400 px-1">+${args.num}…</span>` }),
         events: function(info, successCallback, failureCallback) {
             fetch('/api/schedules/')
