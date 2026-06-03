@@ -80,8 +80,9 @@ def get_schedules_api(request):
     from datetime import timedelta
     polls = Poll.objects.all()
     for p in polls:
-        if p.starts_at and p.ends_at and p.ends_at.date() > p.starts_at.date():
-            # 다중일 투표: 날짜 문자열로 allDay 스패닝 바 표시 (FullCalendar end는 exclusive)
+        if p.starts_at and p.ends_at:
+            # 투표는 하루짜리여도 항상 시작~종료 구간 막대바로 표시한다.
+            # FullCalendar all-day end는 exclusive 이므로 +1일 처리한다.
             p_start = p.starts_at.date().isoformat()
             p_end = (p.ends_at.date() + timedelta(days=1)).isoformat()
         else:
