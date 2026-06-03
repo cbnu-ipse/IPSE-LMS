@@ -42,16 +42,25 @@
                 {% endif %}
             </div>
 
-            <!-- 범례 -->
-            <div class="flex items-center gap-5 mb-5 text-xs font-semibold text-slate-500">
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> 동아리 공식</span>
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span> 개인 일정</span>
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block"></span> 투표</span>
+            <!-- 범례 + 필터 -->
+            <div class="flex flex-wrap items-center gap-4 mb-5">
+                <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-600 hover:text-slate-800 transition">
+                    <input type="checkbox" id="filter-global" checked class="w-3.5 h-3.5 rounded accent-emerald-600">
+                    <i class="fa-solid fa-users text-emerald-500 text-[10px]"></i> 동아리 공식
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-600 hover:text-slate-800 transition">
+                    <input type="checkbox" id="filter-personal" checked class="w-3.5 h-3.5 rounded accent-violet-600">
+                    <i class="fa-solid fa-user text-violet-400 text-[10px]"></i> 개인 일정
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-600 hover:text-slate-800 transition">
+                    <input type="checkbox" id="filter-poll" checked class="w-3.5 h-3.5 rounded accent-indigo-600">
+                    <i class="fa-solid fa-square-poll-horizontal text-indigo-400 text-[10px]"></i> 투표
+                </label>
             </div>
 
             <!-- 전체 캘린더 -->
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                <div id="calendar"></div>
+                <div id="calendar" data-is-staff="{% if user.is_staff %}1{% else %}0{% endif %}"></div>
             </div>
         </div>
     </div>
@@ -207,13 +216,12 @@
 .fc-day-sat .fc-daygrid-day-number,.fc-day-sat .fc-col-header-cell-cushion{color:#3b82f6!important}
 .fc-day-today{background-color:transparent!important}
 .fc-day-today .fc-daygrid-day-number{background-color:#059669!important;color:white!important;border-radius:50%;width:20px!important;height:20px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
+/* spanning 레이아웃은 FC에 완전히 위임 — width/display/flex 절대 건드리지 않음 */
 .fc-daygrid-event:not(.fc-daygrid-block-event){background:transparent!important;border:none!important;box-shadow:none!important;margin:0!important}
-.fc-daygrid-block-event{border:none!important;box-shadow:none!important;border-radius:3px!important;overflow:hidden!important}
-.fc-daygrid-block-event .fc-event-main{font-size:10px!important;font-weight:600!important;padding:1px 4px!important;color:white!important}
-.fc-daygrid-day-events{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:1px;margin-top:2px!important;overflow:hidden!important}
-.fc-daygrid-event-harness{width:100%!important;display:flex;justify-content:flex-start}
-.fc-daygrid-day-frame{min-height:90px!important;max-height:90px!important;overflow:hidden!important}
-.fc-event-main{width:100%!important}
+.fc-daygrid-block-event{border:none!important;box-shadow:none!important;border-radius:0!important;overflow:visible!important;background:transparent!important;margin:2px 0!important}
+.fc-daygrid-block-event>a{width:100%!important;display:block!important;border-radius:0!important;}
+.fc-daygrid-block-event .fc-event-main{padding:0!important;background:transparent!important;width:100%!important;display:block!important;}
+.fc-daygrid-day-frame{min-height:90px!important}
 .fc-daygrid-day{cursor:pointer}
 .fc-toolbar-title{font-size:1rem!important;font-weight:700!important;color:#334155!important}
 .fc-button{border-radius:8px!important;font-size:.75rem!important;font-weight:600!important}
@@ -227,7 +235,7 @@
 document.addEventListener('DOMContentLoaded', function () {
     const WEEKDAYS = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
     let allEvents = [];
-    const isStaff = {{ user.is_staff|yesno:'true,false' }};
+    const isStaff = document.getElementById('calendar').dataset.isStaff === '1';
 
     function getTodayStr() {
         const d = new Date();
@@ -235,6 +243,24 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     function openModal(m,c){ m.classList.remove('hidden'); requestAnimationFrame(()=>{ m.classList.remove('opacity-0'); c.classList.remove('scale-95'); }); }
     function closeModal(m,c){ m.classList.add('opacity-0'); c.classList.add('scale-95'); setTimeout(()=>m.classList.add('hidden'),200); }
+
+    // ── 이벤트별 고유 색상 (해시 기반 12색 팔레트) ──
+    const PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#a855f7','#6366f1','#0ea5e9'];
+    function hashColor(str) {
+        let h = 0;
+        const s = String(str);
+        for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+        return PALETTE[Math.abs(h) % PALETTE.length];
+    }
+
+    // ── 이벤트 필터 헬퍼 ──
+    function isEventVisible(ev) {
+        const type = ev.extendedProps && ev.extendedProps.event_type;
+        const isGl = ev.extendedProps && ev.extendedProps.is_global;
+        if (type === 'poll') return document.getElementById('filter-poll').checked;
+        if (isGl)            return document.getElementById('filter-global').checked;
+        return document.getElementById('filter-personal').checked;
+    }
 
     // ── 날짜 hover 패널 ──
     const dayOverlay = document.getElementById('day-overlay');
@@ -248,6 +274,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('panel-date').textContent = parts[0]+'. '+(+parts[1])+'. '+(+parts[2])+'.';
 
         const dayEvs = allEvents.filter(ev => {
+            if (!isEventVisible(ev)) return false;
             const s = ev.start ? ev.start.slice(0,10) : null;
             const e = ev.end   ? ev.end.slice(0,10)   : null;
             if (!s) return false;
@@ -267,41 +294,63 @@ document.addEventListener('DOMContentLoaded', function () {
                 const type = ev.extendedProps && ev.extendedProps.event_type;
                 const isLast = idx === dayEvs.length - 1;
 
-                // 과거 여부
-                const evDt = (ev.start && ev.start.length > 10)
-                    ? new Date(ev.start)
-                    : new Date((ev.start || dateStr) + 'T23:59:59');
+                // 과거 여부: end가 있으면 end 기준 (다중일 이벤트가 진행 중에 비활성화되는 버그 방지)
+                const evDt = (() => {
+                    if (ev.end) {
+                        return ev.end.length > 10
+                            ? new Date(ev.end)
+                            : new Date(ev.end.slice(0,10) + 'T23:59:59');
+                    }
+                    return ev.start && ev.start.length > 10
+                        ? new Date(ev.start)
+                        : new Date((ev.start || dateStr) + 'T23:59:59');
+                })();
                 const isPast = evDt < now;
 
-                // 색상
-                let dotCls = 'bg-violet-500', lineCls = 'bg-violet-100';
-                if (isPast) {
-                    dotCls = 'bg-slate-300'; lineCls = 'bg-slate-100';
-                } else if (type === 'poll') {
-                    dotCls = 'bg-indigo-500'; lineCls = 'bg-indigo-100';
-                } else if (ev.extendedProps && ev.extendedProps.is_global) {
-                    dotCls = 'bg-emerald-500'; lineCls = 'bg-emerald-100';
-                }
+                // 색상 (이벤트별 고유 색상)
+                const evColor = isPast ? '#cbd5e1' : hashColor(ev.id);
+                const evColorLight = evColor + '33';
                 const titleCls = isPast ? 'text-slate-400' : 'text-slate-800';
-                const timeStr  = (ev.start && ev.start.length > 10) ? ev.start.slice(11,16) : '하루 종일';
+                const startDate = ev.start ? ev.start.slice(0,10) : dateStr;
+                const endDate   = ev.end   ? ev.end.slice(0,10)   : null;
+                const isMultiDay = endDate && endDate !== startDate;
+                let timeStr;
+                if (isMultiDay) {
+                    const fmt = s => { const p=s.split('-'); return (+p[1])+'/'+(+p[2]); };
+                    // FC all-day end는 exclusive (+1일): date-only 문자열이면 1일 빼서 표시
+                    let displayEnd = endDate;
+                    if (ev.end && ev.end.length <= 10) {
+                        const d = new Date(endDate + 'T12:00:00');
+                        d.setDate(d.getDate() - 1);
+                        displayEnd = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+                    }
+                    timeStr = fmt(startDate) + ' ~ ' + fmt(displayEnd);
+                } else {
+                    timeStr = (ev.start && ev.start.length > 10) ? ev.start.slice(11,16) : '하루 종일';
+                }
 
                 const item = document.createElement('div');
                 item.className = 'flex gap-3 px-3 py-1 rounded-xl hover:bg-slate-50 transition'
                     + (isPast ? ' opacity-60' : '');
+                const desc = ev.extendedProps && ev.extendedProps.description
+                    ? String(ev.extendedProps.description).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    : '';
                 item.innerHTML =
                     '<div class="flex flex-col items-center w-4 shrink-0">'
-                    + '<span class="w-2.5 h-2.5 rounded-full '+dotCls+' shrink-0 mt-1.5"></span>'
-                    + (!isLast ? '<div class="w-px flex-1 '+lineCls+' mt-1 min-h-[14px]"></div>' : '')
+                    + '<span style="width:10px;height:10px;border-radius:50%;background:'+evColor+';flex-shrink:0;margin-top:4px;display:inline-block;"></span>'
+                    + (!isLast ? '<div style="width:1px;flex:1;background:'+evColorLight+';margin-top:3px;min-height:14px;"></div>' : '')
                     + '</div>'
                     + '<div class="flex-1 min-w-0 pb-3">'
                     + '<p class="text-[11px] font-medium text-slate-400 mb-0.5">'+timeStr+'</p>'
                     + '<p class="text-sm font-semibold '+titleCls+' truncate">'+ev.title+'</p>'
+                    + (desc ? '<p class="text-[11px] text-slate-400 truncate mt-0.5">'+desc+'</p>' : '')
                     + '</div>';
 
                 if (type === 'poll' && ev.extendedProps.poll_id) {
                     item.classList.add('cursor-pointer');
                     item.addEventListener('click', () => { window.location.href = '/community/polls/'+ev.extendedProps.poll_id+'/'; });
-                } else if (isStaff && !isPast) {
+                } else if (isStaff) {
+                    // 지난 일정도 클릭 가능 (삭제 용도)
                     item.classList.add('cursor-pointer');
                     item.addEventListener('click', () => { closeDayPanel(); openEditModal(ev); });
                 }
@@ -331,20 +380,51 @@ document.addEventListener('DOMContentLoaded', function () {
         },
         headerToolbar: { left: 'prevYear,prev,next,nextYear', center: 'title', right: 'today' },
         height: 'auto',
+        lazyFetching: false,
         fixedWeekCount: true,
         dayMaxEvents: 3,
+        eventOrder: 'start,-duration,allDay,title,id',
+        eventOrderStrict: true,
         moreLinkContent: args => ({ html: `<span class="text-[9px] font-semibold text-slate-400 px-1">+${args.num}…</span>` }),
-        events: '/api/schedules/',
+        events: function(info, successCallback, failureCallback) {
+            fetch('/api/schedules/')
+                .then(r => r.json())
+                .then(data => successCallback(data.filter(ev => isEventVisible(ev))))
+                .catch(failureCallback);
+        },
         dayCellContent: arg => ({ html: arg.dayNumberText.replace('일','') }),
         eventContent: arg => {
             const start = arg.event.start;
             const end = arg.event.end;
-            if (end && (end - start) > 24 * 60 * 60 * 1000) return null;
-            const type = arg.event.extendedProps.event_type;
-            let c = 'bg-violet-500';
-            if (type === 'poll') c = 'bg-indigo-500';
-            else if (arg.event.extendedProps.is_global) c = 'bg-emerald-500';
-            return { html: `<div class="flex items-center gap-1 px-1 w-full min-w-0 overflow-hidden"><span class="w-1.5 h-1.5 shrink-0 rounded-full ${c}"></span><span class="text-[10px] font-medium text-slate-700 truncate leading-tight">${arg.event.title}</span></div>` };
+            const isMultiDay = end && (end - start) > 24 * 60 * 60 * 1000;
+            const isPoll   = arg.event.extendedProps.event_type === 'poll';
+            const isGlobal = !isPoll && !!(arg.event.extendedProps.is_global);
+            const bg = hashColor(arg.event.id);
+
+            if (arg.event.allDay || isMultiDay) {
+                // 시작 / 끝 세그먼트에만 둥근 모서리, 중간 세그먼트는 플랫
+                const rL = arg.isStart ? '4px' : '0';
+                const rR = arg.isEnd   ? '4px' : '0';
+                // 공식 일정: 완전 불투명 / 개인·투표: 85%
+                const opacity = isGlobal ? '1' : '0.82';
+                return { html:
+                    `<div style="height:18px;width:100%;display:flex;align-items:center;` +
+                    `padding:0 ${arg.isStart ? '6px' : '2px'};box-sizing:border-box;` +
+                    `background:${bg};border-radius:${rL} ${rR} ${rR} ${rL};opacity:${opacity};">` +
+                    (arg.isStart
+                        ? `<span style="font-size:10px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${arg.event.title}</span>`
+                        : '') +
+                    `</div>`
+                };
+            }
+            // 시간 지정 단일일: 둥근 필 앨플
+            const opacity = isGlobal ? '1' : '0.82';
+            return { html:
+                `<div style="height:18px;width:100%;display:flex;align-items:center;` +
+                `padding:0 6px;box-sizing:border-box;background:${bg};border-radius:4px;opacity:${opacity};">` +
+                `<span style="font-size:10px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${arg.event.title}</span>` +
+                `</div>`
+            };
         },
         eventsSet: function(events) {
             allEvents = events.map(ev => ({
@@ -357,12 +437,18 @@ document.addEventListener('DOMContentLoaded', function () {
         eventClick: function(info) {
             info.jsEvent.preventDefault();
             info.jsEvent.stopPropagation();
-            const dateStr = info.event.startStr.slice(0, 10);
-            const dayEl = document.querySelector('.fc-daygrid-day[data-date="' + dateStr + '"]');
-            openDayPanel(dateStr, dayEl || info.el);
+            // 클릭한 셀 기준 날짜 (다중일 이벤트에서 항상 startStr만 쓰는 버그 수정)
+            const dayCell = info.el.closest('[data-date]');
+            const dateStr = dayCell ? dayCell.getAttribute('data-date') : info.event.startStr.slice(0, 10);
+            openDayPanel(dateStr);
         },
     });
     calendar.render();
+
+    // ── 필터 체크박스 리스너 ──
+    ['filter-global','filter-personal','filter-poll'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => calendar.refetchEvents());
+    });
 
     // ── Staff 전용 ──
     if (isStaff) {

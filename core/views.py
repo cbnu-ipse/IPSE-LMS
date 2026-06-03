@@ -56,7 +56,7 @@ def home_view(request):
 @login_required
 def get_schedules_api(request):
     """달력에 표시할 일정들을 JSON으로 반환하는 API"""
-    schedules = Schedule.objects.filter(Q(is_global=True) | Q(user=request.user))
+    schedules = Schedule.objects.filter(Q(is_global=True) | Q(user=request.user)).distinct()
 
     events = []
     for s in schedules:
