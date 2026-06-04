@@ -122,5 +122,124 @@ class PollComment(models.Model):
     def __str__(self):
         return f"{self.author} - {self.poll}"
 
+
+# ─────────────────────────────────────────────
+# 설문 (Survey)
+# ─────────────────────────────────────────────
+
+class Survey(models.Model):
+    title = models.CharField(max_length=200, verbose_name="설문 제목")
+    description = models.TextField(blank=True, verbose_name="설명")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="surveys_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    starts_at = models.DateTimeField(null=True, blank=True, verbose_name="시작 일시")
+    ends_at = models.DateTimeField(null=True, blank=True, verbose_name="종료 일시")
+    is_active = models.BooleanField(default=True, verbose_name="활성 여부")
+    allow_duplicate_response = models.BooleanField(default=False, verbose_name="중복 응답 허용")
+    is_anonymous = models.BooleanField(default=False, verbose_name="익명 응답")
+
+    class Meta:
+        ordering = ["-created_at"]
+
     def __str__(self):
-        return f"{self.voter} → {self.choice}"
+        return self.title
+
+    @property
+    def is_closed(self):
+        if not self.is_active:
+            return True
+        if self.ends_at and timezone.now() > self.ends_at:
+            return True
+        return False
+
+    @property
+    def response_count(self):
+        return self.responses.values("respondent").distinct().count() if not self.is_anonymous else self.responses.count()
+
+
+class SurveyQuestion(models.Model):
+    QUESTION_TYPES = (
+        ('CHOICE', '객관식'),
+        ('TEXT', '주관식'),
+        ('SCALE', '척도형 (1~5점)'),
+    )
+
+    survey = models.ForeignKey(Survey, related_name="questions", on_delete=models.CASCADE)
+    question_text = models.TextField(verbose_name="질문")
+    question_description = models.TextField(blank=True, verbose_name="질문 설명")
+    question_type = models.CharField(max_length=10, choices=QUESTION_TYPES, default='CHOICE')
+    required = models.BooleanField(default=True, verbose_name="필수 응답")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "pk"]
+
+    def __str__(self):
+        return f"[{self.survey.title}] {self.question_text}"
+
+
+class SurveyQuestionChoice(models.Model):
+    question = models.ForeignKey(SurveyQuestion, related_name="choices", on_delete=models.CASCADE)
+    choice_text = models.CharField(max_length=300, verbose_name="선택지")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "pk"]
+
+    def __str__(self):
+        return f"{self.question.question_text} — {self.choice_text}"
+
+
+class SurveyResponse(models.Model):
+    survey = models.ForeignKey(Survey, related_name="responses", on_delete=models.CASCADE)
+    respondent = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="survey_responses",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        respondent_name = self.respondent.display_name if self.respondent else "(익명)"
+        return f"{self.survey.title} — {respondent_name}"
+
+
+class SurveyAnswer(models.Model):
+    response = models.ForeignKey(SurveyResponse, related_name="answers", on_delete=models.CASCADE)
+    question = models.ForeignKey(SurveyQuestion, on_delete=models.CASCADE)
+    choice = models.ForeignKey(
+        SurveyQuestionChoice,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    text_answer = models.TextField(blank=True, verbose_name="텍스트 답변")
+    scale_answer = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="척도 답변 (1~5)")
+
+    class Meta:
+        unique_together = ("response", "question")
+
+    def __str__(self):
+        return f"{self.response} — {self.question.question_text}"
+
+
+class SurveyComment(models.Model):
+    survey = models.ForeignKey(Survey, related_name="comments", on_delete=models.CASCADE)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField(verbose_name="댓글 내용")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.survey}"
