@@ -76,34 +76,6 @@ def get_schedules_api(request):
             }
         })
 
-    # 투표 이벤트: starts_at ~ ends_at 기간을 캘린더 스팬으로 표시
-    from datetime import timedelta
-    polls = Poll.objects.all()
-    for p in polls:
-        if p.starts_at and p.ends_at:
-            # 투표는 하루짜리여도 항상 시작~종료 구간 막대바로 표시한다.
-            # FullCalendar all-day end는 exclusive 이므로 +1일 처리한다.
-            p_start = p.starts_at.date().isoformat()
-            p_end = (p.ends_at.date() + timedelta(days=1)).isoformat()
-        else:
-            anchor = p.ends_at or p.starts_at or p.created_at
-            p_start = anchor.isoformat()
-            p_end = None
-        events.append({
-            'id': f'poll-{p.id}',
-            'title': f'[투표] {p.title}',
-            'start': p_start,
-            'end': p_end,
-            'color': '#6366f1',
-            'extendedProps': {
-                'description': p.description,
-                'is_global': True,
-                'event_type': 'poll',
-                'poll_id': p.id,
-                'is_closed': p.is_closed,
-            }
-        })
-
     return JsonResponse(events, safe=False)
 
 @login_required
