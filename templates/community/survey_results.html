@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ survey.title }} - 응답 결과{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-12">
+    <div class="space-y-8">
+        <div class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
+            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">COMMUNITY</p>
+            <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">설문 결과</h1>
+                    <p class="mt-2 text-sm text-slate-500">응답 통계를 표와 차트로 확인하고 CSV 파일로 내려받을 수 있습니다.</p>
+        </div>
+
+        {% include 'community/_subnav.html' with active_tab='survey' %}
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div class="mb-8 flex flex-col gap-4 border-b border-slate-100 pb-6 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        <i class="fa-solid fa-chart-column text-[10px]"></i>
+                        결과 분석
+                    </div>
+                    <h2 class="mt-3 text-2xl font-semibold tracking-tight text-slate-800">{{ survey.title }}</h2>
+                    <p class="mt-2 text-sm text-slate-500">총 {{ survey.response_count }}명의 응답을 기반으로 집계한 결과입니다.</p>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div class="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                        <button type="button" class="view-toggle inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition" data-view="table">
+                            <i class="fas fa-table"></i> 표
+                        </button>
+                        <button type="button" class="view-toggle active inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition" data-view="chart">
+                            <i class="fas fa-chart-bar"></i> 차트
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 transition" id="exportCsvBtn">
+                            <i class="fas fa-file-csv"></i> CSV 다운로드
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+    <!-- Results Container -->
+    <div id="resultsContainer" class="space-y-5">
+        {% for question in survey.questions.all %}
+        <div class="result-card rounded-2xl border border-slate-200 bg-slate-50/70 p-6" data-question-type="{{ question.question_type }}">
+            <div class="mb-5 flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <h3 class="text-lg font-semibold text-slate-800">
+                    {{ forloop.counter }}. {{ question.question_text }}
+                    <span class="ml-2 inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{{ question.get_question_type_display }}</span>
+                </h3>
+            </div>
+            <div>
+                <!-- Chart View -->
+                <div class="chart-view" style="display: none;">
+                    {% if question.question_type == 'CHOICE' %}
+                    <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                        <canvas id="chart_{{ question.id }}" height="100"></canvas>
+                    </div>
+                    {% elif question.question_type == 'SCALE' %}
+                    <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                        <canvas id="chart_{{ question.id }}" height="100"></canvas>
+                    </div>
+                    {% else %}
+                    <p class="rounded-2xl border border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">주관식은 개별 답변을 확인하세요.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Table View -->
+                <div class="table-view">
+                    {% if question.question_type == 'CHOICE' %}
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-slate-500">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-semibold">선택지</th>
+                                    <th class="px-4 py-3 text-right font-semibold">응답 수</th>
+                                    <th class="px-4 py-3 text-right font-semibold">비율</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-slate-700">
+                                {% for choice in question.choices.all %}
+                                <tr data-choice-count="{{ choice.answer_count }}">
+                                    <td class="px-4 py-3 font-medium">{{ choice.choice_text }}</td>
+                                    <td class="px-4 py-3 text-right"><strong id="count_{{ choice.id }}">0</strong></td>
+                                    <td class="px-4 py-3 text-right">
+                                        <div class="ml-auto w-32 overflow-hidden rounded-full bg-slate-100">
+                                            <div class="h-2 rounded-full bg-emerald-500" id="percent_{{ choice.id }}" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <span class="mt-1 block text-xs text-slate-500" id="percent_text_{{ choice.id }}">0%</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% elif question.question_type == 'SCALE' %}
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-slate-500">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-semibold">점수</th>
+                                    <th class="px-4 py-3 text-right font-semibold">응답 수</th>
+                                    <th class="px-4 py-3 text-right font-semibold">비율</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-slate-700">
+                                {% for i in "12345"|make_list %}
+                                <tr data-scale="{{ i }}">
+                                    <td class="px-4 py-3 font-medium">{{ i }}점</td>
+                                    <td class="px-4 py-3 text-right"><strong id="scale_count_{{ question.id }}_{{ i }}">0</strong></td>
+                                    <td class="px-4 py-3 text-right">
+                                        <div class="ml-auto w-32 overflow-hidden rounded-full bg-slate-100">
+                                            <div class="h-2 rounded-full bg-emerald-500" id="scale_percent_{{ question.id }}_{{ i }}" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <span class="mt-1 block text-xs text-slate-500" id="scale_percent_text_{{ question.id }}_{{ i }}">0%</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% elif question.question_type == 'TEXT' %}
+                    <div id="textAnswers_{{ question.id }}" class="space-y-3">
+                        <!-- Will be populated with JavaScript -->
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Back Button -->
+    <div class="mt-5">
+        <a href="{% url 'survey_list' %}" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
+            <i class="fas fa-arrow-left"></i> 돌아가기
+        </a>
+    </div>
+        </div>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Toggle between chart and table view
+document.querySelectorAll('.view-toggle').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.view-toggle').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        
+        const view = this.dataset.view;
+        document.querySelectorAll('.chart-view').forEach(el => {
+            el.style.display = view === 'chart' ? 'block' : 'none';
+        });
+        document.querySelectorAll('.table-view').forEach(el => {
+            el.style.display = view === 'table' ? 'block' : 'none';
+        });
+    });
+});
+
+// Load survey results
+async function loadResults() {
+    try {
+        const response = await fetch(`/community/api/surveys/{{ survey.id }}/results/`, {
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to load results:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        updateResults(data);
+    } catch (error) {
+        console.error('Error loading results:', error);
+    }
+}
+
+function updateResults(data) {
+    // Update choice questions
+    data.results.forEach(question => {
+        if (question.type === 'CHOICE') {
+            const total = question.stats.reduce((sum, s) => sum + s.count, 0) || 1;
+            
+            question.stats.forEach(stat => {
+                const percentage = Math.round((stat.count / total) * 100);
+                document.getElementById(`count_${stat.choice_id}`).textContent = stat.count;
+                document.getElementById(`percent_${stat.choice_id}`).style.width = percentage + '%';
+                document.getElementById(`percent_text_${stat.choice_id}`).textContent = percentage + '%';
+            });
+            
+            // Create chart
+            const chartCanvas = document.getElementById(`chart_${question.id}`);
+            if (chartCanvas) {
+                const ctx = chartCanvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: question.stats.map(s => s.choice_text),
+                        datasets: [{
+                            label: '응답 수',
+                            data: question.stats.map(s => s.count),
+                            backgroundColor: '#0d6efd'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+        } 
+        else if (question.type === 'SCALE') {
+            const total = question.stats.reduce((sum, s) => sum + s.count, 0) || 1;
+            
+            question.stats.forEach(stat => {
+                const percentage = Math.round((stat.count / total) * 100);
+                document.getElementById(`scale_count_${question.id}_${stat.scale}`).textContent = stat.count;
+                document.getElementById(`scale_percent_${question.id}_${stat.scale}`).style.width = percentage + '%';
+                document.getElementById(`scale_percent_text_${question.id}_${stat.scale}`).textContent = percentage + '%';
+            });
+            
+            // Create chart
+            const chartCanvas = document.getElementById(`chart_${question.id}`);
+            if (chartCanvas) {
+                const ctx = chartCanvas.getContext('2d');
+                const scaleCounts = [0, 0, 0, 0, 0];
+                question.stats.forEach(stat => {
+                    scaleCounts[stat.scale - 1] = stat.count;
+                });
+                
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['1점', '2점', '3점', '4점', '5점'],
+                        datasets: [{
+                            label: '응답 수',
+                            data: scaleCounts,
+                            backgroundColor: '#0d6efd'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+        }
+        else if (question.type === 'TEXT') {
+            const container = document.getElementById(`textAnswers_${question.id}`);
+            question.answers.forEach(answer => {
+                const answerDiv = document.createElement('div');
+                answerDiv.className = 'rounded-2xl border border-slate-200 bg-white px-4 py-4';
+                answerDiv.innerHTML = `
+                    <p class="text-sm leading-6 text-slate-700">${escapeHtml(answer.text)}</p>
+                    <small class="mt-2 block text-xs font-medium text-slate-400">${answer.respondent}</small>
+                `;
+                container.appendChild(answerDiv);
+            });
+        }
+    });
+}
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+// Export functionality
+document.getElementById('exportCsvBtn').addEventListener('click', function() {
+    window.location.href = `{% url 'survey_results_export' survey.id %}?format=csv`;
+});
+
+// Load results on page load
+window.addEventListener('load', loadResults);
+</script>
+
+<style>
+    .result-card {
+        border-top: 3px solid #0d6efd;
+    }
+    
+    .view-toggle.active {
+        background-color: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+    }
+</style>
+{% endblock %}
