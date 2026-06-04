@@ -1,0 +1,18 @@
+<div class="flex gap-1 border-b border-slate-200 overflow-x-auto">
+    <a href="{% url 'community_main' %}"
+       class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 {% if active_tab == 'news' %}border-emerald-600 text-emerald-700 -mb-px bg-white{% else %}border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px{% endif %}">
+        소식 / 활동 기록
+    </a>
+    <a href="{% url 'schedule_list' %}"
+       class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 {% if active_tab == 'schedule' %}border-emerald-600 text-emerald-700 -mb-px bg-white{% else %}border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px{% endif %}">
+        동아리 일정
+    </a>
+    <a href="{% url 'poll_list' %}"
+       class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 {% if active_tab == 'poll' %}border-emerald-600 text-emerald-700 -mb-px bg-white{% else %}border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px{% endif %}">
+        투표
+    </a>
+    <a href="{% url 'survey_list' %}"
+       class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 {% if active_tab == 'survey' %}border-emerald-600 text-emerald-700 -mb-px bg-white{% else %}border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px{% endif %}">
+        설문
+    </a>
+</div>

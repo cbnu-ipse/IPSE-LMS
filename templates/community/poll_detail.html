@@ -51,29 +51,18 @@
 
         <hr class="border-slate-100 mb-6">
 
-        <!-- 투표 폼 혹은 결과 -->
         {% if not is_closed and not has_voted %}
-        <!-- 미투표: 폼 표시 -->
-        <form method="post">
+        <form method="post" class="space-y-3 mb-6">
             {% csrf_token %}
-            <div class="space-y-3 mb-6">
-                {% for choice in choices %}
-                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition group">
-                    <input type="{{ poll.is_multiple|yesno:'checkbox,radio' }}"
-                           name="choice" value="{{ choice.id }}"
-                           class="accent-emerald-600 w-4 h-4 shrink-0">
-                    <span class="text-sm text-slate-700 group-hover:text-emerald-700 transition">{{ choice.text }}</span>
-                </label>
-                {% endfor %}
-            </div>
-            <button type="submit"
-                    class="w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
-                투표하기
-            </button>
+            {% for choice in choices %}
+            <label class="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 cursor-pointer bg-white">
+                <input type="{{ poll.is_multiple|yesno:'checkbox,radio' }}" name="choice" value="{{ choice.id }}" class="accent-emerald-600 w-4 h-4 shrink-0">
+                <span class="text-sm text-slate-700">{{ choice.text }}</span>
+            </label>
+            {% endfor %}
+            <button type="submit" class="w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">투표하기</button>
         </form>
-
         {% else %}
-        <!-- 투표됐거나 종료: 결과 표시 -->
         <div class="space-y-4 mb-6">
             {% for choice in choices %}
             {% with count=choice.vote_count %}
@@ -107,29 +96,19 @@
             {% endfor %}
         </div>
 
-        <!-- 재투표 (진행 중일 때만) -->
         {% if not is_closed and has_voted %}
         <p class="text-xs text-slate-400 text-center mb-4">재투표하려면 다시 선택 후 제출하세요.</p>
-        <form method="post">
+        <form method="post" class="space-y-3">
             {% csrf_token %}
-            <div class="space-y-3 mb-4">
-                {% for choice in choices %}
-                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition group">
-                    <input type="{{ poll.is_multiple|yesno:'checkbox,radio' }}"
-                           name="choice" value="{{ choice.id }}"
-                           {% if choice.id in user_voted_choice_ids %}checked{% endif %}
-                           class="accent-emerald-600 w-4 h-4 shrink-0">
-                    <span class="text-sm text-slate-700 group-hover:text-emerald-700 transition">{{ choice.text }}</span>
-                </label>
-                {% endfor %}
-            </div>
-            <button type="submit"
-                    class="w-full bg-slate-100 text-slate-600 py-3 rounded-xl text-sm font-semibold hover:bg-slate-200 transition">
-                재투표
-            </button>
+            {% for choice in choices %}
+            <label class="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 cursor-pointer bg-white">
+                <input type="{{ poll.is_multiple|yesno:'checkbox,radio' }}" name="choice" value="{{ choice.id }}" {% if choice.id in user_voted_choice_ids %}checked{% endif %} class="accent-emerald-600 w-4 h-4 shrink-0">
+                <span class="text-sm text-slate-700">{{ choice.text }}</span>
+            </label>
+            {% endfor %}
+            <button type="submit" class="w-full bg-slate-100 text-slate-600 py-3 rounded-xl text-sm font-semibold hover:bg-slate-200 transition">재투표</button>
         </form>
         {% endif %}
-
         {% endif %}
 
         <!-- 관리자 버튼 -->
@@ -230,7 +209,7 @@
         </div>
     </div>
 
-</section>
+ </section>
 
 <script>
 document.querySelectorAll('[data-poll-comment-toggle]').forEach(btn => {
@@ -247,6 +226,7 @@ document.querySelectorAll('[data-poll-comment-cancel]').forEach(btn => {
         document.getElementById('comment-edit-form-' + id).classList.add('hidden');
     });
 });
+
 </script>
 {% endblock %}
 

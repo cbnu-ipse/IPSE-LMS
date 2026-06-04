@@ -1,0 +1,556 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{% if is_edit_mode %}설문 수정{% else %}새 설문 만들기{% endif %}{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-6 py-10">
+    <div class="space-y-8">
+        <a href="{% if is_edit_mode %}{% url 'survey_detail' survey.id %}{% else %}{% url 'survey_list' %}{% endif %}" class="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-600 transition">
+            <i class="fa-solid fa-arrow-left text-xs"></i> {% if is_edit_mode %}설문 상세{% else %}설문 목록{% endif %}
+        </a>
+
+        {% include 'community/_subnav.html' with active_tab='survey' %}
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div class="flex flex-col gap-2 border-b border-slate-100 pb-5 md:flex-row md:items-end md:justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold tracking-tight text-slate-800">{% if is_edit_mode %}설문 수정{% else %}새 설문 만들기{% endif %}</h2>
+                    <p class="mt-1 text-sm text-slate-500">기본 정보와 질문을 설정한 뒤 바로 배포할 수 있습니다.</p>
+                </div>
+                <div class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    <i class="fa-solid fa-wand-magic-sparkles text-[10px]"></i>
+                    관리자 전용 작성 화면
+                </div>
+            </div>
+
+            <form id="surveyCreateForm" method="post" class="mt-6 space-y-6" data-is-edit-mode="{% if is_edit_mode %}true{% else %}false{% endif %}" data-request-url="{% if is_edit_mode %}{% url 'survey_edit' survey.id %}{% else %}{% url 'survey_create' %}{% endif %}" data-has-responses="{% if survey_has_responses %}true{% else %}false{% endif %}">
+                {% csrf_token %}
+                
+                <!-- Basic Survey Info -->
+                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-6">
+                    <div class="mb-5 flex items-center gap-3">
+                        <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-sm text-white shadow-sm">
+                            <i class="fa-solid fa-circle-info"></i>
+                        </span>
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-800">기본 정보</h3>
+                            <p class="text-sm text-slate-500">설문 제목, 기간, 응답 방식을 설정합니다.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-5">
+                        <div>
+                            <label for="title" class="mb-2 block text-sm font-semibold text-slate-700">제목 <span class="text-rose-500">*</span></label>
+                            <input type="text" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="title" name="title" placeholder="예: 2026 하계 세미나 만족도 조사" required>
+                        </div>
+
+                        <div>
+                            <label for="description" class="mb-2 block text-sm font-semibold text-slate-700">설명</label>
+                            <input type="hidden" id="description" name="description">
+                            <div id="description-editor" class="rounded-xl border border-slate-200 overflow-hidden"></div>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label for="starts_at" class="mb-2 block text-sm font-semibold text-slate-700">시작 시간</label>
+                                <div class="space-y-2">
+                                    <input type="date" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="starts_at_date" name="starts_at_date">
+                                    <input type="hidden" id="starts_at_time" name="starts_at_time">
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <select id="starts_at_meridiem" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
+                                        <select id="starts_at_hour" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
+                                        <select id="starts_at_minute" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="ends_at" class="mb-2 block text-sm font-semibold text-slate-700">종료 시간</label>
+                                <div class="space-y-2">
+                                    <input type="date" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="ends_at_date" name="ends_at_date">
+                                    <input type="hidden" id="ends_at_time" name="ends_at_time">
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <select id="ends_at_meridiem" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
+                                        <select id="ends_at_hour" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
+                                        <select id="ends_at_minute" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/40 transition">
+                                <input class="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" type="checkbox" id="is_anonymous" name="is_anonymous">
+                                <span>
+                                    <span class="block text-sm font-semibold text-slate-800">익명 응답 허용</span>
+                                    <span class="mt-1 block text-xs text-slate-500">응답자 이름을 저장하지 않습니다.</span>
+                                </span>
+                            </label>
+
+                            <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/40 transition">
+                                <input class="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" type="checkbox" id="allow_duplicate_response" name="allow_duplicate_response">
+                                <span>
+                                    <span class="block text-sm font-semibold text-slate-800">중복 응답 허용</span>
+                                    <span class="mt-1 block text-xs text-slate-500">한 사람이 여러 번 응답할 수 있습니다.</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Questions Section -->
+                <div class="rounded-2xl border border-slate-200 bg-white p-6">
+                    {% if is_edit_mode and survey_has_responses %}
+                    <div class="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                        응답이 있는 설문입니다. 질문 설명만 수정할 수 있으며, 제목/유형/선택지/기본 설정은 잠금 처리됩니다.
+                    </div>
+                    {% endif %}
+                    <div class="mb-5 flex items-center justify-between gap-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-800">질문 구성</h3>
+                            <p class="text-sm text-slate-500">객관식, 주관식, 척도형 질문을 조합할 수 있습니다.</p>
+                        </div>
+                        <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            <i class="fa-solid fa-layer-group text-[10px]"></i>
+                            질문 <span id="questionCount">0</span>개
+                        </span>
+                    </div>
+                    <div>
+                        <div id="questionsContainer"></div>
+                        
+                        <button type="button" class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/60 px-4 py-4 text-sm font-semibold text-emerald-700 hover:border-emerald-400 hover:bg-emerald-100/70 transition" id="addQuestionBtn">
+                            <i class="fas fa-plus"></i> 질문 추가
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                    <a href="{% url 'survey_list' %}" class="inline-flex items-center justify-center rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
+                        취소
+                    </a>
+                    <button type="submit" id="survey-submit-btn" class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 transition shadow-sm">
+                        <i class="fas fa-check"></i> {% if is_edit_mode %}설문 수정{% else %}설문 만들기{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+{% if survey_payload %}
+{{ survey_payload|json_script:'survey-initial-data' }}
+{% endif %}
+
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+<script>
+let questionIndex = 0;
+const surveyCreateForm = document.getElementById('surveyCreateForm');
+const isEditMode = surveyCreateForm.dataset.isEditMode === 'true';
+const surveyRequestUrl = surveyCreateForm.dataset.requestUrl;
+const surveyHasResponses = surveyCreateForm.dataset.hasResponses === 'true';
+const descriptionInput = document.getElementById('description');
+function setupTimePicker(hiddenId, meridiemId, hourId, minuteId, defaultValue) {
+    const hiddenInput = document.getElementById(hiddenId);
+    const meridiemSelect = document.getElementById(meridiemId);
+    const hourSelect = document.getElementById(hourId);
+    const minuteSelect = document.getElementById(minuteId);
+
+    if (!hiddenInput || !meridiemSelect || !hourSelect || !minuteSelect) {
+        return { setValue() {}, getValue() { return ''; } };
+    }
+
+    if (!meridiemSelect.options.length) {
+        ['오전', '오후'].forEach(label => meridiemSelect.add(new Option(label, label)));
+        for (let hour = 1; hour <= 12; hour += 1) {
+            hourSelect.add(new Option(String(hour).padStart(2, '0') + '시', String(hour)));
+        }
+        for (let minute = 0; minute < 60; minute += 1) {
+            const value = String(minute).padStart(2, '0');
+            minuteSelect.add(new Option(value + '분', value));
+        }
+    }
+
+    function syncHidden() {
+        let hour = parseInt(hourSelect.value || '12', 10);
+        const minute = minuteSelect.value || '00';
+        const meridiem = meridiemSelect.value || '오전';
+        if (meridiem === '오전') {
+            if (hour === 12) hour = 0;
+        } else if (hour !== 12) {
+            hour += 12;
+        }
+        hiddenInput.value = `${String(hour).padStart(2, '0')}:${minute}`;
+    }
+
+    function setValue(value) {
+        const [rawHour = '00', rawMinute = '00'] = (value || defaultValue || '00:00').split(':');
+        let hour = parseInt(rawHour, 10);
+        const meridiem = hour >= 12 ? '오후' : '오전';
+        if (hour === 0) {
+            hour = 12;
+        } else if (hour > 12) {
+            hour -= 12;
+        }
+        meridiemSelect.value = meridiem;
+        hourSelect.value = String(hour);
+        minuteSelect.value = rawMinute;
+        syncHidden();
+    }
+
+    [meridiemSelect, hourSelect, minuteSelect].forEach(select => select.addEventListener('change', syncHidden));
+    setValue(hiddenInput.value || defaultValue);
+
+    return {
+        setValue,
+        getValue() {
+            return hiddenInput.value;
+        }
+    };
+}
+
+function combineDateTime(dateId, picker) {
+    const dateValue = document.getElementById(dateId)?.value;
+    if (!dateValue) {
+        return null;
+    }
+    return `${dateValue}T${picker.getValue()}`;
+}
+
+const startsAtPicker = setupTimePicker('starts_at_time', 'starts_at_meridiem', 'starts_at_hour', 'starts_at_minute', '00:00');
+const endsAtPicker = setupTimePicker('ends_at_time', 'ends_at_meridiem', 'ends_at_hour', 'ends_at_minute', '23:59');
+const descriptionEditor = new toastui.Editor({
+    el: document.getElementById('description-editor'),
+    height: '400px',
+    initialEditType: 'markdown',
+    previewStyle: 'vertical',
+    placeholder: '응답자에게 안내할 내용을 마크다운으로 작성해 주세요.',
+    language: 'ko'
+});
+
+document.getElementById('addQuestionBtn').addEventListener('click', function() {
+    addQuestion();
+});
+
+function addQuestion() {
+    const container = document.getElementById('questionsContainer');
+    const questionDiv = document.createElement('div');
+    questionDiv.className = 'question-item mb-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 shadow-sm';
+    questionDiv.id = 'question_' + questionIndex;
+    
+    questionDiv.innerHTML = `
+        <div>
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-xs font-semibold tracking-[0.16em] text-emerald-700">QUESTION ${questionIndex + 1}</p>
+                    <p class="mt-1 text-sm text-slate-500">응답자가 이해하기 쉽게 질문을 작성해 주세요.</p>
+                </div>
+                <button type="button" class="remove-question-btn inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 transition">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                <div>
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">질문 제목</label>
+                    <input type="text" class="question-title w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문을 입력하세요" required>
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">유형</label>
+                    <select class="question-type w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" required>
+                        <option value="CHOICE">객관식</option>
+                        <option value="TEXT">주관식</option>
+                        <option value="SCALE">척도형</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <label class="mb-2 block text-sm font-semibold text-slate-700">설명 (선택)</label>
+                <input type="text" class="question-description w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문 설명을 입력하세요 (선택사항)">
+            </div>
+
+            <div class="choices-container mt-4 hidden rounded-2xl border border-slate-200 bg-white p-4">
+                <label class="mb-3 block text-sm font-semibold text-slate-700">답변 선택지</label>
+                <div class="choices-list space-y-2"></div>
+                <button type="button" class="add-choice-btn mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                    <i class="fas fa-plus"></i> 선택지 추가
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(questionDiv);
+    updateQuestionCount();
+    
+    // Event listeners
+    const typeSelect = questionDiv.querySelector('.question-type');
+    const choicesContainer = questionDiv.querySelector('.choices-container');
+    const choicesList = choicesContainer.querySelector('.choices-list');
+
+    function ensureChoiceInputs() {
+        if (choicesList.children.length === 0) {
+            addChoiceInput(choicesList);
+            addChoiceInput(choicesList);
+        }
+    }
+    
+    typeSelect.addEventListener('change', function() {
+        if (this.value === 'CHOICE') {
+            choicesContainer.classList.remove('hidden');
+            ensureChoiceInputs();
+            choicesList.querySelectorAll('.choice-text').forEach(input => {
+                input.required = true;
+            });
+        } else {
+            choicesContainer.classList.add('hidden');
+            choicesList.querySelectorAll('.choice-text').forEach(input => {
+                input.required = false;
+            });
+        }
+    });
+    
+    questionDiv.querySelector('.add-choice-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        addChoiceInput(questionDiv.querySelector('.choices-list'));
+    });
+    
+    questionDiv.querySelector('.remove-question-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        questionDiv.remove();
+        updateQuestionCount();
+    });
+
+    if (typeSelect.value === 'CHOICE') {
+        choicesContainer.classList.remove('hidden');
+        ensureChoiceInputs();
+    } else {
+        choicesList.querySelectorAll('.choice-text').forEach(input => {
+            input.required = false;
+        });
+    }
+    
+    questionIndex++;
+
+    if (surveyHasResponses) {
+        lockQuestionStructure(questionDiv);
+    }
+
+    return questionDiv;
+}
+
+function addChoiceInput(container) {
+    const choiceDiv = document.createElement('div');
+    choiceDiv.className = 'flex items-center gap-2';
+    choiceDiv.innerHTML = `
+        <input type="text" class="choice-text w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="선택지를 입력하세요" required>
+        <button type="button" class="remove-choice-btn inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 transition">
+            <i class="fas fa-trash"></i>
+        </button>
+    `;
+    
+    choiceDiv.querySelector('.remove-choice-btn').addEventListener('click', function() {
+        choiceDiv.remove();
+    });
+    
+    container.appendChild(choiceDiv);
+}
+
+function updateQuestionCount() {
+    const count = document.querySelectorAll('.question-item').length;
+    document.getElementById('questionCount').textContent = count;
+}
+
+function lockQuestionStructure(questionDiv) {
+    questionDiv.querySelector('.question-title')?.setAttribute('readonly', 'readonly');
+    questionDiv.querySelector('.question-title')?.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+    questionDiv.querySelector('.question-type')?.setAttribute('disabled', 'disabled');
+    questionDiv.querySelector('.question-type')?.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+    questionDiv.querySelectorAll('.choice-text').forEach(input => {
+        input.setAttribute('readonly', 'readonly');
+        input.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+    });
+    questionDiv.querySelector('.remove-question-btn')?.classList.add('hidden');
+    questionDiv.querySelector('.add-choice-btn')?.classList.add('hidden');
+    questionDiv.querySelectorAll('.remove-choice-btn').forEach(button => button.classList.add('hidden'));
+}
+
+function applyResponseLockUI() {
+    if (!surveyHasResponses) {
+        return;
+    }
+
+    ['title', 'starts_at_date', 'ends_at_date'].forEach(id => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.setAttribute('readonly', 'readonly');
+        input.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+    });
+
+    const editorWrapper = document.getElementById('description-editor');
+    editorWrapper?.classList.add('pointer-events-none', 'opacity-70');
+    ['starts_at_meridiem', 'starts_at_hour', 'starts_at_minute', 'ends_at_meridiem', 'ends_at_hour', 'ends_at_minute'].forEach(id => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        select.setAttribute('disabled', 'disabled');
+        select.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+    });
+
+    ['is_anonymous', 'allow_duplicate_response'].forEach(id => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.setAttribute('disabled', 'disabled');
+    });
+
+    const addQuestionBtn = document.getElementById('addQuestionBtn');
+    addQuestionBtn?.setAttribute('disabled', 'disabled');
+    addQuestionBtn?.classList.add('opacity-50', 'cursor-not-allowed');
+
+    document.querySelectorAll('.question-item').forEach(lockQuestionStructure);
+}
+
+surveyCreateForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const submitBtn = document.getElementById('survey-submit-btn');
+    const originalLabel = submitBtn.innerHTML;
+    
+    const questions = [];
+    document.querySelectorAll('.question-item').forEach((qDiv, index) => {
+        const type = qDiv.querySelector('.question-type').value;
+        const title = qDiv.querySelector('.question-title').value;
+        const description = qDiv.querySelector('.question-description').value;
+        
+        const question = {
+            sequence: index,
+            title: title,
+            description: description,
+            question_type: type,
+            choices: []
+        };
+        
+        if (type === 'CHOICE') {
+            qDiv.querySelectorAll('.choice-text').forEach((input, choiceIndex) => {
+                if (input.value.trim()) {
+                    question.choices.push({
+                        sequence: choiceIndex,
+                        text: input.value
+                    });
+                }
+            });
+        }
+        
+        questions.push(question);
+    });
+    
+    if (questions.length === 0) {
+        showToast('최소 1개 이상의 질문을 추가하세요.', 'error');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+    
+    const surveyData = {
+        title: document.getElementById('title').value,
+        description: descriptionEditor.getMarkdown(),
+        starts_at: combineDateTime('starts_at_date', startsAtPicker),
+        ends_at: combineDateTime('ends_at_date', endsAtPicker),
+        is_anonymous: document.getElementById('is_anonymous').checked,
+        allow_duplicate_response: document.getElementById('allow_duplicate_response').checked,
+        questions: questions
+    };
+    
+    try {
+        const response = await fetch(surveyRequestUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(surveyData)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast(data.message || (isEditMode ? '설문이 수정되었습니다.' : '설문이 성공적으로 만들어졌습니다!'), 'success');
+            window.setTimeout(() => {
+                window.location.href = `/community/surveys/${data.survey_id}/`;
+            }, 450);
+        } else {
+            showToast(data.error || '설문 저장에 실패했습니다.', 'error');
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+            submitBtn.innerHTML = originalLabel;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showToast('설문 저장 중 오류가 발생했습니다.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+        submitBtn.innerHTML = originalLabel;
+    }
+});
+
+function loadInitialSurveyData() {
+    const dataElement = document.getElementById('survey-initial-data');
+    if (!dataElement) return;
+
+    const initialData = JSON.parse(dataElement.textContent);
+    document.getElementById('title').value = initialData.title || '';
+    descriptionInput.value = initialData.description || '';
+    descriptionEditor.setMarkdown(initialData.description || '');
+    if (initialData.starts_at) {
+        const [startsDate, startsTime] = initialData.starts_at.split('T');
+        document.getElementById('starts_at_date').value = startsDate || '';
+        startsAtPicker.setValue(startsTime || '00:00');
+    }
+    if (initialData.ends_at) {
+        const [endsDate, endsTime] = initialData.ends_at.split('T');
+        document.getElementById('ends_at_date').value = endsDate || '';
+        endsAtPicker.setValue(endsTime || '23:59');
+    }
+    document.getElementById('is_anonymous').checked = Boolean(initialData.is_anonymous);
+    document.getElementById('allow_duplicate_response').checked = Boolean(initialData.allow_duplicate_response);
+
+    (initialData.questions || []).forEach(questionData => {
+        const questionDiv = addQuestion();
+        questionDiv.querySelector('.question-title').value = questionData.title || '';
+        questionDiv.querySelector('.question-description').value = questionData.description || '';
+
+        const typeSelect = questionDiv.querySelector('.question-type');
+        typeSelect.value = questionData.question_type || 'CHOICE';
+        typeSelect.dispatchEvent(new Event('change'));
+
+        if (questionData.question_type === 'CHOICE') {
+            const choicesList = questionDiv.querySelector('.choices-list');
+            choicesList.innerHTML = '';
+            (questionData.choices || []).forEach(choiceData => {
+                addChoiceInput(choicesList);
+                choicesList.lastElementChild.querySelector('.choice-text').value = choiceData.text || '';
+            });
+            if (!choicesList.children.length) {
+                addChoiceInput(choicesList);
+                addChoiceInput(choicesList);
+            }
+        }
+    });
+}
+
+loadInitialSurveyData();
+applyResponseLockUI();
+</script>
+
+<style>
+    .question-item {
+        border-left: 4px solid #059669;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator {
+        opacity: 0.7;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}

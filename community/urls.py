@@ -20,6 +20,16 @@ urlpatterns = [
     path('polls/<int:poll_id>/votes/', views.poll_votes, name='poll_votes'),
     path('polls/<int:poll_id>/edit/', views.poll_edit, name='poll_edit'),
     path('polls/<int:poll_id>/votes/export/', views.poll_votes_export, name='poll_votes_export'),
+    # 설문
+    path('surveys/', views.survey_list, name='survey_list'),
+    path('surveys/create/', views.survey_create, name='survey_create'),
+    path('surveys/<int:survey_id>/edit/', views.survey_edit, name='survey_edit'),
+    path('surveys/<int:survey_id>/delete/', views.survey_delete, name='survey_delete'),
+    path('surveys/<int:survey_id>/', views.survey_detail, name='survey_detail'),
+    path('surveys/<int:survey_id>/respond/', views.survey_respond, name='survey_respond'),
+    path('surveys/<int:survey_id>/results/', views.survey_results, name='survey_results'),
+    path('surveys/<int:survey_id>/results/export/', views.survey_results_export, name='survey_results_export'),
+    path('api/surveys/<int:survey_id>/results/', views.survey_results_api, name='survey_results_api'),
     # iCal 캘린더 피드
     path('schedules/calendar.ics', views.global_calendar_feed, name='global_calendar_feed'),
     path('schedules/personal/<str:token>/calendar.ics', views.personal_calendar_feed, name='personal_calendar_feed'),
