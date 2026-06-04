@@ -52,10 +52,6 @@
                     <input type="checkbox" id="filter-personal" checked class="w-3.5 h-3.5 rounded accent-violet-600">
                     <i class="fa-solid fa-user text-violet-400 text-[10px]"></i> 개인 일정
                 </label>
-                <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-slate-600 hover:text-slate-800 transition">
-                    <input type="checkbox" id="filter-poll" checked class="w-3.5 h-3.5 rounded accent-indigo-600">
-                    <i class="fa-solid fa-square-poll-horizontal text-indigo-400 text-[10px]"></i> 투표
-                </label>
             </div>
 
             <!-- 전체 캘린더 -->
@@ -221,8 +217,7 @@
 .fc-daygrid-block-event{border:none!important;box-shadow:none!important;border-radius:0!important;overflow:visible!important;background:transparent!important;margin:1px 0!important}
 .fc-daygrid-block-event>a{width:100%!important;display:block!important;border-radius:0!important;}
 .fc-daygrid-block-event .fc-event-main{padding:0!important;background:transparent!important;width:100%!important;display:block!important;}
-.fc-daygrid-event-harness{top:0!important}
-.fc-daygrid-day-events{margin-top:2px!important;margin-bottom:0!important}
+.fc-daygrid-day-events{margin-top:2px!important}
 .fc-daygrid-day-frame{min-height:90px!important}
 .fc-daygrid-day{cursor:pointer}
 .fc-toolbar-title{font-size:1rem!important;font-weight:700!important;color:#334155!important}
@@ -259,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function isEventVisible(ev) {
         const type = ev.extendedProps && ev.extendedProps.event_type;
         const isGl = ev.extendedProps && ev.extendedProps.is_global;
-        if (type === 'poll') return document.getElementById('filter-poll').checked;
+        if (type === 'poll') return false;
         if (isGl)            return document.getElementById('filter-global').checked;
         return document.getElementById('filter-personal').checked;
     }
@@ -384,10 +379,10 @@ document.addEventListener('DOMContentLoaded', function () {
         height: 'auto',
         lazyFetching: false,
         fixedWeekCount: true,
-        dayMaxEvents: 3,
+        dayMaxEvents: false,
+        dayMaxEventRows: false,
         eventOrder: 'start,-duration,allDay,title,id',
         eventOrderStrict: true,
-        moreLinkContent: args => ({ html: `<span class="text-[9px] font-semibold text-slate-400 px-1">+${args.num}…</span>` }),
         events: function(info, successCallback, failureCallback) {
             fetch('/api/schedules/')
                 .then(r => r.json())
@@ -399,8 +394,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const start = arg.event.start;
             const end = arg.event.end;
             const isMultiDay = end && (end - start) > 24 * 60 * 60 * 1000;
-            const isPoll   = arg.event.extendedProps.event_type === 'poll';
-            const isGlobal = !isPoll && !!(arg.event.extendedProps.is_global);
+            const isGlobal = !!(arg.event.extendedProps.is_global);
             const bg = hashColor(arg.event.id);
 
             if (arg.event.allDay || isMultiDay) {
@@ -448,7 +442,7 @@ document.addEventListener('DOMContentLoaded', function () {
     calendar.render();
 
     // ── 필터 체크박스 리스너 ──
-    ['filter-global','filter-personal','filter-poll'].forEach(id => {
+    ['filter-global','filter-personal'].forEach(id => {
         document.getElementById(id).addEventListener('change', () => calendar.refetchEvents());
     });
 
