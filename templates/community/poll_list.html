@@ -10,29 +10,15 @@
             <p class="mt-2 text-sm text-slate-500">공지사항, 활동 기록, 토론을 한 곳에서 확인하고 공유하세요.</p>
         </div>
 
-        <!-- 서브 탭 네비게이션 -->
-        <div class="flex gap-1 border-b border-slate-200">
-            <a href="{% url 'community_main' %}"
-               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px">
-                소식 / 활동 기록
-            </a>
-            <a href="{% url 'schedule_list' %}"
-               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px">
-                동아리 일정
-            </a>
-            <a href="{% url 'poll_list' %}"
-               class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 border-emerald-600 text-emerald-700 -mb-px bg-white">
-                투표
-            </a>
-        </div>
+        {% include 'community/_subnav.html' with active_tab='poll' %}
 
         <div>
             {% if user.is_staff %}
             <div class="flex justify-end mb-6">
-                <a href="{% url 'poll_create' %}"
+                <button type="button" id="open-poll-create-modal-btn"
                    class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
                     <i class="fa-solid fa-plus text-xs"></i> 투표 만들기
-                </a>
+                </button>
             </div>
             {% endif %}
 
@@ -58,9 +44,9 @@
                 <div class="space-y-3">
                     {% for poll in active_polls %}
                     <a href="{% url 'poll_detail' poll.id %}"
-                       class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm hover:shadow-md hover:border-emerald-300 transition group">
+                       class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm transition">
                         <div>
-                            <p class="text-base font-semibold text-slate-800 group-hover:text-emerald-700 transition">{{ poll.title }}</p>
+                            <p class="text-base font-semibold text-slate-800">{{ poll.title }}</p>
                             <p class="text-xs text-slate-400 mt-1">
                                 {{ poll.total_voters }}명 참여
                                 {% if poll.is_multiple %} · 복수 선택{% endif %}
@@ -69,7 +55,7 @@
                                 {% if poll.ends_at %} · {{ poll.ends_at|date:"m.d H:i" }} 마감{% endif %}
                             </p>
                         </div>
-                        <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-emerald-500 transition text-sm"></i>
+                        <i class="fa-solid fa-chevron-right text-slate-300 text-sm"></i>
                     </a>
                     {% endfor %}
                 </div>
@@ -89,7 +75,7 @@
                 <div class="space-y-3">
                     {% for poll in closed_polls %}
                     <a href="{% url 'poll_detail' poll.id %}"
-                       class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm hover:shadow-md transition opacity-70 hover:opacity-100 group">
+                       class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm transition opacity-70 group">
                         <div>
                             <p class="text-base font-semibold text-slate-600">{{ poll.title }}</p>
                             <p class="text-xs text-slate-400 mt-1">
@@ -107,4 +93,265 @@
         </div>
     </div>
 </section>
+
+{% if user.is_staff %}
+<div id="poll-create-modal" class="fixed inset-0 z-[9999] hidden overflow-y-auto bg-slate-900/40 px-4 py-6 opacity-0 backdrop-blur-sm transition-opacity duration-300">
+    <div class="flex min-h-full items-center justify-center">
+        <div class="w-full max-w-4xl scale-95 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-transform duration-300" id="poll-create-modal-content">
+            <div class="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-8 py-5">
+                <h3 class="text-xl font-semibold text-[#3F3F3F]">새 투표 만들기</h3>
+                <button type="button" id="close-poll-create-modal-btn" class="text-slate-400 transition hover:text-rose-500"><i class="fa-solid fa-xmark text-2xl"></i></button>
+            </div>
+            <form method="post" action="{% url 'poll_create' %}" id="poll-create-form" class="p-8">
+                {% csrf_token %}
+                <div class="mb-5">
+                    <label class="mb-2 block text-sm font-semibold text-slate-600">제목</label>
+                    <input type="text" name="title" required placeholder="투표 제목을 입력하세요" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
+                </div>
+
+                <input type="hidden" name="description" id="poll-modal-description-hidden">
+                <div class="mb-6">
+                    <label class="mb-2 block text-sm font-semibold text-slate-600">설명</label>
+                    <div id="poll-modal-description-editor"></div>
+                </div>
+
+                <div class="mb-5">
+                    <label class="mb-2 block text-sm font-semibold text-slate-600">선택 항목</label>
+                    <div id="poll-modal-choices-container" class="mb-3 space-y-2">
+                        <div class="poll-modal-choice-row flex items-center gap-2">
+                            <input type="text" name="choices" placeholder="항목 1" required class="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
+                            <button type="button" class="poll-modal-remove-choice p-1 text-slate-300 transition hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="poll-modal-choice-row flex items-center gap-2">
+                            <input type="text" name="choices" placeholder="항목 2" required class="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
+                            <button type="button" class="poll-modal-remove-choice p-1 text-slate-300 transition hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <button type="button" id="poll-modal-add-choice-btn" class="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-600 transition hover:text-emerald-700">
+                        <i class="fa-solid fa-plus text-xs"></i> 항목 추가
+                    </button>
+                </div>
+
+                <div class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:bg-slate-50">
+                        <input type="checkbox" name="is_multiple" class="h-4 w-4 accent-emerald-600">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700">복수 선택 허용</p>
+                            <p class="text-xs text-slate-400">여러 항목에 투표 가능</p>
+                        </div>
+                    </label>
+                    <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:bg-slate-50">
+                        <input type="checkbox" name="is_anonymous" class="h-4 w-4 accent-emerald-600">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700">익명 투표</p>
+                            <p class="text-xs text-slate-400">투표자 정보를 숨김</p>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="mb-5">
+                    <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 transition hover:bg-indigo-50">
+                        <input type="checkbox" name="show_as_notice" class="h-4 w-4 accent-indigo-600">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700">공지사항에 표시</p>
+                            <p class="text-xs text-slate-400">커뮤니티 공지사항 목록에 같이 노출됩니다</p>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="mb-5">
+                    <label class="mb-1.5 block text-sm font-semibold text-slate-700">시작 일시</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="date" name="starts_at_date" id="poll-modal-starts-at-date" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
+                        <div>
+                            <input type="hidden" name="starts_at_time" id="poll-modal-starts-at-time">
+                            <div class="grid grid-cols-3 gap-2">
+                                <select id="poll-modal-starts-at-meridiem" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
+                                <select id="poll-modal-starts-at-hour" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
+                                <select id="poll-modal-starts-at-minute" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="mb-1.5 block text-sm font-semibold text-slate-700">마감 일시</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="date" name="ends_at_date" id="poll-modal-ends-at-date" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
+                        <div>
+                            <input type="hidden" name="ends_at_time" id="poll-modal-ends-at-time">
+                            <div class="grid grid-cols-3 gap-2">
+                                <select id="poll-modal-ends-at-meridiem" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
+                                <select id="poll-modal-ends-at-hour" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
+                                <select id="poll-modal-ends-at-minute" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end border-t border-slate-100 pt-4">
+                    <button type="submit" class="rounded-lg bg-emerald-600 px-8 py-2.5 font-semibold text-white transition hover:bg-emerald-700">투표 등록하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if user.is_staff %}
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function setupTimePicker(hiddenId, meridiemId, hourId, minuteId, defaultValue) {
+        const hiddenInput = document.getElementById(hiddenId);
+        const meridiemSelect = document.getElementById(meridiemId);
+        const hourSelect = document.getElementById(hourId);
+        const minuteSelect = document.getElementById(minuteId);
+
+        if (!hiddenInput || !meridiemSelect || !hourSelect || !minuteSelect) {
+            return { setValue() {}, getValue() { return ''; } };
+        }
+
+        if (!meridiemSelect.options.length) {
+            ['오전', '오후'].forEach(label => meridiemSelect.add(new Option(label, label)));
+            for (let hour = 1; hour <= 12; hour += 1) {
+                hourSelect.add(new Option(String(hour).padStart(2, '0') + '시', String(hour)));
+            }
+            for (let minute = 0; minute < 60; minute += 1) {
+                const value = String(minute).padStart(2, '0');
+                minuteSelect.add(new Option(value + '분', value));
+            }
+        }
+
+        function syncHidden() {
+            let hour = parseInt(hourSelect.value || '12', 10);
+            const minute = minuteSelect.value || '00';
+            const meridiem = meridiemSelect.value || '오전';
+            if (meridiem === '오전') {
+                if (hour === 12) hour = 0;
+            } else if (hour !== 12) {
+                hour += 12;
+            }
+            hiddenInput.value = `${String(hour).padStart(2, '0')}:${minute}`;
+        }
+
+        function setValue(value) {
+            const [rawHour = '00', rawMinute = '00'] = (value || defaultValue || '00:00').split(':');
+            let hour = parseInt(rawHour, 10);
+            const meridiem = hour >= 12 ? '오후' : '오전';
+            if (hour === 0) {
+                hour = 12;
+            } else if (hour > 12) {
+                hour -= 12;
+            }
+            meridiemSelect.value = meridiem;
+            hourSelect.value = String(hour);
+            minuteSelect.value = rawMinute;
+            syncHidden();
+        }
+
+        [meridiemSelect, hourSelect, minuteSelect].forEach(select => select.addEventListener('change', syncHidden));
+        setValue(hiddenInput.value || defaultValue);
+
+        return {
+            setValue,
+            getValue() {
+                return hiddenInput.value;
+            }
+        };
+    }
+
+    const pollCreateModal = document.getElementById('poll-create-modal');
+    const pollCreateModalContent = document.getElementById('poll-create-modal-content');
+    const openPollCreateModalBtn = document.getElementById('open-poll-create-modal-btn');
+    const closePollCreateModalBtn = document.getElementById('close-poll-create-modal-btn');
+    const pollCreateForm = document.getElementById('poll-create-form');
+    const pollChoicesContainer = document.getElementById('poll-modal-choices-container');
+    const pollAddChoiceBtn = document.getElementById('poll-modal-add-choice-btn');
+    let pollChoiceCount = 2;
+    let pollModalEditor;
+    const pollModalStartsAtPicker = setupTimePicker('poll-modal-starts-at-time', 'poll-modal-starts-at-meridiem', 'poll-modal-starts-at-hour', 'poll-modal-starts-at-minute', '00:00');
+    const pollModalEndsAtPicker = setupTimePicker('poll-modal-ends-at-time', 'poll-modal-ends-at-meridiem', 'poll-modal-ends-at-hour', 'poll-modal-ends-at-minute', '23:59');
+
+    function openPollCreateModal() {
+        pollCreateModal.classList.remove('hidden');
+        if (!pollModalEditor) {
+            pollModalEditor = new toastui.Editor({
+                el: document.getElementById('poll-modal-description-editor'),
+                height: '400px',
+                initialEditType: 'markdown',
+                previewStyle: 'vertical',
+                placeholder: '투표 설명을 마크다운으로 작성해 주세요.',
+                language: 'ko'
+            });
+        }
+        setTimeout(() => {
+            pollCreateModal.classList.remove('opacity-0');
+            pollCreateModalContent.classList.remove('scale-95');
+        }, 10);
+    }
+
+    function closePollCreateModal() {
+        pollCreateModal.classList.add('opacity-0');
+        pollCreateModalContent.classList.add('scale-95');
+        setTimeout(() => pollCreateModal.classList.add('hidden'), 300);
+    }
+
+    function removePollChoice(button) {
+        if (pollChoicesContainer.querySelectorAll('.poll-modal-choice-row').length <= 2) {
+            return;
+        }
+        button.closest('.poll-modal-choice-row').remove();
+    }
+
+    openPollCreateModalBtn?.addEventListener('click', openPollCreateModal);
+    closePollCreateModalBtn?.addEventListener('click', closePollCreateModal);
+    pollCreateModal?.addEventListener('click', event => {
+        if (event.target === pollCreateModal) {
+            closePollCreateModal();
+        }
+    });
+
+    document.addEventListener('click', event => {
+        if (event.target.closest('.poll-modal-remove-choice')) {
+            removePollChoice(event.target.closest('.poll-modal-remove-choice'));
+        }
+    });
+
+    pollAddChoiceBtn?.addEventListener('click', function() {
+        pollChoiceCount += 1;
+        const row = document.createElement('div');
+        row.className = 'poll-modal-choice-row flex items-center gap-2';
+        row.innerHTML = `
+            <input type="text" name="choices" placeholder="항목 ${pollChoiceCount}" class="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
+            <button type="button" class="poll-modal-remove-choice p-1 text-slate-300 transition hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>
+        `;
+        pollChoicesContainer.appendChild(row);
+    });
+
+    (function setPollModalDefaults() {
+        const now = new Date();
+        const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        document.getElementById('poll-modal-ends-at-date').value = `${week.getFullYear()}-${pad(week.getMonth() + 1)}-${pad(week.getDate())}`;
+        pollModalEndsAtPicker.setValue(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+    })();
+
+    pollCreateForm?.addEventListener('submit', function() {
+        document.getElementById('poll-modal-description-hidden').value = pollModalEditor ? pollModalEditor.getMarkdown() : '';
+        document.getElementById('poll-modal-starts-at-time').value = pollModalStartsAtPicker.getValue();
+        document.getElementById('poll-modal-ends-at-time').value = pollModalEndsAtPicker.getValue();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && pollCreateModal && !pollCreateModal.classList.contains('hidden')) {
+            closePollCreateModal();
+        }
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

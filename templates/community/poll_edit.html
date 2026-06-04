@@ -95,9 +95,12 @@
                     </div>
                     <div>
                         <label class="block text-xs text-slate-400 mb-1">시간</label>
-                        <input type="time" name="starts_at_time" id="starts_at_time"
-                               value="{% if poll.starts_at %}{{ poll.starts_at|date:'H:i' }}{% endif %}"
-                               class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition">
+                        <input type="hidden" name="starts_at_time" id="starts_at_time" value="{% if poll.starts_at %}{{ poll.starts_at|date:'H:i' }}{% endif %}">
+                        <div class="grid grid-cols-3 gap-2">
+                            <select id="starts_at_meridiem" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"></select>
+                            <select id="starts_at_hour" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"></select>
+                            <select id="starts_at_minute" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"></select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -114,9 +117,12 @@
                     </div>
                     <div>
                         <label class="block text-xs text-slate-400 mb-1">시간</label>
-                        <input type="time" name="ends_at_time" id="ends_at_time"
-                               value="{% if poll.ends_at %}{{ poll.ends_at|date:'H:i' }}{% endif %}"
-                               class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition">
+                        <input type="hidden" name="ends_at_time" id="ends_at_time" value="{% if poll.ends_at %}{{ poll.ends_at|date:'H:i' }}{% endif %}">
+                        <div class="grid grid-cols-3 gap-2">
+                            <select id="ends_at_meridiem" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"></select>
+                            <select id="ends_at_hour" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"></select>
+                            <select id="ends_at_minute" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"></select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -142,17 +148,81 @@
 <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    function setupTimePicker(hiddenId, meridiemId, hourId, minuteId, defaultValue) {
+        const hiddenInput = document.getElementById(hiddenId);
+        const meridiemSelect = document.getElementById(meridiemId);
+        const hourSelect = document.getElementById(hourId);
+        const minuteSelect = document.getElementById(minuteId);
+
+        if (!hiddenInput || !meridiemSelect || !hourSelect || !minuteSelect) {
+            return { setValue() {}, getValue() { return ''; } };
+        }
+
+        if (!meridiemSelect.options.length) {
+            ['오전', '오후'].forEach(label => meridiemSelect.add(new Option(label, label)));
+            for (let hour = 1; hour <= 12; hour += 1) {
+                hourSelect.add(new Option(String(hour).padStart(2, '0') + '시', String(hour)));
+            }
+            for (let minute = 0; minute < 60; minute += 1) {
+                const value = String(minute).padStart(2, '0');
+                minuteSelect.add(new Option(value + '분', value));
+            }
+        }
+
+        function syncHidden() {
+            let hour = parseInt(hourSelect.value || '12', 10);
+            const minute = minuteSelect.value || '00';
+            const meridiem = meridiemSelect.value || '오전';
+            if (meridiem === '오전') {
+                if (hour === 12) hour = 0;
+            } else if (hour !== 12) {
+                hour += 12;
+            }
+            hiddenInput.value = `${String(hour).padStart(2, '0')}:${minute}`;
+        }
+
+        function setValue(value) {
+            const [rawHour = '00', rawMinute = '00'] = (value || defaultValue || '00:00').split(':');
+            let hour = parseInt(rawHour, 10);
+            const meridiem = hour >= 12 ? '오후' : '오전';
+            if (hour === 0) {
+                hour = 12;
+            } else if (hour > 12) {
+                hour -= 12;
+            }
+            meridiemSelect.value = meridiem;
+            hourSelect.value = String(hour);
+            minuteSelect.value = rawMinute;
+            syncHidden();
+        }
+
+        [meridiemSelect, hourSelect, minuteSelect].forEach(select => select.addEventListener('change', syncHidden));
+        setValue(hiddenInput.value || defaultValue);
+
+        return {
+            setValue,
+            getValue() {
+                return hiddenInput.value;
+            }
+        };
+    }
+
+    const startsAtPicker = setupTimePicker('starts_at_time', 'starts_at_meridiem', 'starts_at_hour', 'starts_at_minute', '00:00');
+    const endsAtPicker = setupTimePicker('ends_at_time', 'ends_at_meridiem', 'ends_at_hour', 'ends_at_minute', '23:59');
     const initialDesc = JSON.parse(document.getElementById('poll-desc-initial').textContent) || '';
     const descEditor = new toastui.Editor({
         el: document.getElementById('description-editor'),
-        height: '150px',
-        initialEditType: 'wysiwyg',
+        height: '400px',
+        initialEditType: 'markdown',
+        previewStyle: 'vertical',
         initialValue: initialDesc,
-        hideModeSwitch: false,
-        toolbarItems: [['bold', 'italic', 'strike'], ['ul', 'ol'], ['link']],
+        placeholder: '투표 설명을 마크다운으로 작성해 주세요.',
+        language: 'ko'
     });
     document.getElementById('poll-edit-form').addEventListener('submit', function() {
         document.getElementById('description-hidden').value = descEditor.getMarkdown();
+        document.getElementById('starts_at_time').value = startsAtPicker.getValue();
+        document.getElementById('ends_at_time').value = endsAtPicker.getValue();
     });
 });
 </script>
