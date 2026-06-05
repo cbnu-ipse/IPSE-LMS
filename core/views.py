@@ -39,11 +39,23 @@ def home_view(request):
     activity_logs = ActivityLog.objects.filter(user=request.user)[:10]
     metrics = sync_user_profile_metrics(request.user)
 
+    # 4. 미완료된 LMS 과제 일정 (마감일 기준 오름차순, 최대 5개)
+    incomplete_assignments = Schedule.objects.filter(
+        user=request.user,
+        external_id__startswith='lms:',
+        is_completed=False
+    ).order_by('start_date')[:5]
+
+    for assign in incomplete_assignments:
+        desc = assign.description or ""
+        assign.course_name = desc.split('\n')[0] if desc else "과목 정보 없음"
+
     context = {
         'notices': notices,
         'active_polls': active_polls,
         'events': events,
         'activity_logs': activity_logs,
+        'incomplete_assignments': incomplete_assignments,
         'learning_level': metrics['level'],
         'problem_points': metrics['problem_points'],
         'contest_wins': metrics['contest_wins'],
@@ -63,16 +75,24 @@ def get_schedules_api(request):
         # 하루 종일 이벤트: end가 없고 시작 시각이 자정(00:00:00)인 경우
         is_all_day = (s.end_date is None and s.start_date.hour == 0
                       and s.start_date.minute == 0 and s.start_date.second == 0)
+        is_lms = s.external_id.startswith('lms:')
+        if is_lms and not s.is_completed:
+            color = '#94a3b8'
+        else:
+            color = '#10b981' if s.is_global else '#a855f7'
+
         events.append({
             'id': s.id,
             'title': s.title,
             'start': s.start_date.date().isoformat() if is_all_day else s.start_date.isoformat(),
             'end': s.end_date.isoformat() if s.end_date else None,
-            'color': '#10b981' if s.is_global else '#a855f7',
+            'color': color,
             'extendedProps': {
                 'description': s.description,
                 'is_global': s.is_global,
                 'event_type': 'schedule',
+                'is_completed': s.is_completed,
+                'is_lms': is_lms,
             }
         })
 

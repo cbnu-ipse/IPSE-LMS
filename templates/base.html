@@ -41,6 +41,10 @@
                 </a>
 
                 <div class="hidden md:flex h-full items-end gap-8 text-base font-medium text-slate-700">
+                    <a href="{% url 'community_main' %}"
+                       class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                        커뮤니티
+                    </a>
                     <a href="{% url 'course_list' %}"
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
                         학습
@@ -52,10 +56,6 @@
                     <a href="{% url 'contest:list' %}"
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
                         대회
-                    </a>
-                    <a href="{% url 'community_main' %}"
-                       class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
-                        커뮤니티
                     </a>
                     <a href="{% url 'ranking:home' %}"
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
@@ -104,10 +104,10 @@
         <!-- 모바일 드롭다운 메뉴 -->
         <div id="mobile-menu" class="md:hidden hidden border-t border-slate-100 bg-white shadow-lg">
             <div class="max-w-7xl mx-auto px-4 py-3 space-y-1">
+                <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">커뮤니티</a>
                 <a href="{% url 'course_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">학습</a>
                 <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">문제</a>
                 <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">대회</a>
-                <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">커뮤니티</a>
                 <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">랭킹</a>
                 <a href="{% url 'introduce' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소개</a>
                 <div class="border-t border-slate-100 pt-2 mt-2">
