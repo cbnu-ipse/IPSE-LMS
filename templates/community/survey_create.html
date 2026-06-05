@@ -51,29 +51,13 @@
                         </div>
 
                         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div>
-                                <label for="starts_at" class="mb-2 block text-sm font-semibold text-slate-700">시작 시간</label>
-                                <div class="space-y-2">
-                                    <input type="date" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="starts_at_date" name="starts_at_date">
-                                    <input type="hidden" id="starts_at_time" name="starts_at_time">
-                                    <div class="grid grid-cols-3 gap-2">
-                                        <select id="starts_at_meridiem" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
-                                        <select id="starts_at_hour" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
-                                        <select id="starts_at_minute" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
-                                    </div>
-                                </div>
+                            <div class="space-y-2">
+                                <label for="starts_at" class="mb-2 block text-sm font-semibold text-slate-700">시작 일시</label>
+                                <input type="datetime-local" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="starts_at" name="starts_at">
                             </div>
-                            <div>
-                                <label for="ends_at" class="mb-2 block text-sm font-semibold text-slate-700">종료 시간</label>
-                                <div class="space-y-2">
-                                    <input type="date" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="ends_at_date" name="ends_at_date">
-                                    <input type="hidden" id="ends_at_time" name="ends_at_time">
-                                    <div class="grid grid-cols-3 gap-2">
-                                        <select id="ends_at_meridiem" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
-                                        <select id="ends_at_hour" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
-                                        <select id="ends_at_minute" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></select>
-                                    </div>
-                                </div>
+                            <div class="space-y-2">
+                                <label for="ends_at" class="mb-2 block text-sm font-semibold text-slate-700">종료 일시</label>
+                                <input type="datetime-local" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="ends_at" name="ends_at">
                             </div>
                         </div>
 
@@ -150,75 +134,6 @@ const isEditMode = surveyCreateForm.dataset.isEditMode === 'true';
 const surveyRequestUrl = surveyCreateForm.dataset.requestUrl;
 const surveyHasResponses = surveyCreateForm.dataset.hasResponses === 'true';
 const descriptionInput = document.getElementById('description');
-function setupTimePicker(hiddenId, meridiemId, hourId, minuteId, defaultValue) {
-    const hiddenInput = document.getElementById(hiddenId);
-    const meridiemSelect = document.getElementById(meridiemId);
-    const hourSelect = document.getElementById(hourId);
-    const minuteSelect = document.getElementById(minuteId);
-
-    if (!hiddenInput || !meridiemSelect || !hourSelect || !minuteSelect) {
-        return { setValue() {}, getValue() { return ''; } };
-    }
-
-    if (!meridiemSelect.options.length) {
-        ['오전', '오후'].forEach(label => meridiemSelect.add(new Option(label, label)));
-        for (let hour = 1; hour <= 12; hour += 1) {
-            hourSelect.add(new Option(String(hour).padStart(2, '0') + '시', String(hour)));
-        }
-        for (let minute = 0; minute < 60; minute += 1) {
-            const value = String(minute).padStart(2, '0');
-            minuteSelect.add(new Option(value + '분', value));
-        }
-    }
-
-    function syncHidden() {
-        let hour = parseInt(hourSelect.value || '12', 10);
-        const minute = minuteSelect.value || '00';
-        const meridiem = meridiemSelect.value || '오전';
-        if (meridiem === '오전') {
-            if (hour === 12) hour = 0;
-        } else if (hour !== 12) {
-            hour += 12;
-        }
-        hiddenInput.value = `${String(hour).padStart(2, '0')}:${minute}`;
-    }
-
-    function setValue(value) {
-        const [rawHour = '00', rawMinute = '00'] = (value || defaultValue || '00:00').split(':');
-        let hour = parseInt(rawHour, 10);
-        const meridiem = hour >= 12 ? '오후' : '오전';
-        if (hour === 0) {
-            hour = 12;
-        } else if (hour > 12) {
-            hour -= 12;
-        }
-        meridiemSelect.value = meridiem;
-        hourSelect.value = String(hour);
-        minuteSelect.value = rawMinute;
-        syncHidden();
-    }
-
-    [meridiemSelect, hourSelect, minuteSelect].forEach(select => select.addEventListener('change', syncHidden));
-    setValue(hiddenInput.value || defaultValue);
-
-    return {
-        setValue,
-        getValue() {
-            return hiddenInput.value;
-        }
-    };
-}
-
-function combineDateTime(dateId, picker) {
-    const dateValue = document.getElementById(dateId)?.value;
-    if (!dateValue) {
-        return null;
-    }
-    return `${dateValue}T${picker.getValue()}`;
-}
-
-const startsAtPicker = setupTimePicker('starts_at_time', 'starts_at_meridiem', 'starts_at_hour', 'starts_at_minute', '00:00');
-const endsAtPicker = setupTimePicker('ends_at_time', 'ends_at_meridiem', 'ends_at_hour', 'ends_at_minute', '23:59');
 const descriptionEditor = new toastui.Editor({
     el: document.getElementById('description-editor'),
     height: '400px',
@@ -380,7 +295,7 @@ function applyResponseLockUI() {
         return;
     }
 
-    ['title', 'starts_at_date', 'ends_at_date'].forEach(id => {
+    ['title', 'starts_at', 'ends_at'].forEach(id => {
         const input = document.getElementById(id);
         if (!input) return;
         input.setAttribute('readonly', 'readonly');
@@ -389,12 +304,6 @@ function applyResponseLockUI() {
 
     const editorWrapper = document.getElementById('description-editor');
     editorWrapper?.classList.add('pointer-events-none', 'opacity-70');
-    ['starts_at_meridiem', 'starts_at_hour', 'starts_at_minute', 'ends_at_meridiem', 'ends_at_hour', 'ends_at_minute'].forEach(id => {
-        const select = document.getElementById(id);
-        if (!select) return;
-        select.setAttribute('disabled', 'disabled');
-        select.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
-    });
 
     ['is_anonymous', 'allow_duplicate_response'].forEach(id => {
         const input = document.getElementById(id);
@@ -455,8 +364,8 @@ surveyCreateForm.addEventListener('submit', async function(e) {
     const surveyData = {
         title: document.getElementById('title').value,
         description: descriptionEditor.getMarkdown(),
-        starts_at: combineDateTime('starts_at_date', startsAtPicker),
-        ends_at: combineDateTime('ends_at_date', endsAtPicker),
+        starts_at: document.getElementById('starts_at').value || null,
+        ends_at: document.getElementById('ends_at').value || null,
         is_anonymous: document.getElementById('is_anonymous').checked,
         allow_duplicate_response: document.getElementById('allow_duplicate_response').checked,
         questions: questions
@@ -503,14 +412,10 @@ function loadInitialSurveyData() {
     descriptionInput.value = initialData.description || '';
     descriptionEditor.setMarkdown(initialData.description || '');
     if (initialData.starts_at) {
-        const [startsDate, startsTime] = initialData.starts_at.split('T');
-        document.getElementById('starts_at_date').value = startsDate || '';
-        startsAtPicker.setValue(startsTime || '00:00');
+        document.getElementById('starts_at').value = initialData.starts_at.replace(' ', 'T').slice(0, 16);
     }
     if (initialData.ends_at) {
-        const [endsDate, endsTime] = initialData.ends_at.split('T');
-        document.getElementById('ends_at_date').value = endsDate || '';
-        endsAtPicker.setValue(endsTime || '23:59');
+        document.getElementById('ends_at').value = initialData.ends_at.replace(' ', 'T').slice(0, 16);
     }
     document.getElementById('is_anonymous').checked = Boolean(initialData.is_anonymous);
     document.getElementById('allow_duplicate_response').checked = Boolean(initialData.allow_duplicate_response);
