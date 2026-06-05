@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}모집 폼 수정 - IPSE{% endblock %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto px-6 py-10">
+    <a href="{% url 'recruit_list' %}" class="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-600 transition mb-6">
+        <i class="fa-solid fa-arrow-left text-xs"></i> 목록으로 돌아가기
+    </a>
+
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <h1 class="text-xl font-bold text-slate-800 mb-6">모집 폼 수정</h1>
+
+        <form method="POST" class="space-y-6">
+            {% csrf_token %}
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1.5">모집 제목 <span class="text-rose-500">*</span></label>
+                <input type="text" name="title" required maxlength="200" value="{{ form.title }}"
+                       class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1.5">설명 및 안내 문구</label>
+                <textarea name="description" rows="6" placeholder="지원자에게 노출될 모집 설명 및 안내 문구를 작성해 주세요."
+                          class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">{{ form.description }}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="starts_at" class="block text-sm font-semibold text-slate-700 mb-1.5">시작 일시 <span class="text-slate-400 font-normal text-xs ml-1">(선택)</span></label>
+                    <input type="datetime-local" name="starts_at" id="starts_at"
+                           value="{% if form.opens_at %}{{ form.opens_at|date:'Y-m-d\TH:i' }}{% endif %}"
+                           class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">
+                </div>
+                <div>
+                    <label for="ends_at" class="block text-sm font-semibold text-slate-700 mb-1.5">마감 일시 <span class="text-slate-400 font-normal text-xs ml-1">(선택)</span></label>
+                    <input type="datetime-local" name="ends_at" id="ends_at"
+                           value="{% if form.closes_at %}{{ form.closes_at|date:'Y-m-d\TH:i' }}{% endif %}"
+                           class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">
+                </div>
+            </div>
+
+            <div>
+                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
+                    <input type="checkbox" name="is_active" class="accent-emerald-600 w-4 h-4" {% if form.is_active %}checked{% endif %}>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-700">모집 폼 활성화</p>
+                        <p class="text-xs text-slate-400">비활성화 시 기간 설정과 관계없이 제출이 불가합니다.</p>
+                    </div>
+                </label>
+            </div>
+
+            <div class="flex gap-3 border-t border-slate-100 pt-6">
+                <a href="{% url 'recruit_list' %}"
+                   class="flex-1 text-center py-3 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
+                    취소
+                </a>
+                <button type="submit"
+                        class="flex-1 bg-emerald-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                    수정 완료
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

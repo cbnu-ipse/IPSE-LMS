@@ -18,19 +18,15 @@ from icalendar import Calendar, Event as ICalEvent
 from core.models import Schedule
 from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment,
-    Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment
+    Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
+    RecruitmentForm, RecruitmentApplication
 )
 
 
 def _user_display_name(user):
     if not user:
         return '(삭제됨)'
-
-    full_name = getattr(user, 'get_full_name', '')
-    if callable(full_name):
-        full_name = full_name()
-
-    return full_name or getattr(user, 'display_name', '') or getattr(user, 'username', '(삭제됨)')
+    return getattr(user, 'display_author', '') or getattr(user, 'username', '(삭제됨)')
 
 
 def _parse_survey_datetime(dt_str):
@@ -351,10 +347,8 @@ def poll_create(request):
         description = request.POST.get('description', '').strip()
         is_multiple = request.POST.get('is_multiple') == 'on'
         is_anonymous = request.POST.get('is_anonymous') == 'on'
-        starts_at_date = request.POST.get('starts_at_date', '').strip()
-        starts_at_time = request.POST.get('starts_at_time', '').strip()
-        ends_at_date = request.POST.get('ends_at_date', '').strip()
-        ends_at_time = request.POST.get('ends_at_time', '').strip()
+        starts_at_str = request.POST.get('starts_at', '').strip()
+        ends_at_str = request.POST.get('ends_at', '').strip()
         choice_texts = [t.strip() for t in request.POST.getlist('choices') if t.strip()]
 
         if not title:
@@ -364,18 +358,17 @@ def poll_create(request):
             messages.error(request, '선택 항목을 2개 이상 입력해주세요.')
             return redirect('poll_create')
 
-        def _parse_dt(d_str, t_str, default_time):
-            if not d_str:
+        def _parse_dt(dt_str):
+            if not dt_str:
                 return None
             try:
-                d = dt_module.date.fromisoformat(d_str)
-                t = dt_module.time.fromisoformat(t_str) if t_str else default_time
-                return timezone.make_aware(dt_module.datetime.combine(d, t))
+                naive_dt = dt_module.datetime.fromisoformat(dt_str)
+                return timezone.make_aware(naive_dt)
             except (ValueError, TypeError):
                 return None
 
-        starts_at = _parse_dt(starts_at_date, starts_at_time, dt_module.time(0, 0))
-        ends_at = _parse_dt(ends_at_date, ends_at_time, dt_module.time(23, 59))
+        starts_at = _parse_dt(starts_at_str)
+        ends_at = _parse_dt(ends_at_str)
 
         poll = Poll.objects.create(
             title=title,
@@ -401,22 +394,19 @@ def poll_edit(request, poll_id):
     if request.method == 'POST':
         title = request.POST.get('title', '').strip()
         description = request.POST.get('description', '').strip()
-        starts_at_date = request.POST.get('starts_at_date', '').strip()
-        starts_at_time = request.POST.get('starts_at_time', '').strip()
-        ends_at_date = request.POST.get('ends_at_date', '').strip()
-        ends_at_time = request.POST.get('ends_at_time', '').strip()
+        starts_at_str = request.POST.get('starts_at', '').strip()
+        ends_at_str = request.POST.get('ends_at', '').strip()
 
         if not title:
             messages.error(request, '제목을 입력해주세요.')
             return redirect('poll_edit', poll_id=poll_id)
 
-        def _parse_dt(d_str, t_str, default_time):
-            if not d_str:
+        def _parse_dt(dt_str):
+            if not dt_str:
                 return None
             try:
-                d = dt_module.date.fromisoformat(d_str)
-                t = dt_module.time.fromisoformat(t_str) if t_str else default_time
-                return timezone.make_aware(dt_module.datetime.combine(d, t))
+                naive_dt = dt_module.datetime.fromisoformat(dt_str)
+                return timezone.make_aware(naive_dt)
             except (ValueError, TypeError):
                 return None
 
@@ -425,8 +415,8 @@ def poll_edit(request, poll_id):
         poll.is_multiple = request.POST.get('is_multiple') == 'on'
         poll.is_anonymous = request.POST.get('is_anonymous') == 'on'
         poll.show_as_notice = request.POST.get('show_as_notice') == 'on'
-        poll.starts_at = _parse_dt(starts_at_date, starts_at_time, dt_module.time(0, 0))
-        poll.ends_at = _parse_dt(ends_at_date, ends_at_time, dt_module.time(23, 59))
+        poll.starts_at = _parse_dt(starts_at_str)
+        poll.ends_at = _parse_dt(ends_at_str)
         poll.save()
         messages.success(request, '투표가 수정됐습니다.')
         return redirect('poll_detail', poll_id=poll_id)
@@ -1164,4 +1154,210 @@ def survey_results_export(request, survey_id):
         writer.writerow(row)
 
     return http_response
+
+
+@staff_member_required
+def recruit_list(request):
+    """모집 폼 목록 (스태프 전용)"""
+    all_forms = RecruitmentForm.objects.all()
+    active_forms = [form for form in all_forms if not form.is_closed]
+    closed_forms = [form for form in all_forms if form.is_closed]
+    return render(request, 'community/recruit_list.html', {
+        'active_forms': active_forms,
+        'closed_forms': closed_forms,
+    })
+
+
+@staff_member_required
+def recruit_create(request):
+    """모집 폼 생성 (스태프 전용)"""
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        starts_at_str = request.POST.get('starts_at', '').strip()
+        ends_at_str = request.POST.get('ends_at', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not title:
+            messages.error(request, '제목을 입력해주세요.')
+            return redirect('recruit_create')
+
+        def _parse_dt(dt_str):
+            if not dt_str:
+                return None
+            try:
+                naive_dt = dt_module.datetime.fromisoformat(dt_str)
+                return timezone.make_aware(naive_dt)
+            except (ValueError, TypeError):
+                return None
+
+        opens_at = _parse_dt(starts_at_str)
+        closes_at = _parse_dt(ends_at_str)
+
+        RecruitmentForm.objects.create(
+            title=title,
+            description=description,
+            is_active=is_active,
+            opens_at=opens_at,
+            closes_at=closes_at,
+            created_by=request.user
+        )
+        messages.success(request, '모집 폼이 성공적으로 생성되었습니다.')
+        return redirect('recruit_list')
+
+    return render(request, 'community/recruit_create.html')
+
+
+@staff_member_required
+def recruit_edit(request, form_id):
+    """모집 폼 수정 (스태프 전용)"""
+    form_obj = get_object_or_404(RecruitmentForm, id=form_id)
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        starts_at_str = request.POST.get('starts_at', '').strip()
+        ends_at_str = request.POST.get('ends_at', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not title:
+            messages.error(request, '제목을 입력해주세요.')
+            return redirect('recruit_edit', form_id=form_id)
+
+        def _parse_dt(dt_str):
+            if not dt_str:
+                return None
+            try:
+                naive_dt = dt_module.datetime.fromisoformat(dt_str)
+                return timezone.make_aware(naive_dt)
+            except (ValueError, TypeError):
+                return None
+
+        form_obj.title = title
+        form_obj.description = description
+        form_obj.opens_at = _parse_dt(starts_at_str)
+        form_obj.closes_at = _parse_dt(ends_at_str)
+        form_obj.is_active = is_active
+        form_obj.save()
+
+        messages.success(request, '모집 폼이 수정되었습니다.')
+        return redirect('recruit_list')
+
+    return render(request, 'community/recruit_edit.html', {'form': form_obj})
+
+
+@staff_member_required
+def recruit_manage(request, form_id):
+    """지원서 관리/조회 (스태프 전용)"""
+    form_obj = get_object_or_404(RecruitmentForm, id=form_id)
+    applications = form_obj.applications.all()
+    return render(request, 'community/recruit_manage.html', {
+        'form': form_obj,
+        'applications': applications
+    })
+
+
+@staff_member_required
+def recruit_download_csv(request, form_id):
+    """지원서 CSV 다운로드 (스태프 전용)"""
+    form_obj = get_object_or_404(RecruitmentForm, id=form_id)
+    applications = form_obj.applications.all()
+
+    import csv
+    from django.http import HttpResponse
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="recruitment_{form_id}_applications.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['이름', '학번', '학과', '연락처', '지원동기', '제출시간', '제출IP'])
+
+    for app in applications:
+        local_time = timezone.localtime(app.submitted_at).strftime('%Y-%m-%d %H:%M:%S')
+        writer.writerow([
+            app.name,
+            app.student_id,
+            app.department,
+            app.contact,
+            app.motivation,
+            local_time,
+            app.ip_address or '-'
+        ])
+
+    return response
+
+
+def recruit_apply(request, form_id):
+    """비로그인 지원서 제출 (공개)"""
+    form_obj = get_object_or_404(RecruitmentForm, id=form_id)
+
+    # 마감 여부 확인
+    if form_obj.is_closed:
+        return render(request, 'community/recruit_apply.html', {
+            'form': form_obj,
+            'is_closed': True,
+            'error_message': '현재 모집 기간이 아닙니다.'
+        })
+
+    import time
+    if request.method == 'POST':
+        # 1. Honeypot 검증
+        if request.POST.get('email_confirm'):
+            return HttpResponse("Invalid submission", status=400)
+
+        # 2. 시간 검증 (3초 이내 제출 시 차단)
+        load_time_key = f'recruit_load_time_{form_id}'
+        load_time = request.session.get(load_time_key)
+        if not load_time or (time.time() - load_time < 3):
+            messages.error(request, '너무 빠른 제출입니다. 내용을 다시 확인 후 잠시 후에 다시 시도해주세요.')
+            return redirect('recruit_apply', form_id=form_id)
+
+        # 3. IP 기반 Rate Limit (1시간 최대 3회)
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+
+        one_hour_ago = timezone.now() - dt_module.timedelta(hours=1)
+        recent_count = RecruitmentApplication.objects.filter(
+            form=form_obj,
+            ip_address=ip,
+            submitted_at__gte=one_hour_ago
+        ).count()
+
+        if recent_count >= 3:
+            messages.error(request, '동일한 IP에서 너무 많은 지원서가 제출되었습니다. 1시간 뒤에 다시 시도해주세요.')
+            return redirect('recruit_apply', form_id=form_id)
+
+        name = request.POST.get('name', '').strip()
+        student_id = request.POST.get('student_id', '').strip()
+        department = request.POST.get('department', '').strip()
+        contact = request.POST.get('contact', '').strip()
+        motivation = request.POST.get('motivation', '').strip()
+
+        if not (name and student_id and department and contact and motivation):
+            messages.error(request, '필수 항목을 모두 작성해주세요.')
+            return redirect('recruit_apply', form_id=form_id)
+
+        # 지원서 저장
+        RecruitmentApplication.objects.create(
+            form=form_obj,
+            name=name,
+            student_id=student_id,
+            department=department,
+            contact=contact,
+            motivation=motivation,
+            ip_address=ip
+        )
+
+        if load_time_key in request.session:
+            del request.session[load_time_key]
+
+        messages.success(request, '지원서가 성공적으로 제출되었습니다. 지원해주셔서 감사합니다!')
+        return render(request, 'community/recruit_apply.html', {
+            'form': form_obj,
+            'is_success': True
+        })
+
+    request.session[f'recruit_load_time_{form_id}'] = time.time()
+    return render(request, 'community/recruit_apply.html', {'form': form_obj})
 
