@@ -347,8 +347,10 @@ def poll_create(request):
         description = request.POST.get('description', '').strip()
         is_multiple = request.POST.get('is_multiple') == 'on'
         is_anonymous = request.POST.get('is_anonymous') == 'on'
-        starts_at_str = request.POST.get('starts_at', '').strip()
-        ends_at_str = request.POST.get('ends_at', '').strip()
+        starts_at_date = request.POST.get('starts_at_date', '').strip()
+        starts_at_time = request.POST.get('starts_at_time', '').strip()
+        ends_at_date = request.POST.get('ends_at_date', '').strip()
+        ends_at_time = request.POST.get('ends_at_time', '').strip()
         choice_texts = [t.strip() for t in request.POST.getlist('choices') if t.strip()]
 
         if not title:
@@ -358,17 +360,18 @@ def poll_create(request):
             messages.error(request, '선택 항목을 2개 이상 입력해주세요.')
             return redirect('poll_create')
 
-        def _parse_dt(dt_str):
-            if not dt_str:
+        def _parse_dt(d_str, t_str, default_time):
+            if not d_str:
                 return None
             try:
-                naive_dt = dt_module.datetime.fromisoformat(dt_str)
-                return timezone.make_aware(naive_dt)
+                d = dt_module.date.fromisoformat(d_str)
+                t = dt_module.time.fromisoformat(t_str) if t_str else default_time
+                return timezone.make_aware(dt_module.datetime.combine(d, t))
             except (ValueError, TypeError):
                 return None
 
-        starts_at = _parse_dt(starts_at_str)
-        ends_at = _parse_dt(ends_at_str)
+        starts_at = _parse_dt(starts_at_date, starts_at_time, dt_module.time(0, 0))
+        ends_at = _parse_dt(ends_at_date, ends_at_time, dt_module.time(23, 59))
 
         poll = Poll.objects.create(
             title=title,
@@ -394,19 +397,22 @@ def poll_edit(request, poll_id):
     if request.method == 'POST':
         title = request.POST.get('title', '').strip()
         description = request.POST.get('description', '').strip()
-        starts_at_str = request.POST.get('starts_at', '').strip()
-        ends_at_str = request.POST.get('ends_at', '').strip()
+        starts_at_date = request.POST.get('starts_at_date', '').strip()
+        starts_at_time = request.POST.get('starts_at_time', '').strip()
+        ends_at_date = request.POST.get('ends_at_date', '').strip()
+        ends_at_time = request.POST.get('ends_at_time', '').strip()
 
         if not title:
             messages.error(request, '제목을 입력해주세요.')
             return redirect('poll_edit', poll_id=poll_id)
 
-        def _parse_dt(dt_str):
-            if not dt_str:
+        def _parse_dt(d_str, t_str, default_time):
+            if not d_str:
                 return None
             try:
-                naive_dt = dt_module.datetime.fromisoformat(dt_str)
-                return timezone.make_aware(naive_dt)
+                d = dt_module.date.fromisoformat(d_str)
+                t = dt_module.time.fromisoformat(t_str) if t_str else default_time
+                return timezone.make_aware(dt_module.datetime.combine(d, t))
             except (ValueError, TypeError):
                 return None
 
@@ -415,8 +421,8 @@ def poll_edit(request, poll_id):
         poll.is_multiple = request.POST.get('is_multiple') == 'on'
         poll.is_anonymous = request.POST.get('is_anonymous') == 'on'
         poll.show_as_notice = request.POST.get('show_as_notice') == 'on'
-        poll.starts_at = _parse_dt(starts_at_str)
-        poll.ends_at = _parse_dt(ends_at_str)
+        poll.starts_at = _parse_dt(starts_at_date, starts_at_time, dt_module.time(0, 0))
+        poll.ends_at = _parse_dt(ends_at_date, ends_at_time, dt_module.time(23, 59))
         poll.save()
         messages.success(request, '투표가 수정됐습니다.')
         return redirect('poll_detail', poll_id=poll_id)
@@ -1360,4 +1366,3 @@ def recruit_apply(request, form_id):
 
     request.session[f'recruit_load_time_{form_id}'] = time.time()
     return render(request, 'community/recruit_apply.html', {'form': form_obj})
-
