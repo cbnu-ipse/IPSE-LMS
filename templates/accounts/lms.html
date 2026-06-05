@@ -81,38 +81,82 @@
         <div class="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-sm text-rose-700 font-medium">
             <i class="fa-solid fa-circle-exclamation mr-2"></i>성적을 불러오는 중 오류가 발생했습니다: {{ error_msg }}
         </div>
-        {% elif grade_courses %}
-        <div class="space-y-4">
-            <h2 class="text-lg font-bold text-slate-800">성적 현황</h2>
-            {% for course in grade_courses %}
-            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="px-6 py-4 bg-slate-50 border-b border-slate-100">
-                    <p class="font-semibold text-slate-800 text-sm">{{ course.name }}</p>
-                </div>
-                {% if course.items %}
-                <div class="divide-y divide-slate-100">
-                    {% for item in course.items %}
-                    <div class="px-6 py-3 flex items-center justify-between">
-                        <span class="text-sm text-slate-600">{{ item.name }}</span>
-                        <div class="flex items-center gap-3">
-                            {% if item.max %}
-                            <span class="text-xs text-slate-400">/ {{ item.max|floatformat:0 }}</span>
-                            {% endif %}
-                            <span class="text-sm font-bold
-                                {% if item.grade == '-' %}text-slate-400
-                                {% else %}text-emerald-600{% endif %}">
-                                {{ item.grade }}
-                            </span>
-                        </div>
+        {% elif sorted_semesters %}
+        <div class="space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h2 class="text-lg font-bold text-slate-800">성적 현황</h2>
+                <div class="relative min-w-[180px]">
+                    <select id="semester-select" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition cursor-pointer appearance-none pr-8 shadow-sm">
+                        {% for semester in sorted_semesters %}
+                        <option value="semester-{{ forloop.counter }}">{{ semester.semester_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
                     </div>
-                    {% endfor %}
                 </div>
-                {% else %}
-                <p class="px-6 py-4 text-sm text-slate-400">성적 항목이 없습니다.</p>
-                {% endif %}
+            </div>
+
+            {% for semester in sorted_semesters %}
+            <div id="semester-{{ forloop.counter }}" class="semester-pane space-y-4 {% if not forloop.first %}hidden{% endif %}">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div class="flex items-center gap-2 pb-4 border-b border-slate-100 mb-4">
+                        <i class="fa-solid fa-graduation-cap text-sky-600"></i>
+                        <span class="font-bold text-slate-800 text-sm">{{ semester.semester_name }}</span>
+                        <span class="text-xs font-normal text-slate-400">({{ semester.courses|length }}개 과목)</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {% for course in semester.courses %}
+                        <div class="rounded-xl border border-slate-150 bg-slate-50/20 overflow-hidden shadow-sm flex flex-col justify-between">
+                            <div>
+                                <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                                    <p class="font-bold text-slate-700 text-sm truncate flex-1 pr-2">{{ course.name }}</p>
+                                </div>
+                                {% if course.items %}
+                                <div class="divide-y divide-slate-100 bg-white">
+                                    {% for item in course.items %}
+                                    <div class="px-5 py-3.5 flex items-center justify-between text-xs md:text-sm">
+                                        <span class="text-slate-600 font-medium">{{ item.name }}</span>
+                                        <div class="flex items-center gap-3">
+                                            {% if item.max %}
+                                            <span class="text-[11px] text-slate-400">/ {{ item.max|floatformat:0 }}</span>
+                                            {% endif %}
+                                            <span class="font-bold {% if item.grade == '-' %}text-slate-400{% else %}text-emerald-600{% endif %}">
+                                                {{ item.grade }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="px-5 py-4 text-xs md:text-sm text-slate-400 bg-white">성적 항목이 없습니다.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
             {% endfor %}
         </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const select = document.getElementById('semester-select');
+            if (select) {
+                select.addEventListener('change', function() {
+                    document.querySelectorAll('.semester-pane').forEach(pane => {
+                        pane.classList.add('hidden');
+                    });
+                    const activePane = document.getElementById(this.value);
+                    if (activePane) {
+                        activePane.classList.remove('hidden');
+                    }
+                });
+            }
+        });
+        </script>
         {% else %}
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center text-slate-400">
             <i class="fa-regular fa-clipboard text-2xl mb-2 block"></i>

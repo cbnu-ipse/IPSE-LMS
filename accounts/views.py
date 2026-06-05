@@ -486,34 +486,66 @@ def lms_page(request):
                             skipped += 1
                             continue
                         external_id = f"lms:assign:{assign['id']}"
-                        if Schedule.objects.filter(user=request.user, external_id=external_id).exists():
-                            skipped += 1
-                            continue
+                        
+                        is_completed = False
+                        try:
+                            sub_status = _lms_call(token, "mod_assign_get_submission_status", assignid=assign['id'])
+                            submission = sub_status.get("lastattempt", {}).get("submission", {})
+                            if submission and submission.get("status") == "submitted":
+                                is_completed = True
+                        except Exception:
+                            pass
+
                         due_dt = datetime.datetime.fromtimestamp(duedate_ts, tz=datetime.timezone.utc)
-                        Schedule.objects.create(
+                        schedule_obj, created = Schedule.objects.update_or_create(
                             user=request.user,
-                            title=f"[과제] {assign['name']}",
-                            description=f"{course_name}\n마감: {due_dt.strftime('%Y-%m-%d %H:%M')}",
-                            start_date=due_dt,
-                            end_date=None,
-                            is_global=False,
                             external_id=external_id,
+                            defaults={
+                                "title": f"[과제] {assign['name']}",
+                                "description": f"{course_name}\n마감: {due_dt.strftime('%Y-%m-%d %H:%M')}",
+                                "start_date": due_dt,
+                                "end_date": None,
+                                "is_global": False,
+                                "is_completed": is_completed,
+                            }
                         )
-                        imported += 1
+                        if created:
+                            imported += 1
+                        else:
+                            skipped += 1
                 messages.success(request, f"과제 {imported}개를 캘린더에 추가했습니다. (중복 {skipped}개 건너뜀)")
             except Exception as e:
                 messages.error(request, f"과제 가져오기 실패: {e}")
             return redirect("lms_page")
 
     # ── GET: 성적 조회 ─────────────────────────────────────────────
-    grade_courses = []
+    grade_semesters = {}
     error_msg = None
     if lms_token_obj:
         try:
             token = lms_token_obj.token
             moodle_uid = lms_token_obj.moodle_user_id
             courses = _lms_call(token, "core_enrol_get_users_courses", userid=moodle_uid)
+            
+            import datetime
+            def _get_semester(ts):
+                try:
+                    # ts: unix timestamp
+                    dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+                    if 3 <= dt.month <= 8:
+                        return (dt.year, 1)
+                    elif dt.month >= 9:
+                        return (dt.year, 2)
+                    else:
+                        return (dt.year - 1, 2)
+                except Exception:
+                    now = datetime.datetime.now()
+                    return (now.year, 1)
+
             for course in courses:
+                startdate = course.get("startdate", 0)
+                sem = _get_semester(startdate)
+                
                 try:
                     grade_items = _lms_call(
                         token,
@@ -522,7 +554,7 @@ def lms_page(request):
                         userid=moodle_uid,
                     )
                     items = grade_items.get("usergrades", [{}])[0].get("gradeitems", [])
-                    grade_courses.append({
+                    course_data = {
                         "name": course["fullname"],
                         "items": [
                             {
@@ -533,14 +565,25 @@ def lms_page(request):
                             }
                             for it in items
                         ],
-                    })
+                    }
                 except Exception:
-                    grade_courses.append({"name": course["fullname"], "items": []})
+                    course_data = {"name": course["fullname"], "items": []}
+                
+                if sem not in grade_semesters:
+                    grade_semesters[sem] = []
+                grade_semesters[sem].append(course_data)
         except Exception as e:
             error_msg = str(e)
 
+    sorted_semesters = []
+    for sem in sorted(grade_semesters.keys(), key=lambda x: (x[0], x[1]), reverse=True):
+        sorted_semesters.append({
+            "semester_name": f"{sem[0]}학년도 {sem[1]}학기",
+            "courses": grade_semesters[sem]
+        })
+
     return render(request, "accounts/lms.html", {
         "lms_token": lms_token_obj,
-        "grade_courses": grade_courses,
+        "sorted_semesters": sorted_semesters,
         "error_msg": error_msg,
     })
