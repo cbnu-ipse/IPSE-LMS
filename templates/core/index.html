@@ -28,7 +28,18 @@
                                 프로필 커스텀
                             </a>
                         </div>
-                        <h3 class="text-2xl font-semibold text-[#3F3F3F]">{{ request.user.display_name }}</h3>
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <h3 class="text-2xl font-semibold text-[#3F3F3F]">{{ request.user.display_name }}</h3>
+                            {% if request.user.lms_token %}
+                            <a href="{% url 'lms_page' %}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 transition hover:bg-emerald-100">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> LMS 연동 완료
+                            </a>
+                            {% else %}
+                            <a href="{% url 'lms_page' %}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 transition hover:bg-slate-200">
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> LMS 미연동
+                            </a>
+                            {% endif %}
+                        </div>
                         <p class="text-sm text-slate-500 font-medium mt-1">
                             {% if request.user.student and request.user.student.bio %}
                                 {{ request.user.student.bio }}
@@ -178,6 +189,36 @@
                             {% endfor %}
                         </ul>
                 </div>
+
+                <!-- 미완료 과제 카드 -->
+                {% if incomplete_assignments %}
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-rose-500 text-lg"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                            <h3 class="text-xl font-semibold text-[#3F3F3F]">미완료 과제</h3>
+                        </div>
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
+                            {{ incomplete_assignments|length }}개 남음
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        {% for assign in incomplete_assignments %}
+                        <div class="flex items-start justify-between p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 transition">
+                            <div class="min-w-0 flex-1 pr-3">
+                                <p class="text-xs font-bold text-emerald-600 mb-0.5">{{ assign.course_name }}</p>
+                                <h4 class="text-sm font-semibold text-slate-800 truncate">{{ assign.title }}</h4>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <span class="inline-block text-xs font-bold px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700 shadow-sm">
+                                    D-{{ assign.start_date|timeuntil }}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
                     
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                     <h3 class="text-xl font-semibold text-[#3F3F3F] mb-6">모든 활동들을 한 눈에 모아보세요.</h3>

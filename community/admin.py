@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote,
-    Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment
+    Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
+    RecruitmentForm, RecruitmentApplication
 )
 
 
@@ -188,3 +189,41 @@ class SurveyCommentAdmin(admin.ModelAdmin):
     def content_preview(self, obj):
         return obj.content[:50] + ('...' if len(obj.content) > 50 else '')
     content_preview.short_description = '댓글 내용'
+
+
+# ─────────────────────────────────────────────
+# 동아리 모집 (Recruitment) Admin
+# ─────────────────────────────────────────────
+
+class RecruitmentApplicationInline(admin.TabularInline):
+    model = RecruitmentApplication
+    extra = 0
+    readonly_fields = ('name', 'student_id', 'department', 'contact', 'motivation', 'submitted_at', 'ip_address')
+    can_delete = True
+
+
+@admin.register(RecruitmentForm)
+class RecruitmentFormAdmin(admin.ModelAdmin):
+    list_display = ('title', 'created_by', 'status_display', 'application_count', 'opens_at', 'closes_at', 'created_at')
+    list_filter = ('is_active', 'opens_at', 'closes_at')
+    search_fields = ('title', 'created_by__username')
+    inlines = [RecruitmentApplicationInline]
+
+    def status_display(self, obj):
+        if obj.is_closed:
+            return format_html('<span style="color:#ef4444;font-weight:600;">✕ 마감</span>')
+        return format_html('<span style="color:#10b981;font-weight:600;">✓ 진행중</span>')
+    status_display.short_description = '상태'
+
+    def application_count(self, obj):
+        return obj.applications.count()
+    application_count.short_description = '지원자 수'
+
+
+@admin.register(RecruitmentApplication)
+class RecruitmentApplicationAdmin(admin.ModelAdmin):
+    list_display = ('form', 'name', 'student_id', 'department', 'contact', 'submitted_at', 'ip_address')
+    list_filter = ('form', 'submitted_at')
+    search_fields = ('name', 'student_id', 'department', 'form__title')
+    readonly_fields = ('form', 'name', 'student_id', 'department', 'contact', 'motivation', 'submitted_at', 'ip_address')
+    ordering = ('-submitted_at',)

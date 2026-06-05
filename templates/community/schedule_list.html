@@ -288,19 +288,21 @@ document.addEventListener('DOMContentLoaded', function () {
                         ? new Date(ev.start)
                         : new Date((ev.start || dateStr) + 'T23:59:59');
                 })();
+                const isLms = ev.extendedProps && ev.extendedProps.is_lms;
+                const isCompleted = ev.extendedProps && ev.extendedProps.is_completed;
+                const isIncompleteLms = isLms && !isCompleted;
                 const isPast = evDt < now;
 
-                // 색상 (이벤트별 고유 색상)
-                const evColor = isPast ? '#cbd5e1' : hashColor(ev.id);
+                // 색상 (이벤트별 고유 색상, 미완료 LMS 과제이거나 과거는 회색)
+                const evColor = (isPast || isIncompleteLms) ? '#94a3b8' : hashColor(ev.id);
                 const evColorLight = evColor + '33';
-                const titleCls = isPast ? 'text-slate-400' : 'text-slate-800';
+                const titleCls = (isPast || isIncompleteLms) ? 'text-slate-400' : 'text-slate-800';
                 const startDate = ev.start ? ev.start.slice(0,10) : dateStr;
                 const endDate   = ev.end   ? ev.end.slice(0,10)   : null;
                 const isMultiDay = endDate && endDate !== startDate;
                 let timeStr;
                 if (isMultiDay) {
                     const fmt = s => { const p=s.split('-'); return (+p[1])+'/'+(+p[2]); };
-                    // FC all-day end는 exclusive (+1일): date-only 문자열이면 1일 빼서 표시
                     let displayEnd = endDate;
                     if (ev.end && ev.end.length <= 10) {
                         const d = new Date(endDate + 'T12:00:00');
@@ -310,6 +312,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     timeStr = fmt(startDate) + ' ~ ' + fmt(displayEnd);
                 } else {
                     timeStr = (ev.start && ev.start.length > 10) ? ev.start.slice(11,16) : '하루 종일';
+                }
+
+                let titlePrefix = '';
+                if (isLms) {
+                    titlePrefix = isCompleted 
+                        ? '<span class="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 border border-emerald-200 mr-1.5 shrink-0">제출완료</span>'
+                        : '<span class="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 border border-slate-200 mr-1.5 shrink-0">미제출</span>';
                 }
 
                 const item = document.createElement('div');
@@ -325,7 +334,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     + '</div>'
                     + '<div class="flex-1 min-w-0 pb-3">'
                     + '<p class="text-[11px] font-medium text-slate-400 mb-0.5">'+timeStr+'</p>'
-                    + '<p class="text-sm font-semibold '+titleCls+' truncate">'+ev.title+'</p>'
+                    + '<p class="text-sm font-semibold '+titleCls+' truncate flex items-center">'+titlePrefix+ev.title+'</p>'
                     + (desc ? '<p class="text-[11px] text-slate-400 truncate mt-0.5">'+desc+'</p>' : '')
                     + '</div>';
 

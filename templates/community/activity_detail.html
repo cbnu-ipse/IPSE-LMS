@@ -78,10 +78,10 @@
                 <div class="p-5 rounded-xl border border-slate-200 bg-white">
                     <div class="flex items-center justify-between gap-4 mb-3">
                         <div class="flex items-center space-x-3">
-                            <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.username }}" class="w-10 h-10 rounded-full object-cover border border-slate-200">
+                            <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.display_author }}" class="w-10 h-10 rounded-full object-cover border border-slate-200">
                             <div>
                                 <div class="flex items-center gap-2">
-                                    <p class="font-bold text-sm text-slate-700">{{ comment.author.username }}</p>
+                                    <p class="font-bold text-sm text-slate-700">{{ comment.author.display_author }}</p>
                                     {% if comment.author.role_badge_label %}
                                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ comment.author.role_badge_class }}">{{ comment.author.role_badge_label }}</span>
                                     {% endif %}

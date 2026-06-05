@@ -34,4 +34,10 @@ urlpatterns = [
     path('schedules/calendar.ics', views.global_calendar_feed, name='global_calendar_feed'),
     path('schedules/personal/<str:token>/calendar.ics', views.personal_calendar_feed, name='personal_calendar_feed'),
     path('schedules/subscribe/', views.calendar_subscribe, name='calendar_subscribe'),
+    # 신규 동아리 부원 모집
+    path('recruitment/', views.recruit_list, name='recruit_list'),
+    path('recruitment/create/', views.recruit_create, name='recruit_create'),
+    path('recruitment/<int:form_id>/edit/', views.recruit_edit, name='recruit_edit'),
+    path('recruitment/<int:form_id>/manage/', views.recruit_manage, name='recruit_manage'),
+    path('recruitment/<int:form_id>/csv/', views.recruit_download_csv, name='recruit_download_csv'),
 ]

@@ -76,6 +76,31 @@ class User(AbstractUser):
         return self.username
 
     @property
+    def display_author(self):
+        """댓글, 공지, 투표, 설문 등 작성자 표시용 포맷:
+        이름(성+이름)이 있으면 '[학번 앞2자리] 이름', 없으면 '학번(username)'
+        """
+        last = self.last_name or ""
+        first = self.first_name or ""
+        name = f"{last}{first}".strip()
+        
+        if name:
+            un = self.username or ""
+            prefix = ""
+            if un.isdigit():
+                if len(un) >= 9 and (un.startswith('20') or un.startswith('19')):
+                    prefix = un[2:4]
+                else:
+                    prefix = un[:2]
+            else:
+                prefix = un[:2]
+            
+            if prefix:
+                return f"[{prefix}] {name}"
+            return name
+        return self.username
+
+    @property
     def get_user_role(self):
         """사이트에서 표시할 역할 문자열을 반환합니다."""
         if self.is_superuser:

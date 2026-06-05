@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% block title %}{{ form.title }} - 지원서 작성{% endblock %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto px-6 py-12">
+    <div class="space-y-8">
+        
+        <!-- 모집 폼 헤더 및 카드 -->
+        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-3xl p-8 text-white shadow-md">
+            <div class="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold backdrop-blur-md mb-4">
+                <i class="fa-solid fa-sparkles text-[10px]"></i>
+                동아리 모집 신청서
+            </div>
+            <h1 class="text-2xl md:text-3xl font-bold tracking-tight mb-3">{{ form.title }}</h1>
+            {% if form.description %}
+            <p class="text-sm text-emerald-50/90 whitespace-pre-wrap leading-relaxed border-t border-white/10 pt-4 mt-2">
+                {{ form.description }}
+            </p>
+            {% endif %}
+        </div>
+
+        {% if messages %}
+        <div class="space-y-2">
+            {% for message in messages %}
+            <div class="px-5 py-4 rounded-2xl text-sm font-medium border
+                {% if message.tags == 'success' %}bg-emerald-50 text-emerald-700 border-emerald-200
+                {% else %}bg-rose-50 text-rose-700 border-rose-200{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if is_success %}
+        <!-- 제출 완료 화면 -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-center space-y-6 py-16">
+            <div class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-2xl animate-bounce">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">지원서가 제출되었습니다</h2>
+                <p class="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    동아리 부원 모집에 지원해 주셔서 감사합니다.<br>서류 검토 후 입력해주신 연락처로 개별 연락드릴 예정입니다.
+                </p>
+            </div>
+        </div>
+
+        {% elif is_closed %}
+        <!-- 모집 종료 화면 -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-center space-y-4 py-16">
+            <div class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 text-rose-500 text-2xl">
+                <i class="fa-solid fa-hourglass-end"></i>
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">모집이 종료되었습니다</h2>
+                <p class="text-sm text-slate-500 max-w-sm mx-auto">
+                    {{ error_message|default:"현재 모집 신청 기간이 아닙니다. 다음 기회에 지원해주세요." }}
+                </p>
+            </div>
+        </div>
+
+        {% else %}
+        <!-- 지원서 작성 폼 -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
+            <form method="POST" id="recruitment-apply-form" class="space-y-6">
+                {% csrf_token %}
+
+                <!-- Honeypot 필드 (스팸 봇 방지용, 사용자에게 보이지 않음) -->
+                <div style="display: none !important;">
+                    <label for="email_confirm">인증 메일 확인</label>
+                    <input type="text" name="email_confirm" id="email_confirm" autocomplete="off" tabindex="-1">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">지원자 이름 <span class="text-rose-500">*</span></label>
+                    <input type="text" name="name" required placeholder="본인의 이름을 입력하세요"
+                           class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/30">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1.5">학번 <span class="text-rose-500">*</span></label>
+                        <input type="text" name="student_id" required placeholder="예: 202612345"
+                               class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/30">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1.5">학과 <span class="text-rose-500">*</span></label>
+                        <input type="text" name="department" required placeholder="예: 컴퓨터공학과"
+                               class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/30">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">연락처 <span class="text-rose-500">*</span></label>
+                    <input type="text" name="contact" required placeholder="예: 010-1234-5678"
+                           class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/30">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">지원 동기 및 각오 <span class="text-rose-500">*</span></label>
+                    <textarea name="motivation" required rows="8" placeholder="IPSE 동아리에 지원하게 된 동기와 입부 후 활동 각오를 상세히 기술해 주세요."
+                              class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/30 leading-relaxed"></textarea>
+                </div>
+
+                <!-- 제출 버튼 -->
+                <div class="border-t border-slate-100 pt-6">
+                    <button type="submit" id="submit-btn" disabled
+                            class="w-full bg-emerald-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        지원서 제출하기 (봇 방지를 위해 3초 대기 중...)
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+    </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('recruitment-apply-form');
+    if (form) {
+        const submitBtn = document.getElementById('submit-btn');
+        let countdown = 3;
+        
+        // 3초 카운트다운을 통해 봇의 고속 자동 제출 방지
+        const timer = setInterval(() => {
+            countdown--;
+            if (countdown <= 0) {
+                clearInterval(timer);
+                submitBtn.disabled = false;
+                submitBtn.innerText = '지원서 제출하기';
+            } else {
+                submitBtn.innerText = `지원서 제출하기 (봇 방지를 위해 ${countdown}초 대기 중...)`;
+            }
+        }, 1000);
+
+        form.addEventListener('submit', function(e) {
+            // 이중 서브밋 방지
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>제출 중...';
+        });
+    }
+});
+</script>
+{% endblock %}

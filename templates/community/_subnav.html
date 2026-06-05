@@ -15,4 +15,10 @@
        class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 {% if active_tab == 'survey' %}border-emerald-600 text-emerald-700 -mb-px bg-white{% else %}border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px{% endif %}">
         설문
     </a>
+    {% if request.user.is_staff %}
+    <a href="{% url 'recruit_list' %}"
+       class="px-5 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 {% if active_tab == 'recruit' %}border-emerald-600 text-emerald-700 -mb-px bg-white{% else %}border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 transition -mb-px{% endif %}">
+        모집 관리
+    </a>
+    {% endif %}
 </div>

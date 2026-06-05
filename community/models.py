@@ -243,3 +243,60 @@ class SurveyComment(models.Model):
 
     def __str__(self):
         return f"{self.author} - {self.survey}"
+
+
+# ─────────────────────────────────────────────
+# 동아리 부원 모집 (Recruitment)
+# ─────────────────────────────────────────────
+
+class RecruitmentForm(models.Model):
+    """모집 폼 (어드민이 생성/관리)"""
+    title = models.CharField(max_length=200, verbose_name="모집 제목")
+    description = models.TextField(blank=True, verbose_name="모집 설명")
+    is_active = models.BooleanField(default=True, verbose_name="활성 여부")
+    opens_at = models.DateTimeField(null=True, blank=True, verbose_name="시작 일시")
+    closes_at = models.DateTimeField(null=True, blank=True, verbose_name="마감 일시")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recruitments_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_closed(self):
+        if not self.is_active:
+            return True
+        if self.closes_at and timezone.now() > self.closes_at:
+            return True
+        if self.opens_at and timezone.now() < self.opens_at:
+            return True
+        return False
+
+
+class RecruitmentApplication(models.Model):
+    """지원서 제출 (로그인 불필요)"""
+    form = models.ForeignKey(
+        RecruitmentForm,
+        on_delete=models.CASCADE,
+        related_name="applications",
+    )
+    name = models.CharField(max_length=50, verbose_name="이름")
+    student_id = models.CharField(max_length=20, verbose_name="학번")
+    department = models.CharField(max_length=100, verbose_name="학과")
+    contact = models.CharField(max_length=50, verbose_name="연락처")
+    motivation = models.TextField(verbose_name="지원 동기")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="제출 IP")
+
+    class Meta:
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"{self.form.title} — {self.name}({self.student_id})"
