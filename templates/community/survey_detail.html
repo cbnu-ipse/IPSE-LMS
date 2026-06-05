@@ -105,7 +105,11 @@
             {% endif %}
         </form>
         {% elif has_responded and existing_response %}
-        <div class="space-y-4 mb-6">
+        <div id="respondedView" class="space-y-4 mb-6">
+            <div class="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <i class="fas fa-circle-check text-emerald-500"></i>
+                <span class="text-sm font-medium text-emerald-700">이미 응답을 제출하셨습니다.</span>
+            </div>
             {% for question in questions %}
             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
                 <div class="flex items-start justify-between gap-3">
@@ -120,7 +124,63 @@
                 <p class="mt-3 text-sm text-slate-600">{% if question.current_answer %}{% if question.current_answer.choice %}{{ question.current_answer.choice.choice_text }}{% elif question.current_answer.text_answer %}{{ question.current_answer.text_answer }}{% elif question.current_answer.scale_answer %}{{ question.current_answer.scale_answer }}점{% else %}미응답{% endif %}{% else %}미응답{% endif %}</p>
             </div>
             {% endfor %}
+                <button type="button" id="reAnswerBtn"
+                    class="w-full rounded-xl border border-emerald-600 bg-emerald-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">
+                <i class="fas fa-pen mr-1.5"></i> 다시 응답하기
+            </button>
         </div>
+        <form id="reAnswerForm" class="hidden space-y-4 mb-6">
+            {% csrf_token %}
+            <input type="hidden" name="response_id" value="{{ existing_response.id }}">
+            <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-700">
+                이전에 제출한 응답을 수정하고 있습니다. 다시 제출하면 본인 응답이 갱신됩니다.
+            </div>
+            {% for question in questions %}
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-6 shadow-sm">
+                <div class="mb-4">
+                    <label class="block text-base font-semibold text-slate-800 leading-7">
+                        {{ forloop.counter }}. {{ question.question_text }}
+                        <span class="ml-2 inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{{ question.get_question_type_display }}</span>
+                    </label>
+                    {% if question.question_description %}
+                    <p class="mt-1 text-sm text-slate-500">{{ question.question_description }}</p>
+                    {% endif %}
+                </div>
+                {% if question.question_type == 'CHOICE' %}
+                <div class="space-y-3">
+                    {% for choice in question.choices.all %}
+                    <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 transition">
+                        <input class="mt-1 h-4 w-4 border-slate-300 text-emerald-600 focus:ring-emerald-500" type="radio" name="question_{{ question.id }}" value="{{ choice.id }}" {% if question.current_answer and question.current_answer.choice_id == choice.id %}checked{% endif %} required>
+                        <span class="text-sm font-medium text-slate-700">{{ choice.choice_text }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if question.question_type == 'TEXT' %}
+                <textarea class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" name="question_{{ question.id }}" rows="4" placeholder="답변을 입력하세요..." required>{{ question.current_answer.text_answer|default:'' }}</textarea>
+                {% endif %}
+                {% if question.question_type == 'SCALE' %}
+                <div class="grid grid-cols-5 gap-3">
+                    {% for i in scale_options %}
+                    <label class="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-4 transition">
+                        <input class="h-4 w-4 border-slate-300 text-emerald-600 focus:ring-emerald-500" type="radio" name="question_{{ question.id }}" value="{{ i }}" {% if question.current_answer and question.current_answer.scale_answer == i %}checked{% endif %} required>
+                        <span class="mt-2 text-sm font-semibold text-slate-700">{{ i }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="flex gap-3">
+                <button type="button" id="cancelReAnswerBtn"
+                        class="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
+                    취소
+                </button>
+                <button type="submit" class="flex-1 rounded-xl bg-slate-700 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800" id="reAnswerSubmitBtn">
+                    응답 수정 저장
+                </button>
+            </div>
+        </form>
         {% endif %}
 
         {% if can_manage_survey %}
@@ -149,10 +209,10 @@
             <div class="p-5 rounded-xl border border-slate-200 bg-white">
                 <div class="flex items-center justify-between gap-4 mb-3">
                     <div class="flex items-center space-x-3">
-                        <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.username }}" class="w-9 h-9 rounded-full object-cover border border-slate-200">
+                        <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.display_author }}" class="w-9 h-9 rounded-full object-cover border border-slate-200">
                         <div>
                             <div class="flex items-center gap-2">
-                                <p class="font-bold text-sm text-slate-700">{{ comment.author.display_name }}</p>
+                                <p class="font-bold text-sm text-slate-700">{{ comment.author.display_author }}</p>
                                 {% if comment.author.role_badge_label %}<span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ comment.author.role_badge_class }}">{{ comment.author.role_badge_label }}</span>{% endif %}
                             </div>
                             <p class="text-xs text-slate-400">{{ comment.created_at|date:"Y.m.d. H:i" }}</p>
@@ -266,6 +326,54 @@ document.getElementById('surveyForm')?.addEventListener('submit', async function
         const data = await response.json();
         if (response.ok) {
             showToast(data.message || '응답이 저장되었습니다.', 'success');
+            window.setTimeout(() => { window.location.href = '{% url "survey_detail" survey.id %}'; }, 450);
+        } else {
+            showToast(data.error || '오류가 발생했습니다.', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (error) {
+        showToast('제출 중 오류가 발생했습니다.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
+
+// 재응답 폼 토글
+const reAnswerBtn = document.getElementById('reAnswerBtn');
+const cancelReAnswerBtn = document.getElementById('cancelReAnswerBtn');
+const reAnswerForm = document.getElementById('reAnswerForm');
+const respondedView = document.getElementById('respondedView');
+if (reAnswerBtn && reAnswerForm && respondedView) {
+    reAnswerBtn.addEventListener('click', () => {
+        respondedView.classList.add('hidden');
+        reAnswerForm.classList.remove('hidden');
+    });
+    cancelReAnswerBtn?.addEventListener('click', () => {
+        reAnswerForm.classList.add('hidden');
+        respondedView.classList.remove('hidden');
+    });
+}
+reAnswerForm?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const submitBtn = document.getElementById('reAnswerSubmitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+    const formData = new FormData(this);
+    const answers = {};
+    for (const [key, value] of formData.entries()) {
+        if (key !== 'csrfmiddlewaretoken') answers[key] = value;
+    }
+    try {
+        const response = await fetch('{% url "survey_respond" survey.id %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': formData.get('csrfmiddlewaretoken') },
+            body: JSON.stringify(answers)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showToast(data.message || '응답이 수정되었습니다.', 'success');
             window.setTimeout(() => { window.location.href = '{% url "survey_detail" survey.id %}'; }, 450);
         } else {
             showToast(data.error || '오류가 발생했습니다.', 'error');
