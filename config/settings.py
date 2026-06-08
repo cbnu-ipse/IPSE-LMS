@@ -14,12 +14,13 @@ DEBUG = config("DEBUG", default=True, cast=bool)
 # config/settings.py 파일 내부
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS", 
-    default="cbnu-ipse.co.kr, 10.255.81.163, 127.0.0.1, localhost, 192.168.0.8, 192.168.206.128", 
+    default=".cbnu-ipse.co.kr, cbnu-ipse.co.kr, 10.255.81.163, 127.0.0.1, .localhost, localhost, 192.168.0.8, 192.168.206.128", 
     cast=Csv()
 )
 
 CSRF_TRUSTED_ORIGINS = [
     "https://cbnu-ipse.co.kr",
+    "https://judge.cbnu-ipse.co.kr",
 ]
 
 
@@ -37,6 +38,7 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    "django_hosts",
     "rest_framework",
     "django_filters",
 ]
@@ -58,6 +60,7 @@ PROJECT_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 
 MIDDLEWARE = [
+    "django_hosts.middleware.HostsRequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -66,9 +69,16 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_hosts.middleware.HostsResponseMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
+ROOT_HOSTCONF = "config.hosts"
+DEFAULT_HOST = "community"
+PARENT_HOST = config("PARENT_HOST", default="lvh.me:8000")
+SESSION_COOKIE_DOMAIN = config("SESSION_COOKIE_DOMAIN", default=".lvh.me")
+CSRF_COOKIE_DOMAIN = config("CSRF_COOKIE_DOMAIN", default=".lvh.me")
+LOGIN_URL = f"//{PARENT_HOST}/accounts/login/"
 
 TEMPLATES = [
     {
@@ -175,3 +185,5 @@ LOGGING = {
 
 STUDENT_ID_PREFIX = config("STUDENT_ID_PREFIX", default="ugr")
 LECTURER_ID_PREFIX = config("LECTURER_ID_PREFIX", default="lec")
+
+# Trigger reload to pick up ALLOWED_HOSTS update (with .lvh.me) in .env
