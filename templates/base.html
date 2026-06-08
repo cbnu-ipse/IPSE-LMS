@@ -34,46 +34,65 @@
         <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-stretch">
 
             <div class="flex items-center gap-10">
+                {% if request.host.name == 'judge' %}
+                <a href="{% host_url 'community_main' host 'community' %}" class="flex items-center gap-2.5 group text-emerald-600 hover:text-emerald-700 transition">
+                    <i class="fa-solid fa-arrow-left text-lg group-hover:-translate-x-1 transition duration-200"></i>
+                    <span class="text-xl font-bold tracking-[-0.03em] leading-none">
+                        잎새로 돌아가기
+                    </span>
+                </a>
+                {% else %}
                 <a href="/" class="flex items-center gap-2 group">
                     <i class="fa-solid fa-leaf text-emerald-600 text-[1.7rem] group-hover:scale-110 transition"></i>
                     <span class="text-[2.15rem] font-semibold text-[#2f2f2f] tracking-[-0.04em] leading-none group-hover:text-[#3a3a3a] transition">
                         IPSE
                     </span>
                 </a>
+                {% endif %}
 
-                <div class="hidden md:flex h-full items-end gap-8 text-base font-medium text-slate-700">
+                <div class="hidden md:flex h-full items-end gap-6 text-sm font-medium text-slate-700">
                     {% if request.host.name == 'judge' %}
                         <!-- ⚖️ 대회/문제풀이/학습 서브도메인 메뉴 -->
-                        <a href="{% host_url 'community_main' host 'community' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent text-emerald-600 font-bold hover:border-emerald-600 transition">
-                            <i class="fa-solid fa-arrow-left-long mr-1.5 mb-1 text-xs"></i> 동아리 커뮤니티
-                        </a>
                         <a href="{% url 'course_list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'course_list' or request.resolver_match.url_name == 'course_detail' or request.resolver_match.url_name == 'lesson_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             학습
                         </a>
                         <a href="{% url 'problem_list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'problem_list' or request.resolver_match.url_name == 'problem_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             문제
                         </a>
                         <a href="{% url 'contest:list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if 'contest' in request.resolver_match.app_name or 'contest' in request.resolver_match.url_name %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             대회
                         </a>
                         <a href="{% url 'ranking:home' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if 'ranking' in request.resolver_match.app_name or 'ranking' in request.resolver_match.url_name %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             랭킹
                         </a>
                     {% else %}
-                        <!-- 📣 동아리 커뮤니티 메인 도메인 메뉴 -->
+                        <!-- 📣 동아리 커뮤니티 메인 도메인 메뉴 (5개 메인 탭으로 교체) -->
                         <a href="{% url 'community_main' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
-                            커뮤니티
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'community_main' or request.resolver_match.url_name == 'notice_detail' or request.resolver_match.url_name == 'activity_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            소식/활동 기록
                         </a>
-                        <a href="{% host_url 'course_list' host 'judge' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-transparent text-sky-600 font-bold hover:border-sky-500 transition">
-                            대회 및 채점 사이트 <i class="fa-solid fa-arrow-right-long ml-1.5 mb-1 text-xs"></i>
+                        <a href="{% url 'schedule_list' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            동아리 일정
                         </a>
+                        <a href="{% url 'poll_list' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            투표
+                        </a>
+                        <a href="{% url 'survey_list' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            설문
+                        </a>
+                        {% if request.user.is_staff %}
+                        <a href="{% url 'recruit_list' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'recruit_list' or request.resolver_match.url_name == 'recruit_edit' or request.resolver_match.url_name == 'recruit_manage' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            모집 관리
+                        </a>
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -86,6 +105,16 @@
                     </a>
                     <span class="self-center text-slate-300 text-[22px] leading-none -translate-y-[1px]">|</span>
                 </div>
+                
+                {% if request.host.name != 'judge' %}
+                <!-- ⚖️ 대회 및 채점 사이트 원형 버튼 (데스크톱) -->
+                <div class="hidden md:flex items-center" title="대회 및 채점 사이트 바로가기">
+                    <a href="{% host_url 'course_list' host 'judge' %}"
+                       class="w-10 h-10 rounded-full flex items-center justify-center bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 hover:text-sky-700 hover:scale-105 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
+                    </a>
+                </div>
+                {% endif %}
                 {% if user.is_authenticated %}
                 <div class="hidden md:flex items-center gap-2">
                     <a href="{% host_url 'profile' host 'community' %}" class="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
@@ -119,15 +148,24 @@
         <div id="mobile-menu" class="md:hidden hidden border-t border-slate-100 bg-white shadow-lg">
             <div class="max-w-7xl mx-auto px-4 py-3 space-y-1">
                 {% if request.host.name == 'judge' %}
-                    <a href="{% host_url 'community_main' host 'community' %}" class="block px-4 py-2.5 rounded-lg text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition">← 동아리 커뮤니티</a>
+                    <a href="{% host_url 'community_main' host 'community' %}" class="block px-4 py-2.5 rounded-lg text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition">← 잎새로 돌아가기</a>
                     <a href="{% url 'course_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">학습</a>
                     <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">문제</a>
                     <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">대회</a>
                     <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">랭킹</a>
                 {% else %}
-                    <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">커뮤니티</a>
+                    <!-- 📣 동아리 커뮤니티 모바일 메뉴 -->
+                    <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소식/활동 기록</a>
+                    <a href="{% url 'schedule_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">동아리 일정</a>
+                    <a href="{% url 'poll_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">투표</a>
+                    <a href="{% url 'survey_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">설문</a>
+                    {% if request.user.is_staff %}
+                    <a href="{% url 'recruit_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">모집 관리</a>
+                    {% endif %}
+                    <div class="border-t border-slate-100 my-1"></div>
                     <a href="{% host_url 'course_list' host 'judge' %}" class="block px-4 py-2.5 rounded-lg text-sm font-bold text-sky-700 hover:bg-sky-50 transition">대회 및 채점 사이트 →</a>
                 {% endif %}
+
                 <a href="{% host_url 'introduce' host 'community' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소개</a>
                 <div class="border-t border-slate-100 pt-2 mt-2">
                     {% if user.is_authenticated %}
