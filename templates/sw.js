@@ -1,10 +1,10 @@
 {% load static %}
-const CACHE_NAME = 'ipse-lms-v1';
+const CACHE_NAME = 'ipse-lms-v2';
 const OFFLINE_URL = '/offline/';
 const PRECACHE_ASSETS = [
   '/',
   OFFLINE_URL,
-  '{% static "css/tailwind.css" %}',
+  '{% static "css/tailwind.css" %}?v=2',
 ];
 
 // Install: pre-cache core assets
