@@ -4,7 +4,7 @@
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-12">
     <div class="space-y-8">
-        
+
         <!-- 상단 배너 -->
         <div class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
             <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">COMMUNITY</p>
@@ -12,12 +12,11 @@
             <p class="mt-2 text-sm text-slate-500">신규 부원 모집을 위한 폼을 생성하고 관리하며 지원 현황을 확인합니다.</p>
         </div>
 
-
         <div>
             {% if user.is_staff %}
             <div class="flex justify-end mb-6">
                 <button type="button" id="open-recruit-create-modal-btn"
-                   class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                   class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
                     <i class="fa-solid fa-plus text-xs"></i> 모집 폼 만들기
                 </button>
             </div>
@@ -42,51 +41,37 @@
                     <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> 진행 중
                 </h2>
                 {% if active_forms %}
-                <div class="space-y-4">
+                <div class="space-y-3">
                     {% for form in active_forms %}
-                    <div class="group relative bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:border-emerald-300 hover:shadow-md transition duration-300">
-                        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                            <div class="space-y-2 flex-1 min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                        모집 중
-                                    </span>
-                                    <span class="text-xs text-slate-400">지원자 {{ form.applications.count }}명</span>
-                                </div>
-                                <h2 class="text-lg font-bold text-slate-800">{{ form.title }}</h2>
-                                <p class="text-sm text-slate-500 line-clamp-2">{{ form.description }}</p>
-                                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 pt-1">
-                                    <span class="flex items-center gap-1"><i class="fa-regular fa-calendar text-slate-300"></i> 시작: {% if form.opens_at %}{{ form.opens_at|date:"Y-m-d H:i" }}{% else %}제한 없음{% endif %}</span>
-                                    <span class="flex items-center gap-1"><i class="fa-regular fa-calendar-check text-slate-300"></i> 마감: {% if form.closes_at %}{{ form.closes_at|date:"Y-m-d H:i" }}{% else %}제한 없음{% endif %}</span>
-                                </div>
-                            </div>
-                            
-                            <!-- 관리 작업 및 링크 공유 -->
-                            <div class="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-stretch lg:items-end xl:items-center gap-3 shrink-0">
-                                <div class="flex items-center gap-2">
-                                    <a href="{% url 'recruit_edit' form.id %}" class="px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-center flex-1 sm:flex-initial">
-                                        설정 수정
-                                    </a>
-                                    <a href="{% url 'recruit_manage' form.id %}" class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition text-center flex-1 sm:flex-initial">
-                                        지원서 보기
-                                    </a>
-                                </div>
-                                <div class="bg-slate-50 rounded-xl px-3 py-2 flex items-center justify-between gap-2 border border-slate-100 min-w-[180px]">
-                                    <span class="text-[11px] text-slate-500 truncate select-all flex-1 font-mono">
-                                        /recruit/{{ form.id }}/
-                                    </span>
-                                    <button onclick="copyLink('{{ form.id }}')" class="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 shrink-0">
-                                        링크 복사
-                                    </button>
-                                </div>
-                            </div>
+                    <div class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm transition">
+                        <div>
+                            <p class="text-base font-semibold text-slate-800">{{ form.title }}</p>
+                            <p class="text-xs text-slate-400 mt-1">
+                                지원자 {{ form.applications.count }}명
+                                {% if form.opens_at %} · {{ form.opens_at|date:"m.d H:i" }} 시작{% endif %}
+                                {% if form.closes_at %} · {{ form.closes_at|date:"m.d H:i" }} 마감{% endif %}
+                            </p>
                         </div>
+                        {% if user.is_staff %}
+                        <div class="flex items-center gap-2 shrink-0 ml-4">
+                            <a href="{% url 'recruit_edit' form.id %}" class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
+                                설정 수정
+                            </a>
+                            <a href="{% url 'recruit_manage' form.id %}" class="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition">
+                                지원서 보기
+                            </a>
+                            <button onclick="copyLink('{{ form.id }}')" class="px-3 py-2 rounded-xl text-xs font-semibold border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition">
+                                링크 복사
+                            </button>
+                        </div>
+                        {% else %}
+                        <i class="fa-solid fa-chevron-right text-slate-300 text-sm shrink-0"></i>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>
                 {% else %}
-                <div class="bg-slate-50 rounded-2xl border border-slate-200 px-6 py-12 text-center text-slate-400 text-sm">
+                <div class="bg-slate-50 rounded-2xl border border-slate-200 px-6 py-8 text-center text-slate-400 text-sm">
                     진행 중인 모집 폼이 없습니다.
                 </div>
                 {% endif %}
@@ -98,46 +83,32 @@
                 <h2 class="text-base font-semibold text-slate-500 mb-4 flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-slate-300 inline-block"></span> 종료됨
                 </h2>
-                <div class="space-y-4">
+                <div class="space-y-3">
                     {% for form in closed_forms %}
-                    <div class="group bg-white border border-slate-200 rounded-2xl p-6 shadow-sm opacity-70 hover:opacity-100 transition duration-300">
-                        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                            <div class="space-y-2 flex-1 min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-50 text-red-700">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                                        모집 종료
-                                    </span>
-                                    <span class="text-xs text-slate-400">지원자 {{ form.applications.count }}명</span>
-                                </div>
-                                <h2 class="text-lg font-bold text-slate-700">{{ form.title }}</h2>
-                                <p class="text-sm text-slate-500 line-clamp-2">{{ form.description }}</p>
-                                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 pt-1">
-                                    <span class="flex items-center gap-1"><i class="fa-regular fa-calendar text-slate-300"></i> 시작: {% if form.opens_at %}{{ form.opens_at|date:"Y-m-d H:i" }}{% else %}제한 없음{% endif %}</span>
-                                    <span class="flex items-center gap-1"><i class="fa-regular fa-calendar-check text-slate-300"></i> 마감: {% if form.closes_at %}{{ form.closes_at|date:"Y-m-d H:i" }}{% else %}제한 없음{% endif %}</span>
-                                </div>
-                            </div>
-                            
-                            <!-- 관리 작업 및 링크 공유 -->
-                            <div class="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-stretch lg:items-end xl:items-center gap-3 shrink-0">
-                                <div class="flex items-center gap-2">
-                                    <a href="{% url 'recruit_edit' form.id %}" class="px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-center flex-1 sm:flex-initial">
-                                        설정 수정
-                                    </a>
-                                    <a href="{% url 'recruit_manage' form.id %}" class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition text-center flex-1 sm:flex-initial">
-                                        지원서 보기
-                                    </a>
-                                </div>
-                                <div class="bg-slate-50 rounded-xl px-3 py-2 flex items-center justify-between gap-2 border border-slate-100 min-w-[180px]">
-                                    <span class="text-[11px] text-slate-500 truncate select-all flex-1 font-mono">
-                                        /recruit/{{ form.id }}/
-                                    </span>
-                                    <button onclick="copyLink('{{ form.id }}')" class="text-[11px] font-bold text-slate-600 hover:text-slate-700 shrink-0">
-                                        링크 복사
-                                    </button>
-                                </div>
-                            </div>
+                    <div class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm transition opacity-70">
+                        <div>
+                            <p class="text-base font-semibold text-slate-600">{{ form.title }}</p>
+                            <p class="text-xs text-slate-400 mt-1">
+                                지원자 {{ form.applications.count }}명
+                                {% if form.opens_at %} · {{ form.opens_at|date:"m.d H:i" }} 시작{% endif %}
+                                {% if form.closes_at %} · {{ form.closes_at|date:"m.d H:i" }} 마감{% endif %}
+                            </p>
                         </div>
+                        {% if user.is_staff %}
+                        <div class="flex items-center gap-2 shrink-0 ml-4">
+                            <a href="{% url 'recruit_edit' form.id %}" class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
+                                설정 수정
+                            </a>
+                            <a href="{% url 'recruit_manage' form.id %}" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                                지원서 보기
+                            </a>
+                            <button onclick="copyLink('{{ form.id }}')" class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
+                                링크 복사
+                            </button>
+                        </div>
+                        {% else %}
+                        <i class="fa-solid fa-chevron-right text-slate-300 text-sm shrink-0"></i>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -158,35 +129,48 @@
             </div>
             <form method="post" action="{% url 'recruit_create' %}" id="recruit-create-form" class="p-8 space-y-6">
                 {% csrf_token %}
-                <div>
-                    <label class="mb-2 block text-sm font-semibold text-slate-700">모집 제목 <span class="text-rose-500">*</span></label>
-                    <input type="text" name="title" required maxlength="200" placeholder="예: IPSE 2026년 신입 부원 모집" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                </div>
-
-                <div>
-                    <label class="mb-2 block text-sm font-semibold text-slate-700">설명 및 안내 문구</label>
-                    <textarea name="description" rows="5" placeholder="지원자에게 노출될 모집 설명 및 안내 문구를 작성해 주세요." class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></textarea>
-                </div>
-
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                        <label class="mb-2 block text-sm font-semibold text-slate-700">시작 일시</label>
-                        <input type="datetime-local" name="starts_at" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                    </div>
-                    <div>
-                        <label class="mb-2 block text-sm font-semibold text-slate-700">마감 일시</label>
-                        <input type="datetime-local" name="ends_at" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                    </div>
-                </div>
-
-                <div>
-                    <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 px-4 py-4 transition hover:bg-slate-50">
-                        <input type="checkbox" name="is_active" class="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" checked>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-6">
+                    <div class="mb-5 flex items-center gap-3">
+                        <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-sm text-white shadow-sm"><i class="fa-solid fa-circle-info"></i></span>
                         <div>
-                            <p class="text-sm font-semibold text-slate-700">모집 폼 즉시 활성화</p>
-                            <p class="text-xs text-slate-400">비활성화 시 기간 설정과 관계없이 제출이 불가합니다.</p>
+                            <h3 class="text-lg font-semibold text-slate-800">기본 정보</h3>
+                            <p class="text-sm text-slate-500">모집 제목, 기간, 활성화 여부를 설정합니다.</p>
                         </div>
-                    </label>
+                    </div>
+                    <div class="space-y-5">
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-slate-700">모집 제목 <span class="text-rose-500">*</span></label>
+                            <input type="text" name="title" required maxlength="200" placeholder="예: IPSE 2026년 신입 부원 모집"
+                                class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                        </div>
+
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-slate-700">설명 및 안내 문구</label>
+                            <textarea name="description" rows="4" placeholder="지원자에게 노출될 모집 설명 및 안내 문구를 작성해 주세요."
+                                class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></textarea>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label class="mb-2 block text-sm font-semibold text-slate-700">시작 일시</label>
+                                <input type="datetime-local" name="starts_at"
+                                    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-sm font-semibold text-slate-700">마감 일시</label>
+                                <input type="datetime-local" name="ends_at"
+                                    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                            </div>
+                        </div>
+
+                        <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 cursor-pointer transition hover:border-emerald-200 hover:bg-emerald-50/40">
+                            <input type="checkbox" name="is_active" class="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" checked>
+                            <span>
+                                <span class="block text-sm font-semibold text-slate-800">모집 폼 즉시 활성화</span>
+                                <span class="mt-1 block text-xs text-slate-500">비활성화 시 기간 설정과 관계없이 제출이 불가합니다.</span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="flex justify-end border-t border-slate-100 pt-4">
@@ -203,9 +187,9 @@ function copyLink(formId) {
     const relativeUrl = `/recruit/${formId}/`;
     const fullUrl = window.location.origin + relativeUrl;
     navigator.clipboard.writeText(fullUrl).then(() => {
-        alert('모집 폼의 공개 지원서 작성 링크가 클립보드에 복사되었습니다.');
-    }).catch(err => {
-        console.error('Failed to copy: ', err);
+        showToast('모집 폼 공개 링크가 클립보드에 복사되었습니다.', 'success');
+    }).catch(() => {
+        showToast('링크 복사에 실패했습니다.', 'error');
     });
 }
 
