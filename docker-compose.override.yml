@@ -1,0 +1,15 @@
+# ==========================================
+# IPSE LMS — Local Development Override
+# 이 파일은 로컬 개발 환경 전용 설정을 덮어씁니다.
+# docker-compose up 명령어 실행 시 자동으로 병합되어 실행됩니다.
+# ==========================================
+
+services:
+
+  web:
+    entrypoint: ""
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
