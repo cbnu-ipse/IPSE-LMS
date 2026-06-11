@@ -1,0 +1,32 @@
+# ==========================================
+# IPSE LMS — Production Deployment Override
+# 이 파일은 프로덕션 배포 환경 전용 설정을 정의합니다.
+# 배포 서버 기동 시: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# ==========================================
+
+services:
+
+  web:
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    expose:
+      - "80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - media_data:/app/media:ro
+      - static_data:/app/staticfiles:ro
+    depends_on:
+      - web
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - .env.docker
+    depends_on:
+      - nginx
