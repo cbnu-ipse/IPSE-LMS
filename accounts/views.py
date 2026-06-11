@@ -407,6 +407,18 @@ def _lms_call(token, wsfunction, **params):
     return result
 
 
+
+def _current_semester_start():
+    from django.utils import timezone
+    now = timezone.now()
+    if 3 <= now.month <= 8:
+        return now.replace(month=3, day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif now.month >= 9:
+        return now.replace(month=9, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        return now.replace(year=now.year - 1, month=9, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 @login_required
 def lms_page(request):
     """LMS 연동 페이지: 연결/해제, 성적 조회, 과제 가져오기"""
@@ -467,6 +479,8 @@ def lms_page(request):
             moodle_uid = lms_token_obj.moodle_user_id
             try:
                 courses = _lms_call(token, "core_enrol_get_users_courses", userid=moodle_uid)
+                semester_ts = int(_current_semester_start().timestamp())
+                # 강좌 종료일 enddate로 필터링하지 않고, 모든 강좌의 과제를 조회한 후 과제 마감일(duedate)로 필터링합니다.
                 course_ids = [c["id"] for c in courses]
                 if not course_ids:
                     messages.info(request, "등록된 강의가 없습니다.")
@@ -482,7 +496,7 @@ def lms_page(request):
                     course_name = course["fullname"]
                     for assign in course.get("assignments", []):
                         duedate_ts = assign.get("duedate", 0)
-                        if not duedate_ts:
+                        if not duedate_ts or duedate_ts < semester_ts:
                             skipped += 1
                             continue
                         external_id = f"lms:assign:{assign['id']}"
@@ -490,30 +504,94 @@ def lms_page(request):
                         is_completed = False
                         try:
                             sub_status = _lms_call(token, "mod_assign_get_submission_status", assignid=assign['id'])
-                            submission = sub_status.get("lastattempt", {}).get("submission", {})
-                            if submission and submission.get("status") == "submitted":
+                            lastattempt = sub_status.get("lastattempt", {})
+                            submission = lastattempt.get("submission") or sub_status.get("submission") or {}
+                            teamsubmission = lastattempt.get("teamsubmission") or sub_status.get("teamsubmission") or {}
+                            
+                            sub_status_str = ""
+                            if submission:
+                                sub_status_str = submission.get("status", "")
+                            elif teamsubmission:
+                                sub_status_str = teamsubmission.get("status", "")
+                                
+                            if sub_status_str == "submitted" or sub_status.get("feedback", {}).get("grade"):
                                 is_completed = True
+                            else:
+                                # draft 상태이거나 기타 상태여도 실제 파일 또는 온라인 텍스트가 들어가 있는 경우 제출 완료로 인정
+                                has_files_or_text = False
+                                for plugin in submission.get("plugins", []):
+                                    p_type = plugin.get("type", "")
+                                    if p_type == "file":
+                                        for area in plugin.get("fileareas", []):
+                                            if area.get("files"):
+                                                has_files_or_text = True
+                                                break
+                                    elif p_type == "onlinetext":
+                                        for field in plugin.get("editorfields", []):
+                                            if field.get("value", "").strip():
+                                                has_files_or_text = True
+                                                break
+                                    if has_files_or_text:
+                                        break
+                                if has_files_or_text:
+                                    is_completed = True
                         except Exception:
                             pass
 
+                        import zoneinfo
+                        kst = zoneinfo.ZoneInfo("Asia/Seoul")
                         due_dt = datetime.datetime.fromtimestamp(duedate_ts, tz=datetime.timezone.utc)
+                        due_dt_kst = due_dt.astimezone(kst)
+                        
+                        # 한국 시각 기준 00:00(자정) 마감인 과제는 전날 마감 일정으로 1분 차감 보정 (사용자 경험 개선)
+                        if due_dt_kst.hour == 0 and due_dt_kst.minute == 0:
+                            due_dt_kst = due_dt_kst - datetime.timedelta(minutes=1)
+                            due_dt = due_dt - datetime.timedelta(minutes=1)
+                        
+                        # Store rich description in JSON format
+                        attachments = []
+                        for att in assign.get("introattachments", []):
+                            attachments.append({
+                                "filename": att.get("filename"),
+                                "fileurl": att.get("fileurl"),
+                                "filesize": att.get("filesize"),
+                            })
+                        
+                        desc_data = {
+                            "course_name": course_name,
+                            "intro": assign.get("intro", ""),
+                            "duedate": due_dt_kst.strftime("%Y-%m-%d %H:%M"),
+                            "attachments": attachments,
+                            "cmid": assign.get("cmid"),
+                        }
+                        import json
+                        description_json = json.dumps(desc_data, ensure_ascii=False)
+
+                        existing = Schedule.objects.filter(user=request.user, external_id=external_id).first()
+                        has_changed = False
+                        if existing:
+                            if (existing.description != description_json or 
+                                existing.is_completed != is_completed or 
+                                existing.title != assign['name']):
+                                has_changed = True
+
                         schedule_obj, created = Schedule.objects.update_or_create(
                             user=request.user,
                             external_id=external_id,
                             defaults={
-                                "title": f"[과제] {assign['name']}",
-                                "description": f"{course_name}\n마감: {due_dt.strftime('%Y-%m-%d %H:%M')}",
+                                "title": assign['name'],
+                                "description": description_json,
                                 "start_date": due_dt,
                                 "end_date": None,
                                 "is_global": False,
                                 "is_completed": is_completed,
                             }
                         )
-                        if created:
+                        if created or has_changed:
                             imported += 1
                         else:
                             skipped += 1
-                messages.success(request, f"과제 {imported}개를 캘린더에 추가했습니다. (중복 {skipped}개 건너뜀)")
+                messages.success(request, f"과제 {imported}개를 캘린더에 추가했습니다. (중복/지난 학기 {skipped}개 건너뜀)")
             except Exception as e:
                 messages.error(request, f"과제 가져오기 실패: {e}")
             return redirect("lms_page")
@@ -587,3 +665,182 @@ def lms_page(request):
         "sorted_semesters": sorted_semesters,
         "error_msg": error_msg,
     })
+# ─── LMS 과제 가져오기 JSON API (비동기 로딩 버튼용) ─────────────────────────
+
+@login_required
+@require_POST
+def lms_import_assignments_api(request):
+    """과제 가져오기를 비동기로 처리하고 JSON으로 결과를 반환합니다."""
+    lms_token_obj = getattr(request.user, "lms_token", None)
+    if not lms_token_obj:
+        return JsonResponse({"status": "error", "message": "LMS 연동이 되어있지 않습니다."}, status=400)
+    try:
+        import datetime
+        token = lms_token_obj.token
+        moodle_uid = lms_token_obj.moodle_user_id
+        courses = _lms_call(token, "core_enrol_get_users_courses", userid=moodle_uid)
+
+        # 강좌 종료일 enddate로 필터링하지 않고, 모든 강좌의 과제를 조회한 후 과제 마감일(duedate)로 필터링합니다.
+        semester_ts = int(_current_semester_start().timestamp())
+        course_ids = [c["id"] for c in courses]
+        if not course_ids:
+            return JsonResponse({
+                "status": "ok", "imported": 0, "skipped": 0,
+                "message": "등록된 강의가 없습니다.",
+            })
+
+        params = {f"courseids[{i}]": cid for i, cid in enumerate(course_ids)}
+        assign_data = _lms_call(token, "mod_assign_get_assignments", **params)
+
+        imported = 0
+        skipped = 0
+        for course in assign_data.get("courses", []):
+            course_name = course["fullname"]
+            for assign in course.get("assignments", []):
+                duedate_ts = assign.get("duedate", 0)
+                if not duedate_ts or duedate_ts < semester_ts:
+                    skipped += 1
+                    continue
+                external_id = "lms:assign:{}".format(assign["id"])
+                
+                is_completed = False
+                try:
+                    sub_status = _lms_call(token, "mod_assign_get_submission_status", assignid=assign["id"])
+                    lastattempt = sub_status.get("lastattempt", {})
+                    submission = lastattempt.get("submission") or sub_status.get("submission") or {}
+                    teamsubmission = lastattempt.get("teamsubmission") or sub_status.get("teamsubmission") or {}
+                    
+                    sub_status_str = ""
+                    if submission:
+                        sub_status_str = submission.get("status", "")
+                    elif teamsubmission:
+                        sub_status_str = teamsubmission.get("status", "")
+                        
+                    if sub_status_str == "submitted" or sub_status.get("feedback", {}).get("grade"):
+                        is_completed = True
+                    else:
+                        # draft 상태이거나 기타 상태여도 실제 파일 또는 온라인 텍스트가 들어가 있는 경우 제출 완료로 인정
+                        has_files_or_text = False
+                        for plugin in submission.get("plugins", []):
+                            p_type = plugin.get("type", "")
+                            if p_type == "file":
+                                for area in plugin.get("fileareas", []):
+                                    if area.get("files"):
+                                        has_files_or_text = True
+                                        break
+                            elif p_type == "onlinetext":
+                                for field in plugin.get("editorfields", []):
+                                    if field.get("value", "").strip():
+                                        has_files_or_text = True
+                                        break
+                            if has_files_or_text:
+                                break
+                        if has_files_or_text:
+                            is_completed = True
+                except Exception:
+                    pass
+
+                import zoneinfo
+                kst = zoneinfo.ZoneInfo("Asia/Seoul")
+                due_dt = datetime.datetime.fromtimestamp(duedate_ts, tz=datetime.timezone.utc)
+                due_dt_kst = due_dt.astimezone(kst)
+
+                # 한국 시각 기준 00:00(자정) 마감인 과제는 전날 마감 일정으로 1분 차감 보정 (사용자 경험 개선)
+                if due_dt_kst.hour == 0 and due_dt_kst.minute == 0:
+                    due_dt_kst = due_dt_kst - datetime.timedelta(minutes=1)
+                    due_dt = due_dt - datetime.timedelta(minutes=1)
+
+                # Store rich description in JSON format
+                attachments = []
+                for att in assign.get("introattachments", []):
+                    attachments.append({
+                        "filename": att.get("filename"),
+                        "fileurl": att.get("fileurl"),
+                        "filesize": att.get("filesize"),
+                    })
+
+                desc_data = {
+                    "course_name": course_name,
+                    "intro": assign.get("intro", ""),
+                    "duedate": due_dt_kst.strftime("%Y-%m-%d %H:%M"),
+                    "attachments": attachments,
+                    "cmid": assign.get("cmid"),
+                }
+                import json
+                description_json = json.dumps(desc_data, ensure_ascii=False)
+
+                existing = Schedule.objects.filter(user=request.user, external_id=external_id).first()
+                has_changed = False
+                if existing:
+                    if (existing.description != description_json or 
+                        existing.is_completed != is_completed or 
+                        existing.title != assign["name"]):
+                        has_changed = True
+
+                schedule_obj, created = Schedule.objects.update_or_create(
+                    user=request.user,
+                    external_id=external_id,
+                    defaults={
+                        "title": assign["name"],
+                        "description": description_json,
+                        "start_date": due_dt,
+                        "end_date": None,
+                        "is_global": False,
+                        "is_completed": is_completed,
+                    }
+                )
+                if created or has_changed:
+                    imported += 1
+                else:
+                    skipped += 1
+
+        return JsonResponse({
+            "status": "ok",
+            "imported": imported,
+            "skipped": skipped,
+            "message": "과제 {}개를 캘린더에 추가했습니다. (중복/지난 학기 {}개 건너뜀)".format(imported, skipped),
+        })
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": "과제 가져오기 실패: {}".format(e)}, status=500)
+
+
+@login_required
+def lms_download_file(request):
+    """LMS 첨부파일을 로그인한 유저의 wstoken을 사용하여 프록시 다운로드 처리합니다."""
+    file_url = request.GET.get("url")
+    if not file_url:
+        return HttpResponse("파일 URL이 누락되었습니다.", status=400)
+    
+    lms_token_obj = getattr(request.user, "lms_token", None)
+    if not lms_token_obj:
+        return HttpResponse("LMS 연동이 필요합니다.", status=403)
+        
+    token = lms_token_obj.token
+    
+    # URL에 token 파라미터 주입
+    if "?" in file_url:
+        target_url = f"{file_url}&token={token}"
+    else:
+        target_url = f"{file_url}?token={token}"
+        
+    try:
+        req = urllib.request.Request(target_url, headers={"User-Agent": "MoodleMobile"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read()
+            
+            # Content-Type 및 헤더 중계
+            content_type = resp.headers.get("Content-Type", "application/octet-stream")
+            content_disposition = resp.headers.get("Content-Disposition")
+            
+            response = HttpResponse(content, content_type=content_type)
+            if content_disposition:
+                response["Content-Disposition"] = content_disposition
+            else:
+                filename = file_url.split("/")[-1]
+                filename = urllib.parse.unquote(filename)
+                from django.utils.encoding import escape_uri_path
+                response["Content-Disposition"] = f"attachment; filename*=UTF-8''{escape_uri_path(filename)}"
+                
+            return response
+    except Exception as e:
+        return HttpResponse(f"파일 다운로드 실패: {e}", status=500)

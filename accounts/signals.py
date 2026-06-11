@@ -2,6 +2,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
+from django.contrib.auth.signals import user_logged_in
 from .models import Student
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
@@ -15,3 +16,9 @@ def save_student_profile(sender, instance, **kwargs):
     """유저 정보가 업데이트될 때, 연결된 Student 정보도 안전하게 저장 상태를 동기화합니다."""
     if hasattr(instance, 'student'):
         instance.student.save()
+
+
+@receiver(user_logged_in)
+def on_user_logged_in(sender, request, user, **kwargs):
+    """유저가 로그인하면 세션에 'just_logged_in' 플래그를 세팅합니다."""
+    request.session['just_logged_in'] = True
