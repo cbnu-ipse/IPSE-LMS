@@ -54,15 +54,12 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <!-- 과제 가져오기 -->
-                    <form method="POST">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="import_assignments">
-                        <button type="submit"
-                                class="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-violet-700 transition">
-                            <i class="fa-solid fa-calendar-plus text-xs"></i> 과제 캘린더 가져오기
-                        </button>
-                    </form>
+                    <!-- 과제 가져오기 (비동기 로딩 버튼) -->
+                    <button type="button" id="lms-import-btn"
+                            class="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-violet-700 transition">
+                        <i class="fa-solid fa-calendar-plus text-xs" id="lms-import-icon"></i>
+                        <span id="lms-import-label">과제 캘린더 가져오기</span>
+                    </button>
                     <!-- 연동 해제 -->
                     <form method="POST" onsubmit="return confirm('LMS 연동을 해제하시겠습니까?')">
                         {% csrf_token %}
@@ -167,4 +164,110 @@
 
     </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const btn = document.getElementById('lms-import-btn');
+    if (!btn) return;
+
+    const icon = document.getElementById('lms-import-icon');
+    const label = document.getElementById('lms-import-label');
+
+    // Toast message helper
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-5 right-5 z-[9999] px-5 py-3.5 rounded-2xl shadow-lg border text-sm font-semibold transition-all duration-300 transform translate-y-10 opacity-0 flex items-center gap-3';
+        
+        if (type === 'success') {
+            toast.className += ' bg-emerald-50 border-emerald-200 text-emerald-800';
+            toast.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600"></i> ' + message;
+        } else {
+            toast.className += ' bg-rose-50 border-rose-200 text-rose-800';
+            toast.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-600"></i> ' + message;
+        }
+        
+        document.body.appendChild(toast);
+        
+        // animate in
+        setTimeout(() => {
+            toast.classList.remove('translate-y-10', 'opacity-0');
+        }, 10);
+        
+        // animate out and remove
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-2');
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    btn.addEventListener('click', function() {
+        // Disable button and show initial loading state
+        btn.disabled = true;
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+        
+        const originalIconClass = icon.className;
+        icon.className = 'fa-solid fa-circle-notch fa-spin text-xs';
+        
+        // Setup text rotation to keep user engaged
+        const loadingTexts = [
+            'LMS 강의 목록 가져오는 중...',
+            '과제 목록 분석 중...',
+            '캘린더에 저장하는 중...',
+            '일정을 동기화하는 중...'
+        ];
+        
+        let textIndex = 0;
+        label.textContent = loadingTexts[textIndex];
+        
+        const intervalId = setInterval(() => {
+            textIndex = (textIndex + 1) % loadingTexts.length;
+            label.textContent = loadingTexts[textIndex];
+        }, 2000);
+
+        // Fetch CSRF Token
+        const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
+        const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+
+        // API Call
+        fetch('/accounts/lms/import-assignments/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => { throw new Error(err.message || '서버 오류가 발생했습니다.'); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            clearInterval(intervalId);
+            showToast(data.message || '과제를 성공적으로 가져왔습니다.', 'success');
+            
+            // Re-enable and show finished state
+            label.textContent = '가져오기 완료!';
+            icon.className = 'fa-solid fa-check text-xs';
+            
+            // Reload page to show calendar changes after 1.5 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        })
+        .catch(error => {
+            clearInterval(intervalId);
+            showToast(error.message || '과제 가져오기에 실패했습니다.', 'error');
+            
+            // Restore button
+            btn.disabled = false;
+            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+            icon.className = originalIconClass;
+            label.textContent = '과제 캘린더 가져오기';
+        });
+    });
+})();
+</script>
 {% endblock %}

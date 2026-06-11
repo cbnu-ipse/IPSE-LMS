@@ -205,7 +205,10 @@
                     </div>
                     <div class="space-y-3">
                         {% for assign in incomplete_assignments %}
-                        <div class="flex items-start justify-between p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 transition">
+                        <div class="lms-assign-card cursor-pointer flex items-start justify-between p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 transition"
+                             data-title="{{ assign.title }}"
+                             data-completed="{% if assign.is_completed %}true{% else %}false{% endif %}"
+                             data-lms-detail="{{ assign.description }}">
                             <div class="min-w-0 flex-1 pr-3">
                                 <p class="text-xs font-bold text-emerald-600 mb-0.5">{{ assign.course_name }}</p>
                                 <h4 class="text-sm font-semibold text-slate-800 truncate">{{ assign.title }}</h4>
@@ -310,6 +313,47 @@
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- LMS 과제 상세 모달 -->
+<div id="lms-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center transition-opacity duration-300 opacity-0">
+    <div class="bg-white w-full max-w-2xl rounded-2xl border border-slate-200 shadow-2xl overflow-hidden transform scale-95 transition-all duration-300 flex flex-col max-h-[85vh]" id="lms-modal-content">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <div class="flex items-center gap-2">
+                <span id="lms-modal-course-badge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">과목명</span>
+                <span class="text-xs font-semibold text-slate-400">LMS 과제 상세</span>
+            </div>
+            <button type="button" id="close-lms-modal-btn" class="text-slate-400 hover:text-rose-500 transition">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+        <div class="p-6 space-y-6 overflow-y-auto flex-1 font-sans">
+            <div>
+                <h3 id="lms-modal-title" class="text-2xl font-bold text-slate-800">과제 제목</h3>
+                <div class="flex flex-wrap gap-4 mt-3 text-sm font-semibold items-center">
+                    <span class="text-slate-500 flex items-center gap-1">
+                        <i class="fa-regular fa-clock text-slate-400"></i> 마감: <span id="lms-modal-duedate" class="text-slate-700">2026-06-16 23:59</span>
+                    </span>
+                    <span id="lms-modal-status-badge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-bold">미제출</span>
+                    <a id="lms-modal-link" href="#" target="_blank" style="display: none;" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">
+                        <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> LMS에서 보기
+                    </a>
+                </div>
+            </div>
+            <div class="border-t border-slate-100 pt-5">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">과제 설명</h4>
+                <div id="lms-modal-intro" class="prose prose-sm max-w-none text-slate-600 bg-slate-50/50 rounded-xl border border-slate-100 p-4 min-h-[100px] overflow-x-auto leading-relaxed">
+                    과제 설명 내용이 여기에 표시됩니다.
+                </div>
+            </div>
+            <div id="lms-modal-attachments-section" class="border-t border-slate-100 pt-5 hidden">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">첨부 파일</h4>
+                <div id="lms-modal-attachments" class="space-y-2">
+                    <!-- 파일 링크 동적 생성 -->
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -518,8 +562,152 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ==========================================
-    // 대시보드 배너 닫기 로직은 base.html로 이전됨
+    // 3. LMS 과제 상세 모달 로직
     // ==========================================
+    const lmsModal = document.getElementById('lms-modal');
+    const lmsModalContent = document.getElementById('lms-modal-content');
+    const closeLmsModalBtn = document.getElementById('close-lms-modal-btn');
+
+    function openLmsModal(card) {
+        const title = card.getAttribute('data-title') || '과제 정보';
+        const isCompleted = card.getAttribute('data-completed') === 'true';
+        const detailRaw = card.getAttribute('data-lms-detail') || '';
+        
+        let courseName = '과목 정보 없음';
+        let introHtml = '과제 설명이 없습니다.';
+        let duedate = '마감일 정보 없음';
+        let attachments = [];
+        let cmid = null;
+        if (detailRaw.startsWith('{')) {
+            try {
+                const detail = JSON.parse(detailRaw);
+                courseName = detail.course_name || '과목 정보 없음';
+                introHtml = detail.intro || '과제 설명이 없습니다.';
+                duedate = detail.duedate || '마감일 정보 없음';
+                attachments = detail.attachments || [];
+                cmid = detail.cmid || null;
+            } catch (e) {
+                const lines = detailRaw.split('\n');
+                courseName = lines[0] || '과목 정보 없음';
+                if (lines[1] && lines[1].startsWith('마감: ')) {
+                    duedate = lines[1].replace('마감: ', '').trim();
+                }
+                introHtml = detailRaw.replace(/\n/g, '<br>');
+            }
+        } else if (detailRaw) {
+            const lines = detailRaw.split('\n');
+            courseName = lines[0] || '과목 정보 없음';
+            if (lines[1] && lines[1].startsWith('마감: ')) {
+                duedate = lines[1].replace('마감: ', '').trim();
+            }
+            introHtml = detailRaw.replace(/\n/g, '<br>');
+        }
+
+        // 모달 데이터 바인딩
+        document.getElementById('lms-modal-course-badge').textContent = courseName;
+        document.getElementById('lms-modal-title').textContent = title;
+        document.getElementById('lms-modal-duedate').textContent = duedate;
+
+        // LMS 링크 처리
+        const linkBtn = document.getElementById('lms-modal-link');
+        if (cmid) {
+            linkBtn.href = `https://lms.chungbuk.ac.kr/mod/assign/view.php?id=${cmid}`;
+            linkBtn.style.display = 'inline-flex';
+        } else {
+            linkBtn.style.display = 'none';
+        }
+
+        const statusBadge = document.getElementById('lms-modal-status-badge');
+        if (isCompleted) {
+            statusBadge.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+            statusBadge.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600"></i> 제출완료';
+        } else {
+            statusBadge.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200';
+            statusBadge.innerHTML = '<i class="fa-regular fa-circle text-rose-500"></i> 미제출';
+        }
+
+        // 물음표 기호 하나만 있는 비정상적인 공백 처리 및 빈 값 체크
+        const cleanIntro = introHtml.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').replace(/\s/g, '');
+        if (!cleanIntro || cleanIntro === '?' || cleanIntro === '') {
+            introHtml = '과제 설명이 없습니다.';
+        }
+
+        // 과제 설명 내의 이미지를 프록시 다운로드 주소로 치환하여 엑스박스 해결
+        if (introHtml) {
+            introHtml = introHtml.replace(/<img[^>]+src="([^">]+)"/g, (match, src) => {
+                if (src.includes('lms.chungbuk.ac.kr')) {
+                    return match.replace(src, `/accounts/lms/download/?url=${encodeURIComponent(src)}`);
+                }
+                return match;
+            });
+        }
+
+        // HTML 렌더링
+        document.getElementById('lms-modal-intro').innerHTML = introHtml;
+
+        // 첨부 파일
+        const attSection = document.getElementById('lms-modal-attachments-section');
+        const attContainer = document.getElementById('lms-modal-attachments');
+        attContainer.innerHTML = '';
+        
+        if (attachments && attachments.length > 0) {
+            attSection.classList.remove('hidden');
+            attachments.forEach(file => {
+                const a = document.createElement('a');
+                a.href = `/accounts/lms/download/?url=${encodeURIComponent(file.fileurl)}`;
+                a.target = '_blank';
+                a.className = 'flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 text-sm font-semibold text-slate-700 transition group';
+                a.innerHTML = '<i class="fa-regular fa-file-lines text-slate-400 group-hover:text-emerald-600 transition"></i>' +
+                              '<span class="flex-1 truncate">' + file.filename + '</span>' +
+                              '<i class="fa-solid fa-download text-slate-300 group-hover:text-emerald-600 text-xs transition"></i>';
+                attContainer.appendChild(a);
+            });
+        } else {
+            attSection.classList.add('hidden');
+        }
+
+        // 모달 열기 애니메이션
+        lmsModal.classList.remove('hidden');
+        setTimeout(() => {
+            lmsModal.classList.remove('opacity-0');
+            lmsModalContent.classList.remove('scale-95');
+        }, 10);
+    }
+
+    function closeLmsModal() {
+        lmsModal.classList.add('opacity-0');
+        lmsModalContent.classList.add('scale-95');
+        setTimeout(() => lmsModal.classList.add('hidden'), 300);
+    }
+
+    document.querySelectorAll('.lms-assign-card').forEach(card => {
+        card.addEventListener('click', () => openLmsModal(card));
+    });
+
+    closeLmsModalBtn?.addEventListener('click', closeLmsModal);
+    lmsModal?.addEventListener('click', (e) => {
+        if (e.target === lmsModal) closeLmsModal();
+    });
+    {% if trigger_lms_sync and user.lms_token %}
+    // 로그인 직후 조용히 백그라운드에서 LMS 연동을 실행합니다.
+    fetch('{% url "lms_import_assignments_api" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        }
+    }).then(res => res.json()).then(data => {
+        if (data.status === 'ok') {
+            console.log('LMS background sync complete: ' + data.message);
+            // 만약 신규 등록/변경 과제가 1개 이상 존재하면 화면을 갱신해 반영합니다.
+            if (data.imported > 0) {
+                window.location.reload();
+            }
+        }
+    }).catch(err => {
+        console.error('LMS background sync error: ', err);
+    });
+    {% endif %}
 });
 </script>
 {% endblock %}
