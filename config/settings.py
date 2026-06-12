@@ -11,12 +11,24 @@ SECRET_KEY = config("SECRET_KEY")
 DEBUG = config("DEBUG", default=True, cast=bool)
 
 # .env에서 ALLOWED_HOSTS를 콤마(,) 단위로 읽어오도록 개선 (보안 및 유연성 향상)
-# config/settings.py 파일 내부
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS", 
     default=".cbnu-ipse.co.kr, cbnu-ipse.co.kr, 10.255.81.163, 127.0.0.1, .localhost, localhost, 192.168.0.8, 192.168.206.128", 
     cast=Csv()
 )
+
+# 서브도메인(예: judge) 허용을 위해 ALLOWED_HOSTS 자동 확장
+_raw_hosts = list(ALLOWED_HOSTS)
+for host in _raw_hosts:
+    host_stripped = host.strip()
+    # IP 주소가 아니고 점(.)으로 시작하지 않는 도메인에 대해 와일드카드 서브도메인(.domain.com) 추가
+    if host_stripped and not host_stripped.startswith('.'):
+        # IP 주소인지 판별 (간단히 모든 글자가 숫자나 온점으로만 구성되지 않았는지 확인)
+        is_ip = all(c.isdigit() or c == '.' for c in host_stripped)
+        if not is_ip:
+            dot_host = f".{host_stripped}"
+            if dot_host not in ALLOWED_HOSTS:
+                ALLOWED_HOSTS.append(dot_host)
 
 CSRF_TRUSTED_ORIGINS = [
     "https://cbnu-ipse.co.kr",
