@@ -75,11 +75,13 @@ MIDDLEWARE = [
 ROOT_URLCONF = "config.urls"
 ROOT_HOSTCONF = "config.hosts"
 DEFAULT_HOST = "community"
-PARENT_HOST = config("PARENT_HOST", default="lvh.me:8000")
-SESSION_COOKIE_DOMAIN = config("SESSION_COOKIE_DOMAIN", default=".lvh.me")
-CSRF_COOKIE_DOMAIN = config("CSRF_COOKIE_DOMAIN", default=".lvh.me")
-# 로그인 URL: 절대 경로 사용 — 프로토콜 상대 URL(//host/...)은 PARENT_HOST 기본값이
-# lvh.me:8000일 때 프로덕션에서 엉뚱한 도메인으로 리다이렉트되는 버그를 유발함
+PARENT_HOST = config("PARENT_HOST", default="lvh.me:8000" if DEBUG else "cbnu-ipse.co.kr")
+SESSION_COOKIE_DOMAIN = config("SESSION_COOKIE_DOMAIN", default=".lvh.me" if DEBUG else ".cbnu-ipse.co.kr")
+CSRF_COOKIE_DOMAIN = config("CSRF_COOKIE_DOMAIN", default=".lvh.me" if DEBUG else ".cbnu-ipse.co.kr")
+
+# Nginx / Cloudflare 뒤에서 HTTPS 식별을 위한 설정
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 LOGIN_URL = "/accounts/login/"
 
 TEMPLATES = [
