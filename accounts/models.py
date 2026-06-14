@@ -1,9 +1,10 @@
-from django.db import models
+import hashlib
+from django.db import models, transaction
 from django.urls import reverse
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
-from django.db.models import Q
+from django.db.models import Q, F
 from PIL import Image
 from .validators import ASCIIUsernameValidator
 
@@ -46,6 +47,7 @@ class User(AbstractUser):
     is_president = models.BooleanField(default=False, verbose_name="회장")
     is_vice_president = models.BooleanField(default=False, verbose_name="부회장")
     is_executive = models.BooleanField(default=False, verbose_name="임원진")
+    leaves = models.PositiveIntegerField(default=0, verbose_name="낙엽")
     class Meta:
         ordering = ("-date_joined",)
 
@@ -148,6 +150,20 @@ class User(AbstractUser):
         except:
             pass
 
+    def adjust_leaves(self, amount, transaction_type, description=""):
+        """안전하게 사용자의 낙엽을 조정하는 헬퍼 메서드 (동시성 제어 및 잔액 검증 포함)"""
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(id=self.id)
+            if amount < 0 and user.leaves + amount < 0:
+                raise ValueError("낙엽이 부족합니다.")
+                
+            LeafTransaction.objects.create(
+                user=user,
+                amount=amount,
+                transaction_type=transaction_type,
+                description=description
+            )
+
 
 class Student(models.Model):
     """IPSE 동아리원(학생) 상세 정보 모델"""
@@ -198,3 +214,40 @@ class LMSToken(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - LMS 연동"
+
+
+class LeafTransaction(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="leaf_transactions")
+    amount = models.IntegerField(verbose_name="변동 수량")  # 양수: 획득, 음수: 소비
+    transaction_type = models.CharField(max_length=50, verbose_name="거래 유형")
+    description = models.CharField(max_length=255, blank=True, verbose_name="상세 내용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="거래 일시")
+    previous_hash = models.CharField(max_length=64, blank=True, verbose_name="이전 트랜잭션 해시")
+    hash = models.CharField(max_length=64, blank=True, verbose_name="현재 트랜잭션 해시")
+
+    class Meta:
+        ordering = ("created_at",)
+
+    def calculate_hash(self):
+        sha = hashlib.sha256()
+        created_str = self.created_at.isoformat() if self.created_at else "pending"
+        sha.update(f"{self.previous_hash}{self.user_id}{self.amount}{self.transaction_type}{created_str}".encode('utf-8'))
+        return sha.hexdigest()
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            with transaction.atomic():
+                last_tx = LeafTransaction.objects.filter(user=self.user).select_for_update().last()
+                if last_tx:
+                    self.previous_hash = last_tx.hash
+                else:
+                    self.previous_hash = "genesis"
+                
+                super().save(*args, **kwargs)
+                self.hash = self.calculate_hash()
+                LeafTransaction.objects.filter(id=self.id).update(hash=self.hash)
+                
+                # F() 객체를 활용하여 동시성 레이스 컨디션 방지
+                User.objects.filter(id=self.user_id).update(leaves=F('leaves') + self.amount)
+        else:
+            raise PermissionError("이미 기록된 거래 이력은 수정할 수 없습니다.")
