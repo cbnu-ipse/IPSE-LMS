@@ -35,6 +35,9 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin requests
   if (url.origin !== location.origin) return;
 
+  // Only handle GET requests (prevent body mutation/Origin loss on POST requests)
+  if (request.method !== 'GET') return;
+
   // Static assets (CSS, JS, images, fonts): cache-first
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(
