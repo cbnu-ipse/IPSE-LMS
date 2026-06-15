@@ -123,6 +123,21 @@
                 <textarea id="add-desc" rows="2" placeholder="메모"
                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none resize-none focus:border-emerald-400 transition placeholder-slate-300"></textarea>
             </div>
+            <div class="flex items-center gap-2.5 text-sm">
+                <i class="fa-solid fa-arrows-spin w-4 text-center text-slate-400 text-sm"></i>
+                <span class="font-medium text-slate-700 w-16">반복</span>
+                <select id="add-recurrence-type" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                    <option value="NONE">반복 안함</option>
+                    <option value="DAILY">매일</option>
+                    <option value="WEEKLY">매주</option>
+                    <option value="MONTHLY">매월</option>
+                    <option value="YEARLY">매년</option>
+                </select>
+            </div>
+            <div id="recurrence-end-row" class="hidden flex items-center gap-2.5 text-sm pl-6">
+                <span class="text-slate-500 text-xs w-16">반복 종료일</span>
+                <input type="date" id="add-recurrence-end" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+            </div>
             <div class="flex items-center gap-2.5 text-sm border-t border-slate-100 pt-3">
                 <i class="fa-solid fa-users w-4 text-center text-emerald-500"></i>
                 <span class="flex-1 font-medium text-slate-700">동아리 전체 공개 (공식 일정)</span>
@@ -168,6 +183,17 @@
                 <i class="fa-regular fa-note-sticky w-4 text-center text-slate-400 text-sm mt-2"></i>
                 <textarea id="edit-desc" rows="2"
                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none resize-none focus:border-emerald-400 transition"></textarea>
+            </div>
+            <div id="edit-recurrence-row" class="hidden bg-slate-50 p-3.5 rounded-xl border border-slate-100 space-y-2 text-xs">
+                <p class="font-bold text-slate-700"><i class="fa-solid fa-arrows-spin text-emerald-600 mr-1"></i>반복 일정 범위 선택</p>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-1.5 cursor-pointer select-none font-semibold text-slate-600">
+                        <input type="radio" name="edit-recurrence-range" value="one" checked class="w-3.5 h-3.5 accent-emerald-600"> 이 일정만
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer select-none font-semibold text-slate-600">
+                        <input type="radio" name="edit-recurrence-range" value="all" class="w-3.5 h-3.5 accent-emerald-600"> 모든 반복 일정
+                    </label>
+                </div>
             </div>
             <div class="flex items-center gap-2.5 text-sm border-t border-slate-100 pt-3">
                 <i class="fa-solid fa-users w-4 text-center text-emerald-500"></i>
@@ -546,11 +572,27 @@ document.addEventListener('DOMContentLoaded', function () {
             if (endEl.value && this.value > endEl.value) endEl.value = this.value;
         });
 
+        // 반복 설정에 따른 종료일 입력창 제어
+        const addRecurType = document.getElementById('add-recurrence-type');
+        const recurEndRow = document.getElementById('recurrence-end-row');
+        addRecurType.addEventListener('change', () => {
+            if (addRecurType.value !== 'NONE') {
+                recurEndRow.classList.remove('hidden');
+                const d = new Date();
+                d.setMonth(d.getMonth() + 3);
+                document.getElementById('add-recurrence-end').value = d.toISOString().slice(0, 10);
+            } else {
+                recurEndRow.classList.add('hidden');
+            }
+        });
+
         document.getElementById('open-add-btn').addEventListener('click', ()=>{
             const base = getTodayStr();
             document.getElementById('add-start').value = base+'T09:00';
             document.getElementById('add-end').value   = base+'T10:00';
             document.getElementById('add-date-only').value = base;
+            addRecurType.value = 'NONE';
+            recurEndRow.classList.add('hidden');
             tabSch.click();
             openModal(addModal, addMC);
             setTimeout(()=>document.getElementById('add-title').focus(), 60);
@@ -567,7 +609,15 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch('/api/schedules/add/', {
                 method:'POST',
                 headers:{'Content-Type':'application/json','X-CSRFToken':this.querySelector('[name=csrfmiddlewaretoken]').value},
-                body:JSON.stringify({title:document.getElementById('add-title').value, description:document.getElementById('add-desc').value, start, end, is_global:document.getElementById('add-is-global').checked}),
+                body:JSON.stringify({
+                    title:document.getElementById('add-title').value, 
+                    description:document.getElementById('add-desc').value, 
+                    start, 
+                    end, 
+                    is_global:document.getElementById('add-is-global').checked,
+                    recurrence_type:addRecurType.value,
+                    recurrence_end:addRecurType.value !== 'NONE' ? document.getElementById('add-recurrence-end').value : null
+                }),
             }).then(r=>r.json()).then(res=>{
                 if(res.status==='success'){ calendar.refetchEvents(); closeModal(addModal,addMC); this.reset(); if(isAllDay) alldayBtn.click(); }
                 else alert('등록 실패: '+res.message);
@@ -586,6 +636,15 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('edit-desc').value  = (ev.extendedProps&&ev.extendedProps.description)||'';
             const ig = document.getElementById('edit-is-global');
             if(ig) ig.checked = !!(ev.extendedProps&&ev.extendedProps.is_global);
+            
+            const editRecurRow = document.getElementById('edit-recurrence-row');
+            if (ev.extendedProps && ev.extendedProps.recurrence_group) {
+                editRecurRow.classList.remove('hidden');
+                document.querySelector('input[name="edit-recurrence-range"][value="one"]').checked = true;
+            } else {
+                editRecurRow.classList.add('hidden');
+            }
+
             openModal(editModal, editMC);
         }
 
@@ -595,10 +654,20 @@ document.addEventListener('DOMContentLoaded', function () {
         editForm.addEventListener('submit',function(e){
             e.preventDefault();
             const id = document.getElementById('edit-id').value;
+            const hasRecur = !document.getElementById('edit-recurrence-row').classList.contains('hidden');
+            const range = hasRecur ? document.querySelector('input[name="edit-recurrence-range"]:checked').value : 'one';
+
             fetch('/api/schedules/'+id+'/update/',{
                 method:'POST',
                 headers:{'Content-Type':'application/json','X-CSRFToken':this.querySelector('[name=csrfmiddlewaretoken]').value},
-                body:JSON.stringify({title:document.getElementById('edit-title').value, description:document.getElementById('edit-desc').value, start:document.getElementById('edit-start').value, end:document.getElementById('edit-end').value||null, is_global:document.getElementById('edit-is-global').checked}),
+                body:JSON.stringify({
+                    title:document.getElementById('edit-title').value, 
+                    description:document.getElementById('edit-desc').value, 
+                    start:document.getElementById('edit-start').value, 
+                    end:document.getElementById('edit-end').value||null, 
+                    is_global:document.getElementById('edit-is-global').checked,
+                    update_type: range
+                }),
             }).then(r=>r.json()).then(res=>{
                 if(res.status==='success'){ calendar.refetchEvents(); closeModal(editModal,editMC); }
                 else alert('수정 실패: '+res.message);
@@ -608,9 +677,13 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('delete-btn').addEventListener('click',function(){
             if(!confirm('이 일정을 삭제하시겠습니까?')) return;
             const id = document.getElementById('edit-id').value;
+            const hasRecur = !document.getElementById('edit-recurrence-row').classList.contains('hidden');
+            const range = hasRecur ? document.querySelector('input[name="edit-recurrence-range"]:checked').value : 'one';
+
             fetch('/api/schedules/'+id+'/delete/',{
                 method:'POST',
-                headers:{'X-CSRFToken':editForm.querySelector('[name=csrfmiddlewaretoken]').value},
+                headers:{'Content-Type':'application/json','X-CSRFToken':editForm.querySelector('[name=csrfmiddlewaretoken]').value},
+                body:JSON.stringify({delete_type: range})
             }).then(r=>r.json()).then(res=>{
                 if(res.status==='success'){ calendar.refetchEvents(); closeModal(editModal,editMC); }
                 else alert('삭제 실패: '+res.message);

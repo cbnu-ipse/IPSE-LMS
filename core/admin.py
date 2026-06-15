@@ -12,6 +12,6 @@ class ActivityLogAdmin(admin.ModelAdmin):
 
 @admin.register(Schedule)
 class ScheduleAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "user", "is_global", "start_date", "end_date")
-    list_filter = ("is_global", "start_date")
-    search_fields = ("title", "description", "user__username")
+    list_display = ("id", "title", "user", "is_global", "start_date", "end_date", "recurrence_type", "recurrence_group")
+    list_filter = ("is_global", "start_date", "recurrence_type")
+    search_fields = ("title", "description", "user__username", "recurrence_group")
