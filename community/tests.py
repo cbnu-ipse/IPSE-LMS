@@ -73,3 +73,140 @@ class RecruitmentTestCase(TestCase):
         apps = RecruitmentApplication.objects.filter(form=self.form)
         self.assertEqual(apps.count(), 1)
         self.assertEqual(apps.first().name, '홍길동')
+
+
+class CommunityTestCase(TestCase):
+    def setUp(self):
+        # 유저 2명 생성 (주최자/작성자 및 참가자)
+        self.author = User.objects.create_user(
+            username='author_user',
+            password='password123',
+            first_name='길동',
+            last_name='홍'
+        )
+        self.participant = User.objects.create_user(
+            username='participant_user',
+            password='password123',
+            first_name='철수',
+            last_name='김'
+        )
+        self.client = Client()
+
+    def test_post_creation_and_commenting(self):
+        self.client.login(username='author_user', password='password123')
+        
+        # 1. 자유게시판 글쓰기
+        create_url = reverse('post_create')
+        response = self.client.post(create_url, {
+            'title': '테스트 게시글 제목',
+            'content': '테스트 마크다운 본문 내용입니다.'
+        })
+        self.assertEqual(response.status_code, 302)  # 상세조회 페이지로 리다이렉트 확인
+        
+        from .models import CommunityPost, CommunityComment
+        post = CommunityPost.objects.first()
+        self.assertIsNotNone(post)
+        self.assertEqual(post.title, '테스트 게시글 제목')
+        self.assertEqual(post.author, self.author)
+
+        # 2. 상세 조회 및 댓글 작성
+        detail_url = reverse('post_detail', kwargs={'post_id': post.id})
+        response = self.client.post(detail_url, {
+            'action': 'add_comment',
+            'content': '댓글 내용 등록 테스트'
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        comment = CommunityComment.objects.first()
+        self.assertIsNotNone(comment)
+        self.assertEqual(comment.content, '댓글 내용 등록 테스트')
+        self.assertEqual(comment.author, self.author)
+        self.assertEqual(comment.post, post)
+
+    def test_gathering_scheduling_and_calendar_sync(self):
+        self.client.login(username='author_user', password='password123')
+        
+        # 1. 번개 모임 개설
+        create_url = reverse('gathering_create')
+        event_time = timezone.now() + datetime.timedelta(days=2)
+        response = self.client.post(create_url, {
+            'title': '알고리즘 번개 모임',
+            'description': '오늘 같이 알고리즘 공부해요!',
+            'event_date': event_time.isoformat(),
+            'location': '동아리 방',
+            'max_participants': '3'
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        from .models import GatheringEvent
+        from core.models import Schedule
+        
+        gathering = GatheringEvent.objects.first()
+        self.assertIsNotNone(gathering)
+        self.assertEqual(gathering.title, '알고리즘 번개 모임')
+        self.assertEqual(gathering.max_participants, 3)
+        
+        # 주최자가 참가자 목록에 자동 등록되었는지 검증
+        self.assertIn(self.author, gathering.participants.all())
+        
+        # 주최자 개인 일정에 자동으로 등록되었는지 검증
+        host_schedule = Schedule.objects.filter(user=self.author, external_id=f"gathering:{gathering.id}").first()
+        self.assertIsNotNone(host_schedule)
+        self.assertEqual(host_schedule.title, '[번개] 알고리즘 번개 모임')
+
+        # 2. 다른 사용자로 로그인하여 참가 신청 토글 테스트
+        self.client.logout()
+        self.client.login(username='participant_user', password='password123')
+        
+        join_url = reverse('gathering_join_toggle', kwargs={'gathering_id': gathering.id})
+        response = self.client.post(join_url)
+        self.assertEqual(response.status_code, 200)
+        
+        # 참가 신청 완료 상태 검증
+        self.assertIn(self.participant, gathering.participants.all())
+        participant_schedule = Schedule.objects.filter(user=self.participant, external_id=f"gathering:{gathering.id}").first()
+        self.assertIsNotNone(participant_schedule)
+        
+        # 3. 참가자 정원 초과 테스트를 위해 제 3의 멤버 참가 시도
+        extra_user1 = User.objects.create_user(username='extra_user1', password='password123')
+        extra_user2 = User.objects.create_user(username='extra_user2', password='password123')
+        
+        gathering.participants.add(extra_user1)  # 현재 참여자: 호스트, 참가자, extra_user1 -> 총 3명 (정원 도달)
+        
+        # 정원 초과 상태에서 extra_user2가 로그인해서 참여하려 하면 400 에러를 반환하는지 검증
+        self.client.logout()
+        self.client.login(username='extra_user2', password='password123')
+        response = self.client.post(join_url)
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'status': 'error', 'message': '정원이 마감되어 신청할 수 없습니다.'})
+        
+        # 4. 참가자 취소 시 캘린더 일정 삭제 검증
+        self.client.logout()
+        self.client.login(username='participant_user', password='password123')
+        response = self.client.post(join_url)  # 참가 취소 토글
+        self.assertEqual(response.status_code, 200)
+        
+        # 취소 완료 상태 검증
+        self.assertNotIn(self.participant, gathering.participants.all())
+        participant_schedule_deleted = Schedule.objects.filter(user=self.participant, external_id=f"gathering:{gathering.id}").exists()
+        self.assertFalse(participant_schedule_deleted)
+
+        # 5. 개설자가 모임 폭파(취소) 시 모든 일정 일괄 삭제 검증
+        # participant_user 가 다시 참가 신청해놓음
+        self.client.post(join_url)
+        self.assertTrue(Schedule.objects.filter(user=self.participant, external_id=f"gathering:{gathering.id}").exists())
+        
+        # 호스트로 로그인 후 취소 요청
+        self.client.logout()
+        self.client.login(username='author_user', password='password123')
+        
+        cancel_url = reverse('gathering_cancel', kwargs={'gathering_id': gathering.id})
+        response = self.client.post(cancel_url)
+        self.assertEqual(response.status_code, 302)
+        
+        gathering.refresh_from_db()
+        self.assertTrue(gathering.is_canceled)
+        
+        # 호스트 및 참여자 캘린더에서 완전히 일괄 삭제되었는지 검증
+        self.assertFalse(Schedule.objects.filter(external_id=f"gathering:{gathering.id}").exists())
+

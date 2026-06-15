@@ -1,9 +1,11 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
-    NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote,
+    NewsAndEvents, NewsAndEventsComment,
+    Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
-    RecruitmentForm, RecruitmentApplication
+    RecruitmentForm, RecruitmentApplication,
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment
 )
 
 
@@ -227,3 +229,46 @@ class RecruitmentApplicationAdmin(admin.ModelAdmin):
     search_fields = ('name', 'student_id', 'department', 'form__title')
     readonly_fields = ('form', 'name', 'student_id', 'department', 'contact', 'motivation', 'submitted_at', 'ip_address')
     ordering = ('-submitted_at',)
+
+
+@admin.register(CommunityPost)
+class CommunityPostAdmin(admin.ModelAdmin):
+    list_display = ('title', 'author', 'views', 'created_at', 'updated_at')
+    list_filter = ('created_at', 'author')
+    search_fields = ('title', 'content', 'author__username', 'author__first_name')
+
+
+@admin.register(CommunityComment)
+class CommunityCommentAdmin(admin.ModelAdmin):
+    list_display = ('post', 'author', 'content_preview', 'created_at')
+    list_filter = ('created_at', 'author')
+    search_fields = ('content', 'author__username', 'post__title')
+
+    def content_preview(self, obj):
+        return obj.content[:50] + ('...' if len(obj.content) > 50 else '')
+    content_preview.short_description = '댓글 내용'
+
+
+@admin.register(GatheringEvent)
+class GatheringEventAdmin(admin.ModelAdmin):
+    list_display = ('title', 'author', 'event_date', 'location', 'max_participants', 'participant_count_display', 'is_canceled', 'created_at')
+    list_filter = ('event_date', 'is_canceled', 'author')
+    search_fields = ('title', 'description', 'location', 'author__username')
+
+    def participant_count_display(self, obj):
+        return f"{obj.participant_count} / {obj.max_participants}"
+    participant_count_display.short_description = '참여 현황'
+
+
+@admin.register(GatheringComment)
+class GatheringCommentAdmin(admin.ModelAdmin):
+    list_display = ('gathering', 'author', 'content_preview', 'created_at')
+    list_filter = ('created_at', 'author')
+    search_fields = ('content', 'author__username', 'gathering__title')
+
+    def content_preview(self, obj):
+        return obj.content[:50] + ('...' if len(obj.content) > 50 else '')
+    content_preview.short_description = '댓글 내용'
+
+
+

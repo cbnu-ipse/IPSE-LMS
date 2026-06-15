@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}번개 모임 개설 | IPSE LMS{% endblock title %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto px-6 py-10">
+    <div class="space-y-8">
+        <!-- 🗺️ 1. 상단 경로 및 헤더 -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <p class="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
+                <a href="/" class="hover:text-emerald-600 transition">{% trans 'Home' %}</a>
+                <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
+                <a href="{% url 'community_home' %}" class="hover:text-emerald-600 transition">커뮤니티</a>
+                <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
+                <span class="text-slate-500">번개 개설</span>
+            </p>
+            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-bolt text-amber-500 animate-pulse"></i>
+                번개 모임 만들기
+            </h1>
+        </div>
+
+        {% include 'snippets/messages.html' %}
+
+        <!-- 📝 2. 개설 폼 카드 -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <form action="" method="POST" class="space-y-5">{% csrf_token %}
+                <!-- 모임 제목 -->
+                <div class="space-y-1.5">
+                    <label for="title" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        모임명
+                    </label>
+                    <input type="text" 
+                           name="title" 
+                           id="title" 
+                           placeholder="예: 오늘 저녁 같이 공부하실 분! (SECCOMP)" 
+                           value="{{ title_val|default:'' }}"
+                           class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-semibold text-slate-700 transition"
+                           required>
+                </div>
+
+                <!-- 모임 소개 -->
+                <div class="space-y-1.5">
+                    <label for="description" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        모임 상세 소개
+                    </label>
+                    <textarea name="description" 
+                              id="description" 
+                              rows="4" 
+                              placeholder="모임의 목적이나 구체적인 활동 계획을 공유해 주세요." 
+                              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-medium text-slate-700 transition resize-none"
+                              required>{{ description_val|default:'' }}</textarea>
+                </div>
+
+                <!-- 2열 그리드 정보 (시간, 장소) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- 모임 일시 -->
+                    <div class="space-y-1.5">
+                        <label for="event_date" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            모임 일시
+                        </label>
+                        <input type="datetime-local" 
+                               name="event_date" 
+                               id="event_date" 
+                               value="{{ event_date_val|default:'' }}"
+                               class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-semibold text-slate-700 transition"
+                               required>
+                    </div>
+
+                    <!-- 모집 정원 -->
+                    <div class="space-y-1.5">
+                        <label for="max_participants" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            모집 정원 (명)
+                        </label>
+                        <input type="number" 
+                               name="max_participants" 
+                               id="max_participants" 
+                               min="2" 
+                               placeholder="최소 2명 이상"
+                               value="{{ max_participants_val|default:'' }}"
+                               class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-semibold text-slate-700 transition"
+                               required>
+                    </div>
+                </div>
+
+                <!-- 모임 장소 -->
+                <div class="space-y-1.5">
+                    <label for="location" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        모임 장소
+                    </label>
+                    <input type="text" 
+                           name="location" 
+                           id="location" 
+                           placeholder="예: N14동 3층 학과 도서실, 정문 카페" 
+                           value="{{ location_val|default:'' }}"
+                           class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-semibold text-slate-700 transition"
+                           required>
+                </div>
+
+                <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-xs text-amber-800 leading-relaxed mt-2">
+                    <i class="fa-solid fa-circle-info mr-1"></i>
+                    <strong>일정 등록 안내</strong>: 번개 모임을 개설하면 개설자 본인의 **개인 캘린더**에 해당 일정이 자동으로 동기화됩니다. 모임에 다른 부원이 신청/취소하거나 개설자가 모임을 폭파(취소)하는 경우에도 일정이 실시간 동기화되어 관리됩니다.
+                </div>
+
+                <!-- 조작 버튼 -->
+                <div class="flex justify-end gap-3 pt-6 border-t border-slate-100">
+                    <a href="{% url 'community_home' %}" class="inline-flex items-center justify-center px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+                        {% trans 'Cancel' %}
+                    </a>
+                    <button type="submit" class="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 hover:scale-[1.01] transition active:scale-[0.99] shadow-sm">
+                        개설하기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock content %}

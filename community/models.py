@@ -300,3 +300,107 @@ class RecruitmentApplication(models.Model):
 
     def __str__(self):
         return f"{self.form.title} — {self.name}({self.student_id})"
+
+
+class CommunityPost(models.Model):
+    title = models.CharField(max_length=200, verbose_name="제목")
+    content = models.TextField(verbose_name="내용")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="community_posts",
+        verbose_name="작성자"
+    )
+    views = models.PositiveIntegerField(default=0, verbose_name="조회수")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def comment_count(self):
+        return self.community_comments.count()
+
+
+class CommunityComment(models.Model):
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name="community_comments",
+        verbose_name="게시글"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name="작성자"
+    )
+    content = models.TextField(verbose_name="댓글 내용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.post}"
+
+
+class GatheringEvent(models.Model):
+    title = models.CharField(max_length=200, verbose_name="모임 제목")
+    description = models.TextField(verbose_name="모임 상세 설명")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="gatherings_created",
+        verbose_name="개설자"
+    )
+    event_date = models.DateTimeField(verbose_name="모임 일시")
+    location = models.CharField(max_length=200, verbose_name="모임 장소")
+    max_participants = models.PositiveIntegerField(verbose_name="최대 정원")
+    participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="gathering_events",
+        blank=True,
+        verbose_name="참여자 목록"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="개설일시")
+    is_canceled = models.BooleanField(default=False, verbose_name="취소 여부")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def participant_count(self):
+        return self.participants.count()
+
+    @property
+    def is_full(self):
+        return self.participant_count >= self.max_participants
+
+
+class GatheringComment(models.Model):
+    gathering = models.ForeignKey(
+        GatheringEvent,
+        on_delete=models.CASCADE,
+        related_name="gathering_comments",
+        verbose_name="번개 모임"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name="작성자"
+    )
+    content = models.TextField(verbose_name="댓글 내용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.gathering}"
