@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
-from .models import User, Student, LMSToken
+from .models import User, Student, LMSToken, LeafTransaction
 
 
 @admin.action(description="선택한 사용자 계정을 승인합니다 (is_active=True)")
@@ -30,11 +30,11 @@ def unverify_students(modeladmin, request, queryset):
 
 # 1. 기본 사용자(User) 관리 설정
 class CustomUserAdmin(UserAdmin):
-    list_display = ('username', 'email', 'first_name', 'last_name', 'is_active', 'is_student', 'is_lecturer', 'is_staff', 'is_president', 'is_vice_president', 'is_executive')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'leaves', 'is_active', 'is_student', 'is_lecturer', 'is_staff', 'is_president', 'is_vice_president', 'is_executive')
     list_filter = ('is_active', 'is_student', 'is_lecturer', 'is_staff', 'is_president', 'is_vice_president', 'is_executive')
     actions = [approve_users, deactivate_users]
     fieldsets = UserAdmin.fieldsets + (
-        (None, {'fields': ('is_student', 'is_lecturer', 'gender', 'phone', 'address', 'picture')}),
+        (None, {'fields': ('is_student', 'is_lecturer', 'gender', 'phone', 'address', 'picture', 'leaves')}),
         ('동아리 역할 뱃지', {'fields': ('is_president', 'is_vice_president', 'is_executive')}),
     )
     add_fieldsets = UserAdmin.add_fieldsets + (
@@ -78,3 +78,20 @@ class LMSTokenAdmin(admin.ModelAdmin):
     list_display = ('user', 'lms_username', 'moodle_user_id', 'created_at', 'last_used_at')
     search_fields = ('user__username', 'lms_username')
     readonly_fields = ('token', 'created_at', 'last_used_at')
+
+
+@admin.register(LeafTransaction)
+class LeafTransactionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'amount', 'transaction_type', 'description', 'created_at')
+    list_filter = ('transaction_type', 'created_at')
+    search_fields = ('user__username', 'description')
+    readonly_fields = ('user', 'amount', 'transaction_type', 'description', 'created_at', 'previous_hash', 'hash')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
