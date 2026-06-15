@@ -10,6 +10,28 @@ SECRET_KEY = config("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=True, cast=bool)
 
+# 어드민 페이지 경로 설정 (개발 환경: 'admin/', 배포 환경: .env의 ADMIN_PATH 또는 자동 생성)
+if DEBUG:
+    ADMIN_PATH = config("ADMIN_PATH", default="admin")
+else:
+    import secrets
+    ADMIN_PATH = config("ADMIN_PATH", default=None)
+    if not ADMIN_PATH:
+        # 무작위 문자열 생성
+        random_path = secrets.token_urlsafe(16)
+        env_file_path = os.path.join(BASE_DIR, ".env")
+        if os.path.exists(env_file_path):
+            try:
+                with open(env_file_path, "a") as f:
+                    f.write(f"\n# Auto-generated Admin Path for Production\nADMIN_PATH={random_path}\n")
+                ADMIN_PATH = random_path
+            except Exception:
+                ADMIN_PATH = random_path
+        else:
+            ADMIN_PATH = random_path
+
+ADMIN_PATH = ADMIN_PATH.strip("/") + "/"
+
 # .env에서 ALLOWED_HOSTS를 콤마(,) 단위로 읽어오도록 개선 (보안 및 유연성 향상)
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS", 
