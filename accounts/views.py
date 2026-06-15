@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.db import transaction
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView
@@ -13,7 +14,7 @@ from django.contrib.auth.views import PasswordResetView
 from django.contrib.admin.views.decorators import staff_member_required
 from django.urls import reverse_lazy
 from django.core.mail import BadHeaderError
-from .models import Student, User, LMSToken
+from .models import Student, User, LMSToken, LeafCode, LeafCodeUsage
 from core.models import Schedule
 from .forms import (
     EmailValidationOnForgotPassword,
@@ -122,6 +123,49 @@ def update_profile_picture(request):
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
 
 
+@login_required
+@require_POST
+def redeem_code_api(request):
+    """보상 코드를 검증하고 사용자에게 낙엽을 지급합니다."""
+    try:
+        import json
+        data = json.loads(request.body)
+        code_input = data.get("code", "").strip()
+        
+        if not code_input:
+            return JsonResponse({"status": "error", "message": "코드를 입력해 주세요."}, status=400)
+            
+        with transaction.atomic():
+            # 1. 활성화된 코드 정보 락을 걸고 조회
+            leaf_code = LeafCode.objects.filter(code=code_input, is_active=True).select_for_update().first()
+            if not leaf_code:
+                return JsonResponse({"status": "error", "message": "유효하지 않거나 만료된 코드입니다."}, status=400)
+                
+            # 2. 이미 사용했는지 확인
+            already_used = LeafCodeUsage.objects.filter(user=request.user, leaf_code=leaf_code).exists()
+            if already_used:
+                return JsonResponse({"status": "error", "message": "이미 사용한 보상 코드입니다."}, status=400)
+                
+            # 3. 사용 이력 등록 및 낙엽 지급
+            LeafCodeUsage.objects.create(user=request.user, leaf_code=leaf_code)
+            request.user.adjust_leaves(
+                amount=leaf_code.amount,
+                transaction_type="code_redemption",
+                description=f"보상 코드 등록: {leaf_code.code}"
+            )
+            
+        # 갱신된 사용자의 보유 낙엽량 반환
+        request.user.refresh_from_db()
+        return JsonResponse({
+            "status": "success", 
+            "message": f"성공적으로 {leaf_code.amount}개의 낙엽이 지급되었습니다.",
+            "leaves": request.user.leaves
+        })
+        
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
+
 # ─── Profile Views ────────────────────────────────────────────────────────────
 
 @login_required
@@ -137,10 +181,13 @@ def profile(request):
     if user.is_student:
         student_obj = getattr(user, 'student', None)
 
+    leaf_transactions = user.leaf_transactions.all().order_by('-created_at')[:10]
+
     return render(request, 'accounts/profile.html', {
         'title': '내 프로필',
         'courses': courses,
         'level': student_obj,
+        'leaf_transactions': leaf_transactions,
     })
 
 
@@ -175,12 +222,15 @@ def profile_single(request, user_id):
     if profile_user.is_student:
         student_obj = getattr(profile_user, 'student', None)
 
+    leaf_transactions = profile_user.leaf_transactions.all().order_by('-created_at')[:10]
+
     return render(request, 'accounts/profile_single.html', {
         'title': profile_user.display_name,
         'user': profile_user,
         'courses': courses,
         'level': student_obj,
         'student': student_obj,
+        'leaf_transactions': leaf_transactions,
     })
 
 

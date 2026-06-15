@@ -79,3 +79,92 @@ class LeafCurrencyTestCase(TestCase):
         # 데이터베이스의 값이 변경되지 않았는지 재확인
         tx.refresh_from_db()
         self.assertEqual(tx.amount, 15)
+
+
+from django.urls import reverse
+from accounts.models import LeafCode, LeafCodeUsage
+import json
+
+class LeafCodeRedeemTestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="codestudent",
+            password="testpassword123",
+            first_name="Gildong",
+            last_name="Hong"
+        )
+        self.client.force_login(self.user)
+        # 활성 보상 코드 생성
+        self.active_code = LeafCode.objects.create(
+            code="WELCOME_IPSE",
+            amount=50,
+            is_active=True
+        )
+        # 비활성 보상 코드 생성
+        self.inactive_code = LeafCode.objects.create(
+            code="EXPIRED_CODE",
+            amount=20,
+            is_active=False
+        )
+
+    def test_redeem_code_success(self):
+        """보상 코드 성공 등록 검증"""
+        url = reverse("redeem_code_api")
+        response = self.client.post(
+            url,
+            data=json.dumps({"code": "WELCOME_IPSE"}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        res_data = response.json()
+        self.assertEqual(res_data["status"], "success")
+        self.assertEqual(res_data["leaves"], 50)
+
+        # DB 검증
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.leaves, 50)
+        self.assertTrue(LeafCodeUsage.objects.filter(user=self.user, leaf_code=self.active_code).exists())
+        self.assertTrue(LeafTransaction.objects.filter(user=self.user, transaction_type="code_redemption").exists())
+
+    def test_redeem_code_duplicate_fail(self):
+        """보상 코드 중복 등록 방지 검증"""
+        url = reverse("redeem_code_api")
+        # 1차 사용
+        self.client.post(
+            url,
+            data=json.dumps({"code": "WELCOME_IPSE"}),
+            content_type="application/json"
+        )
+        # 2차 사용 시도
+        response = self.client.post(
+            url,
+            data=json.dumps({"code": "WELCOME_IPSE"}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["message"], "이미 사용한 보상 코드입니다.")
+        
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.leaves, 50)  # 추가 지급되지 않고 50개 유지
+
+    def test_redeem_code_invalid_or_expired(self):
+        """존재하지 않거나 비활성화된 보상 코드 등록 차단 검증"""
+        url = reverse("redeem_code_api")
+        
+        # 1. 비활성 코드 입력
+        response1 = self.client.post(
+            url,
+            data=json.dumps({"code": "EXPIRED_CODE"}),
+            content_type="application/json"
+        )
+        self.assertEqual(response1.status_code, 400)
+        self.assertEqual(response1.json()["message"], "유효하지 않거나 만료된 코드입니다.")
+
+        # 2. 존재하지 않는 코드 입력
+        response2 = self.client.post(
+            url,
+            data=json.dumps({"code": "NON_EXISTENT"}),
+            content_type="application/json"
+        )
+        self.assertEqual(response2.status_code, 400)
+        self.assertEqual(response2.json()["message"], "유효하지 않거나 만료된 코드입니다.")

@@ -40,6 +40,7 @@ urlpatterns = [
     path("register/", views.register, name="register"),
     path('profile/update/api/', views.update_profile_api, name='update_profile_api'),
     path('profile/picture/update/', views.update_profile_picture, name='update_profile_picture'),
+    path('profile/redeem-code/', views.redeem_code_api, name='redeem_code_api'),
 
     # ─── Profile ───────────────────────────────────────────────────────────────
     path('profile/', views.profile, name='profile'),

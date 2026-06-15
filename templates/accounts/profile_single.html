@@ -1,37 +1,64 @@
 {% extends 'base.html' %}
 {% load i18n %}
-{% block title %} {{ title }} | {% trans 'Learning management system' %}{% endblock title %}
+{% block title %} {{ title }} | IPSE LMS{% endblock title %}
 
 {% load static %}
-
 
 {% block content %}
 
 {% if user.is_authenticated %}
-
 <section class="max-w-7xl mx-auto px-6 py-10">
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- 1. 좌측 프로필 사이드바 카드 -->
         <div class="lg:col-span-4">
-            <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm sticky top-24">
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm sticky top-24">
                 <div class="text-center">
-                    <img src="{{ user.get_picture }}" alt="{{ user.get_full_name }}" class="w-full max-w-[260px] mx-auto rounded-md border border-slate-200 mb-5">
-                    <h2 class="text-2xl font-semibold text-[#3F3F3F]">{{ user.get_full_name|title }}</h2>
-                    <p class="mt-2 text-slate-500">{{ user.get_user_role }}</p>
+                    <!-- 프로필 썸네일 그라디언트 보더 처리 -->
+                    <div class="relative w-44 h-44 mx-auto mb-6 rounded-3xl overflow-hidden p-1 bg-gradient-to-br from-emerald-500 to-teal-400 shadow-md">
+                        <div class="w-full h-full rounded-[20px] overflow-hidden bg-white">
+                            <img src="{{ user.get_picture }}" alt="{{ user.get_full_name }}" class="w-full h-full object-cover">
+                        </div>
+                    </div>
+                    
+                    <h2 class="text-2xl font-bold text-slate-800 mb-1">{{ user.get_full_name }}</h2>
+                    <p class="text-xs font-semibold text-slate-400 tracking-wider uppercase mb-5">{{ user.username }}</p>
+                    
+                    <!-- 역할 배지 표시 -->
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold shadow-sm {{ user.role_badge_class|default:'bg-slate-100 text-slate-600 border border-slate-200' }}">
+                        <i class="fa-solid fa-circle-user mr-1"></i>
+                        {{ user.get_user_role }}
+                    </span>
+                    
+                    <!-- 낙엽 및 레벨 카드 추가 (시각적 개선) -->
+                    <div class="mt-6 flex gap-4">
+                        <div class="bg-emerald-50/50 border border-emerald-100 rounded-2xl px-4 py-3 text-center flex-1 shadow-sm">
+                            <span class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block mb-0.5">동아리 등급</span>
+                            <span class="text-lg font-bold text-emerald-800">LV.{{ level.level|default:"1" }}</span>
+                        </div>
+                        <div class="bg-amber-50/50 border border-amber-100 rounded-2xl px-4 py-3 text-center flex-1 shadow-sm">
+                            <span class="text-[10px] text-amber-600 font-bold uppercase tracking-wider block mb-0.5">보유 낙엽</span>
+                            <span class="text-lg font-bold text-amber-800 flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-leaf text-amber-600"></i>
+                                {{ user.leaves }}
+                            </span>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- 관리자용 프로필 수정 액션 버튼 -->
                 {% if request.user.is_superuser %}
-                <div class="mt-8 pt-8 border-t border-slate-100 space-y-3">
+                <div class="mt-8 pt-6 border-t border-slate-100 space-y-3">
                     {% if user.is_student %}
-                    <a href="{% url 'student_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
-                        {% trans 'Edit Profile' %}
+                    <a href="{% url 'student_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
+                        <i class="fa-solid fa-user-gear mr-2 text-xs"></i>계정 정보 편집
                     </a>
-                    <a href="{% url 'student_program_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
-                        {% trans 'Edit Level & Info' %}
+                    <a href="{% url 'student_program_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+                        <i class="fa-solid fa-graduation-cap mr-2 text-xs text-slate-400"></i>등급 및 학적 수정
                     </a>
                     {% endif %}
                     {% if user.is_lecturer %}
-                    <a href="{% url 'staff_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
-                        {% trans 'Edit Profile' %}
+                    <a href="{% url 'staff_edit' pk=user.id %}" class="w-full inline-flex items-center justify-center px-4 py-3.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
+                        <i class="fa-solid fa-user-gear mr-2 text-xs"></i>운영진 정보 편집
                     </a>
                     {% endif %}
                 </div>
@@ -39,68 +66,154 @@
             </div>
         </div>
 
+        <!-- 2. 우측 세부 정보 및 최근 트랜잭션 영역 -->
         <div class="lg:col-span-8 space-y-6">
             {% include 'snippets/messages.html' %}
 
+            <!-- 운영진 담당 강의 과정 -->
             {% if user.is_lecturer %}
-            <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
-                <h3 class="text-2xl font-semibold text-[#3F3F3F] mb-4">{% trans 'My Courses' %}</h3>
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-chalkboard-user text-emerald-600"></i>
+                    담당 교육 과정
+                </h3>
                 {% if courses %}
-                <ul class="space-y-2">
+                <ul class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {% for course in courses %}
                     <li>
-                        <a href="{{ course.get_absolute_url }}" class="text-emerald-700 font-semibold hover:text-emerald-800 transition">{{ course }}</a>
+                        <a href="{{ course.get_absolute_url }}" class="block p-4 border border-slate-100 bg-slate-50 hover:bg-emerald-50/30 hover:border-emerald-200 rounded-xl text-emerald-700 font-semibold transition">
+                            {{ course }}
+                        </a>
                     </li>
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="text-rose-600 font-semibold">{% trans 'No courses assigned!' %}</p>
+                <p class="text-rose-600 font-semibold">담당으로 배정된 강의 코스가 없습니다.</p>
                 {% endif %}
             </div>
             {% endif %}
 
-            <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
-                <h3 class="text-2xl font-semibold text-[#3F3F3F] mb-6">{% trans 'Personal Info' %}</h3>
+            <!-- 기본 정보 카드 -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-id-card text-emerald-600"></i>
+                    기본 인적사항
+                </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-700">
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'First Name' %}:</strong> {{ user.first_name|title }}</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Last Name' %}:</strong> {{ user.last_name|title }}</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4 md:col-span-2"><strong>{% trans 'ID No.' %}:</strong> {{ user.username }}</div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">성명</strong>
+                        <span class="font-semibold">{{ user.get_full_name }}</span>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">학번 / 아이디</strong>
+                        <span class="font-semibold">{{ user.username }}</span>
+                    </div>
                 </div>
             </div>
 
+            <!-- 학적 정보 카드 (동아리원 인증 연동) -->
             {% if user.is_student %}
-            <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
-                <h3 class="text-2xl font-semibold text-[#3F3F3F] mb-6">{% trans 'Applicant Info' %}</h3>
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-graduation-cap text-emerald-600"></i>
+                    학적 및 인증 상태
+                </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-700">
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'School' %}:</strong> Unity College</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Level' %}:</strong> {{ level.level }}</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4 md:col-span-2"><strong>{% trans 'Level' %}:</strong> {{ level.level }}</div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">소속 대학</strong>
+                        <span class="font-semibold">충북대학교</span>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">동아리원 인증 여부</strong>
+                        {% if student.is_verified %}
+                            <span class="text-emerald-600 font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check"></i> 인증 완료
+                            </span>
+                        {% else %}
+                            <span class="text-amber-600 font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-clock-rotate-left"></i> 승인 대기 중 (인증 서류 확인 필요)
+                            </span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endif %}
 
-            <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
-                <h3 class="text-2xl font-semibold text-[#3F3F3F] mb-6">{% trans 'Contact Info' %}</h3>
-                <div class="grid grid-cols-1 gap-4 text-slate-700">
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Email' %}:</strong> {{ user.email }}</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Tel No.' %}:</strong> {{ user.phone }}</div>
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Address/city' %}:</strong> {{ user.address }}</div>
+            <!-- 연락처 정보 카드 -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-address-book text-emerald-600"></i>
+                    연락처 및 주소
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-700">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 md:col-span-2">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">이메일</strong>
+                        <span class="font-semibold">{{ user.email|default:"등록된 이메일이 없습니다." }}</span>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">연락처</strong>
+                        <span class="font-semibold">{{ user.phone|default:"등록된 연락처가 없습니다." }}</span>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">주소 / 도시</strong>
+                        <span class="font-semibold">{{ user.address|default:"등록된 주소가 없습니다." }}</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="bg-white border border-slate-200 rounded-md p-8 shadow-sm">
-                <h3 class="text-2xl font-semibold text-[#3F3F3F] mb-6">{% trans 'Important Dates' %}</h3>
-                <div class="grid grid-cols-1 gap-4 text-slate-700">
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Last login' %}:</strong> {{ user.last_login }}</div>
-                    {% if current_semester and current_session %}
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Academic Year' %}:</strong> {{ current_semester }} {% trans 'Semester' %} {{ current_session }}</div>
-                    {% endif %}
-                    <div class="rounded-md border border-slate-200 bg-slate-50 px-5 py-4"><strong>{% trans 'Registered Date' %}:</strong> {{ user.date_joined|date }}</div>
+            <!-- 시스템 가입 정보 -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-calendar-days text-emerald-600"></i>
+                    시스템 가입 정보
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-700">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">마지막 로그인</strong>
+                        <span class="font-semibold">{{ user.last_login|date:"Y년 m월 d일 H시 i분" }}</span>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <strong class="text-slate-500 font-medium block text-xs mb-1">동아리 등록 일시</strong>
+                        <span class="font-semibold">{{ user.date_joined|date:"Y년 m월 d일 H시 i분" }}</span>
+                    </div>
                 </div>
+            </div>
+
+            <!-- 💸 낙엽 거래 내역 타임라인 (보안 무결성 시각화) -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-emerald-600"></i>
+                    최근 낙엽 변동 내역
+                </h3>
+                {% if leaf_transactions %}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead>
+                            <tr class="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase">
+                                <th class="py-3">거래 일시</th>
+                                <th class="py-3">상세 사유</th>
+                                <th class="py-3 text-right">변동 수량</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {% for tx in leaf_transactions %}
+                            <tr class="hover:bg-slate-50/50 transition">
+                                <td class="py-4 text-xs text-slate-400">{{ tx.created_at|date:"Y-m-d H:i" }}</td>
+                                <td class="py-4 font-medium text-slate-700">{{ tx.description|default:"—" }}</td>
+                                <td class="py-4 text-right font-extrabold {% if tx.amount > 0 %}text-emerald-600{% else %}text-rose-500{% endif %}">
+                                    {% if tx.amount > 0 %}+{% endif %}{{ tx.amount }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-400 py-6 text-center">발생한 낙엽 변동 내역이 없습니다.</p>
+                {% endif %}
             </div>
         </div>
     </div>
 </section>
 {% endif %}
-
 {% endblock content %}
