@@ -40,4 +40,15 @@ urlpatterns = [
     path('recruitment/<int:form_id>/edit/', views.recruit_edit, name='recruit_edit'),
     path('recruitment/<int:form_id>/manage/', views.recruit_manage, name='recruit_manage'),
     path('recruitment/<int:form_id>/csv/', views.recruit_download_csv, name='recruit_download_csv'),
+    
+    # ─── 자유 게시판 및 번개 모임 (Meetup) ──────────────────────────────────────
+    path('home/', views.community_home, name='community_home'),
+    path('board/<int:post_id>/', views.post_detail, name='post_detail'),
+    path('board/add/', views.post_create, name='post_create'),
+    path('board/<int:post_id>/edit/', views.post_edit, name='post_edit'),
+    path('board/<int:post_id>/delete/', views.post_delete, name='post_delete'),
+    path('meetup/<int:gathering_id>/', views.gathering_detail, name='gathering_detail'),
+    path('meetup/create/', views.gathering_create, name='gathering_create'),
+    path('meetup/<int:gathering_id>/join/', views.gathering_join_toggle, name='gathering_join_toggle'),
+    path('meetup/<int:gathering_id>/cancel/', views.gathering_cancel, name='gathering_cancel'),
 ]

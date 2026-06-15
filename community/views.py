@@ -19,7 +19,8 @@ from core.models import Schedule
 from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
-    RecruitmentForm, RecruitmentApplication
+    RecruitmentForm, RecruitmentApplication,
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment
 )
 
 
@@ -1366,3 +1367,318 @@ def recruit_apply(request, form_id):
 
     request.session[f'recruit_load_time_{form_id}'] = time.time()
     return render(request, 'community/recruit_apply.html', {'form': form_obj})
+
+
+# ==============================================================================
+# 5. 커뮤니티 자유 게시판 & 번개 모임
+# ==============================================================================
+
+@login_required
+def community_home(request):
+    """자유게시판과 번개 모임 목록을 보여주는 통합 홈 뷰"""
+    posts = CommunityPost.objects.select_related('author').order_by('-created_at')
+    
+    # 취소되지 않은 번개모임 조회
+    gatherings = GatheringEvent.objects.filter(is_canceled=False).select_related('author').prefetch_related('participants').order_by('-created_at')
+    
+    # 각 번개모임별로 현재 사용자가 참여했는지 여부 동적 주입
+    for g in gatherings:
+        g.user_joined = request.user in g.participants.all()
+
+    return render(request, 'community/community_home.html', {
+        'title': '커뮤니티',
+        'posts': posts,
+        'hot_posts': [],
+        'gatherings': gatherings,
+    })
+
+
+@login_required
+def post_detail(request, post_id):
+    """자유게시판 상세 보기 및 댓글 목록/작성"""
+    post = get_object_or_404(CommunityPost, id=post_id)
+    
+    # 조회수 증가
+    post.views += 1
+    post.save(update_fields=['views'])
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_comment':
+            content = request.POST.get('content', '').strip()
+            if content:
+                CommunityComment.objects.create(post=post, author=request.user, content=content)
+                messages.success(request, '댓글이 등록되었습니다.')
+            return redirect('post_detail', post_id=post.id)
+
+        elif action == 'delete_comment':
+            comment_id = request.POST.get('comment_id')
+            comment = get_object_or_404(CommunityComment, id=comment_id, post=post)
+            # 본인 혹은 스태프만 삭제 가능
+            if request.user == comment.author or request.user.is_staff:
+                comment.delete()
+                messages.success(request, '댓글이 삭제되었습니다.')
+            else:
+                messages.error(request, '댓글 삭제 권한이 없습니다.')
+            return redirect('post_detail', post_id=post.id)
+
+    comments = post.community_comments.select_related('author').order_by('-created_at')
+    return render(request, 'community/post_detail.html', {
+        'title': post.title,
+        'post': post,
+        'comments': comments,
+    })
+
+
+@login_required
+def post_create(request):
+    """자유게시판 게시글 작성"""
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        content = request.POST.get('content', '').strip()
+
+        if not title or not content:
+            messages.error(request, '제목과 내용을 모두 입력해 주세요.')
+            return render(request, 'community/post_create.html', {
+                'title': '글쓰기',
+                'post_title': title,
+                'post_content': content
+            })
+
+        post = CommunityPost.objects.create(
+            title=title,
+            content=content,
+            author=request.user
+        )
+        messages.success(request, '게시글이 성공적으로 등록되었습니다.')
+        return redirect('post_detail', post_id=post.id)
+
+    return render(request, 'community/post_create.html', {
+        'title': '글쓰기'
+    })
+
+
+@login_required
+def post_edit(request, post_id):
+    """자유게시판 게시글 수정"""
+    post = get_object_or_404(CommunityPost, id=post_id)
+
+    if request.user != post.author:
+        messages.error(request, '본인의 게시글만 수정할 수 있습니다.')
+        return redirect('post_detail', post_id=post.id)
+
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        content = request.POST.get('content', '').strip()
+
+        if not title or not content:
+            messages.error(request, '제목과 내용을 모두 입력해 주세요.')
+            return render(request, 'community/post_create.html', {
+                'title': '글 수정',
+                'post': post,
+                'is_edit': True
+            })
+
+        post.title = title
+        post.content = content
+        post.save(update_fields=['title', 'content'])
+        messages.success(request, '게시글이 수정되었습니다.')
+        return redirect('post_detail', post_id=post.id)
+
+    return render(request, 'community/post_create.html', {
+        'title': '글 수정',
+        'post': post,
+        'is_edit': True
+    })
+
+
+@login_required
+def post_delete(request, post_id):
+    """자유게시판 게시글 삭제"""
+    if request.method == 'POST':
+        post = get_object_or_404(CommunityPost, id=post_id)
+        if request.user == post.author or request.user.is_staff:
+            post.delete()
+            messages.success(request, '게시글이 삭제되었습니다.')
+        else:
+            messages.error(request, '삭제 권한이 없습니다.')
+    return redirect('community_home')
+
+
+@login_required
+def gathering_detail(request, gathering_id):
+    """번개 모임 상세 보기 및 댓글"""
+    gathering = get_object_or_404(GatheringEvent, id=gathering_id)
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_comment':
+            content = request.POST.get('content', '').strip()
+            if content:
+                GatheringComment.objects.create(gathering=gathering, author=request.user, content=content)
+                messages.success(request, '댓글이 등록되었습니다.')
+            return redirect('gathering_detail', gathering_id=gathering.id)
+
+        elif action == 'delete_comment':
+            comment_id = request.POST.get('comment_id')
+            comment = get_object_or_404(GatheringComment, id=comment_id, gathering=gathering)
+            if request.user == comment.author or request.user.is_staff:
+                comment.delete()
+                messages.success(request, '댓글이 삭제되었습니다.')
+            else:
+                messages.error(request, '댓글 삭제 권한이 없습니다.')
+            return redirect('gathering_detail', gathering_id=gathering.id)
+
+    comments = gathering.gathering_comments.select_related('author').order_by('-created_at')
+    participants = gathering.participants.all()
+    user_joined = request.user in participants
+
+    return render(request, 'community/gathering_detail.html', {
+        'title': gathering.title,
+        'gathering': gathering,
+        'comments': comments,
+        'participants': participants,
+        'user_joined': user_joined,
+    })
+
+
+@login_required
+def gathering_create(request):
+    """번개 모임 개설"""
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        event_date_str = request.POST.get('event_date', '').strip()
+        location = request.POST.get('location', '').strip()
+        max_participants_str = request.POST.get('max_participants', '').strip()
+
+        if not (title and description and event_date_str and location and max_participants_str):
+            messages.error(request, '모든 필수 항목을 입력해 주세요.')
+            return render(request, 'community/gathering_create.html', {
+                'title': '번개 모임 만들기',
+                'title_val': title,
+                'description_val': description,
+                'event_date_val': event_date_str,
+                'location_val': location,
+                'max_participants_val': max_participants_str
+            })
+
+        try:
+            parsed_date = dt_module.datetime.fromisoformat(event_date_str)
+            if timezone.is_naive(parsed_date):
+                event_date = timezone.make_aware(parsed_date)
+            else:
+                event_date = parsed_date
+            max_participants = int(max_participants_str)
+            if max_participants <= 0:
+                raise ValueError("정원은 1명 이상이어야 합니다.")
+        except (ValueError, TypeError):
+            messages.error(request, '올바른 날짜 형식과 정원 수치를 입력해 주세요.')
+            return render(request, 'community/gathering_create.html', {
+                'title': '번개 모임 만들기',
+                'title_val': title,
+                'description_val': description,
+                'event_date_val': event_date_str,
+                'location_val': location,
+                'max_participants_val': max_participants_str
+            })
+
+        with transaction.atomic():
+            gathering = GatheringEvent.objects.create(
+                title=title,
+                description=description,
+                author=request.user,
+                event_date=event_date,
+                location=location,
+                max_participants=max_participants
+            )
+            # 주최자 참가 자동 등록
+            gathering.participants.add(request.user)
+
+            # 주최자 개인 일정 등록
+            Schedule.objects.create(
+                user=request.user,
+                title=f"[번개] {gathering.title}",
+                start_date=event_date,
+                end_date=None,
+                is_global=False,
+                external_id=f"gathering:{gathering.id}",
+                description=f"장소: {location} / 주최: {request.user.get_full_name or request.user.username}"
+            )
+
+        messages.success(request, '번개 모임이 개설되었습니다!')
+        return redirect('gathering_detail', gathering_id=gathering.id)
+
+    return render(request, 'community/gathering_create.html', {
+        'title': '번개 모임 만들기'
+    })
+
+
+@login_required
+def gathering_join_toggle(request, gathering_id):
+    """번개 모임 참가 신청 / 취소 토글 API (POST)"""
+    if request.method == 'POST':
+        gathering = get_object_or_404(GatheringEvent, id=gathering_id)
+
+        if gathering.is_canceled:
+            return JsonResponse({'status': 'error', 'message': '이미 취소된 모임입니다.'}, status=400)
+
+        with transaction.atomic():
+            # 이미 참가했는지 검증
+            has_joined = gathering.participants.filter(id=request.user.id).exists()
+
+            if has_joined:
+                # 참가 취소
+                if request.user == gathering.author:
+                    return JsonResponse({'status': 'error', 'message': '모임 개설자는 참가를 취소할 수 없습니다. 모임 취소 기능을 이용해 주세요.'}, status=400)
+                
+                gathering.participants.remove(request.user)
+                # 개인 일정 삭제
+                Schedule.objects.filter(user=request.user, external_id=f"gathering:{gathering.id}").delete()
+                return JsonResponse({'status': 'success', 'joined': False, 'message': '번개 모임 참가를 취소했습니다.'})
+            else:
+                # 참가 신청
+                # 정원 초과 여부 검증
+                if gathering.participant_count >= gathering.max_participants:
+                    return JsonResponse({'status': 'error', 'message': '정원이 마감되어 신청할 수 없습니다.'}, status=400)
+
+                gathering.participants.add(request.user)
+                # 개인 일정 등록
+                Schedule.objects.update_or_create(
+                    user=request.user,
+                    external_id=f"gathering:{gathering.id}",
+                    defaults={
+                        "title": f"[번개] {gathering.title}",
+                        "start_date": gathering.event_date,
+                        "end_date": None,
+                        "is_global": False,
+                        "description": f"장소: {gathering.location} / 주최: {gathering.author.get_full_name or gathering.author.username}",
+                    }
+                )
+                return JsonResponse({'status': 'success', 'joined': True, 'message': '번개 모임 참가가 신청되었습니다!'})
+
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+@login_required
+def gathering_cancel(request, gathering_id):
+    """번개 모임 폭파/취소 (POST)"""
+    if request.method == 'POST':
+        gathering = get_object_or_404(GatheringEvent, id=gathering_id)
+
+        if request.user != gathering.author and not request.user.is_staff:
+            messages.error(request, '모임 취소 권한이 없습니다.')
+            return redirect('gathering_detail', gathering_id=gathering.id)
+
+        with transaction.atomic():
+            gathering.is_canceled = True
+            gathering.save(update_fields=['is_canceled'])
+
+            # 참여했던 모든 사람들의 개인 일정 일괄 삭제
+            Schedule.objects.filter(external_id=f"gathering:{gathering.id}").delete()
+
+        messages.success(request, '번개 모임이 취소(폭파)되었습니다.')
+        return redirect('community_home')
+
+    return redirect('gathering_detail', gathering_id=gathering_id)
+
