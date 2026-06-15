@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
-from .models import User, Student, LMSToken, LeafTransaction
+from .models import User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage
 
 
 @admin.action(description="선택한 사용자 계정을 승인합니다 (is_active=True)")
@@ -86,6 +86,30 @@ class LeafTransactionAdmin(admin.ModelAdmin):
     list_filter = ('transaction_type', 'created_at')
     search_fields = ('user__username', 'description')
     readonly_fields = ('user', 'amount', 'transaction_type', 'description', 'created_at', 'previous_hash', 'hash')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(LeafCode)
+class LeafCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'amount', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('code',)
+
+
+@admin.register(LeafCodeUsage)
+class LeafCodeUsageAdmin(admin.ModelAdmin):
+    list_display = ('user', 'leaf_code', 'used_at')
+    list_filter = ('used_at',)
+    search_fields = ('user__username', 'leaf_code__code')
+    readonly_fields = ('user', 'leaf_code', 'used_at')
 
     def has_add_permission(self, request):
         return False

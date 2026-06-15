@@ -251,3 +251,31 @@ class LeafTransaction(models.Model):
                 User.objects.filter(id=self.user_id).update(leaves=F('leaves') + self.amount)
         else:
             raise PermissionError("이미 기록된 거래 이력은 수정할 수 없습니다.")
+
+
+class LeafCode(models.Model):
+    code = models.CharField(max_length=50, unique=True, verbose_name="보상 코드")
+    amount = models.PositiveIntegerField(verbose_name="지급 낙엽 수량")
+    is_active = models.BooleanField(default=True, verbose_name="활성화 여부")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성 일시")
+
+    class Meta:
+        verbose_name = "보상 코드"
+        verbose_name_plural = "보상 코드 목록"
+
+    def __str__(self):
+        return f"{self.code} ({self.amount}개)"
+
+
+class LeafCodeUsage(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="used_codes")
+    leaf_code = models.ForeignKey(LeafCode, on_delete=models.CASCADE, related_name="usages")
+    used_at = models.DateTimeField(auto_now_add=True, verbose_name="사용 일시")
+
+    class Meta:
+        unique_together = ('user', 'leaf_code')
+        verbose_name = "보상 코드 사용 이력"
+        verbose_name_plural = "보상 코드 사용 이력 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.leaf_code.code} 사용"
