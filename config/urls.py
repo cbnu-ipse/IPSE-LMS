@@ -7,7 +7,7 @@ import community.views
 
 urlpatterns = [
     path("", include("core.urls")),
-    path("ipse-admin-2026/", admin.site.urls),
+    path(settings.ADMIN_PATH, admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("accounts/", include("django.contrib.auth.urls")),
     path("course/", include("course.urls")),
