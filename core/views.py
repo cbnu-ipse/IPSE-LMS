@@ -163,6 +163,8 @@ def get_schedules_api(request):
                 'event_type': 'schedule',
                 'is_completed': s.is_completed,
                 'is_lms': is_lms,
+                'recurrence_group': s.recurrence_group,
+                'recurrence_type': s.recurrence_type,
             }
         })
 
@@ -173,6 +175,25 @@ def get_schedules_api(request):
 def add_schedule_api(request):
     """새로운 일정을 데이터베이스에 저장하는 API"""
     try:
+        import datetime
+        import uuid
+        import calendar
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone
+
+        def add_months(sourcedate, months):
+            month = sourcedate.month - 1 + months
+            year = sourcedate.year + month // 12
+            month = month % 12 + 1
+            day = min(sourcedate.day, calendar.monthrange(year, month)[1])
+            return sourcedate.replace(year=year, month=month, day=day)
+
+        def add_years(sourcedate, years):
+            try:
+                return sourcedate.replace(year=sourcedate.year + years)
+            except ValueError:
+                return sourcedate.replace(year=sourcedate.year + years, day=28)
+
         data = json.loads(request.body)
         is_global = data.get('is_global', False)
 
@@ -180,14 +201,72 @@ def add_schedule_api(request):
         if not request.user.is_staff:
             is_global = False
 
-        Schedule.objects.create(
-            title=data.get('title'),
-            description=data.get('description', ''),
-            start_date=data.get('start'),
-            end_date=data.get('end'),
-            user=request.user,
-            is_global=is_global
-        )
+        recurrence_type = data.get('recurrence_type', 'NONE')
+        recurrence_end_str = data.get('recurrence_end') # YYYY-MM-DD
+        
+        start_dt = parse_datetime(data.get('start'))
+        end_dt = parse_datetime(data.get('end')) if data.get('end') else None
+
+        if start_dt and timezone.is_naive(start_dt):
+            start_dt = timezone.make_aware(start_dt)
+        if end_dt and timezone.is_naive(end_dt):
+            end_dt = timezone.make_aware(end_dt)
+
+        if recurrence_type == 'NONE':
+            Schedule.objects.create(
+                title=data.get('title'),
+                description=data.get('description', ''),
+                start_date=start_dt,
+                end_date=end_dt,
+                user=request.user,
+                is_global=is_global
+            )
+        else:
+            recur_group = str(uuid.uuid4())
+            # recurrence_end_str가 'YYYY-MM-DD' 형식으로 옴
+            recurrence_end = None
+            if recurrence_end_str:
+                recurrence_end = parse_datetime(recurrence_end_str + "T23:59:59")
+                if recurrence_end and timezone.is_naive(recurrence_end):
+                    recurrence_end = timezone.make_aware(recurrence_end)
+
+            max_end = start_dt + datetime.timedelta(days=730) # 최대 2년
+            if not recurrence_end or recurrence_end > max_end:
+                recurrence_end = max_end
+
+            current_start = start_dt
+            current_end = end_dt
+            duration = (end_dt - start_dt) if end_dt else None
+
+            count = 0
+            while current_start <= recurrence_end and count < 100:
+                Schedule.objects.create(
+                    title=data.get('title'),
+                    description=data.get('description', ''),
+                    start_date=current_start,
+                    end_date=current_end,
+                    user=request.user,
+                    is_global=is_global,
+                    recurrence_type=recurrence_type,
+                    recurrence_group=recur_group
+                )
+                count += 1
+                if recurrence_type == 'DAILY':
+                    current_start += datetime.timedelta(days=1)
+                elif recurrence_type == 'WEEKLY':
+                    current_start += datetime.timedelta(weeks=1)
+                elif recurrence_type == 'MONTHLY':
+                    current_start = add_months(current_start, 1)
+                elif recurrence_type == 'YEARLY':
+                    current_start = add_years(current_start, 1)
+                else:
+                    break
+
+                if duration:
+                    current_end = current_start + duration
+                else:
+                    current_end = None
+
         return JsonResponse({"status": "success"})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
@@ -202,7 +281,18 @@ def delete_schedule_api(request, sch_id):
         if schedule.user != request.user and not request.user.is_staff:
             return JsonResponse({"status": "error", "message": "권한이 없습니다."}, status=403)
 
-        schedule.delete()
+        delete_type = 'one'
+        try:
+            data = json.loads(request.body)
+            delete_type = data.get('delete_type', 'one')
+        except Exception:
+            delete_type = request.POST.get('delete_type', 'one')
+
+        if delete_type == 'all' and schedule.recurrence_group:
+            Schedule.objects.filter(recurrence_group=schedule.recurrence_group).delete()
+        else:
+            schedule.delete()
+
         return JsonResponse({"status": "success"})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
@@ -214,20 +304,65 @@ def update_schedule_api(request, sch_id):
     try:
         schedule = get_object_or_404(Schedule, id=sch_id)
         
-        # 권한 체크: 내가 쓴 글이거나 관리자(staff)여야만 수정 가능
         if schedule.user != request.user and not request.user.is_staff:
             return JsonResponse({"status": "error", "message": "권한이 없습니다."}, status=403)
 
         data = json.loads(request.body)
-        schedule.title = data.get('title', schedule.title)
-        schedule.description = data.get('description', schedule.description)
-        schedule.start_date = data.get('start', schedule.start_date)
-        schedule.end_date = data.get('end', schedule.end_date)
-        
-        if request.user.is_staff:
-            schedule.is_global = data.get('is_global', schedule.is_global)
+        update_type = data.get('update_type', 'one')
 
-        schedule.save()
+        new_title = data.get('title', schedule.title)
+        new_description = data.get('description', schedule.description)
+        new_start_str = data.get('start')
+        new_end_str = data.get('end')
+        new_is_global = data.get('is_global', schedule.is_global)
+
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone
+        
+        new_start = parse_datetime(new_start_str) if new_start_str else None
+        new_end = parse_datetime(new_end_str) if new_end_str else None
+
+        if new_start and timezone.is_naive(new_start):
+            new_start = timezone.make_aware(new_start)
+        if new_end and timezone.is_naive(new_end):
+            new_end = timezone.make_aware(new_end)
+
+        if update_type == 'all' and schedule.recurrence_group:
+            if new_start:
+                time_delta = new_start - schedule.start_date
+            else:
+                time_delta = None
+
+            group_schedules = Schedule.objects.filter(recurrence_group=schedule.recurrence_group)
+            for s in group_schedules:
+                s.title = new_title
+                s.description = new_description
+                if time_delta:
+                    s.start_date = s.start_date + time_delta
+                    if s.end_date:
+                        s.end_date = s.end_date + time_delta
+                elif new_end_str is None:
+                    s.end_date = None
+
+                if request.user.is_staff:
+                    s.is_global = new_is_global
+                s.save()
+        else:
+            schedule.title = new_title
+            schedule.description = new_description
+            if new_start:
+                schedule.start_date = new_start
+            if new_end_str is not None:
+                schedule.end_date = new_end
+            
+            if schedule.recurrence_group:
+                schedule.recurrence_group = ""
+                schedule.recurrence_type = "NONE"
+
+            if request.user.is_staff:
+                schedule.is_global = new_is_global
+            schedule.save()
+
         return JsonResponse({"status": "success"})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)

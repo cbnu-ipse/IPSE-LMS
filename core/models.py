@@ -62,6 +62,14 @@ class ActivityLog(models.Model):
 
 class Schedule(models.Model):
     """동아리 및 개인 일정 모델"""
+    RECURRENCE_CHOICES = (
+        ('NONE', '반복 안함'),
+        ('DAILY', '매일'),
+        ('WEEKLY', '매주'),
+        ('MONTHLY', '매월'),
+        ('YEARLY', '매년'),
+    )
+
     title = models.CharField(max_length=200, verbose_name="일정명")
     description = models.TextField(blank=True, null=True, verbose_name="상세 내용")
     start_date = models.DateTimeField(verbose_name="시작 일시")
@@ -74,6 +82,20 @@ class Schedule(models.Model):
     # 외부 시스템(LMS 등)에서 가져온 일정의 중복 방지용 ID (예: "lms:assign:123")
     external_id = models.CharField(max_length=100, blank=True, default="", verbose_name="외부 ID")
     is_completed = models.BooleanField(default=False, verbose_name="완료 여부")
+
+    # 일정 반복 관련 필드
+    recurrence_type = models.CharField(
+        max_length=10,
+        choices=RECURRENCE_CHOICES,
+        default='NONE',
+        verbose_name="반복 유형"
+    )
+    recurrence_group = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        verbose_name="반복 그룹 UUID"
+    )
 
     class Meta:
         ordering = ['start_date']
