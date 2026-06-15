@@ -20,7 +20,7 @@ from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
     RecruitmentForm, RecruitmentApplication,
-    CommunityPost, CommunityComment, GatheringEvent, GatheringComment
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike
 )
 
 
@@ -1378,6 +1378,15 @@ def community_home(request):
     """자유게시판과 번개 모임 목록을 보여주는 통합 홈 뷰"""
     posts = CommunityPost.objects.select_related('author').order_by('-created_at')
     
+    # 최근 7일 동안의 핫 게시물 계산 (score = views + comment * 5 + likes * 10)
+    seven_days_ago = timezone.now() - dt_module.timedelta(days=7)
+    recent_posts = list(CommunityPost.objects.filter(created_at__gte=seven_days_ago).select_related('author'))
+    hot_posts = sorted(
+        recent_posts,
+        key=lambda p: p.views + (p.comment_count * 5) + (p.like_count * 10),
+        reverse=True
+    )[:10]
+    
     # 취소되지 않은 번개모임 조회
     gatherings = GatheringEvent.objects.filter(is_canceled=False).select_related('author').prefetch_related('participants').order_by('-created_at')
     
@@ -1388,9 +1397,35 @@ def community_home(request):
     return render(request, 'community/community_home.html', {
         'title': '커뮤니티',
         'posts': posts,
-        'hot_posts': [],
+        'hot_posts': hot_posts,
         'gatherings': gatherings,
     })
+
+
+@login_required
+def post_like_toggle(request, post_id):
+    """게시글 추천(좋아요) 토글 API"""
+    from django.views.decorators.http import require_POST
+    if request.method == 'POST':
+        post = get_object_or_404(CommunityPost, id=post_id)
+        like_qs = CommunityPostLike.objects.filter(post=post, user=request.user)
+        
+        if like_qs.exists():
+            like_qs.delete()
+            liked = False
+            message = '추천을 취소했습니다.'
+        else:
+            CommunityPostLike.objects.create(post=post, user=request.user)
+            liked = True
+            message = '이 글을 추천했습니다!'
+            
+        return JsonResponse({
+            'status': 'success',
+            'liked': liked,
+            'like_count': post.like_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '잘못된 요청 방식입니다.'}, status=400)
 
 
 @login_required
@@ -1423,10 +1458,12 @@ def post_detail(request, post_id):
             return redirect('post_detail', post_id=post.id)
 
     comments = post.community_comments.select_related('author').order_by('-created_at')
+    user_liked = post.likes.filter(user=request.user).exists() if request.user.is_authenticated else False
     return render(request, 'community/post_detail.html', {
         'title': post.title,
         'post': post,
         'comments': comments,
+        'user_liked': user_liked,
     })
 
 

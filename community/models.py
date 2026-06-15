@@ -322,8 +322,36 @@ class CommunityPost(models.Model):
         return self.title
 
     @property
+    def like_count(self):
+        return self.likes.count()
+
+    @property
     def comment_count(self):
         return self.community_comments.count()
+
+
+class CommunityPostLike(models.Model):
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name="likes",
+        verbose_name="게시글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="community_post_likes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="추천일시")
+
+    class Meta:
+        unique_together = ("post", "user")
+        verbose_name = "게시글 추천"
+        verbose_name_plural = "게시글 추천 목록"
+
+    def __str__(self):
+        return f"{self.user} liked {self.post}"
 
 
 class CommunityComment(models.Model):

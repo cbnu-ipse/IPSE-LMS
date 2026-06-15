@@ -5,7 +5,7 @@ from .models import (
     Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
     RecruitmentForm, RecruitmentApplication,
-    CommunityPost, CommunityComment, GatheringEvent, GatheringComment
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike
 )
 
 
@@ -271,4 +271,9 @@ class GatheringCommentAdmin(admin.ModelAdmin):
     content_preview.short_description = '댓글 내용'
 
 
+@admin.register(CommunityPostLike)
+class CommunityPostLikeAdmin(admin.ModelAdmin):
+    list_display = ('post', 'user', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('post__title', 'user__username')
 

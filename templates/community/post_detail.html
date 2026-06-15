@@ -64,7 +64,19 @@
             <!-- Toast UI Viewer 본문 영역 -->
             <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed"></div>
 
-
+            <!-- 추천(좋아요) 영역 -->
+            <div class="flex justify-center items-center pt-6 border-t border-slate-100">
+                <button type="button" id="like-btn" onclick="togglePostLike({{ post.id }})" 
+                        class="inline-flex items-center gap-2 px-6 py-3 rounded-full border text-sm font-bold transition duration-200 hover:scale-[1.03] shadow-sm
+                        {% if user_liked %}
+                        bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100/70
+                        {% else %}
+                        bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100
+                        {% endif %}">
+                    <i class="{% if user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up text-sm" id="like-icon"></i>
+                    추천 <span id="like-count" class="font-extrabold">{{ post.like_count }}</span>
+                </button>
+            </div>
         </div>
 
         <!-- 💬 3. 댓글 섹션 카드 -->
@@ -142,6 +154,43 @@
         });
     });
 
+    // 추천(좋아요) 토글 비동기 함수
+    function togglePostLike(postId) {
+        const btn = document.getElementById('like-btn');
+        const icon = document.getElementById('like-icon');
+        const countSpan = document.getElementById('like-count');
+        const csrfToken = '{{ csrf_token }}';
 
+        btn.disabled = true;
+        fetch(`/community/board/${postId}/like/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast(data.message, 'success');
+                countSpan.textContent = data.like_count;
+                if (data.liked) {
+                    btn.className = "inline-flex items-center gap-2 px-6 py-3 rounded-full border text-sm font-bold transition duration-200 hover:scale-[1.03] shadow-sm bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100/70";
+                    icon.className = "fa-solid fa-thumbs-up text-sm";
+                } else {
+                    btn.className = "inline-flex items-center gap-2 px-6 py-3 rounded-full border text-sm font-bold transition duration-200 hover:scale-[1.03] shadow-sm bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100";
+                    icon.className = "fa-regular fa-thumbs-up text-sm";
+                }
+            } else {
+                showToast(data.message, 'error');
+            }
+        })
+        .catch(err => {
+            showToast('서버 통신 중 오류가 발생했습니다.', 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+        });
+    }
 </script>
 {% endblock content %}

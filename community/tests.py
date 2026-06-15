@@ -210,3 +210,58 @@ class CommunityTestCase(TestCase):
         # 호스트 및 참여자 캘린더에서 완전히 일괄 삭제되었는지 검증
         self.assertFalse(Schedule.objects.filter(external_id=f"gathering:{gathering.id}").exists())
 
+    def test_post_like_toggle(self):
+        self.client.login(username='author_user', password='password123')
+        
+        # 자유게시판 글 하나 개설
+        from .models import CommunityPost, CommunityPostLike
+        post = CommunityPost.objects.create(
+            title='추천용 게시글',
+            content='추천 기능 테스트용 본문',
+            author=self.author
+        )
+        
+        like_url = reverse('post_like_toggle', kwargs={'post_id': post.id})
+        
+        # 1. 좋아요 추가
+        response = self.client.post(like_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['liked'])
+        self.assertEqual(response.json()['like_count'], 1)
+        self.assertTrue(CommunityPostLike.objects.filter(post=post, user=self.author).exists())
+        
+        # 2. 좋아요 취소 (토글)
+        response = self.client.post(like_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['liked'])
+        self.assertEqual(response.json()['like_count'], 0)
+        self.assertFalse(CommunityPostLike.objects.filter(post=post, user=self.author).exists())
+
+    def test_popular_hot_posts(self):
+        from .models import CommunityPost, CommunityComment, CommunityPostLike
+        
+        # 3개의 글 개설
+        p1 = CommunityPost.objects.create(title='인기글 1위 후보', content='1위 내용', author=self.author, views=10) # 10점
+        p2 = CommunityPost.objects.create(title='인기글 2위 후보', content='2위 내용', author=self.author, views=5)  # 5점
+        p3 = CommunityPost.objects.create(title='비인기글', content='내용', author=self.author, views=1)         # 1점
+        
+        # p2 에 댓글 2개 추가 -> comment_count=2 (점수: 5 + 2*5 = 15점 -> 1위로 상승해야 함)
+        CommunityComment.objects.create(post=p2, author=self.author, content='댓글 1')
+        CommunityComment.objects.create(post=p2, author=self.participant, content='댓글 2')
+        
+        # p1 에 좋아요 2개 추가 -> like_count=2 (점수: 10 + 2*10 = 30점 -> 다시 1위로 상승해야 함)
+        CommunityPostLike.objects.create(post=p1, user=self.author)
+        CommunityPostLike.objects.create(post=p1, user=self.participant)
+        
+        # community_home 뷰 조회
+        self.client.login(username='author_user', password='password123')
+        url = reverse('community_home')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        hot_posts = response.context['hot_posts']
+        
+        # 정렬 순서 검증 (1위: p1 (30점), 2위: p2 (15점), 3위: p3 (1점))
+        self.assertEqual(hot_posts[0].id, p1.id)
+        self.assertEqual(hot_posts[1].id, p2.id)
+        self.assertEqual(hot_posts[2].id, p3.id)
