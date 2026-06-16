@@ -8,9 +8,18 @@
     html { font-size: 90%; }
     /* FOUC 방지: tailwind.css 로드 전에도 흰 배경 유지 */
     html, body { background-color: #f8fafc; }
+    /* 모바일 기기 화면 확대 및 더블탭 줌 방지 */
+    html, body, button, a, input, select, textarea {
+        touch-action: manipulation;
+    }
+    @media (max-width: 768px) {
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+    }
 </style>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %} | {% block title %}{% endblock %}</title>
     {% if request.host.name == 'judge' %}
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse-judge.svg' %}">
@@ -239,6 +248,7 @@
 
                 <a href="{% host_url 'introduce' host 'community' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소개</a>
                 {% if user.is_authenticated %}
+                <a href="{% host_url 'profile' host 'community' %}" class="block px-4 py-2.5 rounded-lg text-sm {% if request.resolver_match.url_name == 'profile' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-700 hover:bg-emerald-50 hover:text-emerald-700{% endif %} transition">내 프로필</a>
                 <a href="{% url 'notification_center' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition flex items-center justify-between">
                     <span>알림</span>
                     <span id="mobile-menu-notification-badge" class="bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 hidden">0</span>
@@ -247,13 +257,13 @@
                 <div class="border-t border-slate-100 pt-2 mt-2">
                     {% if user.is_authenticated %}
                     <div class="flex items-center justify-between px-4 py-2">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-medium text-slate-700">{{ user.display_name }}님 (LV.{{ user.student.level|default:"1" }})</span>
+                        <a href="{% host_url 'profile' host 'community' %}" class="flex items-center gap-2 hover:opacity-85 transition">
+                            <span class="text-sm font-medium text-slate-700 hover:text-emerald-600 transition">{{ user.display_name }}님 (LV.{{ user.student.level|default:"1" }})</span>
                             <div class="inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 text-emerald-800 text-xs font-semibold">
                                 <i class="fa-solid fa-leaf text-emerald-600"></i>
                                 <span>{{ user.leaves }}</span>
                             </div>
-                        </div>
+                        </a>
                         <form action="{% host_url 'logout' host 'community' %}" method="post" class="inline">
                             {% csrf_token %}
                             <button type="submit" class="text-xs text-slate-400 hover:text-red-500 transition">로그아웃</button>
@@ -273,9 +283,31 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">
+    <footer class="bg-white border-t border-slate-200 pt-8 pb-20 md:pb-8 text-center text-slate-500 text-xs">
         &copy; 2026 IPSE Club. Intelligent Pioneer of Software Engineering.
     </footer>
+
+    <!-- 모바일 하단 고정 링크 바 -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-6 py-2 shadow-lg flex justify-around items-center">
+        <a href="https://cafe.naver.com/cbnuipse" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-[#03C75A] transition">
+            <span class="text-[10px] font-black tracking-wide leading-none">N</span>
+            <span class="text-[9px] font-semibold">네이버 카페</span>
+        </a>
+        <a href="https://www.instagram.com/cbnu_ipse/" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-[#E1306C] transition">
+            <i class="fa-brands fa-instagram text-sm"></i>
+            <span class="text-[9px] font-semibold">인스타그램</span>
+        </a>
+        <a href="https://github.com/ipse-github" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-800 transition">
+            <i class="fa-brands fa-github text-sm"></i>
+            <span class="text-[9px] font-semibold">GitHub</span>
+        </a>
+        <a href="https://computer.chungbuk.ac.kr/" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-emerald-700 transition">
+            <span class="inline-flex h-4 w-4 items-center justify-center overflow-hidden">
+                <img src="{% static 'img/University-LOGO.png' %}" alt="충북대" class="h-3.5 w-3.5 object-contain" style="filter: grayscale(100%) contrast(140%) opacity(0.75);">
+            </span>
+            <span class="text-[9px] font-semibold">충북대 컴공</span>
+        </a>
+    </div>
     {% block extra_js %}{% endblock %}
     <script>
       // 페이지 전환 로딩 바 및 오버레이
@@ -401,21 +433,7 @@
         }
 
         // CSRF Token 가져오기
-        function getCookie(name) {
-          let cookieValue = null;
-          if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-              const cookie = cookies[i].trim();
-              if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-              }
-            }
-          }
-          return cookieValue;
-        }
-        const csrftoken = getCookie('csrftoken');
+        const csrftoken = '{{ csrf_token }}';
 
         // 알림 목록 비동기 조회
         function fetchNotifications() {
