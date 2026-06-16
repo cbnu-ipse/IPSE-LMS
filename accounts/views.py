@@ -894,3 +894,169 @@ def lms_download_file(request):
             return response
     except Exception as e:
         return HttpResponse(f"파일 다운로드 실패: {e}", status=500)
+
+
+@login_required
+def unread_notification_count_api(request):
+    """읽지 않은 알림 개수 반환 (Polling 용)"""
+    from .models import Notification
+    count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    return JsonResponse({'unread_count': count})
+
+
+@login_required
+def notification_list_api(request):
+    """최근 5개의 알림 목록 반환 (드롭다운용)"""
+    from .models import Notification
+    notifications = Notification.objects.filter(recipient=request.user)[:5]
+    
+    # 시간 포맷 헬퍼 (예: "방금 전", "5분 전", "1시간 전", "어제" 또는 "날짜")
+    def format_relative_time(dt):
+        from django.utils import timezone
+        import datetime
+        now = timezone.now()
+        diff = now - dt
+        if diff.days == 0:
+            if diff.seconds < 60:
+                return "방금 전"
+            elif diff.seconds < 3600:
+                return f"{diff.seconds // 60}분 전"
+            else:
+                return f"{diff.seconds // 3600}시간 전"
+        elif diff.days == 1:
+            return "어제"
+        elif diff.days < 7:
+            return f"{diff.days}일 전"
+        else:
+            return dt.strftime("%Y-%m-%d")
+
+    data = []
+    for n in notifications:
+        data.append({
+            'id': n.id,
+            'notification_type': n.notification_type,
+            'message': n.message,
+            'is_read': n.is_read,
+            'gathering_id': n.gathering_id if n.gathering else None,
+            'created_at_formatted': format_relative_time(n.created_at)
+        })
+    
+    unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    return JsonResponse({'notifications': data, 'unread_count': unread_count})
+
+
+@login_required
+def read_and_redirect(request, notification_id):
+    """특정 알림 읽음 처리 완료 후 관련 번개 모임 상세화면으로 redirect"""
+    from .models import Notification
+    n = get_object_or_404(Notification, id=notification_id, recipient=request.user)
+    if not n.is_read:
+        n.is_read = True
+        n.save(update_fields=['is_read'])
+    
+    if n.gathering:
+        return redirect('gathering_detail', gathering_id=n.gathering.id)
+    return redirect('gathering_list')
+
+
+@login_required
+@require_POST
+def mark_all_as_read_api(request):
+    """로그인한 사용자의 모든 미독 알림을 읽음 처리"""
+    from .models import Notification
+    Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def delete_notification_api(request, notification_id):
+    """특정 알림 삭제"""
+    from .models import Notification
+    n = get_object_or_404(Notification, id=notification_id, recipient=request.user)
+    n.delete()
+    return JsonResponse({'success': True})
+
+
+@login_required
+def notification_center(request):
+    """알림 센터 페이지 (전체 알림 조회 및 개별 삭제/필터링)"""
+    from .models import Notification
+    # 읽지 않음 필터링 여부
+    filter_unread = request.GET.get('unread') == 'true'
+    
+    qs = Notification.objects.filter(recipient=request.user)
+    if filter_unread:
+        qs = qs.filter(is_read=False)
+        
+    # 간단한 페이지네이션 (20개씩)
+    from django.core.paginator import Paginator
+    paginator = Paginator(qs, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    return render(request, 'accounts/notifications.html', {
+        'title': '알림 센터',
+        'page_obj': page_obj,
+        'filter_unread': filter_unread,
+    })
+
+
+@login_required
+@require_POST
+def subscribe_push_api(request):
+    """클라이언트 기기의 웹 푸시 구독 정보를 저장/갱신"""
+    import json
+    from .models import PushSubscription
+    try:
+        data = json.loads(request.body)
+        endpoint = data.get('endpoint')
+        keys = data.get('keys', {})
+        p256dh = keys.get('p256dh')
+        auth = keys.get('auth')
+
+        if not endpoint or not p256dh or not auth:
+            return JsonResponse({'success': False, 'error': '필수 구독 정보가 누락되었습니다.'}, status=400)
+
+        # 학생 프로필이 없으면 에러
+        try:
+            student = request.user.student
+        except Exception:
+            return JsonResponse({'success': False, 'error': '학생 프로필이 등록되어 있지 않습니다.'}, status=400)
+
+        # 기존 구독 정보가 있으면 갱신, 없으면 생성
+        subscription, created = PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                'student': student,
+                'p256dh': p256dh,
+                'auth': auth
+            }
+        )
+        return JsonResponse({'success': True, 'created': created})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def unsubscribe_push_api(request):
+    """클라이언트 기기의 웹 푸시 구독 정보 해제/삭제"""
+    import json
+    from .models import PushSubscription
+    try:
+        data = json.loads(request.body)
+        endpoint = data.get('endpoint')
+
+        if not endpoint:
+            return JsonResponse({'success': False, 'error': '엔드포인트 정보가 누락되었습니다.'}, status=400)
+
+        try:
+            student = request.user.student
+            PushSubscription.objects.filter(student=student, endpoint=endpoint).delete()
+            return JsonResponse({'success': True})
+        except Exception:
+            return JsonResponse({'success': False, 'error': '학생 프로필이 등록되어 있지 않습니다.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
-from .models import User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage
+from .models import User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage, Notification
 
 
 @admin.action(description="선택한 사용자 계정을 승인합니다 (is_active=True)")
@@ -119,3 +119,10 @@ class LeafCodeUsageAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('recipient', 'sender', 'notification_type', 'message', 'is_read', 'created_at')
+    list_filter = ('notification_type', 'is_read', 'created_at')
+    search_fields = ('recipient__username', 'sender__username', 'message')

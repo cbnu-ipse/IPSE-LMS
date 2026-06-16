@@ -137,6 +137,26 @@
                 {% endif %}
                 {% if user.is_authenticated %}
                 <div class="hidden md:flex items-center gap-2">
+                    <!-- 알림 종 및 미니 드롭다운 (데스크톱) -->
+                    <div class="relative flex items-center" id="notification-dropdown-container">
+                        <button id="notification-bell-btn" class="w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition duration-200 shadow-sm relative">
+                            <i class="fa-solid fa-bell text-sm"></i>
+                            <span id="notification-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
+                        </button>
+                        <div id="notification-dropdown" class="absolute right-0 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 hidden z-50" style="top: calc(100% + 8px);">
+                            <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                                <span class="font-bold text-slate-800 text-sm">알림</span>
+                                <button id="notification-mark-all-read" class="text-xs text-emerald-600 hover:text-emerald-700 font-medium hidden">모두 읽음</button>
+                            </div>
+                            <div id="notification-list" class="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                                <div class="px-4 py-6 text-center text-slate-400 text-xs">알림이 없습니다.</div>
+                            </div>
+                            <div class="px-4 py-2 border-t border-slate-100 text-center">
+                                <a href="{% url 'notification_center' %}" class="text-xs text-slate-500 hover:text-slate-700 font-medium inline-block w-full">전체 알림 보기</a>
+                            </div>
+                        </div>
+                    </div>
+
                     <a href="{% host_url 'profile' host 'community' %}" class="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
                         <span class="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-[10px] text-white font-medium shadow-sm">
                             LV.{{ user.student.level|default:"1" }}
@@ -160,6 +180,14 @@
                 {% else %}
                 <a href="{% host_url 'login' host 'community' %}"
                          class="hidden md:inline bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition">로그인</a>
+                {% endif %}
+
+                {% if user.is_authenticated %}
+                <!-- 모바일 알림 종 단축 버튼 (모바일) -->
+                <a href="{% url 'notification_center' %}" class="md:hidden w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition duration-200 shadow-sm relative mr-1">
+                    <i class="fa-solid fa-bell text-sm"></i>
+                    <span id="mobile-notification-bell-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
+                </a>
                 {% endif %}
 
                 <!-- 모바일 햄버거 버튼 -->
@@ -194,6 +222,12 @@
                 {% endif %}
 
                 <a href="{% host_url 'introduce' host 'community' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소개</a>
+                {% if user.is_authenticated %}
+                <a href="{% url 'notification_center' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition flex items-center justify-between">
+                    <span>알림</span>
+                    <span id="mobile-menu-notification-badge" class="bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 hidden">0</span>
+                </a>
+                {% endif %}
                 <div class="border-t border-slate-100 pt-2 mt-2">
                     {% if user.is_authenticated %}
                     <div class="flex items-center justify-between px-4 py-2">
@@ -290,6 +324,213 @@
                     setTimeout(() => toast.remove(), 300);
                 }, 2200);
             };
+
+      // 🔔 알림 시스템 Javascript (로그인된 경우에만 작동)
+      {% if user.is_authenticated %}
+      (function() {
+        const bellBtn = document.getElementById('notification-bell-btn');
+        const dropdown = document.getElementById('notification-dropdown');
+        const badge = document.getElementById('notification-badge');
+        const mobileBadge = document.getElementById('mobile-notification-bell-badge');
+        const mobileMenuBadge = document.getElementById('mobile-menu-notification-badge');
+        const listContainer = document.getElementById('notification-list');
+        const markAllReadBtn = document.getElementById('notification-mark-all-read');
+
+        let unreadCount = 0;
+
+        // 알림 목록 드롭다운 토글 (데스크톱)
+        if (bellBtn && dropdown) {
+          bellBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) {
+              fetchNotifications();
+            }
+          });
+
+          // 바깥 클릭 시 닫기
+          document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target) && e.target !== bellBtn) {
+              dropdown.classList.add('hidden');
+            }
+          });
+        }
+
+        // CSRF Token 가져오기
+        function getCookie(name) {
+          let cookieValue = null;
+          if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+              const cookie = cookies[i].trim();
+              if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+              }
+            }
+          }
+          return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        // 알림 목록 비동기 조회
+        function fetchNotifications() {
+          fetch('/accounts/notifications/recent/')
+            .then(res => res.json())
+            .then(data => {
+              renderDropdown(data.notifications);
+              updateBadges(data.unread_count);
+            });
+        }
+
+        // 드롭다운 HTML 렌더링
+        function renderDropdown(notifications) {
+          if (!listContainer) return;
+          listContainer.innerHTML = '';
+
+          if (notifications.length === 0) {
+            listContainer.innerHTML = '<div class="px-4 py-6 text-center text-slate-400 text-xs">알림이 없습니다.</div>';
+            if (markAllReadBtn) markAllReadBtn.classList.add('hidden');
+            return;
+          }
+
+          if (markAllReadBtn) markAllReadBtn.classList.remove('hidden');
+
+          notifications.forEach(n => {
+            const item = document.createElement('a');
+            item.href = `/accounts/notifications/${n.id}/read/`;
+            item.className = `block px-4 py-3 hover:bg-slate-50 transition text-xs flex items-start gap-2.5 ${n.is_read ? 'text-slate-600' : 'bg-slate-50/50 text-slate-800 font-medium'}`;
+            
+            // 타입별 아이콘 설정
+            let icon = '<i class="fa-solid fa-bell text-slate-400"></i>';
+            if (n.notification_type === 'gathering_created') icon = '<i class="fa-solid fa-bolt text-amber-500"></i>';
+            else if (n.notification_type === 'gathering_join') icon = '<i class="fa-solid fa-user-plus text-emerald-500"></i>';
+            else if (n.notification_type === 'gathering_leave') icon = '<i class="fa-solid fa-user-minus text-rose-500"></i>';
+            else if (n.notification_type === 'gathering_comment') icon = '<i class="fa-solid fa-comment text-sky-500"></i>';
+            else if (n.notification_type === 'gathering_cancel') icon = '<i class="fa-solid fa-triangle-exclamation text-rose-500"></i>';
+
+            item.innerHTML = `
+              <span class="mt-0.5">${icon}</span>
+              <div class="flex-grow min-w-0">
+                <p class="leading-relaxed break-words">${escapeHTML(n.message)}</p>
+                <span class="text-[10px] text-slate-400 mt-1 block">${n.created_at_formatted}</span>
+              </div>
+              ${n.is_read ? '' : '<span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 self-center"></span>'}
+            `;
+            listContainer.appendChild(item);
+          });
+        }
+
+        function escapeHTML(str) {
+          return str.replace(/[&<>'"]/g, 
+            tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+          );
+        }
+
+        // 배지 및 카운트 상태 업데이트
+        function updateBadges(count) {
+          unreadCount = count;
+          [badge, mobileBadge, mobileMenuBadge].forEach(b => {
+            if (b) {
+              if (count > 0) {
+                b.textContent = count;
+                b.classList.remove('hidden');
+              } else {
+                b.classList.add('hidden');
+              }
+            }
+          });
+        }
+
+        // 모두 읽음 처리
+        if (markAllReadBtn) {
+          markAllReadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fetch('/accounts/notifications/read-all/', {
+              method: 'POST',
+              headers: {
+                'X-CSRFToken': csrftoken,
+                'Content-Type': 'application/json'
+              }
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.success) {
+                fetchNotifications();
+              }
+            });
+          });
+        }
+
+        const processedNotificationIds = new Set();
+
+        // 알림 권한 요청 (최초 진입 시)
+        if (window.Notification && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+
+        // 기기 자체(PWA) 네이티브 알림 표시
+        function showNativeNotification(n) {
+          if (window.Notification && Notification.permission === 'granted') {
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.ready.then((registration) => {
+                registration.showNotification("IPSE 알림", {
+                  body: n.message,
+                  icon: '/static/img/IPSE-LOGO.png',
+                  badge: '/static/img/favicon-ipse.svg',
+                  tag: 'gathering-notification-' + n.id,
+                  data: { url: `/accounts/notifications/${n.id}/read/` }
+                });
+              });
+            } else {
+              new Notification("IPSE 알림", {
+                body: n.message,
+                icon: '/static/img/IPSE-LOGO.png'
+              });
+            }
+          }
+        }
+
+        // 백그라운드 폴링 (30초)
+        function startPolling() {
+          setInterval(() => {
+            fetch('/accounts/notifications/unread-count/')
+              .then(res => res.json())
+              .then(data => {
+                if (data.unread_count > unreadCount) {
+                  // 신규 알림 발견! 최근 목록 조회하여 브라우저 네이티브 알림 발송
+                  fetch('/accounts/notifications/recent/')
+                    .then(res => res.json())
+                    .then(recentData => {
+                      recentData.notifications.forEach(n => {
+                        if (!n.is_read && !processedNotificationIds.has(n.id)) {
+                          processedNotificationIds.add(n.id);
+                          showNativeNotification(n);
+                          window.showToast("🔔 " + n.message, "info");
+                        }
+                      });
+                      updateBadges(recentData.unread_count);
+                    });
+                } else if (data.unread_count !== unreadCount) {
+                  updateBadges(data.unread_count);
+                }
+              });
+          }, 30000);
+        }
+
+        // 초기 기독/미독 알림 목록을 로드하여 중복 알림 방지 처리
+        fetch('/accounts/notifications/recent/')
+          .then(res => res.json())
+          .then(data => {
+            data.notifications.forEach(n => {
+              processedNotificationIds.add(n.id);
+            });
+            updateBadges(data.unread_count);
+            startPolling();
+          });
+
+      })();
+      {% endif %}
     </script>
 </body>
 

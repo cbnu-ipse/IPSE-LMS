@@ -39,6 +39,56 @@ def _parse_survey_datetime(dt_str):
         return None
 
 
+def _create_notification(recipient, sender, notification_type, gathering, message):
+    """
+    수신자의 알림 수신 설정(notify_gathering_all, notify_gathering_joined)을
+    확인하고, 수신 허용 상태인 경우에만 Notification 객체를 생성합니다.
+    """
+    from accounts.models import Notification, Student
+    
+    # 송신자와 수신자가 동일인인 경우 알림을 생성하지 않음 (Self-notification 방지)
+    if recipient == sender:
+        return None
+        
+    # 수신자의 학생 프로필/알림 설정을 로드합니다.
+    try:
+        student = recipient.student
+        notify_all = student.notify_gathering_all
+        notify_joined = student.notify_gathering_joined
+    except Exception:
+        # Student 프로필이 없거나 기타 예외 시 기본값 True로 설정
+        notify_all = True
+        notify_joined = True
+
+    # 알림 유형별 동의 여부 필터링
+    if notification_type == 'gathering_created':
+        if not notify_all:
+            return None
+    else:  # 그 외 (gathering_join, gathering_leave, gathering_comment, gathering_update, gathering_cancel)
+        if not notify_joined:
+            return None
+
+    # 알림 객체 생성
+    notification = Notification.objects.create(
+        recipient=recipient,
+        sender=sender,
+        notification_type=notification_type,
+        gathering=gathering,
+        message=message
+    )
+
+    # 기기 백그라운드 웹 푸시 전송
+    try:
+        from accounts.utils import send_web_push
+        send_web_push(notification)
+    except Exception:
+        pass
+
+    return notification
+
+
+
+
 def _survey_structure_matches_existing(survey, questions_data):
     existing_questions = list(survey.questions.prefetch_related('choices').all())
 
@@ -1583,7 +1633,16 @@ def gathering_detail(request, gathering_id):
         if action == 'add_comment':
             content = request.POST.get('content', '').strip()
             if content:
-                GatheringComment.objects.create(gathering=gathering, author=request.user, content=content)
+                comment = GatheringComment.objects.create(gathering=gathering, author=request.user, content=content)
+                # 모임 개설자에게 댓글 등록 알림 전송 (댓글 작성자가 개설자 본인이 아닐 때)
+                if gathering.author != request.user:
+                    _create_notification(
+                        recipient=gathering.author,
+                        sender=request.user,
+                        notification_type='gathering_comment',
+                        gathering=gathering,
+                        message=f"💬 {_user_display_name(request.user)}님이 '{gathering.title}' 모임에 새 댓글을 남겼습니다."
+                    )
                 messages.success(request, '댓글이 등록되었습니다.')
             return redirect('gathering_detail', gathering_id=gathering.id)
 
@@ -1678,6 +1737,18 @@ def gathering_create(request):
                 description=f"장소: {location} / 주최: {request.user.get_full_name or request.user.username}"
             )
 
+        # 모든 활성화된 유저에게 새 번개 모임 생성 알림 전송 (단, 수신 설정이 허용된 유저만 필터링됨)
+        from django.contrib.auth import get_user_model
+        active_users = get_user_model().objects.filter(is_active=True).exclude(id=request.user.id)
+        for u in active_users:
+            _create_notification(
+                recipient=u,
+                sender=request.user,
+                notification_type='gathering_created',
+                gathering=gathering,
+                message=f"⚡ 새로운 번개 모임이 개설되었습니다: '{gathering.title}'"
+            )
+
         messages.success(request, '번개 모임이 개설되었습니다!')
         return redirect('gathering_detail', gathering_id=gathering.id)
 
@@ -1707,6 +1778,15 @@ def gathering_join_toggle(request, gathering_id):
                 gathering.participants.remove(request.user)
                 # 개인 일정 삭제
                 Schedule.objects.filter(user=request.user, external_id=f"gathering:{gathering.id}").delete()
+                # 모임 개설자에게 알림 전송 (취소자가 개설자가 아닐 때)
+                if gathering.author != request.user:
+                    _create_notification(
+                        recipient=gathering.author,
+                        sender=request.user,
+                        notification_type='gathering_leave',
+                        gathering=gathering,
+                        message=f"🚫 {_user_display_name(request.user)}님이 '{gathering.title}' 모임 참여를 취소했습니다."
+                    )
                 return JsonResponse({'status': 'success', 'joined': False, 'message': '번개 모임 참가를 취소했습니다.'})
             else:
                 # 참가 신청
@@ -1727,6 +1807,15 @@ def gathering_join_toggle(request, gathering_id):
                         "description": f"장소: {gathering.location} / 주최: {gathering.author.get_full_name or gathering.author.username}",
                     }
                 )
+                # 모임 개설자에게 알림 전송 (신청자가 개설자가 아닐 때)
+                if gathering.author != request.user:
+                    _create_notification(
+                        recipient=gathering.author,
+                        sender=request.user,
+                        notification_type='gathering_join',
+                        gathering=gathering,
+                        message=f"👉 {_user_display_name(request.user)}님이 '{gathering.title}' 모임에 참여 신청을 했습니다."
+                    )
                 return JsonResponse({'status': 'success', 'joined': True, 'message': '번개 모임 참가가 신청되었습니다!'})
 
     return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
@@ -1748,6 +1837,18 @@ def gathering_cancel(request, gathering_id):
 
             # 참여했던 모든 사람들의 개인 일정 일괄 삭제
             Schedule.objects.filter(external_id=f"gathering:{gathering.id}").delete()
+
+            # 참여했던 모든 사람들에게 알림 전송 (단, 취소를 요청한 사람 제외)
+            participants = list(gathering.participants.all())
+            for p in participants:
+                if p != request.user:
+                    _create_notification(
+                        recipient=p,
+                        sender=request.user,
+                        notification_type='gathering_cancel',
+                        gathering=gathering,
+                        message=f"⚠️ 취소 알림: 참여 중이던 '{gathering.title}' 번개 모임이 취소되었습니다."
+                    )
 
         messages.success(request, '번개 모임이 취소(폭파)되었습니다.')
         return redirect('gathering_list')

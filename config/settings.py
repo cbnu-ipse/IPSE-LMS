@@ -133,6 +133,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.active_recruitments",
+                "core.context_processors.vapid_settings",
             ],
         },
     },
@@ -226,5 +227,48 @@ LOGGING = {
 
 STUDENT_ID_PREFIX = config("STUDENT_ID_PREFIX", default="ugr")
 LECTURER_ID_PREFIX = config("LECTURER_ID_PREFIX", default="lec")
+
+# 🔔 VAPID (Web Push) 설정 및 자동 생성 로직
+VAPID_PUBLIC_KEY = config("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = config("VAPID_PRIVATE_KEY", default="")
+VAPID_CLAIM_EMAIL = config("EMAIL_FROM_ADDRESS", default="mailto:admin@cbnu-ipse.co.kr")
+if VAPID_CLAIM_EMAIL and not VAPID_CLAIM_EMAIL.startswith("mailto:"):
+    VAPID_CLAIM_EMAIL = f"mailto:{VAPID_CLAIM_EMAIL}"
+
+if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+    try:
+        from cryptography.hazmat.primitives.asymmetric import ec
+        import base64
+        
+        # ECDSA secp256r1 (prime256v1) 키 생성
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        
+        # Private key 바이트 변환
+        private_num = private_key.private_numbers().private_value
+        private_bytes = private_num.to_bytes(32, byteorder='big')
+        
+        # Public key 바이트 변환 (uncompressed format: \x04 접두사 + X좌표 + Y좌표)
+        public_numbers = private_key.public_key().public_numbers()
+        x_bytes = public_numbers.x.to_bytes(32, byteorder='big')
+        y_bytes = public_numbers.y.to_bytes(32, byteorder='big')
+        public_bytes = b'\x04' + x_bytes + y_bytes
+        
+        # URL-safe Base64 인코딩 (패딩 문자 '=' 제거)
+        vapid_private = base64.urlsafe_b64encode(private_bytes).decode('utf-8').rstrip('=')
+        vapid_public = base64.urlsafe_b64encode(public_bytes).decode('utf-8').rstrip('=')
+        
+        # .env 파일에 저장하여 다음 구동 시 재사용하도록 처리
+        env_file_path = os.path.join(BASE_DIR, ".env")
+        if os.path.exists(env_file_path):
+            try:
+                with open(env_file_path, "a") as f:
+                    f.write(f"\n# Auto-generated VAPID Keys for Web Push\nVAPID_PUBLIC_KEY={vapid_public}\nVAPID_PRIVATE_KEY={vapid_private}\n")
+            except Exception:
+                pass
+                
+        VAPID_PUBLIC_KEY = vapid_public
+        VAPID_PRIVATE_KEY = vapid_private
+    except Exception:
+        pass
 
 # Trigger reload to pick up ALLOWED_HOSTS update (with .lvh.me) in .env

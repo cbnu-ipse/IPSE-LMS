@@ -13,3 +13,12 @@ def active_recruitments(request):
     return {
         'active_recruitment_form': active_forms.first(),
     }
+
+
+def vapid_settings(request):
+    """VAPID 웹 푸시 공개키를 템플릿에 추가"""
+    from django.conf import settings
+    return {
+        'VAPID_PUBLIC_KEY': getattr(settings, 'VAPID_PUBLIC_KEY', ''),
+    }
+
