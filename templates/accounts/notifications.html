@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{{ title }} | IPSE{% endblock %}
+
+{% block content %}
+<section class="max-w-4xl mx-auto px-4 py-8 md:py-12">
+    <div class="space-y-6">
+        
+        <!-- 🧭 Breadcrumbs & Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+                <p class="text-xs font-semibold text-slate-400 flex items-center gap-1.5 mb-2">
+                    <i class="fa-solid fa-house"></i>
+                    <a href="/" class="hover:text-emerald-600 transition">홈</a>
+                    <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
+                    <span class="text-slate-500">알림 센터</span>
+                </p>
+                <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                    <i class="fa-regular fa-bell text-emerald-600"></i> 알림 센터
+                </h1>
+            </div>
+            
+            {% if page_obj %}
+            <button id="mark-all-read-btn" class="self-start sm:self-center inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 transition shadow-sm">
+                <i class="fa-solid fa-circle-check"></i> 모든 알림 읽음 처리
+            </button>
+            {% endif %}
+        </div>
+
+        {% include 'snippets/messages.html' %}
+
+        <!-- 📂 Tabs & Filtering -->
+        <div class="flex justify-between items-center gap-4 bg-slate-100/60 p-1 rounded-xl w-fit">
+            <a href="?unread=false" class="px-4 py-2 rounded-lg text-xs font-bold transition {% if not filter_unread %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-800{% endif %}">
+                전체 알림
+            </a>
+            <a href="?unread=true" class="px-4 py-2 rounded-lg text-xs font-bold transition {% if filter_unread %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-800{% endif %}">
+                읽지 않은 알림
+            </a>
+        </div>
+
+        <!-- 📋 Notifications List -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="notification-center-container">
+            {% if page_obj %}
+            <div class="divide-y divide-slate-100" id="notification-center-list">
+                {% for n in page_obj %}
+                <div class="p-4 sm:p-5 flex items-start gap-4 transition-all duration-200 hover:bg-slate-50/50 {% if not n.is_read %}bg-emerald-50/10{% endif %}" data-notification-id="{{ n.id }}">
+                    <!-- Icon based on type -->
+                    <span class="p-2.5 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                        {% if n.notification_type == 'gathering_created' %}
+                            <i class="fa-solid fa-bolt text-amber-500 text-sm"></i>
+                        {% elif n.notification_type == 'gathering_join' %}
+                            <i class="fa-solid fa-user-plus text-emerald-500 text-sm"></i>
+                        {% elif n.notification_type == 'gathering_leave' %}
+                            <i class="fa-solid fa-user-minus text-rose-500 text-sm"></i>
+                        {% elif n.notification_type == 'gathering_comment' %}
+                            <i class="fa-solid fa-comment text-sky-500 text-sm"></i>
+                        {% elif n.notification_type == 'gathering_cancel' %}
+                            <i class="fa-solid fa-triangle-exclamation text-rose-500 text-sm"></i>
+                        {% else %}
+                            <i class="fa-solid fa-bell text-slate-400 text-sm"></i>
+                        {% endif %}
+                    </span>
+
+                    <!-- Content & Info -->
+                    <div class="flex-grow min-w-0 space-y-1">
+                        <a href="{% url 'read_and_redirect' n.id %}" class="block group">
+                            <p class="text-xs sm:text-sm font-medium text-slate-700 leading-relaxed group-hover:text-emerald-600 transition break-words">
+                                {{ n.message }}
+                            </p>
+                        </a>
+                        <div class="flex items-center gap-2 text-[10px] sm:text-xs text-slate-400">
+                            <span>{{ n.created_at|date:"Y-m-d H:i" }}</span>
+                            <span>•</span>
+                            {% if n.is_read %}
+                                <span class="text-slate-400">읽음</span>
+                            {% else %}
+                                <span class="text-blue-500 font-bold">읽지 않음</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Delete button -->
+                    <button class="delete-notification-btn p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50 transition shrink-0" title="알림 삭제">
+                        <i class="fa-regular fa-trash-can text-xs"></i>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="py-16 text-center text-slate-400 space-y-2">
+                <i class="fa-regular fa-bell-slash text-4xl text-slate-300"></i>
+                <p class="text-sm">수신된 알림이 없습니다.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 📑 Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="flex justify-center items-center gap-1.5 pt-4">
+            {% if page_obj.has_previous %}
+            <a href="?unread={{ filter_unread|yesno:'true,false' }}&page={{ page_obj.previous_page_number }}" class="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 bg-white hover:bg-slate-50 transition">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <span class="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
+                    {{ num }}
+                </span>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <a href="?unread={{ filter_unread|yesno:'true,false' }}&page={{ num }}" class="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 bg-white hover:bg-slate-50 transition text-xs font-medium">
+                    {{ num }}
+                </a>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <a href="?unread={{ filter_unread|yesno:'true,false' }}&page={{ page_obj.next_page_number }}" class="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 bg-white hover:bg-slate-50 transition">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    </div>
+</section>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // CSRF Token 가져오기
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        // 개별 알림 삭제 비동기 처리
+        const container = document.getElementById('notification-center-list');
+        if (container) {
+            container.addEventListener('click', (e) => {
+                const btn = e.target.closest('.delete-notification-btn');
+                if (!btn) return;
+
+                const row = btn.closest('[data-notification-id]');
+                if (!row) return;
+
+                const id = row.getAttribute('data-notification-id');
+                if (confirm('이 알림을 삭제하시겠습니까?')) {
+                    fetch(`/accounts/notifications/${id}/delete/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            row.classList.add('opacity-0', '-translate-x-4');
+                            setTimeout(() => {
+                                row.remove();
+                                // 남은 알림이 없으면 새로고침
+                                if (container.children.length === 0) {
+                                    location.reload();
+                                }
+                            }, 300);
+                        }
+                    });
+                }
+            });
+        }
+
+        // 전체 읽음 처리 비동기 처리
+        const markAllReadBtn = document.getElementById('mark-all-read-btn');
+        if (markAllReadBtn) {
+            markAllReadBtn.addEventListener('click', () => {
+                fetch('/accounts/notifications/read-all/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    }
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}
