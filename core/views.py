@@ -6,7 +6,7 @@ from django.http import JsonResponse, HttpResponse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.db.models import Q
-from community.models import NewsAndEvents, Poll
+from community.models import NewsAndEvents, Poll, CommunityPost, GatheringEvent
 from .models import ActivityLog, Schedule 
 from ranking.utils import sync_user_profile_metrics
 
@@ -35,13 +35,29 @@ def home_view(request):
     """유저의 로그인 상태를 확인하고 대시보드에 필요한 모든 데이터를 공급함"""
     
     # 1. 오른쪽 위 공지사항 (News)
-    notices = NewsAndEvents.objects.filter(posted_as='News').order_by('-upload_time')[:5]
+    notices = CommunityPost.objects.filter(is_notice=True).order_by('-created_at')[:5]
 
     # 1b. 진행 중인 투표 (홈 새로운 소식 섹션용)
     from django.utils import timezone
     active_polls = Poll.objects.filter(is_active=True).exclude(
         ends_at__lte=timezone.now()
     ).order_by('-created_at')[:3]
+
+    # 1d. 진행 중인 번개 모임 (홈 새로운 소식 섹션용)
+    active_gatherings = GatheringEvent.objects.filter(
+        is_canceled=False,
+        event_date__gt=timezone.now()
+    ).select_related('author').order_by('event_date')[:3]
+
+    # 1c. 주간 핫 게시물 계산 (최근 7일)
+    import datetime as dt_module
+    seven_days_ago = timezone.now() - dt_module.timedelta(days=7)
+    recent_posts = list(CommunityPost.objects.filter(created_at__gte=seven_days_ago, is_notice=False).select_related('author'))
+    hot_posts = sorted(
+        recent_posts,
+        key=lambda p: p.views + (p.comment_count * 5) + (p.like_count * 10),
+        reverse=True
+    )[:5]
     
     # 2. 왼쪽 아래 달력용 데이터 (Event)
     events = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:5]
@@ -92,6 +108,8 @@ def home_view(request):
     context = {
         'notices': notices,
         'active_polls': active_polls,
+        'active_gatherings': active_gatherings,
+        'hot_posts': hot_posts,
         'events': events,
         'activity_logs': activity_logs,
         'incomplete_assignments': incomplete_assignments,
