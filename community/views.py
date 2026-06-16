@@ -1660,12 +1660,25 @@ def gathering_detail(request, gathering_id):
     participants = gathering.participants.all()
     user_joined = request.user in participants
 
+    # 참가 신청 제한(쿨타임 1시간) 계산
+    cooldown_remaining = 0
+    if request.user.is_authenticated:
+        import datetime
+        from django.utils import timezone
+        from .models import GatheringLeaveLog
+        leave_log = GatheringLeaveLog.objects.filter(gathering=gathering, user=request.user).first()
+        if leave_log:
+            cooldown_limit = leave_log.left_at + datetime.timedelta(hours=1)
+            if timezone.now() < cooldown_limit:
+                cooldown_remaining = int((cooldown_limit - timezone.now()).total_seconds())
+
     return render(request, 'community/gathering_detail.html', {
         'title': gathering.title,
         'gathering': gathering,
         'comments': comments,
         'participants': participants,
         'user_joined': user_joined,
+        'cooldown_remaining': cooldown_remaining,
     })
 
 
@@ -1778,6 +1791,15 @@ def gathering_join_toggle(request, gathering_id):
                 gathering.participants.remove(request.user)
                 # 개인 일정 삭제
                 Schedule.objects.filter(user=request.user, external_id=f"gathering:{gathering.id}").delete()
+                
+                # 쿨타임 로그 생성/갱신
+                from .models import GatheringLeaveLog
+                GatheringLeaveLog.objects.update_or_create(
+                    gathering=gathering,
+                    user=request.user,
+                    defaults={}
+                )
+
                 # 모임 개설자에게 알림 전송 (취소자가 개설자가 아닐 때)
                 if gathering.author != request.user:
                     _create_notification(
@@ -1787,14 +1809,37 @@ def gathering_join_toggle(request, gathering_id):
                         gathering=gathering,
                         message=f"🚫 {_user_display_name(request.user)}님이 '{gathering.title}' 모임 참여를 취소했습니다."
                     )
-                return JsonResponse({'status': 'success', 'joined': False, 'message': '번개 모임 참가를 취소했습니다.'})
+
+                return JsonResponse({'status': 'success', 'joined': False, 'message': '번개 모임 참가를 취소했습니다. (1시간 동안 재신청이 제한됩니다)'})
             else:
                 # 참가 신청
+                # 쿨타임 검증
+                import datetime
+                from django.utils import timezone
+                from .models import GatheringLeaveLog
+                
+                leave_log = GatheringLeaveLog.objects.filter(gathering=gathering, user=request.user).first()
+                if leave_log:
+                    cooldown_limit = leave_log.left_at + datetime.timedelta(hours=1)
+                    if timezone.now() < cooldown_limit:
+                        remaining_seconds = int((cooldown_limit - timezone.now()).total_seconds())
+                        remaining_minutes = (remaining_seconds // 60) + 1
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': f'참가 취소 후 1시간 동안은 재신청할 수 없습니다. (남은 시간: {remaining_minutes}분)',
+                            'cooldown_remaining': remaining_seconds
+                        }, status=400)
+
                 # 정원 초과 여부 검증
                 if gathering.participant_count >= gathering.max_participants:
                     return JsonResponse({'status': 'error', 'message': '정원이 마감되어 신청할 수 없습니다.'}, status=400)
 
                 gathering.participants.add(request.user)
+                
+                # 가입 성공 시 쿨타임 로그 삭제
+                if leave_log:
+                    leave_log.delete()
+
                 # 개인 일정 등록
                 Schedule.objects.update_or_create(
                     user=request.user,

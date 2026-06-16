@@ -1,6 +1,9 @@
 import json
+import logging
 import threading
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _send_push_async(subscription_ids, payload_data):
@@ -43,12 +46,15 @@ def _send_push_async(subscription_ids, payload_data):
         except WebPushException as ex:
             # 404 Not Found 또는 410 Gone은 기기/브라우저가 만료되었거나 푸시 서비스가 제거된 상태이므로 DB에서 정화
             if ex.response is not None and ex.response.status_code in [404, 410]:
+                logger.warning(f"Push subscription {sub.id} is expired or gone (status {ex.response.status_code}). Deleting. Error: {str(ex)}")
                 try:
                     sub.delete()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as del_ex:
+                    logger.error(f"Failed to delete expired subscription {sub.id}: {str(del_ex)}")
+            else:
+                logger.error(f"WebPushException sending push to subscription {sub.id}: {str(ex)}")
+        except Exception as ex:
+            logger.error(f"Unexpected error sending push to subscription {sub.id}: {str(ex)}")
 
 
 def send_web_push(notification_obj):

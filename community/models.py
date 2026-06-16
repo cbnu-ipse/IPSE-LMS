@@ -518,3 +518,28 @@ class GatheringComment(models.Model):
 
     def __str__(self):
         return f"{self.author} - {self.gathering}"
+
+
+class GatheringLeaveLog(models.Model):
+    """번개 모임 참가 취소 로그 (쿨타임 1시간 제한용)"""
+    gathering = models.ForeignKey(
+        GatheringEvent,
+        on_delete=models.CASCADE,
+        related_name='leave_logs',
+        verbose_name="번개 모임"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='gathering_leave_logs',
+        verbose_name="사용자"
+    )
+    left_at = models.DateTimeField(auto_now=True, verbose_name="참가취소일시")
+
+    class Meta:
+        unique_together = ('gathering', 'user')
+        verbose_name = "모임 참가 취소 로그"
+        verbose_name_plural = "모임 참가 취소 로그 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.gathering.title} (Left: {self.left_at})"

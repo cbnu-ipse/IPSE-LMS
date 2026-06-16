@@ -33,6 +33,22 @@
 
 <body class="{% if request.host.name == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
+
+    <!-- 전체 화면 로딩 오버레이 (클릭 방지용) -->
+    <div id="loading-overlay" class="fixed inset-0 z-[99998] flex items-center justify-center bg-slate-900/10 backdrop-blur-[1px] transition-all duration-300 opacity-0 pointer-events-none">
+        <div class="bg-white/95 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-slate-100 flex flex-col items-center gap-4 transition-transform duration-300 scale-90">
+            <div class="relative w-16 h-16 flex items-center justify-center">
+                <div class="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+                <div class="absolute inset-0 rounded-full border-4 border-t-emerald-600 border-r-teal-500 animate-spin"></div>
+                <i class="fa-solid fa-leaf text-2xl text-emerald-600 animate-pulse z-10"></i>
+            </div>
+            <div class="text-center">
+                <h4 class="text-sm font-bold text-slate-800">잠시만 기다려주세요</h4>
+                <p class="text-[11px] text-slate-400 mt-1">데이터를 불러오는 중입니다...</p>
+            </div>
+        </div>
+    </div>
+
     {% block navbar %}
     <nav class="bg-white/70 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-stretch">
@@ -262,18 +278,46 @@
     </footer>
     {% block extra_js %}{% endblock %}
     <script>
-      // 페이지 전환 로딩 바
+      // 페이지 전환 로딩 바 및 오버레이
       (function(){
         const bar = document.getElementById('page-loader');
+        const overlay = document.getElementById('loading-overlay');
+        const overlayContent = overlay ? overlay.firstElementChild : null;
+
         function showBar(){
+          // 상단 로딩 바 실행
           bar.style.opacity='1'; bar.style.width='0%';
           requestAnimationFrame(()=>{ bar.style.width='70%'; });
+
+          // 전체화면 로딩 오버레이 실행 (클릭 차단)
+          if (overlay) {
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+            overlay.classList.add('opacity-100');
+            if (overlayContent) {
+              overlayContent.classList.remove('scale-90');
+              overlayContent.classList.add('scale-100');
+            }
+          }
         }
         function finishBar(){
+          // 상단 로딩 바 완료
           bar.style.width='100%';
-          setTimeout(()=>{ bar.style.opacity='0'; setTimeout(()=>{ bar.style.width='0%'; },400); },200);
+          setTimeout(()=>{ 
+            bar.style.opacity='0'; 
+            setTimeout(()=>{ bar.style.width='0%'; },400); 
+          },200);
+
+          // 전체화면 로딩 오버레이 완료
+          if (overlay) {
+            overlay.classList.remove('opacity-100');
+            overlay.classList.add('opacity-0', 'pointer-events-none');
+            if (overlayContent) {
+              overlayContent.classList.remove('scale-100');
+              overlayContent.classList.add('scale-90');
+            }
+          }
         }
-        // 링크 클릭 시 바 시작
+        // 링크 클릭 시 바/오버레이 시작
         document.addEventListener('click',function(e){
           const a = e.target.closest('a[href]');
           if(!a) return;
@@ -282,9 +326,9 @@
           if(href.startsWith('http')&&!href.includes(location.hostname)) return;
           showBar();
         });
-        // 폼 제출 시 바 시작
+        // 폼 제출 시 바/오버레이 시작
         document.addEventListener('submit',function(){ showBar(); });
-        // 페이지 로드 완료 시 바 마무리
+        // 페이지 로드 완료 시 마무리
         window.addEventListener('pageshow',function(){ finishBar(); });
       })();
       if ('serviceWorker' in navigator) {
