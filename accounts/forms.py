@@ -133,17 +133,84 @@ class StudentSignUpForm(UserCreationForm):
         return user
         
                 
-class ProfileUpdateForm(UserChangeForm):
-    first_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control"}))
-    last_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control"}))
-    gender = forms.CharField(widget=forms.Select(choices=GENDERS, attrs={"class": "form-control"}))
-    email = forms.EmailField(widget=forms.TextInput(attrs={"class": "form-control"}))
-    phone = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control"}))
-    address = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control"}))
+class ProfileUpdateForm(forms.ModelForm):
+    first_name = forms.CharField(required=False, widget=forms.TextInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    last_name = forms.CharField(required=False, widget=forms.TextInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    gender = forms.ChoiceField(choices=[("", "---------")] + list(GENDERS), required=False, widget=forms.Select(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    address = forms.CharField(required=False, widget=forms.TextInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    picture = forms.ImageField(required=False, widget=forms.FileInput(attrs={
+        "class": "block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 transition-all duration-150",
+        "accept": "image/*"
+    }))
+
+    nickname = forms.CharField(required=False, max_length=30, widget=forms.TextInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    bio = forms.CharField(required=False, max_length=100, widget=forms.TextInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    github_url = forms.URLField(required=False, widget=forms.URLInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
+    blog_url = forms.URLField(required=False, widget=forms.URLInput(attrs={
+        "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
+    }))
 
     class Meta:
         model = User
         fields = ["first_name", "last_name", "gender", "email", "phone", "address", "picture"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.is_student:
+            try:
+                student = self.instance.student
+                self.fields['nickname'].initial = student.nickname
+                self.fields['bio'].initial = student.bio
+                self.fields['github_url'].initial = student.github_url
+                self.fields['blog_url'].initial = student.blog_url
+            except Student.DoesNotExist:
+                pass
+        else:
+            # 학생이 아닌 경우 커스텀 필드 제거
+            if 'nickname' in self.fields:
+                del self.fields['nickname']
+            if 'bio' in self.fields:
+                del self.fields['bio']
+            if 'github_url' in self.fields:
+                del self.fields['github_url']
+            if 'blog_url' in self.fields:
+                del self.fields['blog_url']
+
+    @transaction.atomic()
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if commit:
+            user.save()
+        
+        if user.is_student:
+            student, created = Student.objects.get_or_create(student=user)
+            student.nickname = self.cleaned_data.get('nickname', '').strip()
+            student.bio = self.cleaned_data.get('bio', '').strip()
+            student.github_url = self.cleaned_data.get('github_url') or ''
+            student.blog_url = self.cleaned_data.get('blog_url') or ''
+            student.save()
+            
+        return user
 
 class StudentEditForm(forms.ModelForm):
     """관리자가 학생(User) 기본 정보를 수정하는 폼"""

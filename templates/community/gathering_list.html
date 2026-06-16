@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}번개 모임 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-10">
+    <div class="space-y-8">
+        <!-- 📣 상단 프리미엄 헤더 배너 (번개 모임 전용: 앰버-오렌지 그라디언트) -->
+        <div class="relative bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+                <i class="fa-solid fa-bolt text-[200px]"></i>
+            </div>
+            <div class="relative z-10 max-w-2xl">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                    <i class="fa-solid fa-bolt"></i> IPSE Meetup
+                </span>
+                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 번개 모임</h1>
+                <p class="text-amber-50 text-sm leading-relaxed">
+                    부원들과 오프라인 스터디, 식사, 친목 도모 등 자유롭게 즉석 모임을 개설하고 참여해 보세요.
+                </p>
+            </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            {% if user.is_authenticated %}
+            <div class="flex justify-end mb-6">
+                <a href="{% url 'gathering_create' %}" class="inline-flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-amber-600 transition shadow-sm">
+                    <i class="fa-solid fa-plus text-xs"></i> 번개 만들기
+                </a>
+            </div>
+            {% endif %}
+
+            <!-- 메시지 -->
+            {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                <div class="px-4 py-3 rounded-xl text-sm font-medium
+                    {% if message.tags == 'success' %}bg-emerald-50 text-emerald-700 border border-emerald-200
+                    {% else %}bg-red-50 text-red-700 border border-red-200{% endif %}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- 진행 중인 번개 모임 -->
+            <div class="mb-10">
+                <h2 class="text-base font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span> 진행 중
+                </h2>
+                {% if active_gatherings %}
+                <div class="space-y-3">
+                    {% for gathering in active_gatherings %}
+                    <a href="{% url 'gathering_detail' gathering.id %}" class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm hover:border-amber-200 transition">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <p class="text-base font-semibold text-slate-800">{{ gathering.title }}</p>
+                                {% if gathering.is_full %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">모집 마감</span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">모집 중</span>
+                                {% endif %}
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span>정원 {{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
+                                {% if gathering.user_joined %}
+                                <span class="text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100"><i class="fa-solid fa-check text-[10px]"></i> 참여 중</span>
+                                {% endif %}
+                                <span>· 일시: {{ gathering.event_date|date:"m.d H:i" }}</span>
+                                <span>· 장소: {{ gathering.location }}</span>
+                                <span>· 주최: {{ gathering.author.get_full_name|default:gathering.author.username }}</span>
+                            </p>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-slate-300 text-sm"></i>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="bg-slate-50 rounded-2xl border border-slate-200 px-6 py-8 text-center text-slate-400 text-sm">
+                    진행 중인 번개 모임이 없습니다.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 종료된 번개 모임 -->
+            {% if closed_gatherings %}
+            <div>
+                <h2 class="text-base font-semibold text-slate-500 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-slate-300 inline-block"></span> 종료됨
+                </h2>
+                <div class="space-y-3">
+                    {% for gathering in closed_gatherings %}
+                    <a href="{% url 'gathering_detail' gathering.id %}" class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm transition opacity-70 hover:opacity-100">
+                        <div>
+                            <p class="text-base font-semibold text-slate-600">{{ gathering.title }}</p>
+                            <p class="text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span>참여 {{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
+                                <span>· 일시: {{ gathering.event_date|date:"m.d H:i" }}</span>
+                                <span>· 장소: {{ gathering.location }}</span>
+                                <span>· 주최: {{ gathering.author.get_full_name|default:gathering.author.username }}</span>
+                            </p>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-slate-300 text-sm"></i>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -64,14 +64,24 @@
             <!-- Toast UI Viewer 본문 영역 -->
             <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed"></div>
 
-
+            <!-- 👍👎 추천 / 비추천 캡슐 -->
+            <div class="flex items-center justify-center gap-3 pt-6 border-t border-slate-100">
+                <button id="post-like-btn" onclick="togglePostLike()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 {% if user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600 scale-105{% else %}bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %}">
+                    <i class="{% if user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up text-base"></i>
+                    <span>추천 <span id="post-like-count">{{ post.like_count }}</span></span>
+                </button>
+                <button id="post-dislike-btn" onclick="togglePostDislike()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 {% if user_disliked %}bg-rose-50 border-rose-200 text-rose-600 scale-105{% else %}bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %}">
+                    <i class="{% if user_disliked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-down text-base"></i>
+                    <span>비추천{% if request.user.is_staff %} <span id="post-dislike-count">{{ post.dislike_count }}</span>{% endif %}</span>
+                </button>
+            </div>
         </div>
 
         <!-- 💬 3. 댓글 섹션 카드 -->
         <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6">
             <h3 class="text-lg font-bold text-slate-800 flex items-center gap-1.5">
                 <i class="fa-regular fa-comments text-emerald-600"></i>
-                댓글 <span class="text-emerald-600 font-extrabold">{{ comments.count }}</span>
+                댓글 <span class="text-emerald-600 font-extrabold">{{ comments|length }}</span>
             </h3>
 
             <!-- 댓글 작성 폼 -->
@@ -89,12 +99,37 @@
                 </button>
             </form>
 
+            {% if best_comment %}
+            <!-- 👑 베스트 댓글 Preview 카드 -->
+            <div class="bg-gradient-to-r from-amber-50 to-amber-100/50 border border-amber-200 rounded-2xl p-6 relative overflow-hidden shadow-sm transition-all hover:shadow-md duration-300">
+                <div class="absolute -right-3 -top-3 w-16 h-16 bg-amber-200/30 rounded-full blur-xl pointer-events-none"></div>
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500 text-white text-[10px] font-extrabold shadow-sm animate-pulse">
+                            <i class="fa-solid fa-crown"></i> BEST
+                        </span>
+                        <span class="text-xs font-extrabold text-slate-700">
+                            {{ best_comment.author.get_full_name|default:best_comment.author.username }} ({{ best_comment.author.username }})
+                        </span>
+                        <span class="text-[10px] text-slate-400">
+                            {{ best_comment.created_at|date:"Y-m-d H:i" }}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-1 text-amber-600 font-extrabold text-xs">
+                        <i class="fa-solid fa-thumbs-up"></i>
+                        <span>추천 {{ best_comment.like_count }}</span>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed pl-1">{{ best_comment.content }}</p>
+            </div>
+            {% endif %}
+
             <!-- 댓글 목록 -->
             {% if comments %}
             <div class="divide-y divide-slate-100 pt-2">
                 {% for comment in comments %}
-                <div class="py-4 flex justify-between gap-4">
-                    <div class="space-y-1">
+                <div class="py-4 flex justify-between items-start gap-4">
+                    <div class="space-y-2 flex-1">
                         <div class="flex items-center gap-2">
                             <span class="text-xs font-bold text-slate-700">
                                 {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
@@ -104,11 +139,27 @@
                             </span>
                         </div>
                         <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ comment.content }}</p>
+                        
+                        <!-- 댓글 추천/비추천 버튼 영역 -->
+                        <div class="flex items-center gap-3 pt-1">
+                            <button onclick="toggleCommentLike({{ comment.id }})" 
+                                    id="comment-like-btn-{{ comment.id }}" 
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
+                                <i class="{% if comment.user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up"></i>
+                                <span>추천 <span id="comment-like-count-{{ comment.id }}">{{ comment.like_count }}</span></span>
+                            </button>
+                            <button onclick="toggleCommentDislike({{ comment.id }})" 
+                                    id="comment-dislike-btn-{{ comment.id }}" 
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_disliked %}bg-rose-50 border-rose-200 text-rose-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
+                                <i class="{% if comment.user_disliked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-down"></i>
+                                <span>비추천{% if request.user.is_staff %} <span id="comment-dislike-count-{{ comment.id }}">{{ comment.dislike_count }}</span>{% endif %}</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- 댓글 삭제 -->
                     {% if request.user == comment.author or request.user.is_staff %}
-                    <form action="" method="POST" onsubmit="return confirm('댓글을 삭제하시겠습니까?');">{% csrf_token %}
+                    <form action="" method="POST" onsubmit="return confirm('댓글을 삭제하시겠습니까?');" class="shrink-0 mt-1">{% csrf_token %}
                         <input type="hidden" name="action" value="delete_comment">
                         <input type="hidden" name="comment_id" value="{{ comment.id }}">
                         <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="댓글 삭제">
@@ -142,6 +193,221 @@
         });
     });
 
+    // CSRF Token 가져오기
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
 
+    // 게시글 추천 토글
+    function togglePostLike() {
+        const url = "{% url 'post_like_toggle' post.id %}";
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const likeBtn = document.getElementById('post-like-btn');
+                const dislikeBtn = document.getElementById('post-dislike-btn');
+                
+                // 추천 버튼 스타일 및 카운트 업데이트
+                if (data.liked) {
+                    likeBtn.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-500', 'hover:bg-slate-100', 'hover:text-slate-700');
+                    likeBtn.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-600', 'scale-105');
+                    const icon = likeBtn.querySelector('i');
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid');
+                } else {
+                    likeBtn.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-600', 'scale-105');
+                    likeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-500', 'hover:bg-slate-100', 'hover:text-slate-700');
+                    const icon = likeBtn.querySelector('i');
+                    icon.classList.remove('fa-solid');
+                    icon.classList.add('fa-regular');
+                }
+                document.getElementById('post-like-count').innerText = data.like_count;
+                
+                // 비추천 버튼 스타일 및 카운트 업데이트 (추천되면 비추천은 비활성화됨)
+                dislikeBtn.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-600', 'scale-105');
+                dislikeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-500', 'hover:bg-slate-100', 'hover:text-slate-700');
+                const dislikeIcon = dislikeBtn.querySelector('i');
+                dislikeIcon.classList.remove('fa-solid');
+                dislikeIcon.classList.add('fa-regular');
+                
+                const dislikeCountEl = document.getElementById('post-dislike-count');
+                if (dislikeCountEl) {
+                    dislikeCountEl.innerText = data.dislike_count;
+                }
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+        });
+    }
+
+    // 게시글 비추천 토글
+    function togglePostDislike() {
+        const url = "{% url 'post_dislike_toggle' post.id %}";
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const likeBtn = document.getElementById('post-like-btn');
+                const dislikeBtn = document.getElementById('post-dislike-btn');
+                
+                // 비추천 버튼 스타일 및 카운트 업데이트
+                if (data.disliked) {
+                    dislikeBtn.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-500', 'hover:bg-slate-100', 'hover:text-slate-700');
+                    dislikeBtn.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-600', 'scale-105');
+                    const icon = dislikeBtn.querySelector('i');
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid');
+                } else {
+                    dislikeBtn.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-600', 'scale-105');
+                    dislikeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-500', 'hover:bg-slate-100', 'hover:text-slate-700');
+                    const icon = dislikeBtn.querySelector('i');
+                    icon.classList.remove('fa-solid');
+                    icon.classList.add('fa-regular');
+                }
+                const dislikeCountEl = document.getElementById('post-dislike-count');
+                if (dislikeCountEl) {
+                    dislikeCountEl.innerText = data.dislike_count;
+                }
+                
+                // 추천 버튼 스타일 및 카운트 업데이트 (비추천되면 추천은 비활성화됨)
+                likeBtn.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-600', 'scale-105');
+                likeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-500', 'hover:bg-slate-100', 'hover:text-slate-700');
+                const likeIcon = likeBtn.querySelector('i');
+                likeIcon.classList.remove('fa-solid');
+                likeIcon.classList.add('fa-regular');
+                
+                document.getElementById('post-like-count').innerText = data.like_count;
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+        });
+    }
+
+    // 댓글 추천 토글
+    function toggleCommentLike(commentId) {
+        const url = `/community/comment/${commentId}/like/`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const likeBtn = document.getElementById(`comment-like-btn-${commentId}`);
+                const dislikeBtn = document.getElementById(`comment-dislike-btn-${commentId}`);
+                
+                // 추천 업데이트
+                if (data.liked) {
+                    likeBtn.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    likeBtn.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-600');
+                    const icon = likeBtn.querySelector('i');
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid');
+                } else {
+                    likeBtn.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-600');
+                    likeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    const icon = likeBtn.querySelector('i');
+                    icon.classList.remove('fa-solid');
+                    icon.classList.add('fa-regular');
+                }
+                document.getElementById(`comment-like-count-${commentId}`).innerText = data.like_count;
+                
+                // 비추천 초기화
+                dislikeBtn.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-600');
+                dislikeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                const dislikeIcon = dislikeBtn.querySelector('i');
+                dislikeIcon.classList.remove('fa-solid');
+                dislikeIcon.classList.add('fa-regular');
+                
+                const dislikeCountEl = document.getElementById(`comment-dislike-count-${commentId}`);
+                if (dislikeCountEl) {
+                    dislikeCountEl.innerText = data.dislike_count;
+                }
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+        });
+    }
+
+    // 댓글 비추천 토글
+    function toggleCommentDislike(commentId) {
+        const url = `/community/comment/${commentId}/dislike/`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const likeBtn = document.getElementById(`comment-like-btn-${commentId}`);
+                const dislikeBtn = document.getElementById(`comment-dislike-btn-${commentId}`);
+                
+                // 비추천 업데이트
+                if (data.disliked) {
+                    dislikeBtn.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    dislikeBtn.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-600');
+                    const icon = dislikeBtn.querySelector('i');
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid');
+                } else {
+                    dislikeBtn.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-600');
+                    dislikeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    const icon = dislikeBtn.querySelector('i');
+                    icon.classList.remove('fa-solid');
+                    icon.classList.add('fa-regular');
+                }
+                const dislikeCountEl = document.getElementById(`comment-dislike-count-${commentId}`);
+                if (dislikeCountEl) {
+                    dislikeCountEl.innerText = data.dislike_count;
+                }
+                
+                // 추천 초기화
+                likeBtn.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-600');
+                likeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                const likeIcon = likeBtn.querySelector('i');
+                likeIcon.classList.remove('fa-solid');
+                likeIcon.classList.add('fa-regular');
+                
+                document.getElementById(`comment-like-count-${commentId}`).innerText = data.like_count;
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+        });
+    }
 </script>
 {% endblock content %}

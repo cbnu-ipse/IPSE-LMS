@@ -10,7 +10,7 @@
             <p class="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
                 <a href="/" class="hover:text-emerald-600 transition">{% trans 'Home' %}</a>
                 <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
-                <a href="{% url 'community_home' %}" class="hover:text-emerald-600 transition">커뮤니티</a>
+                <a href="{% url 'gathering_list' %}" class="hover:text-emerald-600 transition">번개 모임</a>
                 <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
                 <span class="text-slate-500">번개 개설</span>
             </p>
@@ -83,11 +83,32 @@
                     </div>
                 </div>
 
+                <!-- 모임 종류 (스터디/술) -->
+                <div class="space-y-1.5">
+                    <label for="category" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        모임 종류
+                    </label>
+                    <select name="category" 
+                            id="category" 
+                            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-semibold text-slate-700 transition"
+                            required>
+                        <option value="study" {% if category_val == 'study' %}selected{% endif %}>📚 스터디</option>
+                        <option value="drink" {% if category_val == 'drink' %}selected{% endif %}>🍺 술</option>
+                    </select>
+                </div>
+
                 <!-- 모임 장소 -->
                 <div class="space-y-1.5">
-                    <label for="location" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        모임 장소
-                    </label>
+                    <div class="flex items-center justify-between">
+                        <label for="location" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            모임 장소
+                        </label>
+                        <button type="button" 
+                                id="toggle-map-btn" 
+                                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold bg-slate-50 hover:bg-slate-100 transition">
+                            <i class="fa-solid fa-map-location-dot text-amber-500"></i> 지도에서 선택
+                        </button>
+                    </div>
                     <input type="text" 
                            name="location" 
                            id="location" 
@@ -95,6 +116,12 @@
                            value="{{ location_val|default:'' }}"
                            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-sm font-semibold text-slate-700 transition"
                            required>
+
+                    <!-- Leaflet 지도 영역 -->
+                    <div id="map-container" class="hidden space-y-2 mt-2">
+                        <p class="text-[11px] font-semibold text-slate-400">지도를 클릭하여 핀을 꽂으면 주소가 자동으로 연동됩니다.</p>
+                        <div id="map" class="h-64 w-full rounded-xl border border-slate-200 overflow-hidden" style="z-index: 10;"></div>
+                    </div>
                 </div>
 
                 <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-xs text-amber-800 leading-relaxed mt-2">
@@ -104,7 +131,7 @@
 
                 <!-- 조작 버튼 -->
                 <div class="flex justify-end gap-3 pt-6 border-t border-slate-100">
-                    <a href="{% url 'community_home' %}" class="inline-flex items-center justify-center px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+                    <a href="{% url 'gathering_list' %}" class="inline-flex items-center justify-center px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
                         {% trans 'Cancel' %}
                     </a>
                     <button type="submit" class="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 hover:scale-[1.01] transition active:scale-[0.99] shadow-sm">
@@ -116,3 +143,95 @@
     </div>
 </section>
 {% endblock content %}
+
+{% block extra_js %}
+<!-- Leaflet CSS & JS CDN 로드 -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const toggleMapBtn = document.getElementById('toggle-map-btn');
+        const mapContainer = document.getElementById('map-container');
+        const locationInput = document.getElementById('location');
+        
+        let map = null;
+        let marker = null;
+        
+        // 충북대학교 개신캠퍼스 중심 좌표
+        const DEFAULT_LAT = 36.6285;
+        const DEFAULT_LNG = 127.4578;
+
+        toggleMapBtn.addEventListener('click', () => {
+            if (mapContainer.classList.contains('hidden')) {
+                mapContainer.classList.remove('hidden');
+                toggleMapBtn.innerHTML = '<i class="fa-solid fa-map text-slate-400"></i> 지도 닫기';
+                
+                // 지도 인스턴스가 없을 때만 초기화
+                if (!map) {
+                    map = L.map('map').setView([DEFAULT_LAT, DEFAULT_LNG], 16);
+                    
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    }).addTo(map);
+
+                    // 지도 클릭 이벤트 리스너 등록
+                    map.on('click', function(e) {
+                        const lat = e.latlng.lat;
+                        const lng = e.latlng.lng;
+                        
+                        // 마커 업데이트
+                        if (marker) {
+                            marker.setLatLng(e.latlng);
+                        } else {
+                            marker = L.marker(e.latlng).addTo(map);
+                        }
+                        
+                        // OpenStreetMap Nominatim API 무료 역지오코딩 호출
+                        locationInput.placeholder = '주소 조회 중...';
+                        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ko`)
+                            .then(res => res.json())
+                            .then(data => {
+                                if (data && data.display_name) {
+                                    const addr = data.address;
+                                    let formattedAddr = '';
+                                    if (addr) {
+                                        const city = addr.city || addr.province || addr.metropolitan || '';
+                                        const borough = addr.borough || addr.suburb || '';
+                                        const road = addr.road || '';
+                                        const house_number = addr.house_number || '';
+                                        const name = data.name || '';
+                                        
+                                        // 주소 가공
+                                        const parts = [];
+                                        if (city) parts.push(city);
+                                        if (borough) parts.push(borough);
+                                        if (road) parts.push(road);
+                                        if (house_number) parts.push(house_number);
+                                        if (name && name !== road && name !== house_number) parts.push(name);
+                                        
+                                        formattedAddr = parts.join(' ');
+                                    }
+                                    locationInput.value = formattedAddr || data.display_name;
+                                }
+                            })
+                            .catch(() => {
+                                locationInput.placeholder = '주소를 가져오는데 실패했습니다. 직접 입력해 주세요.';
+                            });
+                    });
+                }
+                
+                // Leaflet 지도 크기 재계산 (hidden 풀린 후 필요)
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+                
+            } else {
+                mapContainer.classList.add('hidden');
+                toggleMapBtn.innerHTML = '<i class="fa-solid fa-map-location-dot text-amber-500"></i> 지도에서 선택';
+            }
+        });
+    });
+</script>
+{% endblock extra_js %}

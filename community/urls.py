@@ -47,8 +47,13 @@ urlpatterns = [
     path('board/add/', views.post_create, name='post_create'),
     path('board/<int:post_id>/edit/', views.post_edit, name='post_edit'),
     path('board/<int:post_id>/delete/', views.post_delete, name='post_delete'),
+    path('meetups/', views.gathering_list, name='gathering_list'),
     path('meetup/<int:gathering_id>/', views.gathering_detail, name='gathering_detail'),
     path('meetup/create/', views.gathering_create, name='gathering_create'),
     path('meetup/<int:gathering_id>/join/', views.gathering_join_toggle, name='gathering_join_toggle'),
     path('meetup/<int:gathering_id>/cancel/', views.gathering_cancel, name='gathering_cancel'),
+    path('board/<int:post_id>/like/', views.post_like_toggle, name='post_like_toggle'),
+    path('board/<int:post_id>/dislike/', views.post_dislike_toggle, name='post_dislike_toggle'),
+    path('comment/<int:comment_id>/like/', views.comment_like_toggle, name='comment_like_toggle'),
+    path('comment/<int:comment_id>/dislike/', views.comment_dislike_toggle, name='comment_dislike_toggle'),
 ]

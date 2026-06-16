@@ -1,90 +1,102 @@
-{% extends 'base.html' %}
-{% block title %}커뮤니티 - IPSE{% endblock %}
+{% extends 'community/community_base.html' %}
+{% load static %}
+{% block title %}소식/활동 기록 | IPSE LMS{% endblock %}
 
-{% block content %}
-<section class="max-w-7xl mx-auto px-6 py-12">
-    <div class="space-y-8">
+{% block banner_icon %}fa-bullhorn{% endblock %}
+{% block banner_badge_icon %}fa-bullhorn{% endblock %}
+{% block banner_badge_text %}News & Events{% endblock %}
+{% block banner_title %}IPSE 소식 및 활동 기록{% endblock %}
+{% block banner_description %}동아리의 공식 공지사항과 대내외 행사 활동 소식을 한눈에 확인하는 공간입니다. 우리의 발자취와 소식을 받아보세요.{% endblock %}
 
+{% block community_content %}
+<!-- 📂 소식/활동 헤더 영역 -->
+<div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
+    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+        {% if tab == 'activity' %}
+            <i class="fa-solid fa-image text-teal-600"></i>IPSE 활동 내역
+        {% else %}
+            <i class="fa-solid fa-bullhorn text-emerald-600"></i>공지사항
+        {% endif %}
+    </h2>
 
-        
-        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-3xl font-semibold text-[#3F3F3F]">공지사항</h2>
-                {% if user.is_staff %}
-                <button type="button" id="open-post-modal-btn" class="inline-flex items-center justify-center px-5 py-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
-                    <i class="fa-solid fa-pen mr-2"></i> 공지 작성
-                </button>
-                {% endif %}
-            </div>
-            <div class="relative w-full mb-8">
-                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
-                </div>
-                <input type="text" class="w-full h-12 pl-11 pr-4 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition" placeholder="">
-            </div>
-            <div class="flex justify-between text-[13px] font-semibold text-slate-400 border-b border-slate-100 pb-3 mb-2 px-2">
-                <span>제목</span><span>작성 시간</span>
-            </div>
-            <ul class="space-y-0">
-                {% for poll in active_polls %}
-                <li class="flex justify-between items-center py-4 border-b border-slate-50 hover:bg-slate-50 transition px-2 rounded-lg group">
-                    <a href="{% url 'poll_detail' poll.id %}" class="font-medium text-slate-700 text-[15px] flex items-center space-x-2 flex-1 min-w-0 truncate pr-4">
-                        <span class="text-indigo-500 text-sm"><i class="fa-solid fa-square-poll-vertical"></i></span>
-                        <span class="truncate group-hover:text-indigo-700 transition">{{ poll.title }}</span>
-                        </a>
-                    <span class="text-[13px] text-slate-500 font-medium whitespace-nowrap">
-                        {% if poll.ends_at %}{{ poll.ends_at|date:"m.d." }} 마감{% else %}{{ poll.created_at|date:"Y.m.d." }}{% endif %}
-                    </span>
-                </li>
-                {% endfor %}
-                {% for notice in notices %}
-                <li class="flex justify-between items-center py-4 border-b border-slate-50 hover:bg-slate-50 transition px-2 rounded-lg group">
-                    <a href="{% url 'notice_detail' notice.id %}" class="font-medium text-slate-700 text-[15px] flex items-center space-x-2 flex-1 min-w-0 truncate pr-4">
-                        <span class="text-emerald-500 text-sm"><i class="fa-solid fa-leaf"></i></span>
-                        <span class="truncate group-hover:text-emerald-700 transition">{{ notice.title }}</span>
-                        <span class="text-emerald-400 text-xs font-semibold tracking-tighter">[0]</span>
-                    </a>
-                    <span class="text-[13px] text-slate-500 font-medium whitespace-nowrap">{{ notice.upload_time|date:"Y.m.d." }}</span>
-                </li>
-                {% empty %}
-                <li class="py-12 text-center text-slate-400 text-sm font-medium">등록된 공지사항이 없습니다.</li>
-                {% endfor %}
-            </ul>
-        </div>
-
-        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-            <div class="flex justify-between items-end mb-6 border-b border-slate-100 pb-4">
-                <h2 class="text-3xl font-semibold text-[#3F3F3F]">동아리 활동</h2>
-                {% if user.is_staff %}
-                <button type="button" id="open-activity-modal-btn" class="inline-flex items-center justify-center px-5 py-3 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
+    <div>
+        {% if user.is_staff %}
+            {% if tab == 'activity' %}
+                <button type="button" id="open-activity-modal-btn" class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition shadow-sm">
                     + 활동 기록하기
                 </button>
+            {% else %}
+                <a href="{% url 'post_create' %}" class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                    <i class="fa-solid fa-pen-to-square mr-2"></i> 공지 작성
+                </a>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+{% if tab == 'activity' %}
+    <!-- 🖼️ 동아리 활동 (Event) 렌더링 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+        {% for activity in activities %}
+        <a href="{% url 'activity_detail' activity.id %}" class="group block">
+            <div class="w-full aspect-[4/3] bg-slate-200 rounded-xl overflow-hidden mb-3 relative border border-slate-100 shadow-sm">
+                <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition duration-300 z-10"></div>
+                {% if activity.thumbnail %}
+                <img src="{{ activity.thumbnail.url }}" alt="활동 썸네일" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+                {% else %}
+                <img src="https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=800" alt="기본 활동 썸네일" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
                 {% endif %}
             </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                {% for activity in activities %}
-                <a href="{% url 'activity_detail' activity.id %}" class="group block">
-                    <div class="w-full aspect-[4/3] bg-slate-200 rounded-xl overflow-hidden mb-3 relative">
-                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition duration-300 z-10"></div>
-                        {% if activity.thumbnail %}
-                        <img src="{{ activity.thumbnail.url }}" alt="활동 썸네일" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
-                        {% else %}
-                        <img src="https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=800" alt="기본 활동 썸네일" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
-                        {% endif %}
-                    </div>
-                    <h4 class="text-lg font-semibold text-[#3F3F3F] group-hover:text-emerald-700 transition truncate">{{ activity.title }}</h4>
-                    <p class="text-sm text-slate-500 mt-1">{{ activity.upload_time|date:"Y.m.d" }}</p>
-                </a>
-                {% empty %}
-                <div class="col-span-3 py-10 text-center text-slate-400 font-medium">등록된 동아리 활동이 없습니다.</div>
-                {% endfor %}
-            </div>
-        </div>
-
+            <h4 class="text-base font-bold text-slate-800 group-hover:text-emerald-700 transition truncate">{{ activity.title }}</h4>
+            <p class="text-xs text-slate-400 mt-1">{{ activity.upload_time|date:"Y.m.d" }}</p>
+        </a>
+        {% empty %}
+        <div class="col-span-3 py-16 text-center text-slate-400 font-medium">등록된 동아리 활동이 없습니다.</div>
+        {% endfor %}
     </div>
-</section>
 
+{% else %}
+    <!-- 📢 공지사항 (News) 렌더링 -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <ul class="divide-y divide-slate-100">
+            {% for poll in active_polls %}
+            <li class="flex justify-between items-center py-4 hover:bg-slate-50/50 transition px-6 group">
+                <a href="{% url 'poll_detail' poll.id %}" class="font-medium text-slate-700 text-sm flex items-center space-x-2 flex-1 min-w-0 truncate pr-4">
+                    <span class="text-indigo-500 text-xs"><i class="fa-solid fa-square-poll-vertical"></i></span>
+                    <span class="truncate group-hover:text-indigo-700 transition font-semibold">{{ poll.title }}</span>
+                </a>
+                <span class="text-xs text-slate-400 font-bold whitespace-nowrap bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
+                    {% if poll.ends_at %}~{{ poll.ends_at|date:"m.d." }} 마감{% else %}진행중{% endif %}
+                </span>
+            </li>
+            {% endfor %}
+            {% for notice in notices %}
+            <li class="flex justify-between items-center py-4 hover:bg-slate-50/50 transition px-6 group">
+                <a href="{% url 'post_detail' notice.id %}" class="font-medium text-slate-700 text-sm flex items-center space-x-2 flex-1 min-w-0 truncate pr-4">
+                    <span class="text-emerald-500 text-xs"><i class="fa-solid fa-bullhorn"></i></span>
+                    <span class="truncate group-hover:text-emerald-700 transition font-semibold">{{ notice.title }}</span>
+                </a>
+                <div class="flex items-center gap-3 shrink-0">
+                    <span class="text-xs text-slate-400 font-medium whitespace-nowrap">{{ notice.created_at|date:"Y.m.d." }}</span>
+                    {% if user.is_staff %}
+                    <form action="{% url 'post_delete' notice.id %}" method="POST" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-1.5" title="공지 삭제">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </li>
+            {% empty %}
+            <li class="py-16 text-center text-slate-400 text-sm font-medium">등록된 공지사항이 없습니다.</li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+<!-- 모달 다이얼로그 (Staff 전용) -->
+{% if user.is_staff %}
 <div id="post-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center transition-opacity duration-300 opacity-0">
     <div class="bg-white w-full max-w-4xl rounded-2xl shadow-xl overflow-hidden transform scale-95 transition-transform duration-300 border border-slate-200" id="post-modal-content">
         <div class="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -134,7 +146,7 @@
         </form>
     </div>
 </div>
-{% endblock %}
+{% endif %}
 
 {% block extra_js %}
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
@@ -159,8 +171,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!noticeEditor) {
             noticeEditor = new toastui.Editor({
                 el: document.querySelector('#notice-editor'),
-                height: '400px', initialEditType: 'markdown', previewStyle: 'vertical',
-                placeholder: '공지 내용을 작성해 주세요.', language: 'ko'
+                height: '400px', initialEditType: 'wysiwyg',
+                placeholder: '공지 내용을 작성해 주세요.', language: 'ko-KR'
             });
         }
         setTimeout(() => { postModal.classList.remove('opacity-0'); postModalContent.classList.remove('scale-95'); }, 10);
@@ -182,8 +194,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!activityEditor) {
             activityEditor = new toastui.Editor({
                 el: document.querySelector('#activity-editor'),
-                height: '400px', initialEditType: 'markdown', previewStyle: 'vertical',
-                placeholder: '활동 내용을 마크다운으로 기록하고 사진을 첨부해 보세요.', language: 'ko'
+                height: '400px', initialEditType: 'wysiwyg',
+                placeholder: '활동 내용을 기록하고 사진을 첨부해 보세요.', language: 'ko-KR'
             });
         }
         setTimeout(() => { activityModal.classList.remove('opacity-0'); activityModalContent.classList.remove('scale-95'); }, 10);
@@ -201,3 +213,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+{% endblock community_content %}

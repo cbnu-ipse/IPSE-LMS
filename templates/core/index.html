@@ -15,18 +15,14 @@
                     <div class="h-24 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500"></div>
                     <div class="px-6 pb-6 relative">
                         <div class="flex justify-between items-end -mt-12 mb-4 px-6 relative z-10">
-                            <div class="relative group cursor-pointer w-24 h-24 rounded-full border-4 border-white shadow-md bg-white flex-shrink-0" id="profile-image-container">
-                                <img src="{{ request.user.get_picture }}" alt="Profile" id="profile-image-display" class="w-full h-full rounded-full object-cover">
-                                <div class="absolute inset-0 bg-slate-900/50 rounded-full flex justify-center items-center opacity-0 group-hover:opacity-100 transition duration-200" id="profile-upload-trigger">
-                                    <i class="fa-solid fa-camera text-white text-xl"></i>
+                            <a href="{% url 'edit_profile' %}" class="relative group cursor-pointer w-24 h-24 rounded-full border-4 border-white shadow-md bg-white flex-shrink-0 block overflow-hidden hover:border-emerald-500 transition-all duration-200" title="프로필 수정">
+                                <img src="{{ request.user.get_picture }}" alt="Profile" id="profile-image-display" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
+                                <div class="absolute inset-0 bg-slate-900/40 rounded-full flex justify-center items-center opacity-0 group-hover:opacity-100 transition duration-200">
+                                    <i class="fa-solid fa-pen text-white text-base"></i>
                                 </div>
-                                <button type="button" id="profile-delete-btn" class="absolute top-0 right-0 bg-slate-600 hover:bg-rose-500 text-white rounded-full w-7 h-7 flex justify-center items-center opacity-0 group-hover:opacity-100 transition duration-200 shadow-sm z-20">
-                                    <i class="fa-solid fa-xmark text-sm"></i>
-                                </button>
-                                <input type="file" id="profile-image-input" class="hidden" accept="image/png, image/jpeg, image/jpg">
-                            </div>
-                            <a href="#" id="open-modal-btn" class="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 transition mb-2">
-                                프로필 커스텀
+                            </a>
+                            <a href="{% url 'edit_profile' %}" class="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 transition mb-2">
+                                프로필 수정
                             </a>
                         </div>
                         <div class="flex items-center gap-2.5 flex-wrap">
@@ -71,6 +67,13 @@
                             <div class="flex-1">
                                 <p class="text-[10px] font-semibold text-slate-400 mb-1 tracking-wider">POINTS</p>
                                 <p class="text-xl font-semibold text-[#3F3F3F]">{{ problem_points|default:"0" }}</p>
+                            </div>
+                            <div class="w-px h-8 bg-slate-100"></div>
+                            <div class="flex-1">
+                                <p class="text-[10px] font-semibold text-slate-400 mb-1 tracking-wider">LEAVES</p>
+                                <p class="text-xl font-semibold text-amber-600 flex items-center justify-center gap-1">
+                                    <i class="fa-solid fa-leaf text-amber-500 text-sm"></i>{{ request.user.leaves|default:0 }}
+                                </p>
                             </div>
                             <div class="w-px h-8 bg-slate-100"></div>
                             <div class="flex-1">
@@ -154,40 +157,69 @@
                             </div>
                         
                         <ul class="space-y-3">
-                            {% for poll in active_polls %}
-                            <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
-                                <a href="{% host_url 'poll_detail' poll.id host 'community' %}" class="font-medium text-slate-700 hover:text-indigo-700 transition flex-1 min-w-0 truncate pr-4">
-                                    <span class="text-indigo-500 text-sm mr-1.5"><i class="fa-solid fa-square-poll-vertical"></i></span>
-                                    {{ poll.title }}
-                                </a>
-                                <span class="text-xs text-slate-400 flex-shrink-0">
-                                    {% if poll.ends_at %}~{{ poll.ends_at|date:"m.d" }}{% else %}상시{% endif %}
-                                </span>
-                            </li>
-                            {% endfor %}
-                            {% for notice in notices %}
-                            <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
-                                <a href="{% host_url 'notice_detail' notice.id host 'community' %}" class="font-medium text-slate-700 hover:text-emerald-700 transition flex-1 min-w-0 truncate pr-4">
-                                    <span class="text-emerald-500 text-sm mr-1.5"><i class="fa-solid fa-leaf"></i></span>
-                                    {{ notice.title }}
-                                </a>
-                                
-                                <div class="flex items-center space-x-3 flex-shrink-0">
-                                    <span class="text-xs text-slate-400">{{ notice.upload_time|date:"Y.m.d" }}</span>
+                            {% if active_polls or notices or hot_posts or active_gatherings %}
+                                <!-- ⚡ 번개 모임 목록 -->
+                                {% for meetup in active_gatherings %}
+                                <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
+                                    <a href="{% host_url 'gathering_detail' meetup.id host 'community' %}" class="font-medium text-slate-700 hover:text-amber-600 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                        <span class="text-amber-500 text-sm mr-1.5"><i class="fa-solid fa-bolt"></i></span>
+                                        <span class="font-bold text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded mr-1">번개</span>{{ meetup.title }}
+                                    </a>
+                                    <span class="text-xs text-slate-400 flex-shrink-0">
+                                        {{ meetup.event_date|date:"m.d H:i" }}
+                                    </span>
+                                </li>
+                                {% endfor %}
+
+                                <!-- 🗳️ 투표 목록 -->
+                                {% for poll in active_polls %}
+                                <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
+                                    <a href="{% host_url 'poll_detail' poll.id host 'community' %}" class="font-medium text-slate-700 hover:text-indigo-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                        <span class="text-indigo-500 text-sm mr-1.5"><i class="fa-solid fa-square-poll-vertical"></i></span>
+                                        <span class="font-bold text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded mr-1">투표</span>{{ poll.title }}
+                                    </a>
+                                    <span class="text-xs text-slate-400 flex-shrink-0">
+                                        {% if poll.ends_at %}~{{ poll.ends_at|date:"m.d" }}{% else %}상시{% endif %}
+                                    </span>
+                                </li>
+                                {% endfor %}
+
+                                <!-- 📢 공지사항 목록 -->
+                                {% for notice in notices %}
+                                <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
+                                    <a href="{% host_url 'post_detail' notice.id host 'community' %}" class="font-medium text-slate-700 hover:text-emerald-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                        <span class="text-emerald-500 text-sm mr-1.5"><i class="fa-solid fa-bullhorn"></i></span>
+                                        <span class="font-bold text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded mr-1">공지</span>{{ notice.title }}
+                                    </a>
                                     
-                                    {% if user.is_staff %}
-                                    <form action="{% host_url 'delete_post' notice.id host 'community' %}" method="POST" class="inline-block" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-1">
-                                            <i class="fa-solid fa-xmark text-sm"></i>
-                                        </button>
-                                    </form>
-                                    {% endif %}
-                                </div>
-                            </li>
-                            {% empty %}
-                            <li class="text-center py-5 text-slate-400 text-sm">등록된 공지사항이 없습니다.</li>
-                            {% endfor %}
+                                    <div class="flex items-center space-x-3 flex-shrink-0">
+                                        <span class="text-xs text-slate-400">{{ notice.created_at|date:"m.d" }}</span>
+                                        
+                                        {% if user.is_staff %}
+                                        <form action="{% host_url 'post_delete' notice.id host 'community' %}" method="POST" class="inline-block" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-1">
+                                                <i class="fa-solid fa-trash-can text-[11px]"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </li>
+                                {% endfor %}
+
+                                <!-- 🔥 주간 인기글 (HOT) 목록 -->
+                                {% for post in hot_posts %}
+                                <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
+                                    <a href="{% host_url 'post_detail' post.id host 'community' %}" class="font-medium text-slate-700 hover:text-amber-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                        <span class="text-amber-500 text-sm mr-1.5"><i class="fa-solid fa-fire"></i></span>
+                                        <span class="font-bold text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded mr-1">인기</span>{{ post.title }}
+                                    </a>
+                                    <span class="text-xs text-slate-400 flex-shrink-0">{{ post.created_at|date:"m.d" }}</span>
+                                </li>
+                                {% endfor %}
+                            {% else %}
+                                <li class="text-center py-8 text-slate-400 text-sm font-medium">등록된 소식이 없습니다.</li>
+                            {% endif %}
                         </ul>
                 </div>
 
@@ -281,40 +313,7 @@
     </div>
 </section>
 
-<div id="profile-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center transition-opacity duration-300 opacity-0">
-    <div class="bg-white w-full max-w-md rounded-md border border-slate-200 shadow-xl overflow-hidden transform scale-95 transition-transform duration-300" id="profile-modal-content">
-        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-            <h3 class="text-lg font-semibold text-[#3F3F3F]">프로필 커스텀</h3>
-            <button type="button" id="close-modal-btn" class="text-slate-400 hover:text-rose-500 transition">
-                <i class="fa-solid fa-xmark text-xl"></i>
-            </button>
-        </div>
-        <form id="profile-update-form" class="p-6 space-y-5">
-            {% csrf_token %}
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-2">닉네임 (Nickname)</label>
-                <input type="text" id="input-nickname" value="{{ request.user.display_name }}" placeholder="사이트에서 표시될 이름" class="w-full px-4 py-2.5 rounded-md border border-slate-200 bg-slate-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm font-medium text-slate-700" maxlength="30">
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-2">한 줄 소개 (Bio)</label>
-                <input type="text" id="input-bio" value="{{ request.user.student.bio|default:'' }}" placeholder="자신을 한 줄로 표현해 보세요!" class="w-full px-4 py-2.5 rounded-md border border-slate-200 bg-slate-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm font-medium text-slate-700">
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-2">GitHub 주소</label>
-                <input type="url" id="input-github" value="{{ request.user.student.github_url|default:'' }}" placeholder="https://github.com/..." class="w-full px-4 py-2.5 rounded-md border border-slate-200 bg-slate-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm font-medium text-slate-700">
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-2">블로그 주소</label>
-                <input type="url" id="input-blog" value="{{ request.user.student.blog_url|default:'' }}" placeholder="https://velog.io/..." class="w-full px-4 py-2.5 rounded-md border border-slate-200 bg-slate-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm font-medium text-slate-700">
-            </div>
-            <div class="pt-4 flex justify-end">
-                <button type="submit" id="save-profile-btn" class="px-6 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition w-full">
-                    저장하고 반영하기
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
+
 
 <!-- LMS 과제 상세 모달 -->
 <div id="lms-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/40 backdrop-blur-sm flex justify-center items-center transition-opacity duration-300 opacity-0">
@@ -467,99 +466,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (c) c.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">일정을 불러올 수 없습니다.</p>';
             });
     })();
-
-    // ==========================================
-    // 2. 프로필 커스텀 로직
-    // ==========================================
-    const profileModal = document.getElementById('profile-modal');
-    const profileModalContent = document.getElementById('profile-modal-content');
-    const openProfileBtn = document.getElementById('open-modal-btn');
-    const closeProfileBtn = document.getElementById('close-modal-btn');
-    const profileForm = document.getElementById('profile-update-form');
-    
-    const uploadTrigger = document.getElementById('profile-upload-trigger');
-    const imageInput = document.getElementById('profile-image-input');
-    const profileDeleteBtn = document.getElementById('profile-delete-btn');
-    const imageDisplay = document.getElementById('profile-image-display');
-
-    uploadTrigger?.addEventListener('click', (e) => {
-        if (e.target.closest('#profile-delete-btn')) return; 
-        imageInput.click();
-    });
-
-    imageInput?.addEventListener('change', function() {
-        const file = this.files[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append('picture', file);
-        formData.append('action', 'upload'); 
-        sendProfileImageRequest(formData);
-    });
-
-    profileDeleteBtn?.addEventListener('click', (e) => {
-        e.stopPropagation(); 
-        if (!confirm('프로필 이미지를 삭제하시겠습니까?')) return;
-        const formData = new FormData();
-        formData.append('action', 'delete'); 
-        sendProfileImageRequest(formData);
-    });
-
-    function sendProfileImageRequest(formData) {
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-        fetch('/accounts/profile/picture/update/', {
-            method: 'POST',
-            headers: { 'X-CSRFToken': csrfToken },
-            body: formData
-        }).then(res => res.json()).then(data => {
-            if (data.status === 'success') imageDisplay.src = data.image_url; 
-            else alert('오류: ' + data.message);
-        }).finally(() => { imageInput.value = ''; });
-    }
-
-    openProfileBtn?.addEventListener('click', (e) => {
-        e.preventDefault();
-        profileModal.classList.remove('hidden');
-        setTimeout(() => {
-            profileModal.classList.remove('opacity-0');
-            profileModalContent.classList.remove('scale-95');
-        }, 10);
-    });
-
-    closeProfileBtn?.addEventListener('click', () => {
-        profileModal.classList.add('opacity-0');
-        profileModalContent.classList.add('scale-95');
-        setTimeout(() => profileModal.classList.add('hidden'), 300);
-    });
-
-    profileForm?.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const saveBtn = document.getElementById('save-profile-btn');
-        saveBtn.innerText = "저장 중...";
-        saveBtn.disabled = true;
-
-        const data = {
-            nickname: document.getElementById('input-nickname').value,
-            bio: document.getElementById('input-bio').value,
-            github_url: document.getElementById('input-github').value,
-            blog_url: document.getElementById('input-blog').value,
-        };
-
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-
-        fetch('/accounts/profile/update/api/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify(data)
-        }).then(res => res.json()).then(result => {
-            if(result.status === 'success') {
-                closeProfileBtn.click();
-                window.location.reload(); 
-            } else alert('실패: ' + result.message);
-        }).finally(() => {
-            saveBtn.innerText = "저장하고 반영하기";
-            saveBtn.disabled = false;
-        });
-    });
 
     // ==========================================
     // 3. LMS 과제 상세 모달 로직

@@ -25,7 +25,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="IPSE">
-    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v=3">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={% now 'U' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- 페이지 전환 로딩 바 -->
     <div id="page-loader" style="position:fixed;top:0;left:0;width:0%;height:3px;background:linear-gradient(90deg,var(--color-emerald-600),var(--color-teal-500));z-index:99999;transition:width 0.3s ease,opacity 0.4s ease;opacity:0;pointer-events:none;"></div>
@@ -76,8 +76,12 @@
                     {% else %}
                         <!-- 📣 동아리 커뮤니티 메인 도메인 메뉴 (신규 커뮤니티 포함) -->
                         <a href="{% url 'community_home' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'community_home' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'post_create' or request.resolver_match.url_name == 'post_edit' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'community_home' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'post_create' or request.resolver_match.url_name == 'post_edit' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             커뮤니티
+                        </a>
+                        <a href="{% url 'gathering_list' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            번개 모임
                         </a>
                         <a href="{% url 'community_main' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'community_main' or request.resolver_match.url_name == 'notice_detail' or request.resolver_match.url_name == 'activity_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
@@ -176,7 +180,8 @@
                     <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">랭킹</a>
                 {% else %}
                     <!-- 📣 동아리 커뮤니티 모바일 메뉴 -->
-                    <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-lg text-sm {% if request.resolver_match.url_name == 'community_home' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'post_create' or request.resolver_match.url_name == 'post_edit' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-700 hover:bg-emerald-50 hover:text-emerald-700{% endif %} transition">커뮤니티</a>
+                    <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-lg text-sm {% if request.resolver_match.url_name == 'community_home' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'post_create' or request.resolver_match.url_name == 'post_edit' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-700 hover:bg-emerald-50 hover:text-emerald-700{% endif %} transition">커뮤니티</a>
+                    <a href="{% url 'gathering_list' %}" class="block px-4 py-2.5 rounded-lg text-sm {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-700 hover:bg-emerald-50 hover:text-emerald-700{% endif %} transition">번개 모임</a>
                     <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">소식/활동 기록</a>
                     <a href="{% url 'schedule_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">동아리 일정</a>
                     <a href="{% url 'poll_list' %}" class="block px-4 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition">투표</a>

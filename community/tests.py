@@ -210,3 +210,152 @@ class CommunityTestCase(TestCase):
         # 호스트 및 참여자 캘린더에서 완전히 일괄 삭제되었는지 검증
         self.assertFalse(Schedule.objects.filter(external_id=f"gathering:{gathering.id}").exists())
 
+
+class CommunityLikeDislikeBestCommentTestCase(TestCase):
+    def setUp(self):
+        self.user1 = User.objects.create_user(username='user1', password='password123')
+        self.user2 = User.objects.create_user(username='user2', password='password123')
+        self.staff_user = User.objects.create_user(username='staff_user', password='password123', is_staff=True)
+        self.client = Client()
+        
+        # 게시글 생성
+        from .models import CommunityPost, CommunityComment, GatheringEvent
+        self.post = CommunityPost.objects.create(
+            title='테스트용 게시글',
+            content='본문 내용입니다.',
+            author=self.user1
+        )
+        
+    def test_post_like_dislike_mutual_exclusion(self):
+        self.client.login(username='user1', password='password123')
+        
+        # 1. 추천 토글
+        like_url = reverse('post_like_toggle', kwargs={'post_id': self.post.id})
+        response = self.client.post(like_url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['liked'])
+        self.assertFalse(data['disliked'])
+        self.assertEqual(data['like_count'], 1)
+        self.assertEqual(data['dislike_count'], 0)
+        
+        # 2. 비추천 토글 (추천이 취소되고 비추천이 활성화되는지)
+        dislike_url = reverse('post_dislike_toggle', kwargs={'post_id': self.post.id})
+        response = self.client.post(dislike_url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['liked'])
+        self.assertTrue(data['disliked'])
+        self.assertTrue(data['liked_removed'])
+        self.assertEqual(data['like_count'], 0)
+        self.assertEqual(data['dislike_count'], 1)
+
+        # 3. 다시 추천 토글 (비추천이 취소되고 추천이 활성화되는지)
+        response = self.client.post(like_url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['liked'])
+        self.assertFalse(data['disliked'])
+        self.assertTrue(data['disliked_removed'])
+        self.assertEqual(data['like_count'], 1)
+        self.assertEqual(data['dislike_count'], 0)
+
+    def test_comment_like_dislike_mutual_exclusion(self):
+        from .models import CommunityComment
+        comment = CommunityComment.objects.create(
+            post=self.post,
+            author=self.user2,
+            content='댓글 테스트'
+        )
+        self.client.login(username='user1', password='password123')
+        
+        # 1. 댓글 추천 토글
+        like_url = reverse('comment_like_toggle', kwargs={'comment_id': comment.id})
+        response = self.client.post(like_url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['liked'])
+        self.assertFalse(data['disliked'])
+        self.assertEqual(data['like_count'], 1)
+        self.assertEqual(data['dislike_count'], 0)
+        
+        # 2. 댓글 비추천 토글 (추천이 지워져야 함)
+        dislike_url = reverse('comment_dislike_toggle', kwargs={'comment_id': comment.id})
+        response = self.client.post(dislike_url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['liked'])
+        self.assertTrue(data['disliked'])
+        self.assertTrue(data['liked_removed'])
+        self.assertEqual(data['like_count'], 0)
+        self.assertEqual(data['dislike_count'], 1)
+
+    def test_best_comment_selection_on_detail_page(self):
+        from .models import CommunityComment, CommunityCommentLike
+        # 세 개의 댓글 생성
+        c1 = CommunityComment.objects.create(post=self.post, author=self.user2, content='댓글 1')
+        c2 = CommunityComment.objects.create(post=self.post, author=self.user2, content='댓글 2')
+        c3 = CommunityComment.objects.create(post=self.post, author=self.user2, content='댓글 3')
+        
+        # c1 추천 1개, c2 추천 2개, c3 추천 2개 (c3가 최신글)
+        CommunityCommentLike.objects.create(comment=c1, user=self.user1)
+        
+        CommunityCommentLike.objects.create(comment=c2, user=self.user1)
+        CommunityCommentLike.objects.create(comment=c2, user=self.user2)
+        
+        CommunityCommentLike.objects.create(comment=c3, user=self.user1)
+        CommunityCommentLike.objects.create(comment=c3, user=self.user2)
+        
+        self.client.login(username='user1', password='password123')
+        detail_url = reverse('post_detail', kwargs={'post_id': self.post.id})
+        response = self.client.get(detail_url)
+        
+        self.assertEqual(response.status_code, 200)
+        # 최다 추천수(2개)를 가진 c2, c3 중 최신 등록 댓글인 c3가 best_comment로 선정되어야 함
+        self.assertEqual(response.context['best_comment'].id, c3.id)
+        
+    def test_home_dashboard_meetup_filtering(self):
+        from .models import GatheringEvent
+        # 1. 진행 예정 번개 모임
+        gathering_future = GatheringEvent.objects.create(
+            title='미래 번개',
+            description='미래 번개 설명',
+            event_date=timezone.now() + datetime.timedelta(days=1),
+            location='동방',
+            author=self.user1,
+            max_participants=5
+        )
+        # 2. 이미 지난 번개 모임
+        gathering_past = GatheringEvent.objects.create(
+            title='과거 번개',
+            description='과거 번개 설명',
+            event_date=timezone.now() - datetime.timedelta(days=1),
+            location='동방',
+            author=self.user1,
+            max_participants=5
+        )
+        # 3. 폭파된(취소된) 미래 번개 모임
+        gathering_canceled = GatheringEvent.objects.create(
+            title='폭파된 미래 번개',
+            description='폭파된 미래 번개 설명',
+            event_date=timezone.now() + datetime.timedelta(days=2),
+            location='동방',
+            author=self.user1,
+            max_participants=5,
+            is_canceled=True
+        )
+        
+        self.client.login(username='user1', password='password123')
+        home_url = reverse('home')
+        response = self.client.get(home_url)
+        
+        self.assertEqual(response.status_code, 200)
+        active_gatherings = response.context['active_gatherings']
+        
+        # 활성 번개(미래 번개)만 포함되어야 함
+        gathering_ids = [g.id for g in active_gatherings]
+        self.assertIn(gathering_future.id, gathering_ids)
+        self.assertNotIn(gathering_past.id, gathering_ids)
+        self.assertNotIn(gathering_canceled.id, gathering_ids)
+
+

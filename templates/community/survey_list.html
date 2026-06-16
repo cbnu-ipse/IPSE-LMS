@@ -1,19 +1,27 @@
 {% extends 'base.html' %}
 {% load static %}
-
-{% block title %}설문 조사{% endblock %}
+{% block title %}설문조사 | IPSE LMS{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-12">
+<section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
-        <div class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
-            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">COMMUNITY</p>
-            <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">동아리 설문</h1>
-            <p class="mt-2 text-sm text-slate-500">활성화된 설문에 참여하고 결과를 확인하세요.</p>
+        <!-- 📣 상단 프리미엄 헤더 배너 (설문조사 전용: 에메랄드-틸 그라디언트) -->
+        <div class="relative bg-gradient-to-r from-emerald-600 to-teal-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+                <i class="fa-solid fa-clipboard-question text-[200px]"></i>
+            </div>
+            <div class="relative z-10 max-w-2xl">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                    <i class="fa-solid fa-clipboard-question"></i> IPSE Survey
+                </span>
+                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 설문조사</h1>
+                <p class="text-emerald-50 text-sm leading-relaxed">
+                    동아리 부원들의 의견을 수렴하고 더 나은 운영을 위한 설문에 참여하세요. 여러분의 소중한 의견이 IPSE를 만들어갑니다.
+                </p>
+            </div>
         </div>
 
-
-        <div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
             {% if user.is_staff %}
             <div class="flex justify-end mb-6">
                 <button type="button" id="open-survey-create-modal-btn" class="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
@@ -72,9 +80,6 @@
                 </div>
             </div>
             {% endif %}
-        </div>
-    </div>
-</section>
 
 {% if user.is_staff %}
 <div id="survey-create-modal" class="fixed inset-0 z-[9999] hidden overflow-y-auto bg-slate-900/40 px-4 py-6 opacity-0 backdrop-blur-sm transition-opacity duration-300">
@@ -166,7 +171,9 @@
     </div>
 </div>
 {% endif %}
-{% endblock %}
+    </div>
+</section>
+{% endblock content %}
 
 {% block extra_js %}
 {% if user.is_staff %}

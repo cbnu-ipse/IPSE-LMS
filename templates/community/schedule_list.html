@@ -2,8 +2,25 @@
 {% block title %}동아리 일정 - IPSE{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-12">
+<section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
+        <!-- 📣 상단 프리미엄 헤더 배너 (동아리 일정 전용: 에메랄드-틸 그라디언트) -->
+        <div class="relative bg-gradient-to-r from-emerald-600 to-teal-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+                <i class="fa-solid fa-calendar-days text-[200px]"></i>
+            </div>
+            <div class="relative z-10 max-w-2xl">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                    <i class="fa-solid fa-calendar-days"></i> Club Calendar
+                </span>
+                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 동아리 일정</h1>
+                <p class="text-emerald-50 text-sm leading-relaxed">
+                    세미나, 교육 세션, 코딩 테스트 등 IPSE의 모든 공식 일정과 개인 학업 일정을 관리하고 동기화할 수 있는 일정표입니다.
+                </p>
+            </div>
+        </div>
+
+        <div>
 
 
 
@@ -44,8 +61,6 @@
                 <div id="calendar" data-is-staff="{% if user.is_staff %}1{% else %}0{% endif %}"></div>
             </div>
         </div>
-    </div>
-</section>
 
 <!-- 날짜 클릭 패널 (화면 중앙 고정 오버레이) -->
 <div id="day-overlay" class="fixed inset-0 z-[800] hidden flex items-center justify-center">
@@ -249,7 +264,8 @@
             </div>
         </div>
     </div>
-</div>
+    </div>
+</section>
 {% endblock %}
 
 {% block extra_js %}
@@ -803,4 +819,4 @@ document.addEventListener('DOMContentLoaded', function () {
     lmsModal?.addEventListener('click', e => { if (e.target === lmsModal) closeLmsModal(); });
 });
 </script>
-{% endblock %}
+{% endblock extra_js %}

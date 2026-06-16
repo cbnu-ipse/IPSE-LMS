@@ -1,17 +1,26 @@
 {% extends 'base.html' %}
-{% block title %}동아리 부원 모집 관리 - IPSE{% endblock %}
+{% block title %}모집 관리 | IPSE LMS{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-12">
+<section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
-
-        <!-- 상단 배너 -->
-        <div class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
-            <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">COMMUNITY</p>
-            <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">동아리 모집 폼 관리</h1>
-            <p class="mt-2 text-sm text-slate-500">신규 부원 모집을 위한 폼을 생성하고 관리하며 지원 현황을 확인합니다.</p>
+        <!-- 📣 상단 프리미엄 헤더 배너 (모집 관리 전용: 블루-시안 그라디언트) -->
+        <div class="relative bg-gradient-to-r from-blue-600 to-cyan-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+                <i class="fa-solid fa-user-plus text-[200px]"></i>
+            </div>
+            <div class="relative z-10 max-w-2xl">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                    <i class="fa-solid fa-user-plus"></i> IPSE Recruit
+                </span>
+                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 지원자 모집 관리</h1>
+                <p class="text-blue-50 text-sm leading-relaxed">
+                    신규 부원 모집을 위한 폼을 생성하고 관리하며 지원 현황을 확인합니다. IPSE의 새로운 구성원을 순조롭게 초대하세요.
+                </p>
+            </div>
         </div>
 
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
         <div>
             {% if user.is_staff %}
             <div class="flex justify-end mb-6">
@@ -115,8 +124,6 @@
             </div>
             {% endif %}
         </div>
-    </div>
-</section>
 
 <!-- 생성 모달 팝업 -->
 {% if user.is_staff %}
@@ -181,7 +188,11 @@
     </div>
 </div>
 {% endif %}
+    </div>
+</section>
+{% endblock content %}
 
+{% block extra_js %}
 <script>
 function copyLink(formId) {
     const relativeUrl = `/recruit/${formId}/`;
@@ -230,4 +241,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-{% endblock %}
+{% endblock extra_js %}

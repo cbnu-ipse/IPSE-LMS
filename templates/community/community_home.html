@@ -1,256 +1,119 @@
-{% extends 'base.html' %}
+{% extends 'community/community_base.html' %}
 {% load i18n %}
+{% load hosts %}
+
 {% block title %}커뮤니티 | IPSE LMS{% endblock title %}
 
-{% block content %}
-<section class="max-w-7xl mx-auto px-6 py-10">
-    <div class="space-y-8">
-        <!-- 📣 1. 상단 프리미엄 헤더 배너 -->
-        <div class="relative bg-gradient-to-r from-emerald-600 to-teal-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
-            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
-                <i class="fa-solid fa-leaf text-[200px]"></i>
-            </div>
-            <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
-                    <i class="fa-solid fa-comments"></i> IPSE Community
-                </span>
-                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 부원 소통 광장</h1>
-                <p class="text-emerald-50 text-sm leading-relaxed">
-                    부원들과 유용한 학술 정보를 공유하는 자유 게시판과 오프라인 즉석 스터디 및 모임을 열 수 있는 번개 모임 공간입니다. 자유롭게 소통하며 성장해 보세요.
-                </p>
-            </div>
-        </div>
+{% block banner_icon %}fa-comments{% endblock %}
+{% block banner_badge_icon %}fa-comments{% endblock %}
+{% block banner_badge_text %}IPSE Community{% endblock %}
+{% block banner_title %}IPSE 부원 소통 광장{% endblock %}
+{% block banner_description %}부원들과 유용한 학술 정보를 공유하는 자유 게시판과 오프라인 즉석 스터디 및 모임을 열 수 있는 번개 모임 공간입니다. 자유롭게 소통하며 성장해 보세요.{% endblock %}
 
-        {% include 'snippets/messages.html' %}
+{% block community_content %}
+<!-- 📂 게시판 헤더 영역 -->
+<div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
+    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+        {% if board == 'hot' %}
+            <i class="fa-solid fa-fire text-amber-500 animate-pulse"></i>인기글 (HOT)
+        {% elif board == 'president' %}
+            <i class="fa-solid fa-crown text-yellow-500"></i>회장 넋두리
+        {% elif board == 'seminar' %}
+            <i class="fa-solid fa-chalkboard-user text-violet-500"></i>세미나장 넋두리
+        {% elif board == 'free' %}
+            <i class="fa-regular fa-comments text-slate-400"></i>자유게시판
+        {% else %}
+            <i class="fa-regular fa-file-lines text-slate-400"></i>전체글보기
+        {% endif %}
+    </h2>
 
-        <!-- 📂 2. 자유게시판 / 인기글 / 번개모임 토글 탭 -->
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
-            <div class="flex gap-2 bg-slate-100 p-1 rounded-2xl w-fit">
-                <button type="button" onclick="switchTab('board')" id="tab-btn-board" class="px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200 shadow-sm bg-white text-emerald-800">
-                    <i class="fa-solid fa-clipboard-list mr-1.5"></i>자유 게시판
-                </button>
-                <button type="button" onclick="switchTab('meetup')" id="tab-btn-meetup" class="px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200 text-slate-500 hover:text-slate-700">
-                    <i class="fa-solid fa-bolt mr-1.5 text-amber-500"></i>번개 모임
-                </button>
-            </div>
+    <div>
+        <a href="{% url 'post_create' %}" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
+            <i class="fa-solid fa-pen-to-square"></i>게시글 작성
+        </a>
+    </div>
+</div>
 
-            <!-- 🆕 글쓰기/모임 개설 버튼 영역 -->
-            <div>
-                <a href="{% url 'post_create' %}" id="btn-create-post" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
-                    <i class="fa-solid fa-pen-to-square"></i>게시글 작성
-                </a>
-                <a href="{% url 'gathering_create' %}" id="btn-create-gathering" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 hover:scale-[1.01] transition shadow-sm hidden">
-                    <i class="fa-solid fa-circle-plus"></i>번개 모임 만들기
-                </a>
-            </div>
-        </div>
+    <!-- 📋 자유 게시판 게시글 리스트 영역 -->
+    {% if posts or pinned_notices %}
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-600">
+                <thead>
+                    <tr class="bg-slate-50/50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        <th class="px-6 py-4">제목</th>
+                        <th class="px-6 py-4">작성자</th>
+                        <th class="px-6 py-4 text-center">추천수</th>
+                        <th class="px-6 py-4">작성 일시</th>
+                        <th class="px-6 py-4 text-center">조회수</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    <!-- 📌 상단 핀 고정 공지사항 영역 -->
+                    {% if board == 'all' and pinned_notices %}
+                        {% for notice in pinned_notices %}
+                        <tr class="bg-emerald-50/30 hover:bg-emerald-50/50 transition cursor-pointer font-bold border-l-4 border-l-emerald-500" onclick="location.href='{% url 'post_detail' notice.id %}'">
+                            <td class="px-6 py-4 text-slate-900 flex items-center gap-2">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
+                                    <i class="fa-solid fa-bullhorn"></i>공지
+                                </span>
+                                <span class="hover:text-emerald-700 transition">
+                                    {{ notice.title }}
+                                </span>
+                                {% if notice.comment_count > 0 %}
+                                <span class="text-xs font-bold text-blue-500 ml-1">[{{ notice.comment_count }}]</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 text-xs text-slate-600 font-semibold">
+                                {{ notice.author.get_full_name|default:notice.author.username }} ({{ notice.author.username }})
+                            </td>
+                            <td class="px-6 py-4 text-center text-xs font-bold text-emerald-600">
+                                {{ notice.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ notice.dislike_count|default:0 }}</span>{% endif %}
+                            </td>
+                            <td class="px-6 py-4 text-xs text-slate-500 font-medium">
+                                {{ notice.created_at|date:"Y-m-d H:i" }}
+                            </td>
+                            <td class="px-6 py-4 text-center text-xs font-mono text-slate-500">
+                                {{ notice.views }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
 
-        <!-- 📋 3. 자유 게시판 컨텐츠 영역 -->
-        <div id="tab-content-board" class="space-y-6">
-
-            {% if posts %}
-            <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm text-slate-600">
-                        <thead>
-                            <tr class="bg-slate-50/50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                <th class="px-6 py-4">제목</th>
-                                <th class="px-6 py-4">작성자</th>
-                                <th class="px-6 py-4">작성 일시</th>
-                                <th class="px-6 py-4 text-center">조회수</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {% for post in posts %}
-                            <tr class="hover:bg-slate-50/50 transition cursor-pointer" onclick="location.href='{% url 'post_detail' post.id %}'">
-                                <td class="px-6 py-4 font-semibold text-slate-800 hover:text-emerald-600 transition">
-                                    {{ post.title }}
-                                    {% if post.comment_count > 0 %}
-                                    <span class="text-xs font-bold text-blue-500 ml-1">[{{ post.comment_count }}]</span>
-                                    {% endif %}
-                                </td>
-                                <td class="px-6 py-4 text-xs text-slate-500 font-medium">
-                                    {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
-                                </td>
-                                <td class="px-6 py-4 text-xs text-slate-400">
-                                    {{ post.created_at|date:"Y-m-d H:i" }}
-                                </td>
-                                <td class="px-6 py-4 text-center text-xs font-mono text-slate-400">
-                                    {{ post.views }}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% else %}
-            <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
-                <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                    <i class="fa-solid fa-folder-open text-slate-400 text-lg"></i>
-                </div>
-                <h3 class="text-base font-bold text-slate-700">작성된 게시글이 없습니다.</h3>
-                <p class="text-xs text-slate-400 mt-1">가장 먼저 첫 게시글을 작성해 보세요!</p>
-            </div>
-            {% endif %}
-        </div>
-
-
-
-        <!-- ⚡ 4. 번개 모임 컨텐츠 영역 -->
-        <div id="tab-content-meetup" class="space-y-6 hidden">
-            {% if gatherings %}
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {% for g in gatherings %}
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition duration-200">
-                    <div>
-                        <!-- 모임 상태 배지 -->
-                        <div class="flex items-center justify-between mb-4">
-                            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold {% if g.is_full %}bg-rose-50 text-rose-600 border border-rose-100{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %}">
-                                <i class="fa-solid {% if g.is_full %}fa-circle-xmark{% else %}fa-circle-check{% endif %}"></i>
-                                {% if g.is_full %}모집 마감{% else %}모집 중{% endif %}
-                            </span>
-                            <span class="text-[11px] font-semibold text-slate-400">
-                                {{ g.participants.count }} / {{ g.max_participants }} 명
-                            </span>
-                        </div>
-
-                        <!-- 모임 상세 정보 -->
-                        <h3 class="text-lg font-bold text-slate-800 mb-2 cursor-pointer hover:text-amber-600 transition" onclick="location.href='{% url 'gathering_detail' g.id %}'">
-                            {{ g.title }}
-                        </h3>
-                        <p class="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed bg-slate-50/50 rounded-xl p-3 border border-slate-100">
-                            {{ g.description|truncatewords:20 }}
-                        </p>
-
-                        <!-- 정보 리스트 -->
-                        <div class="space-y-2 text-xs text-slate-500 mb-5">
-                            <div class="flex items-center gap-2">
-                                <i class="fa-solid fa-calendar-day text-slate-400 w-4"></i>
-                                <span>{{ g.event_date|date:"Y-m-d H:i" }}</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <i class="fa-solid fa-location-dot text-slate-400 w-4"></i>
-                                <span>{{ g.location }}</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <i class="fa-solid fa-user-tie text-slate-400 w-4"></i>
-                                <span>주최: {{ g.author.get_full_name|default:g.author.username }} ({{ g.author.username }})</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 참가 토글 버튼 -->
-                    <div class="pt-4 border-t border-slate-100 flex gap-2">
-                        <a href="{% url 'gathering_detail' g.id %}" class="flex-1 inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition">
-                            상세 보기
-                        </a>
-                        {% if g.author == request.user %}
-                        <button type="button" disabled class="flex-1 px-3 py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-bold border border-slate-200 cursor-not-allowed">
-                            개설자
-                        </button>
-                        {% else %}
-                        <button type="button" onclick="toggleJoin(this, {{ g.id }})" class="flex-1 px-3 py-2.5 rounded-xl text-xs font-bold transition shadow-sm {% if g.user_joined %}bg-rose-500 hover:bg-rose-600 text-white{% else %}bg-amber-500 hover:bg-amber-600 text-white{% endif %}">
-                            {% if g.user_joined %}참가 취소{% else %}참가 신청{% endif %}
-                        </button>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
-                <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                    <i class="fa-solid fa-bolt text-slate-400 text-lg"></i>
-                </div>
-                <h3 class="text-base font-bold text-slate-700">활성화된 번개 모임이 없습니다.</h3>
-                <p class="text-xs text-slate-400 mt-1">자유롭게 부원들과 오프라인 모임을 만들어 보세요!</p>
-            </div>
-            {% endif %}
+                    <!-- 📝 일반 게시글 목록 영역 -->
+                    {% for post in posts %}
+                    <tr class="hover:bg-slate-50/50 transition cursor-pointer" onclick="location.href='{% url 'post_detail' post.id %}'">
+                        <td class="px-6 py-4 font-semibold text-slate-800 hover:text-emerald-600 transition">
+                            {{ post.title }}
+                            {% if post.comment_count > 0 %}
+                            <span class="text-xs font-bold text-blue-500 ml-1">[{{ post.comment_count }}]</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-xs text-slate-500 font-medium">
+                            {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
+                        </td>
+                        <td class="px-6 py-4 text-center text-xs font-bold text-emerald-600">
+                            {{ post.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ post.dislike_count|default:0 }}</span>{% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-xs text-slate-400">
+                            {{ post.created_at|date:"Y-m-d H:i" }}
+                        </td>
+                        <td class="px-6 py-4 text-center text-xs font-mono text-slate-400">
+                            {{ post.views }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
-</section>
-{% endblock content %}
-
-{% block extra_js %}
-<script>
-    // 탭 전환 JS
-    function switchTab(type) {
-        const boardTab = document.getElementById('tab-content-board');
-        const meetupTab = document.getElementById('tab-content-meetup');
-        
-        const boardBtn = document.getElementById('tab-btn-board');
-        const meetupBtn = document.getElementById('tab-btn-meetup');
-        
-        const createPostBtn = document.getElementById('btn-create-post');
-        const createMeetupBtn = document.getElementById('btn-create-gathering');
-
-        // 모든 탭 컨텐츠 숨기기
-        boardTab.classList.add('hidden');
-        meetupTab.classList.add('hidden');
-
-        // 모든 탭 버튼 비활성화 스타일
-        boardBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200 text-slate-500 hover:text-slate-700";
-        meetupBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200 text-slate-500 hover:text-slate-700";
-
-        createPostBtn.classList.add('hidden');
-        createMeetupBtn.classList.add('hidden');
-
-        if (type === 'board') {
-            boardTab.classList.remove('hidden');
-            createPostBtn.classList.remove('hidden');
-            boardBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200 shadow-sm bg-white text-emerald-800";
-            localStorage.setItem('community_tab', 'board');
-        } else {
-            meetupTab.classList.remove('hidden');
-            createMeetupBtn.classList.remove('hidden');
-            meetupBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200 shadow-sm bg-white text-amber-800";
-            localStorage.setItem('community_tab', 'meetup');
-        }
-    }
-
-    // 캘린더 연동 번개 참가/취소 비동기 API 통신
-    function toggleJoin(btn, gatheringId) {
-        btn.disabled = true;
-        const csrfToken = '{{ csrf_token }}';
-
-        fetch(`/community/meetup/${gatheringId}/join/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                showToast(data.message, 'success');
-                // 버튼 스타일 변경
-                if (data.joined) {
-                    btn.textContent = '참가 취소';
-                    btn.className = "flex-1 px-3 py-2.5 rounded-xl text-xs font-bold transition shadow-sm bg-rose-500 hover:bg-rose-600 text-white";
-                } else {
-                    btn.textContent = '참가 신청';
-                    btn.className = "flex-1 px-3 py-2.5 rounded-xl text-xs font-bold transition shadow-sm bg-amber-500 hover:bg-amber-600 text-white";
-                }
-                // 실시간 새로고침 없이 인원 수를 즉시 갱신하고 싶을 시 새로고침 유도
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                showToast(data.message, 'error');
-            }
-        })
-        .catch(err => {
-            showToast('서버 통신 중 오류가 발생했습니다.', 'error');
-        })
-        .finally(() => {
-            btn.disabled = false;
-        });
-    }
-
-    // 페이지 로드 시 이전 선택했던 탭 유지
-    document.addEventListener('DOMContentLoaded', () => {
-        const savedTab = localStorage.getItem('community_tab') || 'board';
-        switchTab(savedTab);
-    });
-</script>
-{% endblock extra_js %}
+    {% else %}
+    <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <i class="fa-solid fa-folder-open text-slate-400 text-lg"></i>
+        </div>
+        <h3 class="text-base font-bold text-slate-700">작성된 게시글이 없습니다.</h3>
+        <p class="text-xs text-slate-400 mt-1">가장 먼저 첫 게시글을 작성해 보세요!</p>
+    </div>
+    {% endif %}
+{% endblock community_content %}
