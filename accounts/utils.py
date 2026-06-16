@@ -1,16 +1,79 @@
-import secrets
-import string
+import json
+import threading
+from django.conf import settings
 
-def generate_password(length=12):
-    """
-    장고 6.0의 보안 표준을 따르는 강력한 랜덤 패스워드 생성기.
-    - 보안 컨설팅 전공자의 관점에서, 단순한 난수가 아닌 암호학적으로 안전한 secrets 모듈을 사용합니다.
-    """
-    # 영문 대소문자, 숫자, 특수문자를 모두 포함합니다.
-    alphabet = string.ascii_letters + string.digits + string.punctuation
-    
-    # 암호학적으로 안전한(Cryptographically Secure) 랜덤 문자열을 생성합니다.
-    password = ''.join(secrets.choice(alphabet) for i in range(length))
-    
-    return password
 
+def _send_push_async(subscription_ids, payload_data):
+    """비동기 스레드 내에서 웹 푸시 발송 및 오류 토큰 자동 정화"""
+    from .models import PushSubscription
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        # pywebpush 패키지가 없으면 작동 생략
+        return
+
+    subscriptions = PushSubscription.objects.filter(id__in=subscription_ids)
+    
+    vapid_private = getattr(settings, 'VAPID_PRIVATE_KEY', '')
+    vapid_public = getattr(settings, 'VAPID_PUBLIC_KEY', '')
+    vapid_claim = getattr(settings, 'VAPID_CLAIM_EMAIL', 'mailto:admin@cbnu-ipse.co.kr')
+    
+    if not vapid_private or not vapid_public:
+        return
+        
+    vapid_claims = {
+        "sub": vapid_claim
+    }
+    
+    for sub in subscriptions:
+        try:
+            subscription_info = {
+                "endpoint": sub.endpoint,
+                "keys": {
+                    "p256dh": sub.p256dh,
+                    "auth": sub.auth
+                }
+            }
+            webpush(
+                subscription_info=subscription_info,
+                data=json.dumps(payload_data),
+                vapid_private_key=vapid_private,
+                vapid_claims=vapid_claims
+            )
+        except WebPushException as ex:
+            # 404 Not Found 또는 410 Gone은 기기/브라우저가 만료되었거나 푸시 서비스가 제거된 상태이므로 DB에서 정화
+            if ex.response is not None and ex.response.status_code in [404, 410]:
+                try:
+                    sub.delete()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+
+def send_web_push(notification_obj):
+    """지정된 알림 객체를 기반으로 비동기 백그라운드 웹 푸시 전송"""
+    try:
+        student = notification_obj.recipient.student
+    except Exception:
+        # 학생 프로필이 없는 유저는 웹 푸시 전송 대상 아님
+        return
+        
+    subscriptions = student.push_subscriptions.all()
+    if not subscriptions.exists():
+        return
+        
+    payload = {
+        "title": "IPSE 알림",
+        "body": notification_obj.message,
+        "url": f"/accounts/notifications/{notification_obj.id}/read/",
+        "icon": "/static/img/IPSE-LOGO.png",
+        "badge": "/static/img/favicon-ipse.svg"
+    }
+    
+    subscription_ids = list(subscriptions.values_list('id', flat=True))
+    
+    # 별도 스레드로 웹 푸시 전송하여 웹 응답 대기시간(Response Time) 지연 최소화
+    thread = threading.Thread(target=_send_push_async, args=(subscription_ids, payload))
+    thread.daemon = True
+    thread.start()
