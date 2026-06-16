@@ -1,13 +1,27 @@
 {% extends 'base.html' %}
-{% block title %}투표 - IPSE{% endblock %}
+{% load i18n %}
+{% block title %}의견 투표 | IPSE LMS{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-12">
+<section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
+        <!-- 📣 상단 프리미엄 헤더 배너 (의견 투표 전용: 인디고-퍼플 그라디언트) -->
+        <div class="relative bg-gradient-to-r from-indigo-600 to-purple-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+                <i class="fa-solid fa-square-poll-vertical text-[200px]"></i>
+            </div>
+            <div class="relative z-10 max-w-2xl">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                    <i class="fa-solid fa-square-poll-vertical"></i> IPSE Poll
+                </span>
+                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 의견 투표</h1>
+                <p class="text-indigo-50 text-sm leading-relaxed">
+                    동아리 운영과 관련된 다양한 안건에 투표하고 의견을 표현할 수 있는 공간입니다. 부원들의 목소리가 동아리를 만들어갑니다.
+                </p>
+            </div>
+        </div>
 
-
-
-        <div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
             {% if user.is_staff %}
             <div class="flex justify-end mb-6">
                 <button type="button" id="open-poll-create-modal-btn"
@@ -85,9 +99,7 @@
                 </div>
             </div>
             {% endif %}
-        </div>
-    </div>
-</section>
+
 
 {% if user.is_staff %}
 <div id="poll-create-modal" class="fixed inset-0 z-[9999] hidden overflow-y-auto bg-slate-900/40 px-4 py-6 opacity-0 backdrop-blur-sm transition-opacity duration-300">
@@ -192,7 +204,9 @@
     </div>
 </div>
 {% endif %}
-{% endblock %}
+    </div>
+</section>
+{% endblock content %}
 
 {% block extra_js %}
 {% if user.is_staff %}
@@ -349,4 +363,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endif %}
-{% endblock %}
+{% endblock extra_js %}

@@ -39,6 +39,29 @@
                            required>
                 </div>
 
+                <!-- 공지 설정 (스태프 전용) -->
+                {% if request.user.is_staff %}
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap gap-6 items-center">
+                    <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                        <input type="checkbox" 
+                               name="is_notice" 
+                               id="is_notice" 
+                               class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
+                               {% if post.is_notice %}checked{% endif %}>
+                        📢 공지사항으로 등록
+                    </label>
+                    <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                        <input type="checkbox" 
+                               name="is_pinned" 
+                               id="is_pinned" 
+                               class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
+                               {% if post.is_pinned %}checked{% endif %}
+                               {% if not post.is_notice %}disabled{% endif %}>
+                        📌 전체게시판 상단 고정 (전체게시판 표시)
+                    </label>
+                </div>
+                {% endif %}
+
                 <!-- Toast UI Editor 본문 필드 -->
                 <div class="space-y-1.5">
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -68,26 +91,64 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        // 공지 및 상단 고정 연동 스크립트 (스태프 전용)
+        const isNoticeCheckbox = document.getElementById('is_notice');
+        const isPinnedCheckbox = document.getElementById('is_pinned');
+        if (isNoticeCheckbox && isPinnedCheckbox) {
+            isNoticeCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    isPinnedCheckbox.disabled = false;
+                } else {
+                    isPinnedCheckbox.disabled = true;
+                    isPinnedCheckbox.checked = false;
+                }
+            });
+        }
+
         // 백엔드에서 전달된 기존 내용 (수정 시)
         const initialVal = `{% if is_edit %}{{ post.content|escapejs }}{% else %}{{ post_content|escapejs|default:'' }}{% endif %}`;
 
         const editor = new toastui.Editor({
             el: document.getElementById('content-editor'),
-            height: '500px',
-            initialEditType: 'markdown',
-            previewStyle: 'vertical',
+            height: '600px',
+            initialEditType: 'wysiwyg',
             initialValue: initialVal,
             language: 'ko-KR',
-            placeholder: '부원들과 나눌 지식이나 자유로운 이야기를 편하게 적어 주세요.'
+            placeholder: '부원들과 나눌 지식이나 자유로운 이야기를 편하게 적어 주세요. 이미지는 드래그&드롭이나 클립보드 붙여넣기로 바로 삽입할 수 있습니다.',
+            hooks: {
+                addImageBlobHook: (blob, callback) => {
+                    const formData = new FormData();
+                    formData.append('image', blob);
+
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                    fetch('/community/upload-image/', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken },
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.url) {
+                            callback(data.url, '이미지');
+                        } else {
+                            showToast('이미지 업로드에 실패했습니다.', 'error');
+                        }
+                    })
+                    .catch(() => {
+                        showToast('이미지 업로드 중 오류가 발생했습니다.', 'error');
+                    });
+                }
+            }
         });
 
-        // 폼 제출 시 hidden 필드에 editor의 markdown 대입
+        // 폼 제출 시 hidden 필드에 editor의 HTML 내용 대입
         const form = document.getElementById('post-form');
         form.addEventListener('submit', (e) => {
-            const markdownVal = editor.getMarkdown().trim();
-            document.getElementById('hidden-content').value = markdownVal;
+            const htmlVal = editor.getHTML().trim();
+            document.getElementById('hidden-content').value = htmlVal;
             
-            if (!markdownVal) {
+            if (!htmlVal || htmlVal === '<p><br></p>') {
                 e.preventDefault();
                 showToast('내용을 입력해 주세요.', 'error');
             }

@@ -1,12 +1,20 @@
 {% extends "base.html" %}
-{% block title %}대회{% endblock %}
+{% block title %}대회 | IPSE LMS{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-12">
-    <div class="mb-8 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-8 py-7 shadow-sm">
-        <p class="text-xs font-semibold tracking-[0.18em] text-emerald-700">CONTEST HUB</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-800">실전 감각을 키우는 IPSE 대회</h1>
-        <p class="mt-2 text-sm text-slate-500">예정, 진행, 종료 상태를 빠르게 확인하고 바로 입장할 수 있습니다.</p>
+    <!-- 🏆 상단 프리미엄 배너 (블루 테마) -->
+    <div class="relative bg-gradient-to-r from-sky-600 to-indigo-500 rounded-3xl p-8 text-white shadow-md overflow-hidden mb-8">
+        <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+            <i class="fa-solid fa-trophy text-[200px]"></i>
+        </div>
+        <div class="relative z-10 max-w-2xl">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                <i class="fa-solid fa-trophy"></i> Contest Hub
+            </span>
+            <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 프로그래밍 경진대회</h1>
+            <p class="text-sky-50 text-sm leading-relaxed">예정, 진행, 종료 상태를 빠르게 확인하고 바로 입장하세요. 실전 감각을 키우는 IPSE 대회에 참가하여 실력을 증명하세요.</p>
+        </div>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div class="lg:col-span-8 space-y-6">
