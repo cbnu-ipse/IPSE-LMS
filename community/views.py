@@ -20,7 +20,7 @@ from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
     RecruitmentForm, RecruitmentApplication,
-    CommunityPost, CommunityComment, GatheringEvent, GatheringComment
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike, CommunityPostDislike, CommunityCommentLike, CommunityCommentDislike
 )
 
 
@@ -79,14 +79,20 @@ def _survey_settings_match_existing(survey, title, description, is_anonymous, al
 
 @login_required
 def community_main(request):
-    notices = NewsAndEvents.objects.filter(posted_as='News').order_by('-upload_time')[:5]
-    activities = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:6]
+    tab = request.GET.get('tab', 'notice')
+    notices = CommunityPost.objects.filter(is_notice=True).order_by('-created_at')[:20]
+    activities = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:20]
     # 공지쪽으로 등록된 진행 중 투표만 표시
     active_polls = Poll.objects.filter(is_active=True, show_as_notice=True).exclude(
         ends_at__lte=timezone.now()
     ).order_by('-created_at')
 
-    context = {'notices': notices, 'activities': activities, 'active_polls': active_polls}
+    context = {
+        'notices': notices,
+        'activities': activities,
+        'active_polls': active_polls,
+        'tab': tab,
+    }
     return render(request, 'community/community_main.html', context)
 
 @staff_member_required
@@ -239,7 +245,7 @@ def activity_detail(request, activity_id):
         },
     )
 
-@staff_member_required
+@login_required
 def upload_editor_image(request):
     if request.method == 'POST' and request.FILES.get('image'):
         image = request.FILES['image']
@@ -1376,20 +1382,45 @@ def recruit_apply(request, form_id):
 @login_required
 def community_home(request):
     """자유게시판과 번개 모임 목록을 보여주는 통합 홈 뷰"""
-    posts = CommunityPost.objects.select_related('author').order_by('-created_at')
+    board = request.GET.get('board', 'all')
     
-    # 취소되지 않은 번개모임 조회
-    gatherings = GatheringEvent.objects.filter(is_canceled=False).select_related('author').prefetch_related('participants').order_by('-created_at')
+    posts_qs = CommunityPost.objects.select_related('author').order_by('-created_at')
     
-    # 각 번개모임별로 현재 사용자가 참여했는지 여부 동적 주입
-    for g in gatherings:
-        g.user_joined = request.user in g.participants.all()
+    # 최근 7일 동안의 핫 게시물 계산 (score = views + comment * 5 + likes * 10), 공지글 제외
+    seven_days_ago = timezone.now() - dt_module.timedelta(days=7)
+    recent_posts = list(CommunityPost.objects.filter(created_at__gte=seven_days_ago, is_notice=False).select_related('author'))
+    hot_posts = sorted(
+        recent_posts,
+        key=lambda p: p.views + (p.comment_count * 5) + (p.like_count * 10),
+        reverse=True
+    )[:10]
 
+    base_posts = posts_qs.filter(is_notice=False)
+    pinned_notices = []
+
+    if board == 'free':
+        posts = base_posts.exclude(author__is_president=True).exclude(
+            Q(author__is_executive=True) | Q(author__is_lecturer=True) | Q(author__is_vice_president=True)
+        )
+    elif board == 'president':
+        posts = base_posts.filter(author__is_president=True)
+    elif board == 'seminar':
+        posts = base_posts.filter(
+            Q(author__is_executive=True) | Q(author__is_lecturer=True) | Q(author__is_vice_president=True)
+        )
+    elif board == 'hot':
+        posts = hot_posts
+    elif board == 'all':
+        pinned_notices = posts_qs.filter(is_notice=True, is_pinned=True)
+        posts = base_posts
+    else:
+        posts = base_posts
     return render(request, 'community/community_home.html', {
         'title': '커뮤니티',
         'posts': posts,
-        'hot_posts': [],
-        'gatherings': gatherings,
+        'pinned_notices': pinned_notices,
+        'hot_posts': hot_posts[:3],
+        'board': board,
     })
 
 
@@ -1422,11 +1453,33 @@ def post_detail(request, post_id):
                 messages.error(request, '댓글 삭제 권한이 없습니다.')
             return redirect('post_detail', post_id=post.id)
 
-    comments = post.community_comments.select_related('author').order_by('-created_at')
+    comments = list(post.community_comments.select_related('author').order_by('-created_at'))
+    
+    user_liked = post.likes.filter(user=request.user).exists()
+    user_disliked = post.dislikes.filter(user=request.user).exists()
+    
+    liked_comment_ids = set(CommunityCommentLike.objects.filter(comment__post=post, user=request.user).values_list('comment_id', flat=True))
+    disliked_comment_ids = set(CommunityCommentDislike.objects.filter(comment__post=post, user=request.user).values_list('comment_id', flat=True))
+    
+    best_comment = None
+    max_likes = 0
+    for comment in comments:
+        comment.user_liked = comment.id in liked_comment_ids
+        comment.user_disliked = comment.id in disliked_comment_ids
+        
+        c_likes = comment.like_count
+        if c_likes >= 1:
+            if c_likes > max_likes:
+                max_likes = c_likes
+                best_comment = comment
+
     return render(request, 'community/post_detail.html', {
         'title': post.title,
         'post': post,
         'comments': comments,
+        'user_liked': user_liked,
+        'user_disliked': user_disliked,
+        'best_comment': best_comment,
     })
 
 
@@ -1445,10 +1498,18 @@ def post_create(request):
                 'post_content': content
             })
 
+        is_notice = False
+        is_pinned = False
+        if request.user.is_staff:
+            is_notice = request.POST.get('is_notice') == 'on'
+            is_pinned = request.POST.get('is_pinned') == 'on' if is_notice else False
+
         post = CommunityPost.objects.create(
             title=title,
             content=content,
-            author=request.user
+            author=request.user,
+            is_notice=is_notice,
+            is_pinned=is_pinned
         )
         messages.success(request, '게시글이 성공적으로 등록되었습니다.')
         return redirect('post_detail', post_id=post.id)
@@ -1481,7 +1542,14 @@ def post_edit(request, post_id):
 
         post.title = title
         post.content = content
-        post.save(update_fields=['title', 'content'])
+        
+        update_fields = ['title', 'content']
+        if request.user.is_staff:
+            post.is_notice = request.POST.get('is_notice') == 'on'
+            post.is_pinned = request.POST.get('is_pinned') == 'on' if post.is_notice else False
+            update_fields.extend(['is_notice', 'is_pinned'])
+
+        post.save(update_fields=update_fields)
         messages.success(request, '게시글이 수정되었습니다.')
         return redirect('post_detail', post_id=post.id)
 
@@ -1551,6 +1619,7 @@ def gathering_create(request):
         event_date_str = request.POST.get('event_date', '').strip()
         location = request.POST.get('location', '').strip()
         max_participants_str = request.POST.get('max_participants', '').strip()
+        category = request.POST.get('category', 'study').strip()
 
         if not (title and description and event_date_str and location and max_participants_str):
             messages.error(request, '모든 필수 항목을 입력해 주세요.')
@@ -1560,7 +1629,8 @@ def gathering_create(request):
                 'description_val': description,
                 'event_date_val': event_date_str,
                 'location_val': location,
-                'max_participants_val': max_participants_str
+                'max_participants_val': max_participants_str,
+                'category_val': category
             })
 
         try:
@@ -1580,7 +1650,8 @@ def gathering_create(request):
                 'description_val': description,
                 'event_date_val': event_date_str,
                 'location_val': location,
-                'max_participants_val': max_participants_str
+                'max_participants_val': max_participants_str,
+                'category_val': category
             })
 
         with transaction.atomic():
@@ -1590,7 +1661,8 @@ def gathering_create(request):
                 author=request.user,
                 event_date=event_date,
                 location=location,
-                max_participants=max_participants
+                max_participants=max_participants,
+                category=category
             )
             # 주최자 참가 자동 등록
             gathering.participants.add(request.user)
@@ -1678,7 +1750,181 @@ def gathering_cancel(request, gathering_id):
             Schedule.objects.filter(external_id=f"gathering:{gathering.id}").delete()
 
         messages.success(request, '번개 모임이 취소(폭파)되었습니다.')
-        return redirect('community_home')
+        return redirect('gathering_list')
 
     return redirect('gathering_detail', gathering_id=gathering_id)
+
+
+@login_required
+def post_like_toggle(request, post_id):
+    """게시글 추천(좋아요) 토글 API"""
+    if request.method == 'POST':
+        post = get_object_or_404(CommunityPost, id=post_id)
+        
+        with transaction.atomic():
+            like_qs = CommunityPostLike.objects.filter(post=post, user=request.user)
+            dislike_qs = CommunityPostDislike.objects.filter(post=post, user=request.user)
+            
+            disliked_removed = False
+            if dislike_qs.exists():
+                dislike_qs.delete()
+                disliked_removed = True
+                
+            if like_qs.exists():
+                like_qs.delete()
+                liked = False
+                message = '추천을 취소했습니다.'
+            else:
+                CommunityPostLike.objects.create(post=post, user=request.user)
+                liked = True
+                message = '이 글을 추천했습니다!'
+                
+        return JsonResponse({
+            'status': 'success',
+            'liked': liked,
+            'disliked': False,
+            'disliked_removed': disliked_removed,
+            'like_count': post.like_count,
+            'dislike_count': post.dislike_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+@login_required
+def post_dislike_toggle(request, post_id):
+    """게시글 비추천 토글 API"""
+    if request.method == 'POST':
+        post = get_object_or_404(CommunityPost, id=post_id)
+        
+        with transaction.atomic():
+            like_qs = CommunityPostLike.objects.filter(post=post, user=request.user)
+            dislike_qs = CommunityPostDislike.objects.filter(post=post, user=request.user)
+            
+            liked_removed = False
+            if like_qs.exists():
+                like_qs.delete()
+                liked_removed = True
+                
+            if dislike_qs.exists():
+                dislike_qs.delete()
+                disliked = False
+                message = '비추천을 취소했습니다.'
+            else:
+                CommunityPostDislike.objects.create(post=post, user=request.user)
+                disliked = True
+                message = '이 글을 비추천했습니다!'
+                
+        return JsonResponse({
+            'status': 'success',
+            'liked': False,
+            'disliked': disliked,
+            'liked_removed': liked_removed,
+            'like_count': post.like_count,
+            'dislike_count': post.dislike_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+@login_required
+def comment_like_toggle(request, comment_id):
+    """댓글 추천 토글 API"""
+    if request.method == 'POST':
+        comment = get_object_or_404(CommunityComment, id=comment_id)
+        
+        with transaction.atomic():
+            like_qs = CommunityCommentLike.objects.filter(comment=comment, user=request.user)
+            dislike_qs = CommunityCommentDislike.objects.filter(comment=comment, user=request.user)
+            
+            disliked_removed = False
+            if dislike_qs.exists():
+                dislike_qs.delete()
+                disliked_removed = True
+                
+            if like_qs.exists():
+                like_qs.delete()
+                liked = False
+                message = '댓글 추천을 취소했습니다.'
+            else:
+                CommunityCommentLike.objects.create(comment=comment, user=request.user)
+                liked = True
+                message = '댓글을 추천했습니다!'
+                
+        return JsonResponse({
+            'status': 'success',
+            'liked': liked,
+            'disliked': False,
+            'disliked_removed': disliked_removed,
+            'like_count': comment.like_count,
+            'dislike_count': comment.dislike_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+@login_required
+def comment_dislike_toggle(request, comment_id):
+    """댓글 비추천 토글 API"""
+    if request.method == 'POST':
+        comment = get_object_or_404(CommunityComment, id=comment_id)
+        
+        with transaction.atomic():
+            like_qs = CommunityCommentLike.objects.filter(comment=comment, user=request.user)
+            dislike_qs = CommunityCommentDislike.objects.filter(comment=comment, user=request.user)
+            
+            liked_removed = False
+            if like_qs.exists():
+                like_qs.delete()
+                liked_removed = True
+                
+            if dislike_qs.exists():
+                dislike_qs.delete()
+                disliked = False
+                message = '댓글 비추천을 취소했습니다.'
+            else:
+                CommunityCommentDislike.objects.create(comment=comment, user=request.user)
+                disliked = True
+                message = '댓글을 비추천했습니다!'
+                
+        return JsonResponse({
+            'status': 'success',
+            'liked': False,
+            'disliked': disliked,
+            'liked_removed': liked_removed,
+            'like_count': comment.like_count,
+            'dislike_count': comment.dislike_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+@login_required
+def gathering_list(request):
+    """GNB 번개 모임 목록 조회 뷰 (진행중 / 종료됨 분리)"""
+    now = timezone.now()
+    
+    # 진행 중인 번개 모임 (이벤트 일시가 현재 시간 이후 & 취소되지 않음)
+    active_gatherings = GatheringEvent.objects.filter(
+        is_canceled=False,
+        event_date__gt=now
+    ).select_related('author').prefetch_related('participants').order_by('event_date')
+    
+    # 종료된 번개 모임 (이벤트 일시가 현재 시간 이전 & 취소되지 않음)
+    closed_gatherings = GatheringEvent.objects.filter(
+        is_canceled=False,
+        event_date__lte=now
+    ).select_related('author').prefetch_related('participants').order_by('-event_date')
+    
+    # 각 번개모임별로 현재 사용자가 참여했는지 여부 동적 주입
+    for g in active_gatherings:
+        g.user_joined = request.user in g.participants.all()
+    for g in closed_gatherings:
+        g.user_joined = request.user in g.participants.all()
+        
+    return render(request, 'community/gathering_list.html', {
+        'title': '번개 모임',
+        'active_gatherings': active_gatherings,
+        'closed_gatherings': closed_gatherings,
+    })
 

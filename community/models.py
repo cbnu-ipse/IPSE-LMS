@@ -314,6 +314,8 @@ class CommunityPost(models.Model):
     views = models.PositiveIntegerField(default=0, verbose_name="조회수")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+    is_notice = models.BooleanField(default=False, verbose_name="공지사항 여부")
+    is_pinned = models.BooleanField(default=False, verbose_name="상단 고정 여부")
 
     class Meta:
         ordering = ["-created_at"]
@@ -322,8 +324,40 @@ class CommunityPost(models.Model):
         return self.title
 
     @property
+    def like_count(self):
+        return self.likes.count()
+
+    @property
+    def dislike_count(self):
+        return self.dislikes.count()
+
+    @property
     def comment_count(self):
         return self.community_comments.count()
+
+
+class CommunityPostLike(models.Model):
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name="likes",
+        verbose_name="게시글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="community_post_likes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="추천일시")
+
+    class Meta:
+        unique_together = ("post", "user")
+        verbose_name = "게시글 추천"
+        verbose_name_plural = "게시글 추천 목록"
+
+    def __str__(self):
+        return f"{self.user} liked {self.post}"
 
 
 class CommunityComment(models.Model):
@@ -347,6 +381,80 @@ class CommunityComment(models.Model):
     def __str__(self):
         return f"{self.author} - {self.post}"
 
+    @property
+    def like_count(self):
+        return self.likes.count()
+
+    @property
+    def dislike_count(self):
+        return self.dislikes.count()
+
+
+class CommunityPostDislike(models.Model):
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name="dislikes",
+        verbose_name="게시글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="community_post_dislikes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="비추천일시")
+
+    class Meta:
+        unique_together = ("post", "user")
+        verbose_name = "게시글 비추천"
+        verbose_name_plural = "게시글 비추천 목록"
+
+    def __str__(self):
+        return f"{self.user} disliked {self.post}"
+
+
+class CommunityCommentLike(models.Model):
+    comment = models.ForeignKey(
+        CommunityComment,
+        on_delete=models.CASCADE,
+        related_name="likes",
+        verbose_name="댓글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="community_comment_likes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="추천일시")
+
+    class Meta:
+        unique_together = ("comment", "user")
+        verbose_name = "댓글 추천"
+        verbose_name_plural = "댓글 추천 목록"
+
+
+class CommunityCommentDislike(models.Model):
+    comment = models.ForeignKey(
+        CommunityComment,
+        on_delete=models.CASCADE,
+        related_name="dislikes",
+        verbose_name="댓글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="community_comment_dislikes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="비추천일시")
+
+    class Meta:
+        unique_together = ("comment", "user")
+        verbose_name = "댓글 비추천"
+        verbose_name_plural = "댓글 비추천 목록"
+
 
 class GatheringEvent(models.Model):
     title = models.CharField(max_length=200, verbose_name="모임 제목")
@@ -368,6 +476,12 @@ class GatheringEvent(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="개설일시")
     is_canceled = models.BooleanField(default=False, verbose_name="취소 여부")
+    category = models.CharField(
+        max_length=10,
+        choices=[('study', '스터디'), ('drink', '술')],
+        default='study',
+        verbose_name="모임 종류"
+    )
 
     class Meta:
         ordering = ["-created_at"]
