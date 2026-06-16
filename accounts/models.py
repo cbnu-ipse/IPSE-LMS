@@ -187,6 +187,10 @@ class Student(models.Model):
         help_text="재학증명서 또는 학생증 사진 (JPG, PNG, PDF)",
     )
 
+    # 알림 설정 필드
+    notify_gathering_all = models.BooleanField(default=True, verbose_name="전체 번개 모임 알림 받기")
+    notify_gathering_joined = models.BooleanField(default=True, verbose_name="참여 중인 번개 모임 알림 받기")
+
     class Meta:
         ordering = ("-student__date_joined",)
 
@@ -279,3 +283,74 @@ class LeafCodeUsage(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.leaf_code.code} 사용"
+
+
+class Notification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('gathering_created', '새 번개 모임 개설'),
+        ('gathering_join', '모임 참여 신청'),
+        ('gathering_leave', '모임 참여 취소'),
+        ('gathering_comment', '모임 댓글 등록'),
+        ('gathering_update', '모임 정보 변경'),
+        ('gathering_cancel', '모임 취소'),
+    ]
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        verbose_name="수신자"
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications_sent',
+        null=True,
+        blank=True,
+        verbose_name="송신자"
+    )
+    notification_type = models.CharField(
+        max_length=20,
+        choices=NOTIFICATION_TYPES,
+        verbose_name="알림 유형"
+    )
+    gathering = models.ForeignKey(
+        'community.GatheringEvent',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="관련 번개 모임"
+    )
+    message = models.CharField(max_length=255, verbose_name="알림 메시지")
+    is_read = models.BooleanField(default=False, verbose_name="읽음 여부")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일시")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "알림"
+        verbose_name_plural = "알림 목록"
+
+    def __str__(self):
+        return f"[{self.get_notification_type_display()}] {self.recipient.username} - {self.message[:20]}"
+
+
+class PushSubscription(models.Model):
+    """PWA 백그라운드 푸시 알림을 수신하는 개별 기기 구독 정보"""
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='push_subscriptions',
+        verbose_name="학생 프로필"
+    )
+    endpoint = models.TextField(unique=True, verbose_name="푸시 엔드포인트 URL")
+    p256dh = models.TextField(verbose_name="클라이언트 공개키(p256dh)")
+    auth = models.TextField(verbose_name="클라이언트 인증 토큰(auth)")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="등록일시")
+
+    class Meta:
+        verbose_name = "웹 푸시 구독"
+        verbose_name_plural = "웹 푸시 구독 목록"
+
+    def __str__(self):
+        return f"{self.student.student.username} - {self.endpoint[:30]}..."
+

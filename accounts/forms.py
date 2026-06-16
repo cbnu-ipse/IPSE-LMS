@@ -170,6 +170,14 @@ class ProfileUpdateForm(forms.ModelForm):
         "class": "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium text-slate-700 transition-all duration-150"
     }))
 
+    # 🔔 알림 설정 필드
+    notify_gathering_all = forms.BooleanField(required=False, label="전체 번개 모임 알림 받기", widget=forms.CheckboxInput(attrs={
+        "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+    }))
+    notify_gathering_joined = forms.BooleanField(required=False, label="참여 중인 번개 모임 알림 받기", widget=forms.CheckboxInput(attrs={
+        "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+    }))
+
     class Meta:
         model = User
         fields = ["first_name", "last_name", "gender", "email", "phone", "address", "picture"]
@@ -183,6 +191,8 @@ class ProfileUpdateForm(forms.ModelForm):
                 self.fields['bio'].initial = student.bio
                 self.fields['github_url'].initial = student.github_url
                 self.fields['blog_url'].initial = student.blog_url
+                self.fields['notify_gathering_all'].initial = student.notify_gathering_all
+                self.fields['notify_gathering_joined'].initial = student.notify_gathering_joined
             except Student.DoesNotExist:
                 pass
         else:
@@ -195,6 +205,10 @@ class ProfileUpdateForm(forms.ModelForm):
                 del self.fields['github_url']
             if 'blog_url' in self.fields:
                 del self.fields['blog_url']
+            if 'notify_gathering_all' in self.fields:
+                del self.fields['notify_gathering_all']
+            if 'notify_gathering_joined' in self.fields:
+                del self.fields['notify_gathering_joined']
 
     @transaction.atomic()
     def save(self, commit=True):
@@ -208,6 +222,8 @@ class ProfileUpdateForm(forms.ModelForm):
             student.bio = self.cleaned_data.get('bio', '').strip()
             student.github_url = self.cleaned_data.get('github_url') or ''
             student.blog_url = self.cleaned_data.get('blog_url') or ''
+            student.notify_gathering_all = self.cleaned_data.get('notify_gathering_all', False)
+            student.notify_gathering_joined = self.cleaned_data.get('notify_gathering_joined', False)
             student.save()
             
         return user
