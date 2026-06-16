@@ -63,3 +63,59 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 });
+
+
+// 🔔 Handle notification click: focus or open the gathering detail page
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  // Get the target URL from notification data
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/';
+  
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If a window is already open at the target URL, focus it
+      for (const client of clientList) {
+        const clientUrl = new URL(client.url, location.origin);
+        if (clientUrl.pathname === targetUrl && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise, open a new window at the target URL
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
+
+// 🔔 백그라운드 웹 푸시 수신 이벤트 리스너
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload = {};
+  try {
+    payload = event.data.json();
+  } catch (e) {
+    payload = {
+      title: 'IPSE 알림',
+      body: event.data.text()
+    };
+  }
+
+  const title = payload.title || 'IPSE 알림';
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/static/img/IPSE-LOGO.png',
+    badge: payload.badge || '/static/img/favicon-ipse.svg',
+    data: {
+      url: payload.url || '/'
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
