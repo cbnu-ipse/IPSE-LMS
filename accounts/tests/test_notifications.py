@@ -333,3 +333,39 @@ class NotificationSystemTestCase(TestCase):
             )
             self.assertTrue(mock_send.called)
 
+    def test_gathering_join_cooldown_limit(self):
+        """참가 취소 후 1시간 이내 재신청 시 400 에러 및 쿨타임 남은 시간 정보 반환 검증"""
+        # 1. guest_user가 모임에 가입
+        self.gathering.participants.add(self.guest_user)
+        self.assertTrue(self.gathering.participants.filter(id=self.guest_user.id).exists())
+
+        # 2. guest_user가 모임 탈퇴
+        self.client.force_login(self.guest_user)
+        toggle_url = reverse('gathering_join_toggle', kwargs={'gathering_id': self.gathering.id})
+        res = self.client.post(toggle_url)
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(self.gathering.participants.filter(id=self.guest_user.id).exists())
+
+        # 3. 즉시 재신청 시도 -> 400 에러 반환 및 쿨타임 남은 시간 정보 포함 확인
+        res_fail = self.client.post(toggle_url)
+        self.assertEqual(res_fail.status_code, 400)
+        response_data = res_fail.json()
+        self.assertEqual(response_data['status'], 'error')
+        self.assertIn('참가 취소 후 1시간 동안은 재신청할 수 없습니다.', response_data['message'])
+        self.assertTrue(response_data['cooldown_remaining'] > 0)
+
+        # 4. 강제로 leave_log의 left_at 시간을 1시간 이상 전으로 조작하여 시간 만료 테스트
+        from community.models import GatheringLeaveLog
+        leave_log = GatheringLeaveLog.objects.filter(gathering=self.gathering, user=self.guest_user).first()
+        self.assertIsNotNone(leave_log)
+        
+        # auto_now=True 필드를 변경하기 위해 QuerySet update 사용
+        GatheringLeaveLog.objects.filter(id=leave_log.id).update(
+            left_at=timezone.now() - datetime.timedelta(hours=2)
+        )
+
+        # 5. 쿨타임이 지났으므로 재신청 성공 검증
+        res_success = self.client.post(toggle_url)
+        self.assertEqual(res_success.status_code, 200)
+        self.assertTrue(self.gathering.participants.filter(id=self.guest_user.id).exists())
+

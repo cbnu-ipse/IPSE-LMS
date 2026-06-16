@@ -96,13 +96,18 @@
                         </button>
                     </form>
                     {% else %}
-                    <button type="button" onclick="toggleJoinDetail(this, {{ gathering.id }})" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-bold transition shadow-sm {% if user_joined %}bg-rose-500 hover:bg-rose-600 text-white{% else %}bg-amber-500 hover:bg-amber-600 text-white{% endif %}">
                         {% if user_joined %}
-                        <i class="fa-solid fa-user-minus"></i> 참 가 취 소
+                        <button type="button" onclick="toggleJoinDetail(this, {{ gathering.id }})" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-bold transition shadow-sm bg-rose-500 hover:bg-rose-600 text-white">
+                            <i class="fa-solid fa-user-minus"></i> 참 가 취 소
+                        </button>
                         {% else %}
-                        <i class="fa-solid fa-user-plus"></i> 참 가 신 청
+                        <button type="button" id="join-btn" onclick="toggleJoinDetail(this, {{ gathering.id }})" 
+                                class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-bold transition shadow-sm bg-amber-500 hover:bg-amber-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                {% if cooldown_remaining > 0 %}disabled{% endif %}>
+                            <i class="fa-solid fa-user-plus"></i> 
+                            <span id="join-btn-text">참 가 신 청</span>
+                        </button>
                         {% endif %}
-                    </button>
                     {% endif %}
                 </div>
             </div>
@@ -227,5 +232,30 @@
             btn.disabled = false;
         });
     }
+
+    // 쿨타임 실시간 카운트다운 타이머
+    document.addEventListener('DOMContentLoaded', function() {
+        let cooldownRemaining = parseInt('{{ cooldown_remaining|default:0 }}');
+        const joinBtn = document.getElementById('join-btn');
+        const joinBtnText = document.getElementById('join-btn-text');
+
+        if (cooldownRemaining > 0 && joinBtn && joinBtnText) {
+            function updateTimer() {
+                if (cooldownRemaining <= 0) {
+                    joinBtn.disabled = false;
+                    joinBtnText.textContent = '참 가 신 청';
+                    clearInterval(timerInterval);
+                } else {
+                    const minutes = Math.floor(cooldownRemaining / 60);
+                    const seconds = cooldownRemaining % 60;
+                    const paddedSeconds = seconds.toString().padStart(2, '0');
+                    joinBtnText.textContent = `참가 제한 (${minutes}:${paddedSeconds})`;
+                    cooldownRemaining--;
+                }
+            }
+            updateTimer();
+            const timerInterval = setInterval(updateTimer, 1000);
+        }
+    });
 </script>
 {% endblock extra_js %}
