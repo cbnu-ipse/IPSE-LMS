@@ -51,8 +51,8 @@ COPY . .
 # builder에서 빌드된 Tailwind CSS 덮어쓰기
 COPY --from=builder /app/static/css/tailwind.css static/css/tailwind.css
 
-# entrypoint 실행 권한 부여
-RUN chmod +x docker/entrypoint.sh
+# entrypoint 실행 권한 부여 및 Windows CRLF 개행문자 제거
+RUN sed -i 's/\r$//' docker/entrypoint.sh && chmod +x docker/entrypoint.sh
 
 # media 볼륨 마운트 포인트
 RUN mkdir -p /app/media /app/staticfiles
