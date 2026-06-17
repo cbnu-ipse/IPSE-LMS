@@ -309,6 +309,42 @@
             &copy; 2026 IPSE Club. Intelligent Pioneer of Software Engineering.
         </div>
     </footer>
+
+    <!-- 모바일 5탭 Bottom Navigation Bar -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
+        <!-- 1. 동아리 일정 -->
+        <a href="{% url 'schedule_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-calendar-days text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">일정</span>
+        </a>
+
+        <!-- 2. 번개 모임 -->
+        <a href="{% url 'gathering_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-bolt text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">번개</span>
+        </a>
+
+        <!-- 3. 홈 (가운데 돌출 버튼) -->
+        <div class="flex-1 flex items-center justify-center relative">
+            <a href="/" class="absolute -top-4 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-500 rounded-full flex flex-col items-center justify-center text-white shadow-[0_4px_14px_rgba(16,185,129,0.35)] border-4 border-white active:scale-95 transition-all duration-200 group">
+                <i class="fa-solid fa-house text-lg group-hover:scale-110 transition"></i>
+            </a>
+            <span class="text-[9px] font-semibold tracking-tight text-slate-400 absolute bottom-1.5 pointer-events-none">홈</span>
+        </div>
+
+        <!-- 4. 투표 -->
+        <a href="{% url 'poll_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-square-poll-vertical text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">투표</span>
+        </a>
+
+        <!-- 5. 설문 -->
+        <a href="{% url 'survey_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-file-lines text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">설문</span>
+        </a>
+    </div>
+
     {% block extra_js %}{% endblock %}
     <script>
       // 페이지 전환 로딩 바 및 오버레이
@@ -594,6 +630,45 @@
 
       })();
       {% endif %}
+
+      // 📱 모바일 환경에서 일부 탭(학습, 문제, 대회, 퀴즈) 제한 기능
+      (function() {
+        const isMobileSize = () => window.innerWidth < 768;
+        const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
+        const currentPath = window.location.pathname;
+
+        // 1. 직접 URL 접속 차단 (로딩 시점 즉시 실행)
+        if (restrictedPaths.some(path => currentPath.startsWith(path)) && isMobileSize()) {
+          alert("학습, 문제 풀이 및 대회 기능은 PC 환경에서만 이용하실 수 있습니다.");
+          window.location.href = "/";
+        }
+
+        // 2. 링크 클릭 시 동적 차단 및 토스트 안내
+        document.addEventListener('click', function(e) {
+          const a = e.target.closest('a[href]');
+          if (!a) return;
+          const href = a.getAttribute('href');
+          if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+
+          try {
+            const urlObj = new URL(href, window.location.origin);
+            const path = urlObj.pathname;
+            const isRestricted = restrictedPaths.some(p => path.startsWith(p));
+            
+            if (isRestricted && isMobileSize()) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.showToast) {
+                window.showToast("💻 이 기능은 PC 환경에서만 이용 가능합니다.", "error");
+              } else {
+                alert("이 기능은 PC 환경에서만 이용 가능합니다.");
+              }
+            }
+          } catch(err) {
+            // URL 파싱 예외 처리
+          }
+        });
+      })();
     </script>
 </body>
 
