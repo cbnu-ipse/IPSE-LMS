@@ -375,8 +375,10 @@
         const bar = document.getElementById('page-loader');
         const overlay = document.getElementById('loading-overlay');
         const overlayContent = overlay ? overlay.firstElementChild : null;
+        window.isPageLoading = false;
 
         function showBar(){
+          window.isPageLoading = true;
           // 상단 로딩 바 실행
           bar.style.opacity='1'; bar.style.width='0%';
           requestAnimationFrame(()=>{ bar.style.width='70%'; });
@@ -392,6 +394,7 @@
           }
         }
         function finishBar(){
+          window.isPageLoading = false;
           // 상단 로딩 바 완료
           bar.style.width='100%';
           setTimeout(()=>{ 
@@ -411,15 +414,49 @@
         }
         // 링크 클릭 시 바/오버레이 시작
         document.addEventListener('click',function(e){
+          // 이미 로딩 중인 경우 추가 클릭을 차단 (연속 터치 방지)
+          if (window.isPageLoading) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+
           const a = e.target.closest('a[href]');
           if(!a) return;
           const href = a.getAttribute('href');
           if(!href||href.startsWith('#')||href.startsWith('javascript')||a.target==='_blank'||a.hasAttribute('download')) return;
           if(href.startsWith('http')&&!href.includes(location.hostname)) return;
+
+          // 모바일 제한 대상 탭인 경우 로딩바 시작하지 않음 (이동이 제한될 것이므로)
+          const isMobileSize = window.innerWidth < 768;
+          const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
+          try {
+            const urlObj = new URL(href, window.location.origin);
+            const path = urlObj.pathname;
+            const isRestricted = restrictedPaths.some(p => path.startsWith(p));
+            if (isRestricted && isMobileSize) {
+              return;
+            }
+          } catch(err) {}
+
           showBar();
-        });
+        }, { capture: true });
+
         // 폼 제출 시 바/오버레이 시작
-        document.addEventListener('submit',function(){ showBar(); });
+        document.addEventListener('submit',function(e){
+          // 이미 로딩 중인 경우 중복 제출 방지
+          if (window.isPageLoading) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+
+          // e.preventDefault()가 걸려있는 AJAX 제출 폼(예: 일정 추가 등)은 무시
+          if (e.defaultPrevented) return;
+
+          showBar();
+        }, { capture: true });
+
         // 페이지 로드 완료 시 마무리
         window.addEventListener('pageshow',function(){ finishBar(); });
       })();
@@ -681,6 +718,7 @@
             if (isRestricted && isMobileSize()) {
               e.preventDefault();
               e.stopPropagation();
+              e.stopImmediatePropagation(); // 동일 타겟(document)의 다른 클릭 이벤트(로딩바 등) 리스너 실행 전면 차단
               if (window.showToast) {
                 window.showToast("💻 이 기능은 PC 환경에서만 이용 가능합니다.", "error");
               } else {
@@ -690,7 +728,7 @@
           } catch(err) {
             // URL 파싱 예외 처리
           }
-        });
+        }, { capture: true });
       })();
     </script>
 </body>
