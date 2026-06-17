@@ -22,13 +22,15 @@
             <i class="fa-solid fa-chalkboard-user text-violet-500"></i>세미나장 넋두리
         {% elif board == 'free' %}
             <i class="fa-regular fa-comments text-slate-400"></i>자유게시판
+        {% elif board == 'feedback' %}
+            <i class="fa-regular fa-clipboard text-slate-400"></i>피드백 게시판
         {% else %}
             <i class="fa-regular fa-file-lines text-slate-400"></i>전체글보기
         {% endif %}
     </h2>
 
     <div>
-        <a href="{% url 'post_create' %}" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
+        <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' %}?category={{ board }}{% endif %}" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
             <i class="fa-solid fa-pen-to-square"></i>게시글 작성
         </a>
     </div>

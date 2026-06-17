@@ -108,10 +108,6 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             번개 모임
                         </a>
-                        <a href="{% url 'community_main' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'community_main' or request.resolver_match.url_name == 'notice_detail' or request.resolver_match.url_name == 'activity_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
-                            소식/활동 기록
-                        </a>
                         <a href="{% url 'schedule_list' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             동아리 일정
@@ -274,7 +270,6 @@
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
                     {% else %}
                         <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">커뮤니티</a>
-                        <a href="{% url 'community_main' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">소식/활동 기록</a>
                         {% if request.user.is_staff %}
                         <a href="{% url 'recruit_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100/60 transition">
                             <span>모집 관리</span>

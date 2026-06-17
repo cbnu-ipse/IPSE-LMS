@@ -95,6 +95,13 @@
                                     </span>
                                 </a>
                             </li>
+                            <li>
+                                <a href="{% url 'community_home' %}?board=feedback" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'feedback' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                    <span class="flex items-center gap-2">
+                                        <i class="fa-regular fa-clipboard text-slate-400 w-4"></i>피드백 게시판
+                                    </span>
+                                </a>
+                            </li>
                         </ul>
                     </div>
 

@@ -39,6 +39,24 @@
                            required>
                 </div>
 
+                <!-- 게시판 분류 선택 -->
+                <div class="space-y-1.5">
+                    <label for="category" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        게시판 분류
+                    </label>
+                    <div class="relative">
+                        <select name="category" 
+                                id="category" 
+                                class="w-full px-4 py-3.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold text-slate-700 transition appearance-none bg-white">
+                            <option value="free" {% if category == 'free' or post.category == 'free' %}selected{% endif %}>자유게시판</option>
+                            <option value="feedback" {% if category == 'feedback' or post.category == 'feedback' %}selected{% endif %}>피드백 게시판</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                            <i class="fa-solid fa-chevron-down text-xs"></i>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 공지 설정 (스태프 전용) -->
                 {% if request.user.is_staff %}
                 <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap gap-6 items-center">

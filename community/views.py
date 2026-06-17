@@ -1449,9 +1449,9 @@ def community_home(request):
     pinned_notices = []
 
     if board == 'free':
-        posts = base_posts.exclude(author__is_president=True).exclude(
-            Q(author__is_executive=True) | Q(author__is_lecturer=True) | Q(author__is_vice_president=True)
-        )
+        posts = base_posts.filter(category='free')
+    elif board == 'feedback':
+        posts = base_posts.filter(category='feedback')
     elif board == 'president':
         posts = base_posts.filter(author__is_president=True)
     elif board == 'seminar':
@@ -1536,16 +1536,24 @@ def post_detail(request, post_id):
 @login_required
 def post_create(request):
     """자유게시판 게시글 작성"""
+    initial_category = request.GET.get('category') or request.GET.get('board') or 'free'
+    if initial_category not in ['free', 'feedback']:
+        initial_category = 'free'
+
     if request.method == 'POST':
         title = request.POST.get('title', '').strip()
         content = request.POST.get('content', '').strip()
+        category = request.POST.get('category', 'free')
+        if category not in ['free', 'feedback']:
+            category = 'free'
 
         if not title or not content:
             messages.error(request, '제목과 내용을 모두 입력해 주세요.')
             return render(request, 'community/post_create.html', {
                 'title': '글쓰기',
                 'post_title': title,
-                'post_content': content
+                'post_content': content,
+                'category': category,
             })
 
         is_notice = False
@@ -1559,13 +1567,15 @@ def post_create(request):
             content=content,
             author=request.user,
             is_notice=is_notice,
-            is_pinned=is_pinned
+            is_pinned=is_pinned,
+            category=category
         )
         messages.success(request, '게시글이 성공적으로 등록되었습니다.')
         return redirect('post_detail', post_id=post.id)
 
     return render(request, 'community/post_create.html', {
-        'title': '글쓰기'
+        'title': '글쓰기',
+        'category': initial_category,
     })
 
 
@@ -1581,19 +1591,24 @@ def post_edit(request, post_id):
     if request.method == 'POST':
         title = request.POST.get('title', '').strip()
         content = request.POST.get('content', '').strip()
+        category = request.POST.get('category', 'free')
+        if category not in ['free', 'feedback']:
+            category = 'free'
 
         if not title or not content:
             messages.error(request, '제목과 내용을 모두 입력해 주세요.')
             return render(request, 'community/post_create.html', {
                 'title': '글 수정',
                 'post': post,
-                'is_edit': True
+                'is_edit': True,
+                'category': category,
             })
 
         post.title = title
         post.content = content
+        post.category = category
         
-        update_fields = ['title', 'content']
+        update_fields = ['title', 'content', 'category']
         if request.user.is_staff:
             post.is_notice = request.POST.get('is_notice') == 'on'
             post.is_pinned = request.POST.get('is_pinned') == 'on' if post.is_notice else False
@@ -1606,7 +1621,8 @@ def post_edit(request, post_id):
     return render(request, 'community/post_create.html', {
         'title': '글 수정',
         'post': post,
-        'is_edit': True
+        'is_edit': True,
+        'category': post.category,
     })
 
 

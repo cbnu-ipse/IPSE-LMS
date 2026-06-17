@@ -316,6 +316,12 @@ class CommunityPost(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
     is_notice = models.BooleanField(default=False, verbose_name="공지사항 여부")
     is_pinned = models.BooleanField(default=False, verbose_name="상단 고정 여부")
+    category = models.CharField(
+        max_length=20,
+        choices=[('free', '자유게시판'), ('feedback', '피드백게시판')],
+        default='free',
+        verbose_name="게시판 분류"
+    )
 
     class Meta:
         ordering = ["-created_at"]

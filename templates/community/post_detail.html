@@ -10,6 +10,8 @@
                 <i class="fa-solid fa-house"></i>
                 <a href="{% url 'community_home' %}" class="hover:text-emerald-600 transition">커뮤니티</a>
                 <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
+                <a href="{% url 'community_home' %}?board={{ post.category }}" class="hover:text-emerald-600 transition">{{ post.get_category_display }}</a>
+                <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
                 <span class="text-slate-500">상세 보기</span>
             </p>
             <a href="{% url 'community_home' %}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold bg-slate-50 hover:bg-slate-100 transition">
