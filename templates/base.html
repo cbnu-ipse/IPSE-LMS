@@ -329,6 +329,7 @@
     </footer>
 
     <!-- 모바일 5탭 Bottom Navigation Bar -->
+    {% if request.host.name != 'judge' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
         <!-- 1. 동아리 일정 -->
         <a href="{% url 'schedule_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
@@ -362,6 +363,7 @@
             <span class="text-[9px] font-semibold tracking-tight">설문</span>
         </a>
     </div>
+    {% endif %}
 
     {% block extra_js %}{% endblock %}
     <script>
