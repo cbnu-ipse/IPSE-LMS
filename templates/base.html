@@ -283,31 +283,32 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-white border-t border-slate-200 pt-8 pb-20 md:pb-8 text-center text-slate-500 text-xs">
-        &copy; 2026 IPSE Club. Intelligent Pioneer of Software Engineering.
+    <footer class="bg-white border-t border-slate-200 pt-8 pb-24 md:pb-8 text-center text-slate-500 text-xs flex flex-col items-center gap-4">
+        <!-- 소셜 링크 바 (4개) -->
+        <div class="flex items-center gap-6">
+            <a href="https://cafe.naver.com/cbnuipse" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-slate-400 hover:text-[#03C75A] transition font-semibold" title="네이버 카페">
+                <span class="text-[11px] font-black tracking-wide leading-none">N</span>
+                <span class="text-[10px]">네이버 카페</span>
+            </a>
+            <a href="https://www.instagram.com/cbnu_ipse/" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-slate-400 hover:text-[#E1306C] transition font-semibold" title="인스타그램">
+                <i class="fa-brands fa-instagram text-xs"></i>
+                <span class="text-[10px]">인스타그램</span>
+            </a>
+            <a href="https://github.com/ipse-github" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-slate-400 hover:text-slate-800 transition font-semibold" title="GitHub">
+                <i class="fa-brands fa-github text-xs"></i>
+                <span class="text-[10px]">GitHub</span>
+            </a>
+            <a href="https://computer.chungbuk.ac.kr/" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-slate-400 hover:text-emerald-700 transition font-semibold" title="충북대학교 컴퓨터공학과">
+                <span class="inline-flex h-4 w-4 items-center justify-center overflow-hidden">
+                    <img src="{% static 'img/University-LOGO.png' %}" alt="충북대" class="h-3.5 w-3.5 object-contain grayscale opacity-75 hover:grayscale-0 hover:opacity-100 transition" style="filter: grayscale(100%) contrast(140%) opacity(0.75);">
+                </span>
+                <span class="text-[10px]">충북대 컴공</span>
+            </a>
+        </div>
+        <div>
+            &copy; 2026 IPSE Club. Intelligent Pioneer of Software Engineering.
+        </div>
     </footer>
-
-    <!-- 모바일 하단 고정 링크 바 -->
-    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-6 py-2 shadow-lg flex justify-around items-center">
-        <a href="https://cafe.naver.com/cbnuipse" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-[#03C75A] transition">
-            <span class="text-[10px] font-black tracking-wide leading-none">N</span>
-            <span class="text-[9px] font-semibold">네이버 카페</span>
-        </a>
-        <a href="https://www.instagram.com/cbnu_ipse/" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-[#E1306C] transition">
-            <i class="fa-brands fa-instagram text-sm"></i>
-            <span class="text-[9px] font-semibold">인스타그램</span>
-        </a>
-        <a href="https://github.com/ipse-github" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-800 transition">
-            <i class="fa-brands fa-github text-sm"></i>
-            <span class="text-[9px] font-semibold">GitHub</span>
-        </a>
-        <a href="https://computer.chungbuk.ac.kr/" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-emerald-700 transition">
-            <span class="inline-flex h-4 w-4 items-center justify-center overflow-hidden">
-                <img src="{% static 'img/University-LOGO.png' %}" alt="충북대" class="h-3.5 w-3.5 object-contain" style="filter: grayscale(100%) contrast(140%) opacity(0.75);">
-            </span>
-            <span class="text-[9px] font-semibold">충북대 컴공</span>
-        </a>
-    </div>
     {% block extra_js %}{% endblock %}
     <script>
       // 페이지 전환 로딩 바 및 오버레이
