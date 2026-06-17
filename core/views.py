@@ -79,7 +79,6 @@ def home_view(request):
         desc = assign.description or ""
         if desc.startswith('{'):
             try:
-                import json
                 data = json.loads(desc)
                 assign.course_name = data.get("course_name", "과목 정보 없음")
                 assign.intro = data.get("intro", "")
@@ -146,7 +145,6 @@ def get_schedules_api(request):
         desc_val = s.description or ""
         if is_lms and desc_val.startswith('{'):
             try:
-                import json
                 desc_val = json.loads(desc_val)
             except:
                 pass

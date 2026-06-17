@@ -128,7 +128,6 @@ def update_profile_picture(request):
 def redeem_code_api(request):
     """보상 코드를 검증하고 사용자에게 낙엽을 지급합니다."""
     try:
-        import json
         data = json.loads(request.body)
         code_input = data.get("code", "").strip()
         
@@ -614,7 +613,6 @@ def lms_page(request):
                             "attachments": attachments,
                             "cmid": assign.get("cmid"),
                         }
-                        import json
                         description_json = json.dumps(desc_data, ensure_ascii=False)
 
                         existing = Schedule.objects.filter(user=request.user, external_id=external_id).first()
@@ -816,7 +814,6 @@ def lms_import_assignments_api(request):
                     "attachments": attachments,
                     "cmid": assign.get("cmid"),
                 }
-                import json
                 description_json = json.dumps(desc_data, ensure_ascii=False)
 
                 existing = Schedule.objects.filter(user=request.user, external_id=external_id).first()
@@ -1006,7 +1003,6 @@ def notification_center(request):
 @require_POST
 def subscribe_push_api(request):
     """클라이언트 기기의 웹 푸시 구독 정보를 저장/갱신"""
-    import json
     from .models import PushSubscription
     try:
         data = json.loads(request.body)
@@ -1042,7 +1038,6 @@ def subscribe_push_api(request):
 @require_POST
 def unsubscribe_push_api(request):
     """클라이언트 기기의 웹 푸시 구독 정보 해제/삭제"""
-    import json
     from .models import PushSubscription
     try:
         data = json.loads(request.body)
