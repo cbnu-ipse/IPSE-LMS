@@ -192,7 +192,9 @@ class CommunityTestCase(TestCase):
         self.assertFalse(participant_schedule_deleted)
 
         # 5. 개설자가 모임 폭파(취소) 시 모든 일정 일괄 삭제 검증
-        # participant_user 가 다시 참가 신청해놓음
+        # participant_user 가 다시 참가 신청해놓음 (최근 도입된 쿨타임 우회를 위해 쿨타임 로그 삭제 후 시도)
+        from .models import GatheringLeaveLog
+        GatheringLeaveLog.objects.filter(gathering=gathering, user=self.participant).delete()
         self.client.post(join_url)
         self.assertTrue(Schedule.objects.filter(user=self.participant, external_id=f"gathering:{gathering.id}").exists())
         
