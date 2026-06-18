@@ -322,6 +322,7 @@ class CommunityPost(models.Model):
         default='free',
         verbose_name="게시판 분류"
     )
+    is_anonymous = models.BooleanField(default=False, verbose_name="익명 게시")
 
     class Meta:
         ordering = ["-created_at"]

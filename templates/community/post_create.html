@@ -57,6 +57,20 @@
                     </div>
                 </div>
 
+                <!-- 익명 게시 옵션 (피드백 게시판 선택 시만 표시) -->
+                <div id="anonymous-option" class="{% if category != 'feedback' and post.category != 'feedback' %}hidden{% endif %} bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <label class="flex items-start gap-3 cursor-pointer select-none">
+                        <input type="checkbox"
+                               name="is_anonymous"
+                               id="is_anonymous"
+                               class="mt-0.5 w-4 h-4 text-amber-600 border-slate-300 rounded focus:ring-amber-400"
+                               {% if post.is_anonymous %}checked{% endif %}>
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700">🙈 익명으로 게시</p>
+                        </div>
+                    </label>
+                </div>
+
                 <!-- 공지 설정 (스태프 전용) -->
                 {% if request.user.is_staff %}
                 <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap gap-6 items-center">
@@ -164,6 +178,21 @@
                 } else {
                     isPinnedCheckbox.disabled = true;
                     isPinnedCheckbox.checked = false;
+                }
+            });
+        }
+
+        // 피드백 카테고리 선택 시 익명 옵션 표시/숨김
+        const categorySelect = document.getElementById('category');
+        const anonymousOption = document.getElementById('anonymous-option');
+        if (categorySelect && anonymousOption) {
+            categorySelect.addEventListener('change', function() {
+                if (this.value === 'feedback') {
+                    anonymousOption.classList.remove('hidden');
+                } else {
+                    anonymousOption.classList.add('hidden');
+                    const anonCheckbox = document.getElementById('is_anonymous');
+                    if (anonCheckbox) anonCheckbox.checked = false;
                 }
             });
         }

@@ -92,7 +92,12 @@
                             {% endif %}
                         </td>
                         <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
-                            {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
+                            {% if post.is_anonymous and not request.user.is_staff %}
+                                <span class="text-slate-400 font-mono">익명</span>
+                            {% else %}
+                                {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
+                                {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold">[익명글]</span>{% endif %}
+                            {% endif %}
                         </td>
                         <td class="px-6 py-2.5 text-center text-xs font-bold text-emerald-600">
                             {{ post.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ post.dislike_count|default:0 }}</span>{% endif %}

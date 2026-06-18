@@ -109,11 +109,10 @@
                         </div>
                     </div>
                 </div>
-            </div>
 
             <!-- 참여/취소 액션 버튼 -->
-            <hr class="border-slate-100">
-            <div class="flex justify-end gap-3">
+            <hr class="border-slate-100 mt-6">
+            <div class="flex justify-end gap-3 pt-2">
                 {% if gathering.author == request.user %}
                 <form action="{% url 'gathering_cancel' gathering.id %}" method="POST" onsubmit="return confirm('이 번개 모임을 정말 취소(폭파)하시겠습니까? 참여 중인 부원들의 캘린더 일정에서도 자동 삭제됩니다.');" class="inline">
                     {% csrf_token %}
@@ -168,7 +167,7 @@
         </div>
 
         <!-- 💬 4. 댓글 섹션 카드 -->
-        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6">
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6 mt-2">
             <h3 class="text-lg font-bold text-slate-800 flex items-center gap-1.5">
                 <i class="fa-regular fa-comments text-emerald-600"></i>
                 대화방 <span class="text-emerald-600 font-extrabold">{{ comments.count }}</span>

@@ -16,7 +16,7 @@ class TimetableSubject(models.Model):
     )
     start_time = models.TimeField(verbose_name="시작 시간")
     end_time = models.TimeField(verbose_name="종료 시간")
-    color = models.CharField(max_length=7, blank=True, verbose_name="테마 색상")
+    color = models.CharField(max_length=50, blank=True, verbose_name="테마 색상")
 
     class Meta:
         verbose_name = "시간표 과목"

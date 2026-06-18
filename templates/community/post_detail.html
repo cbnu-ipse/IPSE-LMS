@@ -30,7 +30,12 @@
                     <div class="flex items-center gap-3">
                         <span class="font-bold text-slate-600">
                             <i class="fa-solid fa-circle-user mr-1 text-slate-400"></i>
-                            {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
+                            {% if post.is_anonymous and not request.user.is_staff %}
+                                <span class="text-slate-400 font-mono">익명</span>
+                            {% else %}
+                                {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
+                                {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold ml-1">[익명글]</span>{% endif %}
+                            {% endif %}
                         </span>
                         <span class="text-slate-300">|</span>
                         <span>
