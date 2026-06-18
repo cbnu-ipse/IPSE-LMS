@@ -91,6 +91,7 @@ PROJECT_APPS = [
     "community.apps.CommunityConfig",
     "ranking.apps.RankingConfig",
     "compiler.apps.CompilerConfig",
+    "schedules.apps.SchedulesConfig",
 ]
 
 # Combine all apps

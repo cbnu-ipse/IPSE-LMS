@@ -85,4 +85,7 @@ urlpatterns = [
     path('lms/', views.lms_page, name='lms_page'),
     path('lms/import-assignments/', views.lms_import_assignments_api, name='lms_import_assignments_api'),
     path('lms/download/', views.lms_download_file, name='lms_download_file'),
+    
+    # ─── Attendance ────────────────────────────────────────────────────────────
+    path('attendance/check/', views.attendance_check_api, name='attendance_check_api'),
 ]

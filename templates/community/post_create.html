@@ -24,7 +24,7 @@
 
         <!-- ✍️ 2. 작성 폼 카드 -->
         <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-            <form id="post-form" action="" method="POST" class="space-y-6">{% csrf_token %}
+            <form id="post-form" action="" method="POST" enctype="multipart/form-data" class="space-y-6">{% csrf_token %}
                 <!-- 제목 필드 -->
                 <div class="space-y-1.5">
                     <label for="title" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -87,6 +87,51 @@
                     </label>
                     <div id="content-editor" class="rounded-xl overflow-hidden border border-slate-200"></div>
                     <input type="hidden" name="content" id="hidden-content">
+                </div>
+
+                <!-- 📎 첨부파일 필드 -->
+                <div class="space-y-3 bg-slate-50/50 border border-slate-200/80 rounded-2xl p-6">
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        첨부파일
+                    </label>
+                    
+                    <!-- 기존 첨부파일 목록 (수정 모드일 때만 노출) -->
+                    {% if is_edit and post.attachments.all %}
+                    <div class="space-y-2 mb-4">
+                        <p class="text-xs font-bold text-slate-400">등록된 첨부파일</p>
+                        <ul class="divide-y divide-slate-100 bg-white border border-slate-100 rounded-xl overflow-hidden">
+                            {% for att in post.attachments.all %}
+                            <li id="attachment-{{ att.id }}" class="flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition">
+                                <div class="flex items-center gap-2 text-sm text-slate-600 font-semibold truncate">
+                                    <i class="fa-solid fa-file text-slate-400"></i>
+                                    <span class="truncate">{{ att.filename }}</span>
+                                </div>
+                                <button type="button" onclick="deleteAttachment({{ att.id }})" class="text-xs text-rose-500 hover:text-rose-700 font-bold flex items-center gap-1 transition">
+                                    <i class="fa-solid fa-trash-can"></i> 삭제
+                                </button>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    <!-- 신규 첨부파일 업로드 영역 -->
+                    <div class="flex items-center justify-center w-full">
+                        <label for="attachments" class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-white hover:bg-slate-50/50 hover:border-emerald-500 transition">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <i class="fa-solid fa-cloud-arrow-up text-slate-400 text-2xl mb-2"></i>
+                                <p class="mb-1 text-xs text-slate-500 font-bold"><span class="text-emerald-600 font-bold">클릭하여 파일 선택</span> 또는 드래그 앤 드롭</p>
+                                <p class="text-[10px] text-slate-400">여러 파일을 선택할 수 있습니다.</p>
+                            </div>
+                            <input id="attachments" type="file" name="attachments" class="hidden" multiple onchange="updateFileList(this)" />
+                        </label>
+                    </div>
+                    <div id="file-list-preview" class="hidden space-y-2">
+                        <p class="text-xs font-bold text-slate-400">선택된 새 첨부파일:</p>
+                        <ul id="file-list-preview-ul" class="divide-y divide-slate-100 bg-white border border-slate-100 rounded-xl overflow-hidden text-sm text-slate-600">
+                            <!-- 선택된 파일 리스트 동적 렌더링 -->
+                        </ul>
+                    </div>
                 </div>
 
                 <!-- 조작 버튼 -->
@@ -172,5 +217,61 @@
             }
         });
     });
+
+    function updateFileList(input) {
+        const previewDiv = document.getElementById('file-list-preview');
+        const previewUl = document.getElementById('file-list-preview-ul');
+        previewUl.innerHTML = '';
+        
+        if (input.files && input.files.length > 0) {
+            previewDiv.classList.remove('hidden');
+            Array.from(input.files).forEach(file => {
+                const li = document.createElement('li');
+                li.className = "flex items-center gap-2 px-4 py-2.5";
+                
+                let sizeStr = '';
+                if (file.size < 1024) sizeStr = file.size + ' B';
+                else if (file.size < 1048576) sizeStr = (file.size / 1024).toFixed(1) + ' KB';
+                else sizeStr = (file.size / 1048576).toFixed(1) + ' MB';
+                
+                li.innerHTML = `
+                    <i class="fa-solid fa-file-arrow-up text-emerald-500"></i>
+                    <span class="font-medium truncate flex-1">${file.name}</span>
+                    <span class="text-xs text-slate-400">${sizeStr}</span>
+                `;
+                previewUl.appendChild(li);
+            });
+        } else {
+            previewDiv.classList.add('hidden');
+        }
+    }
+
+    function deleteAttachment(attachmentId) {
+        if (!confirm("이 첨부파일을 삭제하시겠습니까?")) return;
+        
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
+        fetch(`/community/board/attachment/${attachmentId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast("첨부파일이 삭제되었습니다.", "success");
+                const item = document.getElementById(`attachment-${attachmentId}`);
+                if (item) {
+                    item.remove();
+                }
+            } else {
+                showToast(data.error || "삭제에 실패했습니다.", "error");
+            }
+        })
+        .catch(() => {
+            showToast("오류가 발생했습니다.", "error");
+        });
+    }
 </script>
 {% endblock content %}

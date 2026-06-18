@@ -5,6 +5,7 @@ from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.storage import FileSystemStorage
 from django.http import JsonResponse, HttpResponse
@@ -20,7 +21,8 @@ from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
     RecruitmentForm, RecruitmentApplication,
-    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike, CommunityPostDislike, CommunityCommentLike, CommunityCommentDislike
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike, CommunityPostDislike, CommunityCommentLike, CommunityCommentDislike,
+    CommunityPostAttachment
 )
 
 
@@ -1617,6 +1619,16 @@ def post_create(request):
             is_pinned=is_pinned,
             category=category
         )
+
+        # 다중 첨부파일 저장
+        attachments = request.FILES.getlist('attachments')
+        for f in attachments:
+            CommunityPostAttachment.objects.create(
+                post=post,
+                file=f,
+                filename=f.name
+            )
+
         messages.success(request, '게시글이 성공적으로 등록되었습니다.')
         return redirect('post_detail', post_id=post.id)
 
@@ -1662,6 +1674,16 @@ def post_edit(request, post_id):
             update_fields.extend(['is_notice', 'is_pinned'])
 
         post.save(update_fields=update_fields)
+
+        # 다중 첨부파일 저장
+        attachments = request.FILES.getlist('attachments')
+        for f in attachments:
+            CommunityPostAttachment.objects.create(
+                post=post,
+                file=f,
+                filename=f.name
+            )
+
         messages.success(request, '게시글이 수정되었습니다.')
         return redirect('post_detail', post_id=post.id)
 
@@ -1671,6 +1693,18 @@ def post_edit(request, post_id):
         'is_edit': True,
         'category': post.category,
     })
+
+
+@login_required
+@require_POST
+def delete_attachment_api(request, attachment_id):
+    """게시글 첨부파일 비동기 삭제"""
+    attachment = get_object_or_404(CommunityPostAttachment, id=attachment_id)
+    if request.user == attachment.post.author or request.user.is_staff:
+        attachment.file.delete(save=False)
+        attachment.delete()
+        return JsonResponse({'success': True})
+    return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다.'}, status=403)
 
 
 @login_required

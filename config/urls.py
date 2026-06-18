@@ -18,6 +18,7 @@ urlpatterns = [
     path("ranking/", include("ranking.urls")),
     path("accounts/api/", include("accounts.api.urls", namespace="accounts-api")),
     path("compiler/", include("compiler.urls")),
+    path("schedules/", include("schedules.urls")),
     path("recruit/<int:form_id>/", community.views.recruit_apply, name="recruit_apply"),
 ]
 

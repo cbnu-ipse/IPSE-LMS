@@ -66,6 +66,26 @@
             <!-- Toast UI Viewer 본문 영역 -->
             <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed"></div>
 
+            <!-- 📎 첨부파일 목록 영역 -->
+            {% if post.attachments.all %}
+            <div class="border-t border-slate-100 pt-6 mt-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <i class="fa-solid fa-paperclip text-slate-400"></i> 첨부파일 ({{ post.attachments.count }}개)
+                </h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% for att in post.attachments.all %}
+                    <a href="{{ att.file.url }}" download class="flex items-center justify-between p-3.5 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/20 rounded-xl transition group">
+                        <div class="flex items-center gap-2.5 truncate">
+                            <i class="fa-solid fa-file text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
+                            <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors truncate">{{ att.filename }}</span>
+                        </div>
+                        <i class="fa-solid fa-download text-xs text-slate-400 group-hover:text-emerald-600 transition-colors pl-2"></i>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- 👍👎 추천 / 비추천 캡슐 -->
             <div class="flex items-center justify-center gap-3 pt-6 border-t border-slate-100">
                 <button id="post-like-btn" onclick="togglePostLike()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 {% if user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600 scale-105{% else %}bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %}">

@@ -1,0 +1,482 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}{{ title }} | IPSE LMS{% endblock %}
+
+{% block content %}
+<style>
+    /* 에브리타임 스타일 컴팩트 그리드 매핑 */
+    #timetable-grid {
+        display: grid;
+        grid-template-columns: 45px repeat(5, minmax(0, 1fr));
+        grid-template-rows: 36px repeat(26, 26px);
+        background-color: #ffffff;
+    }
+    
+    @media (min-width: 640px) {
+        #timetable-grid {
+            grid-template-columns: 60px repeat(5, minmax(0, 1fr));
+            grid-template-rows: 40px repeat(26, 32px);
+        }
+    }
+</style>
+
+<section class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    
+    <!-- 1. 시간표 상단 컨트롤 바 -->
+    <div class="flex items-center justify-between mb-6 bg-white border border-slate-200 rounded-2xl px-6 py-4 shadow-sm">
+        <div>
+            <h1 class="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                <i class="fa-solid fa-leaf text-emerald-600"></i>
+                시간표
+            </h1>
+            <p class="text-xs text-slate-400 font-medium mt-0.5">2026학년도 1학기</p>
+        </div>
+        
+        <!-- 연동되었을 때 노출되는 조작 버튼들 -->
+        <div class="flex items-center gap-2">
+            <button onclick="openAddModal()" class="w-9 h-9 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 flex items-center justify-center transition shadow-sm active:scale-95" title="수업 추가">
+                <i class="fa-solid fa-plus text-sm"></i>
+            </button>
+            <button onclick="openSettingsModal()" class="w-9 h-9 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 flex items-center justify-center transition shadow-sm active:scale-95" title="시간표 설정 및 연동">
+                <i class="fa-solid fa-gear text-sm"></i>
+            </button>
+        </div>
+    </div>
+
+    {% include 'snippets/messages.html' %}
+
+    <!-- 2. 연동이 안 되어 있을 때 보이는 웰컴 카드 (Empty State) -->
+    <div id="timetable-empty-state" class="hidden max-w-xl mx-auto my-12 bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 text-center shadow-md transition duration-300">
+        <div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-6 shadow-sm">
+            <i class="fa-solid fa-calendar-week text-3xl"></i>
+        </div>
+        <h2 class="text-xl font-extrabold text-slate-800 mb-2">시간표가 아직 비어있습니다</h2>
+        <p class="text-sm text-slate-400 leading-relaxed mb-8 max-w-sm mx-auto">
+            에브리타임 공유 URL을 통해 내 시간표를 단 3초 만에 동기화하거나, 수업을 직접 등록하여 이번 학기 시간표를 시작해 보세요.
+        </p>
+
+        <div class="space-y-6">
+            <!-- 에타 연동 영역 -->
+            <div class="bg-slate-50 border border-slate-100 rounded-2xl p-5 text-left">
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                    <i class="fa-solid fa-cloud-arrow-down text-emerald-500"></i>
+                    에브리타임 자동 연동
+                </h3>
+                <p class="text-[11px] text-slate-400 mb-4 leading-relaxed">
+                    에타 앱에서 [내보내기] -> [공유용 링크] (예: https://everytime.kr/app/@...)를 복사해 아래에 붙여넣으세요.
+                </p>
+                <div class="flex gap-2">
+                    <input type="text" id="empty-everytime-url" placeholder="공유 URL 또는 식별자 입력" class="flex-1 px-4 py-3 rounded-xl border border-slate-200 outline-none text-sm font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white transition">
+                    <button onclick="importEverytime('empty-everytime-url')" class="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-sm active:scale-95 transition whitespace-nowrap">
+                        연동하기
+                    </button>
+                </div>
+            </div>
+
+            <!-- 수동 버튼 -->
+            <button onclick="openAddModal()" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition shadow-sm active:scale-[0.98]">
+                <i class="fa-solid fa-plus text-xs text-slate-400"></i>
+                수업 직접 등록하기
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. 시간표 보드 격자 영역 -->
+    <div id="timetable-board" class="hidden bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm overflow-x-auto">
+        <div class="min-w-[750px]">
+            <!-- 시간표 격자 컨테이너 -->
+            <!-- 09:00 ~ 22:00 (13시간 * 2행 = 26행) -->
+            <div id="timetable-grid" class="relative border border-slate-200 rounded-2xl overflow-hidden">
+                
+                <!-- 요일 헤더 -->
+                <div class="flex items-center justify-center bg-slate-50 border-b border-r border-slate-200 text-xs font-extrabold text-slate-400 uppercase tracking-wider" style="grid-column: 1; grid-row: 1;">시간</div>
+                <div class="flex items-center justify-center bg-slate-50 border-b border-r border-slate-200 text-xs font-extrabold text-slate-700" style="grid-column: 2; grid-row: 1;">월</div>
+                <div class="flex items-center justify-center bg-slate-50 border-b border-r border-slate-200 text-xs font-extrabold text-slate-700" style="grid-column: 3; grid-row: 1;">화</div>
+                <div class="flex items-center justify-center bg-slate-50 border-b border-r border-slate-200 text-xs font-extrabold text-slate-700" style="grid-column: 4; grid-row: 1;">수</div>
+                <div class="flex items-center justify-center bg-slate-50 border-b border-r border-slate-200 text-xs font-extrabold text-slate-700" style="grid-column: 5; grid-row: 1;">목</div>
+                <div class="flex items-center justify-center bg-slate-50 border-b border-slate-200 text-xs font-extrabold text-slate-700" style="grid-column: 6; grid-row: 1;">금</div>
+
+                <!-- 시간 축 라벨 (2행씩 머지하여 매 정시만 라벨 표시) -->
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 2 / span 2;">09:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 4 / span 2;">10:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 6 / span 2;">11:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 8 / span 2;">12:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 10 / span 2;">13:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 12 / span 2;">14:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 14 / span 2;">15:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 16 / span 2;">16:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 18 / span 2;">17:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 20 / span 2;">18:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 22 / span 2;">19:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 24 / span 2;">20:00</div>
+                <div class="flex items-start justify-center pt-1.5 pr-2.5 border-r border-b border-slate-200/40 text-[11px] font-extrabold text-slate-400 bg-slate-50/50" style="grid-column: 1; grid-row: 26 / span 2;">21:00</div>
+
+                <!-- 그리드 가이드 격자 선 (월~금) -->
+                {% for day in "23456" %}
+                    <!-- 30분 단위선 (점선) -->
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 2;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 4;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 6;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 8;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 10;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 12;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 14;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 16;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 18;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 20;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 22;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 24;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-dashed border-slate-100 pointer-events-none" style="grid-column: {{ day }}; grid-row: 26;"></div>
+
+                    <!-- 정각 단위선 (실선) -->
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 3;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 5;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 7;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 9;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 11;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 13;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 15;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 17;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 19;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 21;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 23;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 25;"></div>
+                    <div class="{% if day != '6' %}border-r{% endif %} border-b border-slate-200/60 pointer-events-none" style="grid-column: {{ day }}; grid-row: 27;"></div>
+                {% endfor %}
+
+                <!-- 동적으로 배치되는 수업 카드 컨테이너 -->
+                <div id="subject-cards-container" class="contents"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ⚙️ 시간표 설정 및 연동 모달 -->
+<div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+    <div class="bg-white border border-slate-200 rounded-3xl w-full max-w-lg p-8 shadow-2xl transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-bold text-slate-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-gear text-emerald-600"></i>
+                시간표 설정
+            </h3>
+            <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+
+        <div class="space-y-6 text-left">
+            <!-- 에브리타임 다시 연동 -->
+            <div class="bg-slate-50 border border-slate-100 rounded-2xl p-5">
+                <h4 class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate text-emerald-600"></i>
+                    에브리타임 시간표 다시 연동
+                </h4>
+                <p class="text-[11px] text-slate-400 mb-3.5 leading-relaxed">
+                    새 공유 링크를 입력하여 기존 시간표를 모두 삭제하고 다시 덮어씁니다.
+                </p>
+                <div class="flex gap-2">
+                    <input type="text" id="settings-everytime-url" placeholder="공유 URL 또는 식별자 입력" class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none text-xs font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white transition">
+                    <button onclick="importEverytime('settings-everytime-url')" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold active:scale-95 transition whitespace-nowrap">
+                        불러오기
+                    </button>
+                </div>
+            </div>
+
+            <!-- 현재 수강 과목 관리 -->
+            <div>
+                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <i class="fa-solid fa-list-check text-slate-400"></i>
+                    현재 과목 리스트 ({{ subjects|length }}개)
+                </h4>
+                <div class="border border-slate-100 rounded-2xl overflow-hidden max-h-56 overflow-y-auto bg-white">
+                    {% if subjects %}
+                    <ul class="divide-y divide-slate-100">
+                        {% for s in subjects %}
+                        <li class="px-4 py-3 flex items-center justify-between gap-4 group hover:bg-slate-50/50 transition">
+                            <div class="truncate">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2.5 h-2.5 rounded-full" style="background-color: {{ s.color }};"></span>
+                                    <span class="font-bold text-sm text-slate-700 truncate">{{ s.subject_name }}</span>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1 pl-4.5">
+                                    {{ s.get_day_of_week_display }}요일 {{ s.start_time|time:"H:i" }}~{{ s.end_time|time:"H:i" }}
+                                    {% if s.classroom %} | {{ s.classroom }}{% endif %}
+                                </p>
+                            </div>
+                            <button onclick="deleteSubject({{ s.id }})" class="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition" title="삭제">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-xs text-slate-400 py-8 text-center bg-slate-50/30">등록된 과목이 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ➕ 수업 수동 추가 모달 -->
+<div id="add-subject-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+    <div class="bg-white border border-slate-200 rounded-3xl w-full max-w-md p-8 shadow-2xl transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-bold text-slate-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-plus text-emerald-600"></i>
+                수업 직접 추가
+            </h3>
+            <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+
+        <form id="add-subject-form" onsubmit="submitAddSubject(event)" class="space-y-4 text-left">
+            <div>
+                <label for="subject_name" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">과목명 *</label>
+                <input type="text" id="subject_name" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold transition text-slate-700">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="professor" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">교수명</label>
+                    <input type="text" id="professor" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold transition text-slate-700">
+                </div>
+                <div>
+                    <label for="classroom" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">강의실</label>
+                    <input type="text" id="classroom" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold transition text-slate-700">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+                <div class="col-span-1">
+                    <label for="day_of_week" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">요일 *</label>
+                    <select id="day_of_week" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold text-slate-700 bg-white">
+                        <option value="0">월</option>
+                        <option value="1">화</option>
+                        <option value="2">수</option>
+                        <option value="3">목</option>
+                        <option value="4">금</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="start_time" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">시작 *</label>
+                    <input type="time" id="start_time" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold text-slate-700">
+                </div>
+                <div>
+                    <label for="end_time" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">종료 *</label>
+                    <input type="time" id="end_time" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-semibold text-slate-700">
+                </div>
+            </div>
+
+            <div class="flex gap-3 pt-4 border-t border-slate-100 mt-6">
+                <button type="button" onclick="closeAddModal()" class="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">취소</button>
+                <button type="submit" class="flex-1 px-4 py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">추가하기</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const subjects = {{ subjects_json|safe }};
+
+    function renderSubjects() {
+        const container = document.getElementById('subject-cards-container');
+        container.innerHTML = '';
+
+        subjects.forEach(subject => {
+            const [startH, startM] = subject.start_time.split(':').map(Number);
+            const [endH, endM] = subject.end_time.split(':').map(Number);
+
+            const startTotalMinutes = startH * 60 + startM;
+            const endTotalMinutes = endH * 60 + endM;
+
+            // 09:00 = 540분
+            const minStartOffset = 540;
+            
+            // 30분당 1행. 09:00이 row 2
+            const rowStart = Math.floor((startTotalMinutes - minStartOffset) / 30) + 2;
+            const rowEnd = Math.ceil((endTotalMinutes - minStartOffset) / 30) + 2;
+
+            // 요일 column
+            const col = subject.day_of_week + 2;
+
+            // 과목 카드 DOM
+            const card = document.createElement('div');
+            // 에타 스타일 적용: 모바일 p-1.5, 데스크톱 p-2.5로 패딩 축소 및 콤팩트 패딩 처리
+            card.className = "absolute inset-[1px] rounded-lg p-1 sm:p-2 flex flex-col justify-start transition hover:scale-[1.01] hover:shadow-md duration-200 cursor-pointer text-left group border border-black/5 select-none";
+            card.style.backgroundColor = subject.color;
+            card.style.gridColumn = col;
+            card.style.gridRow = `${rowStart} / ${rowEnd}`;
+            card.style.position = 'relative';
+
+            // 텍스트 가독성 고도화: 배경이 파스텔톤이므로 글자 색상을 어두운 slate 톤으로 변경하여 명도 가독성 극대화
+            card.innerHTML = `
+                <div class="h-full flex flex-col justify-between text-slate-800">
+                    <div class="space-y-0.5">
+                        <h4 class="font-extrabold text-[9.5px] sm:text-[11px] leading-tight break-all" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;" title="${subject.subject_name}">${subject.subject_name}</h4>
+                        ${subject.classroom ? `<p class="text-[8px] sm:text-[9.5px] text-slate-600 font-bold break-all leading-tight mt-0.5">${subject.classroom}</p>` : ''}
+                    </div>
+                    ${subject.professor ? `<p class="text-[8px] sm:text-[9px] text-slate-500 font-semibold truncate leading-none mt-1">${subject.professor}</p>` : ''}
+                </div>
+                <button onclick="event.stopPropagation(); deleteSubject(${subject.id})" 
+                        class="absolute right-0.5 top-0.5 w-4 h-4 bg-black/10 hover:bg-black/25 rounded-full flex items-center justify-center text-slate-700 opacity-0 group-hover:opacity-100 transition shadow-sm">
+                    <i class="fa-solid fa-xmark text-[8px]"></i>
+                </button>
+            `;
+
+            container.appendChild(card);
+        });
+    }
+
+    function checkEmptyState() {
+        const emptyState = document.getElementById('timetable-empty-state');
+        const board = document.getElementById('timetable-board');
+
+        if (subjects.length === 0) {
+            emptyState.classList.remove('hidden');
+            board.classList.add('hidden');
+        } else {
+            emptyState.classList.add('hidden');
+            board.classList.remove('hidden');
+        }
+    }
+
+    function openAddModal() {
+        const modal = document.getElementById('add-subject-modal');
+        modal.classList.remove('hidden');
+        requestAnimationFrame(() => {
+            modal.classList.remove('opacity-0');
+            modal.querySelector('div').classList.remove('scale-95');
+        });
+    }
+
+    function closeAddModal() {
+        const modal = document.getElementById('add-subject-modal');
+        modal.classList.add('opacity-0');
+        modal.querySelector('div').classList.add('scale-95');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+        }, 300);
+    }
+
+    function openSettingsModal() {
+        const modal = document.getElementById('settings-modal');
+        modal.classList.remove('hidden');
+        requestAnimationFrame(() => {
+            modal.classList.remove('opacity-0');
+            modal.querySelector('div').classList.remove('scale-95');
+        });
+    }
+
+    function closeSettingsModal() {
+        const modal = document.getElementById('settings-modal');
+        modal.classList.add('opacity-0');
+        modal.querySelector('div').classList.add('scale-95');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+        }, 300);
+    }
+
+    function submitAddSubject(e) {
+        e.preventDefault();
+        const subject_name = document.getElementById('subject_name').value.trim();
+        const professor = document.getElementById('professor').value.trim();
+        const classroom = document.getElementById('classroom').value.trim();
+        const day_of_week = document.getElementById('day_of_week').value;
+        const start_time = document.getElementById('start_time').value;
+        const end_time = document.getElementById('end_time').value;
+
+        fetch("{% url 'add_timetable_subject_api' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                subject_name,
+                professor,
+                classroom,
+                day_of_week,
+                start_time,
+                end_time
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast("과목이 성공적으로 추가되었습니다.", "success");
+                closeAddModal();
+                document.getElementById('add-subject-form').reset();
+                setTimeout(() => location.reload(), 800);
+            } else {
+                showToast(data.error || "과목 추가에 실패했습니다.", "error");
+            }
+        })
+        .catch(() => {
+            showToast("오류가 발생했습니다.", "error");
+        });
+    }
+
+    function deleteSubject(subjectId) {
+        if (!confirm("이 과목을 시간표에서 삭제하시겠습니까?")) return;
+
+        fetch(`/schedules/api/timetable/delete/${subjectId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast("과목이 삭제되었습니다.", "success");
+                setTimeout(() => location.reload(), 800);
+            } else {
+                showToast(data.error || "삭제에 실패했습니다.", "error");
+            }
+        })
+        .catch(() => {
+            showToast("오류가 발생했습니다.", "error");
+        });
+    }
+
+    function importEverytime(inputId) {
+        const urlInput = document.getElementById(inputId);
+        const url = urlInput.value.trim();
+        if (!url) {
+            showToast("공유 URL을 입력해 주세요.", "error");
+            return;
+        }
+
+        showToast("에브리타임 시간표 정보를 연동 중입니다...", "info");
+
+        fetch("{% url 'import_everytime_timetable_api' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ url: url })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, "success");
+                urlInput.value = '';
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.error || "시간표 동기화에 실패했습니다.", "error");
+            }
+        })
+        .catch(() => {
+            showToast("서버 네트워크 오류가 발생했습니다.", "error");
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        checkEmptyState();
+        renderSubjects();
+    });
+</script>
+{% endblock %}
