@@ -323,9 +323,22 @@ def poll_list(request):
     all_polls = Poll.objects.prefetch_related('choices', 'votes')
     active_polls = [p for p in all_polls if not p.is_closed]
     closed_polls = [p for p in all_polls if p.is_closed]
+
+    all_surveys = Survey.objects.prefetch_related('questions', 'responses').all()
+    active_surveys = [survey for survey in all_surveys if not survey.is_closed]
+    closed_surveys = [survey for survey in all_surveys if survey.is_closed]
+    responded_survey_ids = set()
+    if request.user.is_authenticated:
+        responded_survey_ids = set(
+            SurveyResponse.objects.filter(respondent=request.user).values_list('survey_id', flat=True)
+        )
+
     return render(request, 'community/poll_list.html', {
         'active_polls': active_polls,
         'closed_polls': closed_polls,
+        'active_surveys': active_surveys,
+        'closed_surveys': closed_surveys,
+        'responded_survey_ids': responded_survey_ids,
     })
 
 
@@ -697,24 +710,8 @@ def calendar_subscribe(request):
 
 @login_required
 def survey_list(request):
-    """설문 목록 페이지"""
-    all_surveys = Survey.objects.prefetch_related('questions', 'responses').all()
-    active_surveys = [survey for survey in all_surveys if not survey.is_closed]
-    closed_surveys = [survey for survey in all_surveys if survey.is_closed]
-    responded_survey_ids = set()
-
-    if request.user.is_authenticated:
-        responded_survey_ids = set(
-            SurveyResponse.objects.filter(respondent=request.user).values_list('survey_id', flat=True)
-        )
-
-    context = {
-        'active_surveys': active_surveys,
-        'closed_surveys': closed_surveys,
-        'responded_survey_ids': responded_survey_ids,
-        'title': '설문',
-    }
-    return render(request, 'community/survey_list.html', context)
+    """설문 목록 페이지 - 투표/설문 통합 페이지로 리다이렉트"""
+    return redirect('poll_list')
 
 
 @staff_member_required
