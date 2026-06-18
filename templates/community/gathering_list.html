@@ -57,10 +57,9 @@
                                 <p class="text-base font-semibold text-slate-800">{{ gathering.title }}</p>
                                 {% if gathering.is_full %}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">모집 마감</span>
-                                {% else %}
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">모집 중</span>
                                 {% endif %}
                             </div>
+
                             <p class="text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <span>정원 {{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
                                 {% if gathering.user_joined %}

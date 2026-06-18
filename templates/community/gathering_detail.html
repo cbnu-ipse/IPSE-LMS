@@ -29,11 +29,15 @@
                     <h1 class="text-2xl lg:text-3xl font-extrabold text-slate-800 leading-tight">
                         {{ gathering.title }}
                     </h1>
-                    <span class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold {% if gathering.is_full %}bg-rose-50 text-rose-600 border border-rose-100{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %}">
-                        <i class="fa-solid {% if gathering.is_full %}fa-circle-xmark{% else %}fa-circle-check{% endif %}"></i>
-                        {% if gathering.is_full %}모집 마감{% else %}모집 중{% endif %}
+                    {% if gathering.is_full %}
+                    <span class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                        모집 마감
                     </span>
+                    {% endif %}
                 </div>
+            </div>
+
                 
                 <!-- 💬 모집 소개글 -->
                 <div class="relative bg-gradient-to-r from-slate-50 to-slate-100/40 border border-slate-200/60 rounded-2xl p-6 shadow-sm overflow-hidden mt-5">
