@@ -58,6 +58,10 @@
                             <i class="fa-solid fa-comment text-sky-500 text-sm"></i>
                         {% elif n.notification_type == 'gathering_cancel' %}
                             <i class="fa-solid fa-triangle-exclamation text-rose-500 text-sm"></i>
+                        {% elif n.notification_type == 'post_comment' %}
+                            <i class="fa-solid fa-comment-dots text-emerald-600 text-sm"></i>
+                        {% elif n.notification_type == 'comment_reply' %}
+                            <i class="fa-solid fa-comments text-indigo-500 text-sm"></i>
                         {% else %}
                             <i class="fa-solid fa-bell text-slate-400 text-sm"></i>
                         {% endif %}

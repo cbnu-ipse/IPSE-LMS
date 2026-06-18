@@ -564,6 +564,8 @@
             else if (n.notification_type === 'gathering_leave') icon = '<i class="fa-solid fa-user-minus text-rose-500"></i>';
             else if (n.notification_type === 'gathering_comment') icon = '<i class="fa-solid fa-comment text-sky-500"></i>';
             else if (n.notification_type === 'gathering_cancel') icon = '<i class="fa-solid fa-triangle-exclamation text-rose-500"></i>';
+            else if (n.notification_type === 'post_comment') icon = '<i class="fa-solid fa-comment-dots text-emerald-600"></i>';
+            else if (n.notification_type === 'comment_reply') icon = '<i class="fa-solid fa-comments text-indigo-500"></i>';
 
             item.innerHTML = `
               <span class="mt-0.5">${icon}</span>
