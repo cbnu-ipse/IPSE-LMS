@@ -615,3 +615,25 @@ class GatheringLeaveLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.gathering.title} (Left: {self.left_at})"
+
+
+class CommunityPostAttachment(models.Model):
+    post = models.ForeignKey(
+        'CommunityPost',
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name="게시글"
+    )
+    file = models.FileField(
+        upload_to='post_attachments/%Y/%m/%d/',
+        verbose_name="첨부파일"
+    )
+    filename = models.CharField(max_length=255, verbose_name="파일명")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="등록일시")
+
+    class Meta:
+        verbose_name = "게시글 첨부파일"
+        verbose_name_plural = "게시글 첨부파일 목록"
+
+    def __str__(self):
+        return self.filename

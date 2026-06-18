@@ -182,11 +182,19 @@ def profile(request):
 
     leaf_transactions = user.leaf_transactions.all().order_by('-created_at')[:10]
 
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Attendance
+    kst_now = timezone.now() + timedelta(hours=9)
+    today = kst_now.date()
+    has_attended_today = Attendance.objects.filter(user=user, date=today).exists()
+
     return render(request, 'accounts/profile.html', {
         'title': '내 프로필',
         'courses': courses,
         'level': student_obj,
         'leaf_transactions': leaf_transactions,
+        'has_attended_today': has_attended_today,
     })
 
 
@@ -1064,6 +1072,47 @@ def unsubscribe_push_api(request):
             return JsonResponse({'success': True})
         except Exception:
             return JsonResponse({'success': False, 'error': '학생 프로필이 등록되어 있지 않습니다.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def attendance_check_api(request):
+    """일일 출석 체크 및 낙엽 1개 지급 API (KST 기준 하루 1회 제한 및 동시성 제어 적용)"""
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Attendance, User
+
+    try:
+        # KST(한국 시각) 기준 오늘 날짜 구하기
+        kst_now = timezone.now() + timedelta(hours=9)
+        today = kst_now.date()
+
+        with transaction.atomic():
+            # 동시 출석 요청에 따른 중복 낙엽 지급 방지를 위해 락 획득
+            user = User.objects.select_for_update().get(id=request.user.id)
+            
+            # 오늘 이미 출석했는지 검사
+            already_attended = Attendance.objects.filter(user=user, date=today).exists()
+            if already_attended:
+                return JsonResponse({'success': False, 'error': '오늘은 이미 출석 체크를 하셨습니다.'}, status=400)
+            
+            # 출석 데이터 저장
+            Attendance.objects.create(user=user, date=today)
+            
+            # 낙엽 보상 1개 지급 (LeafTransaction 해시 체인 자동 생성 포함)
+            user.adjust_leaves(
+                amount=1,
+                transaction_type="attendance",
+                description=f"{today.strftime('%Y-%m-%d')} 일일 출석 체크 보상"
+            )
+            
+        return JsonResponse({
+            'success': True,
+            'message': '출석 체크가 완료되었습니다! 낙엽 1개가 적립되었습니다.',
+            'leaves': user.leaves + 1  # 획득 이후 잔여 갯수 반환 (트랜잭션 커밋 후 갱신되므로 +1 처리 또는 최신값)
+        })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 

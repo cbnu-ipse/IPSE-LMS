@@ -11,6 +11,7 @@ urlpatterns = [
     path("accounts/", include("accounts.urls")),
     path("accounts/", include("django.contrib.auth.urls")),
     path("community/", include("community.urls")),
+    path("schedules/", include("schedules.urls")),
     path("ranking/", include("ranking.urls")),
     path("accounts/api/", include("accounts.api.urls", namespace="accounts-api")),
     path("recruit/<int:form_id>/", community.views.recruit_apply, name="recruit_apply"),

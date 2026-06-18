@@ -364,3 +364,17 @@ class PushSubscription(models.Model):
     def __str__(self):
         return f"{self.student.student.username} - {self.endpoint[:30]}..."
 
+
+class Attendance(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='attendances')
+    date = models.DateField(verbose_name="출석 일자")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'date')
+        verbose_name = "출석 체크"
+        verbose_name_plural = "출석 체크 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date}"
+

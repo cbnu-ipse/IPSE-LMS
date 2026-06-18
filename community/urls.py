@@ -46,6 +46,7 @@ urlpatterns = [
     path('board/<int:post_id>/', views.post_detail, name='post_detail'),
     path('board/add/', views.post_create, name='post_create'),
     path('board/<int:post_id>/edit/', views.post_edit, name='post_edit'),
+    path('board/attachment/<int:attachment_id>/delete/', views.delete_attachment_api, name='delete_attachment_api'),
     path('board/<int:post_id>/delete/', views.post_delete, name='post_delete'),
     path('meetups/', views.gathering_list, name='gathering_list'),
     path('meetup/<int:gathering_id>/', views.gathering_detail, name='gathering_detail'),
