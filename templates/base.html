@@ -108,6 +108,10 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             번개 모임
                         </a>
+                        <a href="{% url 'timetable' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'timetable' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            수업 시간표
+                        </a>
                         <a href="{% url 'schedule_list' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             동아리 일정
@@ -266,6 +270,7 @@
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
                     {% else %}
                         <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">커뮤니티</a>
+                        <a href="{% url 'timetable' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">수업 시간표</a>
                         {% if request.user.is_staff %}
                         <a href="{% url 'recruit_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100/60 transition">
                             <span>모집 관리</span>
@@ -308,7 +313,7 @@
                 <i class="fa-brands fa-instagram text-xs"></i>
                 <span class="text-[10px]">인스타그램</span>
             </a>
-            <a href="https://github.com/ipse-github" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-slate-400 hover:text-slate-800 transition font-semibold" title="GitHub">
+            <a href="https://github.com/cbnu-ipse" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-slate-400 hover:text-slate-800 transition font-semibold" title="GitHub">
                 <i class="fa-brands fa-github text-xs"></i>
                 <span class="text-[10px]">GitHub</span>
             </a>
@@ -444,10 +449,11 @@
             return;
           }
 
-          // e.preventDefault()가 걸려있는 AJAX 제출 폼(예: 일정 추가 등)은 무시
-          if (e.defaultPrevented) return;
-
-          showBar();
+          // confirm() 등으로 인해 취소된 경우 무한 로딩에 걸리지 않도록 비동기 처리
+          setTimeout(() => {
+            if (e.defaultPrevented) return;
+            showBar();
+          }, 0);
         }, { capture: true });
 
         // 페이지 로드 완료 시 마무리
@@ -560,6 +566,8 @@
             else if (n.notification_type === 'gathering_leave') icon = '<i class="fa-solid fa-user-minus text-rose-500"></i>';
             else if (n.notification_type === 'gathering_comment') icon = '<i class="fa-solid fa-comment text-sky-500"></i>';
             else if (n.notification_type === 'gathering_cancel') icon = '<i class="fa-solid fa-triangle-exclamation text-rose-500"></i>';
+            else if (n.notification_type === 'post_comment') icon = '<i class="fa-solid fa-comment-dots text-emerald-600"></i>';
+            else if (n.notification_type === 'comment_reply') icon = '<i class="fa-solid fa-comments text-indigo-500"></i>';
 
             item.innerHTML = `
               <span class="mt-0.5">${icon}</span>

@@ -22,9 +22,14 @@
             </div>
             
             {% if page_obj %}
-            <button id="mark-all-read-btn" class="self-start sm:self-center inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 transition shadow-sm">
-                <i class="fa-solid fa-circle-check"></i> 모든 알림 읽음 처리
-            </button>
+            <div class="flex flex-wrap gap-2 self-start sm:self-center">
+                <button id="mark-all-read-btn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 transition shadow-sm">
+                    <i class="fa-solid fa-circle-check"></i> 모든 알림 읽음 처리
+                </button>
+                <button id="delete-read-btn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-bold bg-rose-50 hover:bg-rose-100 transition shadow-sm">
+                    <i class="fa-solid fa-trash-can"></i> 읽은 알림 일괄 삭제
+                </button>
+            </div>
             {% endif %}
         </div>
 
@@ -58,6 +63,10 @@
                             <i class="fa-solid fa-comment text-sky-500 text-sm"></i>
                         {% elif n.notification_type == 'gathering_cancel' %}
                             <i class="fa-solid fa-triangle-exclamation text-rose-500 text-sm"></i>
+                        {% elif n.notification_type == 'post_comment' %}
+                            <i class="fa-solid fa-comment-dots text-emerald-600 text-sm"></i>
+                        {% elif n.notification_type == 'comment_reply' %}
+                            <i class="fa-solid fa-comments text-indigo-500 text-sm"></i>
                         {% else %}
                             <i class="fa-solid fa-bell text-slate-400 text-sm"></i>
                         {% endif %}
@@ -186,6 +195,28 @@
                         location.reload();
                     }
                 });
+            });
+        }
+
+        // 읽은 알림 일괄 삭제 비동기 처리
+        const deleteReadBtn = document.getElementById('delete-read-btn');
+        if (deleteReadBtn) {
+            deleteReadBtn.addEventListener('click', () => {
+                if (confirm('읽은 알림을 모두 삭제하시겠습니까?')) {
+                    fetch('/accounts/notifications/delete-read/', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            location.reload();
+                        }
+                    });
+                }
             });
         }
     });

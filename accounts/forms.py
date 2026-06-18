@@ -177,6 +177,9 @@ class ProfileUpdateForm(forms.ModelForm):
     notify_gathering_joined = forms.BooleanField(required=False, label="참여 중인 번개 모임 알림 받기", widget=forms.CheckboxInput(attrs={
         "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
     }))
+    notify_post_comment = forms.BooleanField(required=False, label="내 게시글 댓글 및 답글 알림 받기", widget=forms.CheckboxInput(attrs={
+        "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+    }))
 
     class Meta:
         model = User
@@ -193,6 +196,7 @@ class ProfileUpdateForm(forms.ModelForm):
                 self.fields['blog_url'].initial = student.blog_url
                 self.fields['notify_gathering_all'].initial = student.notify_gathering_all
                 self.fields['notify_gathering_joined'].initial = student.notify_gathering_joined
+                self.fields['notify_post_comment'].initial = student.notify_post_comment
             except Student.DoesNotExist:
                 pass
         else:
@@ -209,6 +213,8 @@ class ProfileUpdateForm(forms.ModelForm):
                 del self.fields['notify_gathering_all']
             if 'notify_gathering_joined' in self.fields:
                 del self.fields['notify_gathering_joined']
+            if 'notify_post_comment' in self.fields:
+                del self.fields['notify_post_comment']
 
     @transaction.atomic()
     def save(self, commit=True):
@@ -224,6 +230,7 @@ class ProfileUpdateForm(forms.ModelForm):
             student.blog_url = self.cleaned_data.get('blog_url') or ''
             student.notify_gathering_all = self.cleaned_data.get('notify_gathering_all', False)
             student.notify_gathering_joined = self.cleaned_data.get('notify_gathering_joined', False)
+            student.notify_post_comment = self.cleaned_data.get('notify_post_comment', False)
             student.save()
             
         return user

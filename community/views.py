@@ -5,6 +5,7 @@ from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.storage import FileSystemStorage
 from django.http import JsonResponse, HttpResponse
@@ -20,7 +21,8 @@ from .models import (
     NewsAndEvents, NewsAndEventsComment, Poll, PollChoice, PollVote, PollComment,
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
     RecruitmentForm, RecruitmentApplication,
-    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike, CommunityPostDislike, CommunityCommentLike, CommunityCommentDislike
+    CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike, CommunityPostDislike, CommunityCommentLike, CommunityCommentDislike,
+    CommunityPostAttachment
 )
 
 
@@ -39,9 +41,9 @@ def _parse_survey_datetime(dt_str):
         return None
 
 
-def _create_notification(recipient, sender, notification_type, gathering, message):
+def _create_notification(recipient, sender, notification_type, gathering=None, post=None, message=""):
     """
-    수신자의 알림 수신 설정(notify_gathering_all, notify_gathering_joined)을
+    수신자의 알림 수신 설정(notify_gathering_all, notify_gathering_joined, notify_post_comment)을
     확인하고, 수신 허용 상태인 경우에만 Notification 객체를 생성합니다.
     """
     from accounts.models import Notification, Student
@@ -55,14 +57,19 @@ def _create_notification(recipient, sender, notification_type, gathering, messag
         student = recipient.student
         notify_all = student.notify_gathering_all
         notify_joined = student.notify_gathering_joined
+        notify_post = getattr(student, 'notify_post_comment', True)
     except Exception:
         # Student 프로필이 없거나 기타 예외 시 기본값 True로 설정
         notify_all = True
         notify_joined = True
+        notify_post = True
 
     # 알림 유형별 동의 여부 필터링
     if notification_type == 'gathering_created':
         if not notify_all:
+            return None
+    elif notification_type in ['post_comment', 'comment_reply']:
+        if not notify_post:
             return None
     else:  # 그 외 (gathering_join, gathering_leave, gathering_comment, gathering_update, gathering_cancel)
         if not notify_joined:
@@ -74,6 +81,7 @@ def _create_notification(recipient, sender, notification_type, gathering, messag
         sender=sender,
         notification_type=notification_type,
         gathering=gathering,
+        post=post,
         message=message
     )
 
@@ -1484,8 +1492,33 @@ def post_detail(request, post_id):
         action = request.POST.get('action')
         if action == 'add_comment':
             content = request.POST.get('content', '').strip()
+            parent_id = request.POST.get('parent_id')
             if content:
-                CommunityComment.objects.create(post=post, author=request.user, content=content)
+                parent = None
+                if parent_id:
+                    parent = get_object_or_404(CommunityComment, id=parent_id, post=post)
+                comment = CommunityComment.objects.create(
+                    post=post, author=request.user, content=content, parent=parent
+                )
+                # 알림 전송
+                if parent:
+                    if parent.author != request.user:
+                        _create_notification(
+                            recipient=parent.author,
+                            sender=request.user,
+                            notification_type='comment_reply',
+                            post=post,
+                            message=f"💬 {_user_display_name(request.user)}님이 회원님의 댓글에 답글을 남겼습니다."
+                        )
+                else:
+                    if post.author != request.user:
+                        _create_notification(
+                            recipient=post.author,
+                            sender=request.user,
+                            notification_type='post_comment',
+                            post=post,
+                            message=f"💬 {_user_display_name(request.user)}님이 '{post.title}' 게시글에 새 댓글을 남겼습니다."
+                        )
                 messages.success(request, '댓글이 등록되었습니다.')
             return redirect('post_detail', post_id=post.id)
 
@@ -1500,7 +1533,7 @@ def post_detail(request, post_id):
                 messages.error(request, '댓글 삭제 권한이 없습니다.')
             return redirect('post_detail', post_id=post.id)
 
-    comments = list(post.community_comments.select_related('author').order_by('-created_at'))
+    all_comments = list(post.community_comments.select_related('author').all())
     
     user_liked = post.likes.filter(user=request.user).exists()
     user_disliked = post.dislikes.filter(user=request.user).exists()
@@ -1510,7 +1543,12 @@ def post_detail(request, post_id):
     
     best_comment = None
     max_likes = 0
-    for comment in comments:
+    
+    # 대댓글 구조화
+    top_comments = []
+    replies_map = {}
+    
+    for comment in all_comments:
         comment.user_liked = comment.id in liked_comment_ids
         comment.user_disliked = comment.id in disliked_comment_ids
         
@@ -1520,10 +1558,21 @@ def post_detail(request, post_id):
                 max_likes = c_likes
                 best_comment = comment
 
+        if comment.parent_id is None:
+            top_comments.append(comment)
+        else:
+            replies_map.setdefault(comment.parent_id, []).append(comment)
+
+    # 정렬: 상위 댓글은 최신순, 대댓글은 작성순
+    top_comments.sort(key=lambda c: c.created_at, reverse=True)
+    for c in top_comments:
+        c.replies_list = replies_map.get(c.id, [])
+        c.replies_list.sort(key=lambda r: r.created_at)
+
     return render(request, 'community/post_detail.html', {
         'title': post.title,
         'post': post,
-        'comments': comments,
+        'comments': top_comments,
         'user_liked': user_liked,
         'user_disliked': user_disliked,
         'best_comment': best_comment,
@@ -1567,6 +1616,16 @@ def post_create(request):
             is_pinned=is_pinned,
             category=category
         )
+
+        # 다중 첨부파일 저장
+        attachments = request.FILES.getlist('attachments')
+        for f in attachments:
+            CommunityPostAttachment.objects.create(
+                post=post,
+                file=f,
+                filename=f.name
+            )
+
         messages.success(request, '게시글이 성공적으로 등록되었습니다.')
         return redirect('post_detail', post_id=post.id)
 
@@ -1612,6 +1671,16 @@ def post_edit(request, post_id):
             update_fields.extend(['is_notice', 'is_pinned'])
 
         post.save(update_fields=update_fields)
+
+        # 다중 첨부파일 저장
+        attachments = request.FILES.getlist('attachments')
+        for f in attachments:
+            CommunityPostAttachment.objects.create(
+                post=post,
+                file=f,
+                filename=f.name
+            )
+
         messages.success(request, '게시글이 수정되었습니다.')
         return redirect('post_detail', post_id=post.id)
 
@@ -1621,6 +1690,18 @@ def post_edit(request, post_id):
         'is_edit': True,
         'category': post.category,
     })
+
+
+@login_required
+@require_POST
+def delete_attachment_api(request, attachment_id):
+    """게시글 첨부파일 비동기 삭제"""
+    attachment = get_object_or_404(CommunityPostAttachment, id=attachment_id)
+    if request.user == attachment.post.author or request.user.is_staff:
+        attachment.file.delete(save=False)
+        attachment.delete()
+        return JsonResponse({'success': True})
+    return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다.'}, status=403)
 
 
 @login_required
@@ -1645,17 +1726,33 @@ def gathering_detail(request, gathering_id):
         action = request.POST.get('action')
         if action == 'add_comment':
             content = request.POST.get('content', '').strip()
+            parent_id = request.POST.get('parent_id')
             if content:
-                comment = GatheringComment.objects.create(gathering=gathering, author=request.user, content=content)
-                # 모임 개설자에게 댓글 등록 알림 전송 (댓글 작성자가 개설자 본인이 아닐 때)
-                if gathering.author != request.user:
-                    _create_notification(
-                        recipient=gathering.author,
-                        sender=request.user,
-                        notification_type='gathering_comment',
-                        gathering=gathering,
-                        message=f"💬 {_user_display_name(request.user)}님이 '{gathering.title}' 모임에 새 댓글을 남겼습니다."
-                    )
+                parent = None
+                if parent_id:
+                    parent = get_object_or_404(GatheringComment, id=parent_id, gathering=gathering)
+                comment = GatheringComment.objects.create(
+                    gathering=gathering, author=request.user, content=content, parent=parent
+                )
+                # 알림 전송
+                if parent:
+                    if parent.author != request.user:
+                        _create_notification(
+                            recipient=parent.author,
+                            sender=request.user,
+                            notification_type='comment_reply',
+                            gathering=gathering,
+                            message=f"💬 {_user_display_name(request.user)}님이 회원님의 번개 댓글에 답글을 남겼습니다."
+                        )
+                else:
+                    if gathering.author != request.user:
+                        _create_notification(
+                            recipient=gathering.author,
+                            sender=request.user,
+                            notification_type='gathering_comment',
+                            gathering=gathering,
+                            message=f"💬 {_user_display_name(request.user)}님이 '{gathering.title}' 모임에 새 댓글을 남겼습니다."
+                        )
                 messages.success(request, '댓글이 등록되었습니다.')
             return redirect('gathering_detail', gathering_id=gathering.id)
 
@@ -1669,7 +1766,31 @@ def gathering_detail(request, gathering_id):
                 messages.error(request, '댓글 삭제 권한이 없습니다.')
             return redirect('gathering_detail', gathering_id=gathering.id)
 
-    comments = gathering.gathering_comments.select_related('author').order_by('-created_at')
+    from .models import GatheringCommentLike, GatheringCommentDislike
+    all_comments = list(gathering.gathering_comments.select_related('author').all())
+    
+    liked_comment_ids = set()
+    disliked_comment_ids = set()
+    if request.user.is_authenticated:
+        liked_comment_ids = set(GatheringCommentLike.objects.filter(comment__gathering=gathering, user=request.user).values_list('comment_id', flat=True))
+        disliked_comment_ids = set(GatheringCommentDislike.objects.filter(comment__gathering=gathering, user=request.user).values_list('comment_id', flat=True))
+        
+    top_comments = []
+    replies_map = {}
+    
+    for comment in all_comments:
+        comment.user_liked = comment.id in liked_comment_ids
+        comment.user_disliked = comment.id in disliked_comment_ids
+        
+        if comment.parent_id is None:
+            top_comments.append(comment)
+        else:
+            replies_map.setdefault(comment.parent_id, []).append(comment)
+            
+    top_comments.sort(key=lambda c: c.created_at, reverse=True)
+    for c in top_comments:
+        c.replies_list = replies_map.get(c.id, [])
+        c.replies_list.sort(key=lambda r: r.created_at)
     participants = gathering.participants.all()
     user_joined = request.user in participants
 
@@ -1688,7 +1809,7 @@ def gathering_detail(request, gathering_id):
     return render(request, 'community/gathering_detail.html', {
         'title': gathering.title,
         'gathering': gathering,
-        'comments': comments,
+        'comments': top_comments,
         'participants': participants,
         'user_joined': user_joined,
         'cooldown_remaining': cooldown_remaining,
@@ -1708,15 +1829,7 @@ def gathering_create(request):
 
         if not (title and description and event_date_str and location and max_participants_str):
             messages.error(request, '모든 필수 항목을 입력해 주세요.')
-            return render(request, 'community/gathering_create.html', {
-                'title': '번개 모임 만들기',
-                'title_val': title,
-                'description_val': description,
-                'event_date_val': event_date_str,
-                'location_val': location,
-                'max_participants_val': max_participants_str,
-                'category_val': category
-            })
+            return redirect('gathering_list')
 
         try:
             parsed_date = dt_module.datetime.fromisoformat(event_date_str)
@@ -1729,15 +1842,7 @@ def gathering_create(request):
                 raise ValueError("정원은 1명 이상이어야 합니다.")
         except (ValueError, TypeError):
             messages.error(request, '올바른 날짜 형식과 정원 수치를 입력해 주세요.')
-            return render(request, 'community/gathering_create.html', {
-                'title': '번개 모임 만들기',
-                'title_val': title,
-                'description_val': description,
-                'event_date_val': event_date_str,
-                'location_val': location,
-                'max_participants_val': max_participants_str,
-                'category_val': category
-            })
+            return redirect('gathering_list')
 
         with transaction.atomic():
             gathering = GatheringEvent.objects.create(
@@ -1778,9 +1883,7 @@ def gathering_create(request):
         messages.success(request, '번개 모임이 개설되었습니다!')
         return redirect('gathering_detail', gathering_id=gathering.id)
 
-    return render(request, 'community/gathering_create.html', {
-        'title': '번개 모임 만들기'
-    })
+    return redirect('gathering_list')
 
 
 @login_required
@@ -2086,4 +2189,78 @@ def gathering_list(request):
         'active_gatherings': active_gatherings,
         'closed_gatherings': closed_gatherings,
     })
+
+
+@login_required
+def gathering_comment_like_toggle(request, comment_id):
+    """번개 댓글 추천 토글 API"""
+    if request.method == 'POST':
+        from .models import GatheringComment, GatheringCommentLike, GatheringCommentDislike
+        comment = get_object_or_404(GatheringComment, id=comment_id)
+        
+        with transaction.atomic():
+            like_qs = GatheringCommentLike.objects.filter(comment=comment, user=request.user)
+            dislike_qs = GatheringCommentDislike.objects.filter(comment=comment, user=request.user)
+            
+            disliked_removed = False
+            if dislike_qs.exists():
+                dislike_qs.delete()
+                disliked_removed = True
+                
+            if like_qs.exists():
+                like_qs.delete()
+                liked = False
+                message = '댓글 추천을 취소했습니다.'
+            else:
+                GatheringCommentLike.objects.create(comment=comment, user=request.user)
+                liked = True
+                message = '댓글을 추천했습니다!'
+                
+        return JsonResponse({
+            'status': 'success',
+            'liked': liked,
+            'disliked': False,
+            'disliked_removed': disliked_removed,
+            'like_count': comment.like_count,
+            'dislike_count': comment.dislike_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+@login_required
+def gathering_comment_dislike_toggle(request, comment_id):
+    """번개 댓글 비추천 토글 API"""
+    if request.method == 'POST':
+        from .models import GatheringComment, GatheringCommentLike, GatheringCommentDislike
+        comment = get_object_or_404(GatheringComment, id=comment_id)
+        
+        with transaction.atomic():
+            like_qs = GatheringCommentLike.objects.filter(comment=comment, user=request.user)
+            dislike_qs = GatheringCommentDislike.objects.filter(comment=comment, user=request.user)
+            
+            liked_removed = False
+            if like_qs.exists():
+                like_qs.delete()
+                liked_removed = True
+                
+            if dislike_qs.exists():
+                dislike_qs.delete()
+                disliked = False
+                message = '댓글 비추천을 취소했습니다.'
+            else:
+                GatheringCommentDislike.objects.create(comment=comment, user=request.user)
+                disliked = True
+                message = '댓글을 비추천했습니다!'
+                
+        return JsonResponse({
+            'status': 'success',
+            'liked': False,
+            'disliked': disliked,
+            'liked_removed': liked_removed,
+            'like_count': comment.like_count,
+            'dislike_count': comment.dislike_count,
+            'message': message
+        })
+    return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
 

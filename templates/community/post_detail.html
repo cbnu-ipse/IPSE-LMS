@@ -66,6 +66,26 @@
             <!-- Toast UI Viewer 본문 영역 -->
             <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed"></div>
 
+            <!-- 📎 첨부파일 목록 영역 -->
+            {% if post.attachments.all %}
+            <div class="border-t border-slate-100 pt-6 mt-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <i class="fa-solid fa-paperclip text-slate-400"></i> 첨부파일 ({{ post.attachments.count }}개)
+                </h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% for att in post.attachments.all %}
+                    <a href="{{ att.file.url }}" download class="flex items-center justify-between p-3.5 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/20 rounded-xl transition group">
+                        <div class="flex items-center gap-2.5 truncate">
+                            <i class="fa-solid fa-file text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
+                            <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors truncate">{{ att.filename }}</span>
+                        </div>
+                        <i class="fa-solid fa-download text-xs text-slate-400 group-hover:text-emerald-600 transition-colors pl-2"></i>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- 👍👎 추천 / 비추천 캡슐 -->
             <div class="flex items-center justify-center gap-3 pt-6 border-t border-slate-100">
                 <button id="post-like-btn" onclick="togglePostLike()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 {% if user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600 scale-105{% else %}bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %}">
@@ -130,45 +150,102 @@
             {% if comments %}
             <div class="divide-y divide-slate-100 pt-2">
                 {% for comment in comments %}
-                <div class="py-4 flex justify-between items-start gap-4">
-                    <div class="space-y-2 flex-1">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-slate-700">
-                                {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
-                            </span>
-                            <span class="text-[10px] text-slate-400">
-                                {{ comment.created_at|date:"Y-m-d H:i" }}
-                            </span>
+                <div class="py-4 space-y-3">
+                    <!-- 최상위 댓글 -->
+                    <div class="flex justify-between items-start gap-4">
+                        <div class="space-y-2 flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-slate-700">
+                                    {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
+                                </span>
+                                <span class="text-[10px] text-slate-400">
+                                    {{ comment.created_at|date:"Y-m-d H:i" }}
+                                </span>
+                            </div>
+                            <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ comment.content }}</p>
+                            
+                            <!-- 댓글 추천/비추천 버튼 & 답글 달기 영역 -->
+                            <div class="flex items-center gap-3 pt-1">
+                                <button onclick="toggleCommentLike({{ comment.id }})" 
+                                        id="comment-like-btn-{{ comment.id }}" 
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
+                                    <i class="{% if comment.user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up"></i>
+                                    <span>추천 <span id="comment-like-count-{{ comment.id }}">{{ comment.like_count }}</span></span>
+                                </button>
+                                <button onclick="toggleCommentDislike({{ comment.id }})" 
+                                        id="comment-dislike-btn-{{ comment.id }}" 
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_disliked %}bg-rose-50 border-rose-200 text-rose-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
+                                    <i class="{% if comment.user_disliked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-down"></i>
+                                    <span>비추천 <span id="comment-dislike-count-{{ comment.id }}">{{ comment.dislike_count }}</span></span>
+                                </button>
+                                <button onclick="toggleReplyForm({{ comment.id }})" class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-emerald-600 transition-colors">
+                                    <i class="fa-regular fa-comment-dots"></i>
+                                    <span>답글 쓰기</span>
+                                </button>
+                            </div>
                         </div>
-                        <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ comment.content }}</p>
-                        
-                        <!-- 댓글 추천/비추천 버튼 영역 -->
-                        <div class="flex items-center gap-3 pt-1">
-                            <button onclick="toggleCommentLike({{ comment.id }})" 
-                                    id="comment-like-btn-{{ comment.id }}" 
-                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
-                                <i class="{% if comment.user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up"></i>
-                                <span>추천 <span id="comment-like-count-{{ comment.id }}">{{ comment.like_count }}</span></span>
+
+                        <!-- 댓글 삭제 -->
+                        {% if request.user == comment.author or request.user.is_staff %}
+                        <form action="" method="POST" onsubmit="return confirm('댓글을 삭제하시겠습니까?');" class="shrink-0 mt-1">{% csrf_token %}
+                            <input type="hidden" name="action" value="delete_comment">
+                            <input type="hidden" name="comment_id" value="{{ comment.id }}">
+                            <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="댓글 삭제">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
                             </button>
-                            <button onclick="toggleCommentDislike({{ comment.id }})" 
-                                    id="comment-dislike-btn-{{ comment.id }}" 
-                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_disliked %}bg-rose-50 border-rose-200 text-rose-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
-                                <i class="{% if comment.user_disliked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-down"></i>
-                                <span>비추천{% if request.user.is_staff %} <span id="comment-dislike-count-{{ comment.id }}">{{ comment.dislike_count }}</span>{% endif %}</span>
-                            </button>
-                        </div>
+                        </form>
+                        {% endif %}
                     </div>
 
-                    <!-- 댓글 삭제 -->
-                    {% if request.user == comment.author or request.user.is_staff %}
-                    <form action="" method="POST" onsubmit="return confirm('댓글을 삭제하시겠습니까?');" class="shrink-0 mt-1">{% csrf_token %}
-                        <input type="hidden" name="action" value="delete_comment">
-                        <input type="hidden" name="comment_id" value="{{ comment.id }}">
-                        <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="댓글 삭제">
-                            <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                    </form>
+                    <!-- 대댓글 목록 -->
+                    {% if comment.replies_list %}
+                    <div class="space-y-2.5 pl-8 border-l-2 border-slate-100 mt-2">
+                        {% for reply in comment.replies_list %}
+                        <div class="bg-slate-50/70 border border-slate-100 rounded-xl p-4 flex justify-between items-start gap-4">
+                            <div class="space-y-1.5 flex-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-700">
+                                        {{ reply.author.get_full_name|default:reply.author.username }} ({{ reply.author.username }})
+                                    </span>
+                                    <span class="text-[10px] text-slate-400">
+                                        {{ reply.created_at|date:"Y-m-d H:i" }}
+                                    </span>
+                                </div>
+                                <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ reply.content }}</p>
+                            </div>
+                            
+                            <!-- 대댓글 삭제 -->
+                            {% if request.user == reply.author or request.user.is_staff %}
+                            <form action="" method="POST" onsubmit="return confirm('답글을 삭제하시겠습니까?');" class="shrink-0">{% csrf_token %}
+                                <input type="hidden" name="action" value="delete_comment">
+                                <input type="hidden" name="comment_id" value="{{ reply.id }}">
+                                <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="답글 삭제">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% endif %}
+
+                    <!-- 대댓글 작성 폼 (기본 hidden) -->
+                    <div id="reply-form-container-{{ comment.id }}" class="hidden pl-8 mt-2">
+                        <form action="" method="POST" class="flex gap-3 bg-slate-50 p-4 border border-slate-200 rounded-xl">{% csrf_token %}
+                            <input type="hidden" name="action" value="add_comment">
+                            <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                            <div class="flex-1">
+                                <textarea name="content" 
+                                          rows="1" 
+                                          placeholder="답글을 남겨주세요." 
+                                          class="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-xs font-medium text-slate-700 transition resize-none bg-white"
+                                          required></textarea>
+                            </div>
+                            <button type="submit" class="px-4 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition shadow-sm">
+                                등록
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -410,6 +487,13 @@
             console.error(err);
             alert('오류가 발생했습니다.');
         });
+    }
+
+    function toggleReplyForm(commentId) {
+        const container = document.getElementById(`reply-form-container-${commentId}`);
+        if (container) {
+            container.classList.toggle('hidden');
+        }
     }
 </script>
 {% endblock content %}

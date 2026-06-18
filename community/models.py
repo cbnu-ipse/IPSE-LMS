@@ -373,6 +373,14 @@ class CommunityComment(models.Model):
         related_name="community_comments",
         verbose_name="게시글"
     )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies',
+        verbose_name='상위 댓글'
+    )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -511,6 +519,14 @@ class GatheringComment(models.Model):
         related_name="gathering_comments",
         verbose_name="번개 모임"
     )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies',
+        verbose_name='상위 댓글'
+    )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -524,6 +540,56 @@ class GatheringComment(models.Model):
 
     def __str__(self):
         return f"{self.author} - {self.gathering}"
+
+    @property
+    def like_count(self):
+        return self.likes.count()
+
+    @property
+    def dislike_count(self):
+        return self.dislikes.count()
+
+
+class GatheringCommentLike(models.Model):
+    comment = models.ForeignKey(
+        GatheringComment,
+        on_delete=models.CASCADE,
+        related_name="likes",
+        verbose_name="댓글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="gathering_comment_likes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="추천일시")
+
+    class Meta:
+        unique_together = ("comment", "user")
+        verbose_name = "댓글 추천"
+        verbose_name_plural = "댓글 추천 목록"
+
+
+class GatheringCommentDislike(models.Model):
+    comment = models.ForeignKey(
+        GatheringComment,
+        on_delete=models.CASCADE,
+        related_name="dislikes",
+        verbose_name="댓글"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="gathering_comment_dislikes",
+        verbose_name="사용자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="비추천일시")
+
+    class Meta:
+        unique_together = ("comment", "user")
+        verbose_name = "댓글 비추천"
+        verbose_name_plural = "댓글 비추천 목록"
 
 
 class GatheringLeaveLog(models.Model):
@@ -549,3 +615,25 @@ class GatheringLeaveLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.gathering.title} (Left: {self.left_at})"
+
+
+class CommunityPostAttachment(models.Model):
+    post = models.ForeignKey(
+        'CommunityPost',
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name="게시글"
+    )
+    file = models.FileField(
+        upload_to='post_attachments/%Y/%m/%d/',
+        verbose_name="첨부파일"
+    )
+    filename = models.CharField(max_length=255, verbose_name="파일명")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="등록일시")
+
+    class Meta:
+        verbose_name = "게시글 첨부파일"
+        verbose_name_plural = "게시글 첨부파일 목록"
+
+    def __str__(self):
+        return self.filename

@@ -76,6 +76,7 @@ urlpatterns = [
     path('notifications/recent/', views.notification_list_api, name='notification_list_api'),
     path('notifications/<int:notification_id>/read/', views.read_and_redirect, name='read_and_redirect'),
     path('notifications/read-all/', views.mark_all_as_read_api, name='mark_all_as_read_api'),
+    path('notifications/delete-read/', views.delete_read_notifications_api, name='delete_read_notifications_api'),
     path('notifications/<int:notification_id>/delete/', views.delete_notification_api, name='delete_notification_api'),
     path('notifications/push/subscribe/', views.subscribe_push_api, name='subscribe_push_api'),
     path('notifications/push/unsubscribe/', views.unsubscribe_push_api, name='unsubscribe_push_api'),
@@ -84,4 +85,7 @@ urlpatterns = [
     path('lms/', views.lms_page, name='lms_page'),
     path('lms/import-assignments/', views.lms_import_assignments_api, name='lms_import_assignments_api'),
     path('lms/download/', views.lms_download_file, name='lms_download_file'),
+    
+    # ─── Attendance ────────────────────────────────────────────────────────────
+    path('attendance/check/', views.attendance_check_api, name='attendance_check_api'),
 ]
