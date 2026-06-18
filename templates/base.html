@@ -448,10 +448,11 @@
             return;
           }
 
-          // e.preventDefault()가 걸려있는 AJAX 제출 폼(예: 일정 추가 등)은 무시
-          if (e.defaultPrevented) return;
-
-          showBar();
+          // confirm() 등으로 인해 취소된 경우 무한 로딩에 걸리지 않도록 비동기 처리
+          setTimeout(() => {
+            if (e.defaultPrevented) return;
+            showBar();
+          }, 0);
         }, { capture: true });
 
         // 페이지 로드 완료 시 마무리
