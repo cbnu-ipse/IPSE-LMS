@@ -1608,13 +1608,19 @@ def post_create(request):
             is_notice = request.POST.get('is_notice') == 'on'
             is_pinned = request.POST.get('is_pinned') == 'on' if is_notice else False
 
+        # 피드백 게시판에서만 익명 게시 허용
+        is_anonymous = False
+        if category == 'feedback':
+            is_anonymous = request.POST.get('is_anonymous') == 'on'
+
         post = CommunityPost.objects.create(
             title=title,
             content=content,
             author=request.user,
             is_notice=is_notice,
             is_pinned=is_pinned,
-            category=category
+            category=category,
+            is_anonymous=is_anonymous,
         )
 
         # 다중 첨부파일 저장
