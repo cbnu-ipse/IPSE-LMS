@@ -117,12 +117,8 @@
                             동아리 일정
                         </a>
                         <a href="{% url 'poll_list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
-                            투표
-                        </a>
-                        <a href="{% url 'survey_list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
-                            설문
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' or request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            투표/설문
                         </a>
                         {% if request.user.is_staff %}
                         <a href="{% url 'recruit_list' %}"
@@ -336,10 +332,10 @@
     <!-- 모바일 5탭 Bottom Navigation Bar -->
     {% if request.host.name != 'judge' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
-        <!-- 1. 동아리 일정 -->
-        <a href="{% url 'schedule_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
-            <i class="fa-solid fa-calendar-days text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">일정</span>
+        <!-- 1. 투표/설문 -->
+        <a href="{% url 'poll_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' or request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-square-poll-vertical text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">투표/설문</span>
         </a>
 
         <!-- 2. 번개 모임 -->
@@ -356,16 +352,16 @@
             <span class="text-[9px] font-semibold tracking-tight text-slate-400 absolute bottom-1.5 pointer-events-none">홈</span>
         </div>
 
-        <!-- 4. 투표 -->
-        <a href="{% url 'poll_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
-            <i class="fa-solid fa-square-poll-vertical text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">투표</span>
+        <!-- 4. 동아리 일정 -->
+        <a href="{% url 'schedule_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-calendar-days text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">일정</span>
         </a>
 
-        <!-- 5. 설문 -->
-        <a href="{% url 'survey_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
-            <i class="fa-solid fa-file-lines text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">설문</span>
+        <!-- 5. 수업 시간표 -->
+        <a href="{% url 'timetable' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'timetable' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-table-cells text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">시간표</span>
         </a>
     </div>
     {% endif %}
