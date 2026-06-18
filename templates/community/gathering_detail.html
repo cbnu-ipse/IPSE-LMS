@@ -22,94 +22,58 @@
         {% include 'snippets/messages.html' %}
 
         <!-- ⚡ 2. 번개 상세 정보 카드 -->
-        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div class="lg:col-span-8 space-y-6">
-                <!-- 제목 및 상태 배지 -->
-                <div>
-                    <div class="flex items-center gap-2 mb-3">
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold {% if gathering.is_full %}bg-rose-50 text-rose-600 border border-rose-100{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %}">
-                            <i class="fa-solid {% if gathering.is_full %}fa-circle-xmark{% else %}fa-circle-check{% endif %}"></i>
-                            {% if gathering.is_full %}모집 마감{% else %}모집 중{% endif %}
-                        </span>
-                        <span class="text-xs text-slate-400 font-medium">개설일: {{ gathering.created_at|date:"Y-m-d H:i" }}</span>
-                    </div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6">
+            <!-- 제목 및 상태 배지 -->
+            <div>
+                <div class="flex items-start justify-between gap-4 mb-3">
                     <h1 class="text-2xl lg:text-3xl font-extrabold text-slate-800 leading-tight">
                         {{ gathering.title }}
                     </h1>
+                    <span class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold {% if gathering.is_full %}bg-rose-50 text-rose-600 border border-rose-100{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %}">
+                        <i class="fa-solid {% if gathering.is_full %}fa-circle-xmark{% else %}fa-circle-check{% endif %}"></i>
+                        {% if gathering.is_full %}모집 마감{% else %}모집 중{% endif %}
+                    </span>
+                </div>
+                
+                <!-- 모임 상세 소개 내용 -->
+                <div class="text-slate-700 leading-relaxed mt-4 whitespace-pre-wrap text-sm bg-slate-50 border border-slate-100 rounded-2xl p-5">
+                    {{ gathering.description }}
                 </div>
 
-                <!-- 모임 상세 소개 내용 -->
-                <div class="space-y-2">
-                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">모임 소개</h3>
-                    <div class="bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                        {{ gathering.description }}
-                    </div>
+                <!-- 메타 정보 (가로 나열) -->
+                <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 text-xs text-slate-400">
+                    <span><i class="fa-solid fa-users mr-1"></i>정원 {{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
+                    <span>· <i class="fa-solid fa-calendar-check mr-1"></i>일시: {{ gathering.event_date|date:"Y년 m월 d일 H:i" }}</span>
+                    <span>· <i class="fa-solid fa-map-location-dot mr-1"></i>장소: {{ gathering.location }}</span>
+                    <span>· <i class="fa-solid fa-user-shield mr-1"></i>주최: {{ gathering.author.get_full_name|default:gathering.author.username }} ({{ gathering.author.username }})</span>
+                    <span>· 등록일: {{ gathering.created_at|date:"Y.m.d" }}</span>
                 </div>
             </div>
 
-            <!-- 우측 모임 스케줄 요약 정보 -->
-            <div class="lg:col-span-4 bg-slate-50/50 border border-slate-200/50 rounded-2xl p-6 flex flex-col justify-between h-fit gap-6 shadow-inner">
-                <div class="space-y-4">
-                    <h4 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-200/60">모임 요약 정보</h4>
-                    
-                    <div class="space-y-3.5 text-xs text-slate-600">
-                        <div class="flex items-start gap-2.5">
-                            <i class="fa-solid fa-calendar-check text-slate-400 mt-0.5 w-4"></i>
-                            <div>
-                                <strong class="block text-slate-400 text-[10px] uppercase font-bold mb-0.5">모임 일시</strong>
-                                <span class="font-semibold text-slate-800">{{ gathering.event_date|date:"Y년 m월 d일 H시 i분" }}</span>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-2.5">
-                            <i class="fa-solid fa-map-location-dot text-slate-400 mt-0.5 w-4"></i>
-                            <div>
-                                <strong class="block text-slate-400 text-[10px] uppercase font-bold mb-0.5">모임 장소</strong>
-                                <span class="font-semibold text-slate-800">{{ gathering.location }}</span>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-2.5">
-                            <i class="fa-solid fa-user-shield text-slate-400 mt-0.5 w-4"></i>
-                            <div>
-                                <strong class="block text-slate-400 text-[10px] uppercase font-bold mb-0.5">개설자 (호스트)</strong>
-                                <span class="font-semibold text-slate-800">{{ gathering.author.get_full_name|default:gathering.author.username }} ({{ gathering.author.username }})</span>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-2.5">
-                            <i class="fa-solid fa-users text-slate-400 mt-0.5 w-4"></i>
-                            <div>
-                                <strong class="block text-slate-400 text-[10px] uppercase font-bold mb-0.5">모집 정원 현황</strong>
-                                <span class="font-semibold text-slate-800">
-                                    현재 <span class="text-amber-600 font-extrabold">{{ gathering.participants.count }}</span> / {{ gathering.max_participants }} 명
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 참여/취소 액션 버튼 -->
-                <div class="space-y-2 pt-4 border-t border-slate-200/60">
-                    {% if gathering.author == request.user %}
-                    <form action="{% url 'gathering_cancel' gathering.id %}" method="POST" onsubmit="return confirm('이 번개 모임을 정말 취소(폭파)하시겠습니까? 참여 중인 부원들의 캘린더 일정에서도 자동 삭제됩니다.');" class="w-full">
-                        {% csrf_token %}
-                        <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition active:scale-[0.99] shadow-sm">
-                            <i class="fa-solid fa-circle-xmark"></i> 모임 폭파하기 (취소)
-                        </button>
-                    </form>
+            <!-- 참여/취소 액션 버튼 -->
+            <hr class="border-slate-100">
+            <div class="flex justify-end gap-3">
+                {% if gathering.author == request.user %}
+                <form action="{% url 'gathering_cancel' gathering.id %}" method="POST" onsubmit="return confirm('이 번개 모임을 정말 취소(폭파)하시겠습니까? 참여 중인 부원들의 캘린더 일정에서도 자동 삭제됩니다.');" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition active:scale-[0.99] shadow-sm">
+                        <i class="fa-solid fa-circle-xmark"></i> 모임 폭파하기 (취소)
+                    </button>
+                </form>
+                {% else %}
+                    {% if user_joined %}
+                    <button type="button" onclick="toggleJoinDetail(this, {{ gathering.id }})" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm bg-rose-500 hover:bg-rose-600 text-white">
+                        <i class="fa-solid fa-user-minus"></i> 참가 취소
+                    </button>
                     {% else %}
-                        {% if user_joined %}
-                        <button type="button" onclick="toggleJoinDetail(this, {{ gathering.id }})" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-bold transition shadow-sm bg-rose-500 hover:bg-rose-600 text-white">
-                            <i class="fa-solid fa-user-minus"></i> 참 가 취 소
-                        </button>
-                        {% else %}
-                        <button type="button" id="join-btn" onclick="toggleJoinDetail(this, {{ gathering.id }})" 
-                                class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-bold transition shadow-sm bg-amber-500 hover:bg-amber-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
-                                {% if cooldown_remaining > 0 %}disabled{% endif %}>
-                            <i class="fa-solid fa-user-plus"></i> 
-                            <span id="join-btn-text">참 가 신 청</span>
-                        </button>
-                        {% endif %}
+                    <button type="button" id="join-btn" onclick="toggleJoinDetail(this, {{ gathering.id }})" 
+                            class="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm bg-amber-500 hover:bg-amber-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                            {% if cooldown_remaining > 0 %}disabled{% endif %}>
+                        <i class="fa-solid fa-user-plus"></i> 
+                        <span id="join-btn-text">참가 신청</span>
+                    </button>
                     {% endif %}
-                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -168,29 +132,102 @@
             {% if comments %}
             <div class="divide-y divide-slate-100 pt-2">
                 {% for comment in comments %}
-                <div class="py-4 flex justify-between gap-4">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-slate-700">
-                                {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
-                            </span>
-                            <span class="text-[10px] text-slate-400">
-                                {{ comment.created_at|date:"Y-m-d H:i" }}
-                            </span>
+                <div class="py-4 space-y-3">
+                    <!-- 최상위 댓글 -->
+                    <div class="flex justify-between items-start gap-4">
+                        <div class="space-y-2 flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-slate-700">
+                                    {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
+                                </span>
+                                <span class="text-[10px] text-slate-400">
+                                    {{ comment.created_at|date:"Y-m-d H:i" }}
+                                </span>
+                            </div>
+                            <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ comment.content }}</p>
+                            
+                            <!-- 댓글 추천/비추천 버튼 & 답글 달기 영역 -->
+                            <div class="flex items-center gap-3 pt-1">
+                                <button onclick="toggleCommentLike({{ comment.id }})" 
+                                        id="comment-like-btn-{{ comment.id }}" 
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
+                                    <i class="{% if comment.user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up"></i>
+                                    <span>추천 <span id="comment-like-count-{{ comment.id }}">{{ comment.like_count }}</span></span>
+                                </button>
+                                <button onclick="toggleCommentDislike({{ comment.id }})" 
+                                        id="comment-dislike-btn-{{ comment.id }}" 
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all {% if comment.user_disliked %}bg-rose-50 border-rose-200 text-rose-600{% else %}bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600{% endif %}">
+                                    <i class="{% if comment.user_disliked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-down"></i>
+                                    <span>비추천 <span id="comment-dislike-count-{{ comment.id }}">{{ comment.dislike_count }}</span></span>
+                                </button>
+                                <button onclick="toggleReplyForm({{ comment.id }})" class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-amber-600 transition-colors">
+                                    <i class="fa-regular fa-comment-dots"></i>
+                                    <span>답글 쓰기</span>
+                                </button>
+                            </div>
                         </div>
-                        <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ comment.content }}</p>
+
+                        <!-- 댓글 삭제 -->
+                        {% if request.user == comment.author or request.user.is_staff %}
+                        <form action="" method="POST" onsubmit="return confirm('댓글을 삭제하시겠습니까?');" class="shrink-0 mt-1">{% csrf_token %}
+                            <input type="hidden" name="action" value="delete_comment">
+                            <input type="hidden" name="comment_id" value="{{ comment.id }}">
+                            <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="댓글 삭제">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </form>
+                        {% endif %}
                     </div>
 
-                    <!-- 댓글 삭제 -->
-                    {% if request.user == comment.author or request.user.is_staff %}
-                    <form action="" method="POST" onsubmit="return confirm('댓글을 삭제하시겠습니까?');">{% csrf_token %}
-                        <input type="hidden" name="action" value="delete_comment">
-                        <input type="hidden" name="comment_id" value="{{ comment.id }}">
-                        <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="댓글 삭제">
-                            <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                    </form>
+                    <!-- 대댓글 목록 -->
+                    {% if comment.replies_list %}
+                    <div class="space-y-2.5 pl-8 border-l-2 border-slate-100 mt-2">
+                        {% for reply in comment.replies_list %}
+                        <div class="bg-slate-50/70 border border-slate-100 rounded-xl p-4 flex justify-between items-start gap-4">
+                            <div class="space-y-1.5 flex-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-700">
+                                        {{ reply.author.get_full_name|default:reply.author.username }} ({{ reply.author.username }})
+                                    </span>
+                                    <span class="text-[10px] text-slate-400">
+                                        {{ reply.created_at|date:"Y-m-d H:i" }}
+                                    </span>
+                                </div>
+                                <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{{ reply.content }}</p>
+                            </div>
+                            
+                            <!-- 대댓글 삭제 -->
+                            {% if request.user == reply.author or request.user.is_staff %}
+                            <form action="" method="POST" onsubmit="return confirm('답글을 삭제하시겠습니까?');" class="shrink-0">{% csrf_token %}
+                                <input type="hidden" name="action" value="delete_comment">
+                                <input type="hidden" name="comment_id" value="{{ reply.id }}">
+                                <button type="submit" class="text-slate-300 hover:text-rose-500 p-1.5 transition" title="답글 삭제">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% endif %}
+
+                    <!-- 대댓글 작성 폼 (기본 hidden) -->
+                    <div id="reply-form-container-{{ comment.id }}" class="hidden pl-8 mt-2">
+                        <form action="" method="POST" class="flex gap-3 bg-slate-50 p-4 border border-slate-200 rounded-xl">{% csrf_token %}
+                            <input type="hidden" name="action" value="add_comment">
+                            <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                            <div class="flex-1">
+                                <textarea name="content" 
+                                          rows="1" 
+                                          placeholder="답글을 남겨주세요." 
+                                          class="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-xs font-medium text-slate-700 transition resize-none bg-white"
+                                          required></textarea>
+                            </div>
+                            <button type="submit" class="px-4 rounded-lg bg-slate-800 text-white text-xs font-semibold hover:bg-slate-900 transition shadow-sm">
+                                등록
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -257,5 +294,116 @@
             const timerInterval = setInterval(updateTimer, 1000);
         }
     });
+
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+
+    function toggleReplyForm(commentId) {
+        const container = document.getElementById(`reply-form-container-${commentId}`);
+        if (container) {
+            container.classList.toggle('hidden');
+        }
+    }
+
+    function toggleCommentLike(commentId) {
+        const url = `/community/meetup/comment/${commentId}/like/`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const likeBtn = document.getElementById(`comment-like-btn-${commentId}`);
+                const dislikeBtn = document.getElementById(`comment-dislike-btn-${commentId}`);
+                
+                if (data.liked) {
+                    likeBtn.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    likeBtn.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-600');
+                    const icon = likeBtn.querySelector('i');
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid');
+                } else {
+                    likeBtn.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-600');
+                    likeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    const icon = likeBtn.querySelector('i');
+                    icon.classList.remove('fa-solid');
+                    icon.classList.add('fa-regular');
+                }
+                document.getElementById(`comment-like-count-${commentId}`).innerText = data.like_count;
+                
+                dislikeBtn.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-600');
+                dislikeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                const dislikeIcon = dislikeBtn.querySelector('i');
+                dislikeIcon.classList.remove('fa-solid');
+                dislikeIcon.classList.add('fa-regular');
+                
+                const dislikeCountEl = document.getElementById(`comment-dislike-count-${commentId}`);
+                if (dislikeCountEl) {
+                    dislikeCountEl.innerText = data.dislike_count;
+                }
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+        });
+    }
+
+    function toggleCommentDislike(commentId) {
+        const url = `/community/meetup/comment/${commentId}/dislike/`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const likeBtn = document.getElementById(`comment-like-btn-${commentId}`);
+                const dislikeBtn = document.getElementById(`comment-dislike-btn-${commentId}`);
+                
+                if (data.disliked) {
+                    dislikeBtn.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    dislikeBtn.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-600');
+                    const icon = dislikeBtn.querySelector('i');
+                    icon.classList.remove('fa-regular');
+                    icon.classList.add('fa-solid');
+                } else {
+                    dislikeBtn.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-600');
+                    dislikeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                    const icon = dislikeBtn.querySelector('i');
+                    icon.classList.remove('fa-solid');
+                    icon.classList.add('fa-regular');
+                }
+                const dislikeCountEl = document.getElementById(`comment-dislike-count-${commentId}`);
+                if (dislikeCountEl) {
+                    dislikeCountEl.innerText = data.dislike_count;
+                }
+                
+                likeBtn.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-600');
+                likeBtn.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400', 'hover:bg-slate-100', 'hover:text-slate-600');
+                const likeIcon = likeBtn.querySelector('i');
+                likeIcon.classList.remove('fa-solid');
+                likeIcon.classList.add('fa-regular');
+                
+                document.getElementById(`comment-like-count-${commentId}`).innerText = data.like_count;
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+        });
+    }
 </script>
 {% endblock extra_js %}
