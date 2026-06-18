@@ -369,3 +369,96 @@ class NotificationSystemTestCase(TestCase):
         self.assertEqual(res_success.status_code, 200)
         self.assertTrue(self.gathering.participants.filter(id=self.guest_user.id).exists())
 
+    def test_post_comment_notification(self):
+        """게시글에 댓글 작성 시 게시글 작성자에게 알림 전송"""
+        from community.models import CommunityPost
+        post = CommunityPost.objects.create(
+            title="게시글 제목",
+            content="게시글 내용",
+            author=self.host_user,
+            category="free"
+        )
+        Notification.objects.all().delete()
+
+        # guest_user 가 댓글 작성
+        self.client.force_login(self.guest_user)
+        detail_url = reverse('post_detail', kwargs={'post_id': post.id})
+        response = self.client.post(detail_url, {
+            'action': 'add_comment',
+            'content': '댓글 본문입니다.'
+        })
+        self.assertEqual(response.status_code, 302)
+
+        # 게시글 작성자(host_user)에게 알림이 왔는지 검증
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.host_user,
+            sender=self.guest_user,
+            notification_type='post_comment',
+            post=post
+        ).exists())
+
+    def test_post_comment_notification_respects_settings(self):
+        """notify_post_comment=False 이면 게시글 댓글 알림을 보내지 않음"""
+        from community.models import CommunityPost
+        post = CommunityPost.objects.create(
+            title="게시글 제목 2",
+            content="게시글 내용 2",
+            author=self.host_user,
+            category="free"
+        )
+        Notification.objects.all().delete()
+
+        # 호스트의 알림 설정 변경
+        student = self.host_user.student
+        student.notify_post_comment = False
+        student.save()
+
+        # guest_user 가 댓글 작성
+        self.client.force_login(self.guest_user)
+        detail_url = reverse('post_detail', kwargs={'post_id': post.id})
+        response = self.client.post(detail_url, {
+            'action': 'add_comment',
+            'content': '댓글 본문입니다.'
+        })
+        self.assertEqual(response.status_code, 302)
+
+        # 알림이 가지 않아야 함
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.host_user,
+            notification_type='post_comment'
+        ).exists())
+
+    def test_comment_reply_notification(self):
+        """댓글에 답글(대댓글) 작성 시 상위 댓글 작성자에게 알림 전송"""
+        from community.models import CommunityPost, CommunityComment
+        post = CommunityPost.objects.create(
+            title="게시글 제목 3",
+            content="게시글 내용 3",
+            author=self.host_user,
+            category="free"
+        )
+        parent_comment = CommunityComment.objects.create(
+            post=post,
+            author=self.guest_user,
+            content="상위 댓글"
+        )
+        Notification.objects.all().delete()
+
+        # other_user 가 답글(대댓글) 작성
+        self.client.force_login(self.other_user)
+        detail_url = reverse('post_detail', kwargs={'post_id': post.id})
+        response = self.client.post(detail_url, {
+            'action': 'add_comment',
+            'content': '대댓글 본문입니다.',
+            'parent_id': parent_comment.id
+        })
+        self.assertEqual(response.status_code, 302)
+
+        # 상위 댓글 작성자(guest_user)에게 대댓글 알림이 왔는지 검증
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.guest_user,
+            sender=self.other_user,
+            notification_type='comment_reply',
+            post=post
+        ).exists())
+

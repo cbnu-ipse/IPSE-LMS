@@ -25,18 +25,18 @@
                           class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">{{ form.description }}</textarea>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label for="starts_at" class="block text-sm font-semibold text-slate-700 mb-1.5">시작 일시 <span class="text-slate-400 font-normal text-xs ml-1">(선택)</span></label>
+            <div class="space-y-2">
+                <label class="block text-sm font-semibold text-slate-700">모집 기간</label>
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
                     <input type="datetime-local" name="starts_at" id="starts_at"
                            value="{% if form.opens_at %}{{ form.opens_at|date:'Y-m-d\TH:i' }}{% endif %}"
-                           class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
                 </div>
-                <div>
-                    <label for="ends_at" class="block text-sm font-semibold text-slate-700 mb-1.5">마감 일시 <span class="text-slate-400 font-normal text-xs ml-1">(선택)</span></label>
+                <div class="flex items-center gap-2.5 pl-6">
                     <input type="datetime-local" name="ends_at" id="ends_at"
                            value="{% if form.closes_at %}{{ form.closes_at|date:'Y-m-d\TH:i' }}{% endif %}"
-                           class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition bg-slate-50/50">
+                           class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
                 </div>
             </div>
 

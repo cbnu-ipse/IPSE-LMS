@@ -6,16 +6,16 @@
 <section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
         <!-- 📣 상단 프리미엄 헤더 배너 (번개 모임 전용: 앰버-오렌지 그라디언트) -->
-        <div class="relative bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+        <div class="relative bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl px-8 md:px-12 py-12 md:py-16 text-white shadow-md overflow-hidden min-h-[200px] md:min-h-[220px] flex flex-col justify-center">
             <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
                 <i class="fa-solid fa-bolt text-[200px]"></i>
             </div>
             <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
                     <i class="fa-solid fa-bolt"></i> IPSE Meetup
                 </span>
-                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 번개 모임</h1>
-                <p class="text-amber-50 text-sm leading-relaxed">
+                <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">IPSE 번개 모임</h1>
+                <p class="text-amber-50 text-xs md:text-sm leading-relaxed">
                     부원들과 오프라인 스터디, 식사, 친목 도모 등 자유롭게 즉석 모임을 개설하고 참여해 보세요.
                 </p>
             </div>
@@ -24,9 +24,9 @@
         <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
             {% if user.is_authenticated %}
             <div class="flex justify-end mb-6">
-                <a href="{% url 'gathering_create' %}" class="inline-flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-amber-600 transition shadow-sm">
+                <button type="button" id="open-gathering-create-modal-btn" class="inline-flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-amber-600 transition shadow-sm">
                     <i class="fa-solid fa-plus text-xs"></i> 번개 만들기
-                </a>
+                </button>
             </div>
             {% endif %}
 
@@ -46,7 +46,7 @@
             <!-- 진행 중인 번개 모임 -->
             <div class="mb-10">
                 <h2 class="text-base font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span> 진행 중
+                    <span class="w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse"></span> 진행 중
                 </h2>
                 {% if active_gatherings %}
                 <div class="space-y-3">
@@ -58,9 +58,10 @@
                                 {% if gathering.is_full %}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">모집 마감</span>
                                 {% else %}
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">모집 중</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100">모집 중</span>
                                 {% endif %}
                             </div>
+
                             <p class="text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <span>정원 {{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
                                 {% if gathering.user_joined %}
@@ -109,4 +110,225 @@
         </div>
     </div>
 </section>
+
+{% if user.is_authenticated %}
+<!-- 🗺️ 번개 개설 모달 -->
+<div id="gathering-create-modal" class="fixed inset-0 z-[9999] hidden overflow-y-auto bg-slate-900/40 px-4 py-6 opacity-0 backdrop-blur-sm transition-opacity duration-300">
+    <div class="flex min-h-full items-center justify-center">
+        <div class="w-full max-w-4xl scale-95 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-transform duration-300" id="gathering-create-modal-content">
+            <div class="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-8 py-5">
+                <h3 class="text-xl font-semibold text-[#3F3F3F]">새 번개 모임 만들기</h3>
+                <button type="button" id="close-gathering-create-modal-btn" class="text-slate-400 transition hover:text-rose-500"><i class="fa-solid fa-xmark text-2xl"></i></button>
+            </div>
+            <form method="post" action="{% url 'gathering_create' %}" id="gathering-create-form" class="p-8 space-y-5">
+                {% csrf_token %}
+                
+                <div class="space-y-1.5">
+                    <label for="title" class="block text-sm font-semibold text-slate-700">모임명</label>
+                    <input type="text" name="title" id="title" required placeholder="예: 오늘 저녁 같이 공부하실 분! (SECCOMP)" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200">
+                </div>
+
+                <input type="hidden" name="description" id="gathering-modal-description-hidden">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-slate-600">모임 상세 소개</label>
+                    <div id="gathering-modal-description-editor" class="bg-white"></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600">모임 일시</label>
+                        <div class="flex items-center gap-2.5">
+                            <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                            <input type="datetime-local" name="event_date" id="event_date"
+                                   class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-amber-400 transition" required>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600">모집 정원 (명)</label>
+                        <div class="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                            <i class="fa-solid fa-users w-4 text-center text-slate-400 text-sm"></i>
+                            <input type="number" name="max_participants" id="max_participants" min="2" placeholder="최소 2명 이상" class="flex-1 bg-transparent text-sm text-slate-700 outline-none transition" required>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <label for="location" class="block text-sm font-semibold text-slate-600">모임 장소</label>
+                        <button type="button" id="toggle-map-btn" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold bg-slate-50 hover:bg-slate-100 transition">
+                            <i class="fa-solid fa-map-location-dot text-amber-500"></i> 지도에서 선택
+                        </button>
+                    </div>
+                    <input type="text" name="location" id="location" placeholder="예: N14동 3층 학과 도서실, 정문 카페" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200" required>
+
+                    <!-- Leaflet 지도 영역 -->
+                    <div id="map-container" class="hidden space-y-2 mt-2">
+                        <p class="text-[11px] font-semibold text-slate-400">지도를 클릭하여 핀을 꽂으면 주소가 자동으로 연동됩니다.</p>
+                        <div id="map" class="h-64 w-full rounded-xl border border-slate-200 overflow-hidden" style="z-index: 10;"></div>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-xs text-amber-800 leading-relaxed">
+                    <i class="fa-solid fa-circle-info mr-1"></i>
+                    <strong>일정 등록 안내</strong>: 번개 모임을 개설하면 개설자 본인의 **개인 캘린더**에 해당 일정이 자동으로 동기화됩니다.
+                </div>
+
+                <div class="flex justify-end border-t border-slate-100 pt-4 gap-3">
+                    <button type="button" id="close-gathering-create-modal-btn-alt" class="rounded-lg border border-slate-200 px-6 py-2.5 font-semibold text-slate-700 transition hover:bg-slate-50">취소</button>
+                    <button type="submit" class="rounded-lg bg-amber-500 px-8 py-2.5 font-semibold text-white transition hover:bg-amber-600">개설하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
+
+{% block extra_js %}
+{% if user.is_authenticated %}
+<!-- Leaflet CSS & JS CDN 로드 -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Toast UI Editor CDN 로드 -->
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('gathering-create-modal');
+    const modalContent = document.getElementById('gathering-create-modal-content');
+    const openBtn = document.getElementById('open-gathering-create-modal-btn');
+    const closeBtn = document.getElementById('close-gathering-create-modal-btn');
+    const closeBtnAlt = document.getElementById('close-gathering-create-modal-btn-alt');
+    const form = document.getElementById('gathering-create-form');
+    
+    const toggleMapBtn = document.getElementById('toggle-map-btn');
+    const mapContainer = document.getElementById('map-container');
+    const locationInput = document.getElementById('location');
+    
+    let map = null;
+    let marker = null;
+    let descEditor = null;
+    
+    const DEFAULT_LAT = 36.6285;
+    const DEFAULT_LNG = 127.4578;
+
+    form?.addEventListener('submit', () => {
+        const descHidden = document.getElementById('gathering-modal-description-hidden');
+        if (descEditor && descHidden) {
+            descHidden.value = descEditor.getMarkdown();
+        }
+    });
+
+    function openModal() {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        if (!descEditor) {
+            descEditor = new toastui.Editor({
+                el: document.getElementById('gathering-modal-description-editor'),
+                height: '300px',
+                initialEditType: 'markdown',
+                previewStyle: 'vertical',
+                placeholder: '모임의 목적이나 구체적인 활동 계획을 상세히 공유해 주세요.',
+                language: 'ko'
+            });
+        }
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            modalContent.classList.remove('scale-95');
+        }, 10);
+    }
+
+    function closeModal() {
+        if (!modal) return;
+        modal.classList.add('opacity-0');
+        modalContent.classList.add('scale-95');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+    }
+
+    openBtn?.addEventListener('click', openModal);
+    closeBtn?.addEventListener('click', closeModal);
+    closeBtnAlt?.addEventListener('click', closeModal);
+    modal?.addEventListener('click', event => {
+        if (event.target === modal) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+
+    toggleMapBtn?.addEventListener('click', () => {
+        if (mapContainer.classList.contains('hidden')) {
+            mapContainer.classList.remove('hidden');
+            toggleMapBtn.innerHTML = '<i class="fa-solid fa-map text-slate-400"></i> 지도 닫기';
+            
+            if (!map) {
+                map = L.map('map').setView([DEFAULT_LAT, DEFAULT_LNG], 16);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+
+                map.on('click', function(e) {
+                    const lat = e.latlng.lat;
+                    const lng = e.latlng.lng;
+                    
+                    if (marker) {
+                        marker.setLatLng(e.latlng);
+                    } else {
+                        marker = L.marker(e.latlng).addTo(map);
+                    }
+                    
+                    locationInput.placeholder = '주소 조회 중...';
+                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ko`)
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data && data.display_name) {
+                                const addr = data.address;
+                                let formattedAddr = '';
+                                if (addr) {
+                                    const city = addr.city || addr.province || addr.metropolitan || '';
+                                    const borough = addr.borough || addr.suburb || '';
+                                    const road = addr.road || '';
+                                    const house_number = addr.house_number || '';
+                                    const name = data.name || '';
+                                    
+                                    const parts = [];
+                                    if (city) parts.push(city);
+                                    if (borough) parts.push(borough);
+                                    if (road) parts.push(road);
+                                    if (house_number) parts.push(house_number);
+                                    if (name && name !== road && name !== house_number) parts.push(name);
+                                    
+                                    formattedAddr = parts.join(' ');
+                                }
+                                locationInput.value = formattedAddr || data.display_name;
+                            }
+                        })
+                        .catch(() => {
+                            locationInput.placeholder = '주소를 가져오는데 실패했습니다. 직접 입력해 주세요.';
+                        });
+                });
+            }
+            
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+            
+        } else {
+            mapContainer.classList.add('hidden');
+            toggleMapBtn.innerHTML = '<i class="fa-solid fa-map-location-dot text-amber-500"></i> 지도에서 선택';
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock extra_js %}

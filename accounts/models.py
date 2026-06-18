@@ -190,6 +190,7 @@ class Student(models.Model):
     # 알림 설정 필드
     notify_gathering_all = models.BooleanField(default=True, verbose_name="전체 번개 모임 알림 받기")
     notify_gathering_joined = models.BooleanField(default=True, verbose_name="참여 중인 번개 모임 알림 받기")
+    notify_post_comment = models.BooleanField(default=True, verbose_name="내 게시글 댓글 및 답글 알림 받기")
 
     class Meta:
         ordering = ("-student__date_joined",)
@@ -293,6 +294,8 @@ class Notification(models.Model):
         ('gathering_comment', '모임 댓글 등록'),
         ('gathering_update', '모임 정보 변경'),
         ('gathering_cancel', '모임 취소'),
+        ('post_comment', '게시글 댓글 등록'),
+        ('comment_reply', '댓글 답글 등록'),
     ]
 
     recipient = models.ForeignKey(
@@ -320,6 +323,13 @@ class Notification(models.Model):
         null=True,
         blank=True,
         verbose_name="관련 번개 모임"
+    )
+    post = models.ForeignKey(
+        'community.CommunityPost',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="관련 게시글"
     )
     message = models.CharField(max_length=255, verbose_name="알림 메시지")
     is_read = models.BooleanField(default=False, verbose_name="읽음 여부")

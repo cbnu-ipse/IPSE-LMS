@@ -54,45 +54,94 @@
         <div class="col-span-3 py-16 text-center text-slate-400 font-medium">등록된 동아리 활동이 없습니다.</div>
         {% endfor %}
     </div>
-
 {% else %}
     <!-- 📢 공지사항 (News) 렌더링 -->
-    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <ul class="divide-y divide-slate-100">
-            {% for poll in active_polls %}
-            <li class="flex justify-between items-center py-4 hover:bg-slate-50/50 transition px-6 group">
-                <a href="{% url 'poll_detail' poll.id %}" class="font-medium text-slate-700 text-sm flex items-center space-x-2 flex-1 min-w-0 truncate pr-4">
-                    <span class="text-indigo-500 text-xs"><i class="fa-solid fa-square-poll-vertical"></i></span>
-                    <span class="truncate group-hover:text-indigo-700 transition font-semibold">{{ poll.title }}</span>
-                </a>
-                <span class="text-xs text-slate-400 font-bold whitespace-nowrap bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
-                    {% if poll.ends_at %}~{{ poll.ends_at|date:"m.d." }} 마감{% else %}진행중{% endif %}
-                </span>
-            </li>
-            {% endfor %}
-            {% for notice in notices %}
-            <li class="flex justify-between items-center py-4 hover:bg-slate-50/50 transition px-6 group">
-                <a href="{% url 'post_detail' notice.id %}" class="font-medium text-slate-700 text-sm flex items-center space-x-2 flex-1 min-w-0 truncate pr-4">
-                    <span class="text-emerald-500 text-xs"><i class="fa-solid fa-bullhorn"></i></span>
-                    <span class="truncate group-hover:text-emerald-700 transition font-semibold">{{ notice.title }}</span>
-                </a>
-                <div class="flex items-center gap-3 shrink-0">
-                    <span class="text-xs text-slate-400 font-medium whitespace-nowrap">{{ notice.created_at|date:"Y.m.d." }}</span>
-                    {% if user.is_staff %}
-                    <form action="{% url 'post_delete' notice.id %}" method="POST" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');" class="inline">
-                        {% csrf_token %}
-                        <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-1.5" title="공지 삭제">
-                            <i class="fa-solid fa-trash-can text-xs"></i>
-                        </button>
-                    </form>
-                    {% endif %}
-                </div>
-            </li>
-            {% empty %}
-            <li class="py-16 text-center text-slate-400 text-sm font-medium">등록된 공지사항이 없습니다.</li>
-            {% endfor %}
-        </ul>
+    {% if active_polls or notices %}
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-600">
+                <thead>
+                    <tr class="bg-slate-50/50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        <th class="px-6 py-2.5">제목</th>
+                        <th class="px-6 py-2.5">작성자</th>
+                        <th class="px-6 py-2.5 text-center">추천수</th>
+                        <th class="px-6 py-2.5">작성 일시</th>
+                        <th class="px-6 py-2.5 text-center">조회수</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    <!-- 투표 공지사항 -->
+                    {% for poll in active_polls %}
+                    <tr class="hover:bg-slate-50/50 transition cursor-pointer" onclick="location.href='{% url 'poll_detail' poll.id %}'">
+                        <td class="px-6 py-2.5 text-slate-900 flex items-center gap-2">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wider">
+                                <i class="fa-solid fa-square-poll-vertical"></i>투표
+                            </span>
+                            <span class="hover:text-indigo-700 transition font-semibold">
+                                {{ poll.title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
+                            {{ poll.created_by.get_full_name|default:poll.created_by.username }} ({{ poll.created_by.username }})
+                        </td>
+                        <td class="px-6 py-2.5 text-center text-xs font-bold text-slate-400">-</td>
+                        <td class="px-6 py-2.5 text-xs text-slate-400">
+                            {{ poll.created_at|date:"Y-m-d H:i" }}
+                        </td>
+                        <td class="px-6 py-2.5 text-center text-xs font-mono text-slate-400">-</td>
+                    </tr>
+                    {% endfor %}
+
+                    <!-- 일반 공지사항 -->
+                    {% for notice in notices %}
+                    <tr class="hover:bg-slate-50/50 transition cursor-pointer group" onclick="location.href='{% url 'post_detail' notice.id %}'">
+                        <td class="px-6 py-2.5 text-slate-900 flex items-center gap-2">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
+                                <i class="fa-solid fa-bullhorn"></i>공지
+                            </span>
+                            <span class="hover:text-emerald-700 transition font-semibold">
+                                {{ notice.title }}
+                            </span>
+                            {% if notice.comment_count > 0 %}
+                            <span class="text-xs font-bold text-blue-500 ml-1">[{{ notice.comment_count }}]</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
+                            {{ notice.author.get_full_name|default:notice.author.username }} ({{ notice.author.username }})
+                        </td>
+                        <td class="px-6 py-2.5 text-center text-xs font-bold text-emerald-600">
+                            {{ notice.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ notice.dislike_count|default:0 }}</span>{% endif %}
+                        </td>
+                        <td class="px-6 py-2.5 text-xs text-slate-400">
+                            <div class="flex items-center justify-between gap-2">
+                                <span>{{ notice.created_at|date:"Y-m-d H:i" }}</span>
+                                {% if user.is_staff %}
+                                <form action="{% url 'post_delete' notice.id %}" method="POST" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');" class="inline" onclick="event.stopPropagation();">
+                                    {% csrf_token %}
+                                    <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-1.5" title="공지 삭제">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="px-6 py-2.5 text-center text-xs font-mono text-slate-400">
+                            {{ notice.views }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
+    {% else %}
+    <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <i class="fa-solid fa-folder-open text-slate-400 text-lg"></i>
+        </div>
+        <h3 class="text-base font-bold text-slate-700">등록된 공지사항이 없습니다.</h3>
+    </div>
+    {% endif %}
 {% endif %}
 
 <!-- 모달 다이얼로그 (Staff 전용) -->

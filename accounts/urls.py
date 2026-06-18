@@ -76,6 +76,7 @@ urlpatterns = [
     path('notifications/recent/', views.notification_list_api, name='notification_list_api'),
     path('notifications/<int:notification_id>/read/', views.read_and_redirect, name='read_and_redirect'),
     path('notifications/read-all/', views.mark_all_as_read_api, name='mark_all_as_read_api'),
+    path('notifications/delete-read/', views.delete_read_notifications_api, name='delete_read_notifications_api'),
     path('notifications/<int:notification_id>/delete/', views.delete_notification_api, name='delete_notification_api'),
     path('notifications/push/subscribe/', views.subscribe_push_api, name='subscribe_push_api'),
     path('notifications/push/unsubscribe/', views.unsubscribe_push_api, name='unsubscribe_push_api'),

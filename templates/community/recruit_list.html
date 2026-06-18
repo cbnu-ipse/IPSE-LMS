@@ -5,16 +5,16 @@
 <section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
         <!-- 📣 상단 프리미엄 헤더 배너 (모집 관리 전용: 블루-시안 그라디언트) -->
-        <div class="relative bg-gradient-to-r from-blue-600 to-cyan-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+        <div class="relative bg-gradient-to-r from-blue-600 to-cyan-500 rounded-3xl px-8 md:px-12 py-12 md:py-16 text-white shadow-md overflow-hidden min-h-[200px] md:min-h-[220px] flex flex-col justify-center">
             <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
                 <i class="fa-solid fa-user-plus text-[200px]"></i>
             </div>
             <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
                     <i class="fa-solid fa-user-plus"></i> IPSE Recruit
                 </span>
-                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 지원자 모집 관리</h1>
-                <p class="text-blue-50 text-sm leading-relaxed">
+                <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">IPSE 지원자 모집 관리</h1>
+                <p class="text-blue-50 text-xs md:text-sm leading-relaxed">
                     신규 부원 모집을 위한 폼을 생성하고 관리하며 지원 현황을 확인합니다. IPSE의 새로운 구성원을 순조롭게 초대하세요.
                 </p>
             </div>
@@ -157,16 +157,16 @@
                                 class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"></textarea>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="mb-2 block text-sm font-semibold text-slate-700">시작 일시</label>
+                        <div class="space-y-2">
+                            <label class="block text-sm font-semibold text-slate-700">모집 기간</label>
+                            <div class="flex items-center gap-2.5">
+                                <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
                                 <input type="datetime-local" name="starts_at"
-                                    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                                    class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition" required>
                             </div>
-                            <div>
-                                <label class="mb-2 block text-sm font-semibold text-slate-700">마감 일시</label>
+                            <div class="flex items-center gap-2.5 pl-6">
                                 <input type="datetime-local" name="ends_at"
-                                    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                                    class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition" required>
                             </div>
                         </div>
 
