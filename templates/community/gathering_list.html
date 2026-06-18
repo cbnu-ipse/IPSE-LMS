@@ -6,7 +6,7 @@
 <section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
         <!-- 📣 상단 프리미엄 헤더 배너 (번개 모임 전용: 앰버-오렌지 그라디언트) -->
-        <div class="relative bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl p-8 text-white shadow-md overflow-hidden">
+        <div class="relative bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl px-8 md:px-12 py-12 md:py-16 text-white shadow-md overflow-hidden min-h-[200px] md:min-h-[220px] flex flex-col justify-center">
             <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
                 <i class="fa-solid fa-bolt text-[200px]"></i>
             </div>
@@ -45,9 +45,7 @@
 
             <!-- 진행 중인 번개 모임 -->
             <div class="mb-10">
-                <h2 class="text-base font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span> 진행 중
-                </h2>
+                <!-- 진행 중 헤더 제거 -->
                 {% if active_gatherings %}
                 <div class="space-y-3">
                     {% for gathering in active_gatherings %}
@@ -57,6 +55,8 @@
                                 <p class="text-base font-semibold text-slate-800">{{ gathering.title }}</p>
                                 {% if gathering.is_full %}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">모집 마감</span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100">모집 중</span>
                                 {% endif %}
                             </div>
 
