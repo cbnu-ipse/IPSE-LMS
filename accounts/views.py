@@ -935,6 +935,7 @@ def notification_list_api(request):
             'message': n.message,
             'is_read': n.is_read,
             'gathering_id': n.gathering_id if n.gathering else None,
+            'post_id': n.post_id if n.post else None,
             'created_at_formatted': format_relative_time(n.created_at)
         })
     
@@ -944,7 +945,7 @@ def notification_list_api(request):
 
 @login_required
 def read_and_redirect(request, notification_id):
-    """특정 알림 읽음 처리 완료 후 관련 번개 모임 상세화면으로 redirect"""
+    """특정 알림 읽음 처리 완료 후 관련 번개 모임 또는 게시글 상세화면으로 redirect"""
     from .models import Notification
     n = get_object_or_404(Notification, id=notification_id, recipient=request.user)
     if not n.is_read:
@@ -953,6 +954,8 @@ def read_and_redirect(request, notification_id):
     
     if n.gathering:
         return redirect('gathering_detail', gathering_id=n.gathering.id)
+    elif n.post:
+        return redirect('post_detail', post_id=n.post.id)
     return redirect('gathering_list')
 
 
