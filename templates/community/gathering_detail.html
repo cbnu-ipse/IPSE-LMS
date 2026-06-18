@@ -51,7 +51,7 @@
                         <div class="w-1.5 self-stretch bg-gradient-to-b from-amber-400 to-amber-500 rounded-full shrink-0"></div>
                         <div class="flex-1 min-w-0">
                             <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">모임 소개</h3>
-                            <p class="text-slate-700 leading-relaxed whitespace-pre-wrap text-sm font-semibold">{{ gathering.description }}</p>
+                            <div id="gathering-description-viewer" class="prose max-w-none text-slate-700 py-1 leading-relaxed text-sm font-semibold"></div>
                         </div>
                     </div>
                 </div>
@@ -466,5 +466,21 @@
             alert('오류가 발생했습니다.');
         });
     }
+</script>
+
+<!-- Toast UI Viewer CDN 리소스 로드 -->
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const descContent = `{{ gathering.description|escapejs }}`;
+        if (document.getElementById('gathering-description-viewer')) {
+            toastui.Editor.factory({
+                el: document.getElementById('gathering-description-viewer'),
+                viewer: true,
+                initialValue: descContent
+            });
+        }
+    });
 </script>
 {% endblock extra_js %}

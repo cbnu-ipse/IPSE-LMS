@@ -11,11 +11,11 @@
                 <i class="fa-solid fa-square-poll-vertical text-[200px]"></i>
             </div>
             <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
                     <i class="fa-solid fa-square-poll-vertical"></i> IPSE Poll
                 </span>
-                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 의견 투표</h1>
-                <p class="text-indigo-50 text-sm leading-relaxed">
+                <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">IPSE 의견 투표</h1>
+                <p class="text-indigo-50 text-xs md:text-sm leading-relaxed">
                     동아리 운영과 관련된 다양한 안건에 투표하고 의견을 표현할 수 있는 공간입니다. 부원들의 목소리가 동아리를 만들어갑니다.
                 </p>
             </div>
@@ -166,33 +166,21 @@
                     </label>
                 </div>
 
-                <div class="mb-5">
-                    <label class="mb-1.5 block text-sm font-semibold text-slate-700">시작 일시</label>
-                    <div class="grid grid-cols-2 gap-3">
-                        <input type="date" name="starts_at_date" id="poll-modal-starts-at-date" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
-                        <div>
-                            <input type="hidden" name="starts_at_time" id="poll-modal-starts-at-time">
-                            <div class="grid grid-cols-3 gap-2">
-                                <select id="poll-modal-starts-at-meridiem" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
-                                <select id="poll-modal-starts-at-hour" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
-                                <select id="poll-modal-starts-at-minute" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <input type="hidden" name="starts_at_date" id="poll-modal-starts-at-date-hidden">
+                <input type="hidden" name="starts_at_time" id="poll-modal-starts-at-time-hidden">
+                <input type="hidden" name="ends_at_date" id="poll-modal-ends-at-date-hidden">
+                <input type="hidden" name="ends_at_time" id="poll-modal-ends-at-time-hidden">
 
-                <div class="mb-6">
-                    <label class="mb-1.5 block text-sm font-semibold text-slate-700">마감 일시</label>
-                    <div class="grid grid-cols-2 gap-3">
-                        <input type="date" name="ends_at_date" id="poll-modal-ends-at-date" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200">
-                        <div>
-                            <input type="hidden" name="ends_at_time" id="poll-modal-ends-at-time">
-                            <div class="grid grid-cols-3 gap-2">
-                                <select id="poll-modal-ends-at-meridiem" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
-                                <select id="poll-modal-ends-at-hour" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
-                                <select id="poll-modal-ends-at-minute" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"></select>
-                            </div>
-                        </div>
+                <div class="mb-5 space-y-2">
+                    <label class="block text-sm font-semibold text-slate-600">투표 기간</label>
+                    <div class="flex items-center gap-2.5">
+                        <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                        <input type="datetime-local" id="poll-modal-starts-at"
+                               class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition" required>
+                    </div>
+                    <div class="flex items-center gap-2.5 pl-6">
+                        <input type="datetime-local" id="poll-modal-ends-at"
+                               class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-emerald-400 transition" required>
                     </div>
                 </div>
 
@@ -214,65 +202,6 @@
 <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    function setupTimePicker(hiddenId, meridiemId, hourId, minuteId, defaultValue) {
-        const hiddenInput = document.getElementById(hiddenId);
-        const meridiemSelect = document.getElementById(meridiemId);
-        const hourSelect = document.getElementById(hourId);
-        const minuteSelect = document.getElementById(minuteId);
-
-        if (!hiddenInput || !meridiemSelect || !hourSelect || !minuteSelect) {
-            return { setValue() {}, getValue() { return ''; } };
-        }
-
-        if (!meridiemSelect.options.length) {
-            ['오전', '오후'].forEach(label => meridiemSelect.add(new Option(label, label)));
-            for (let hour = 1; hour <= 12; hour += 1) {
-                hourSelect.add(new Option(String(hour).padStart(2, '0') + '시', String(hour)));
-            }
-            for (let minute = 0; minute < 60; minute += 1) {
-                const value = String(minute).padStart(2, '0');
-                minuteSelect.add(new Option(value + '분', value));
-            }
-        }
-
-        function syncHidden() {
-            let hour = parseInt(hourSelect.value || '12', 10);
-            const minute = minuteSelect.value || '00';
-            const meridiem = meridiemSelect.value || '오전';
-            if (meridiem === '오전') {
-                if (hour === 12) hour = 0;
-            } else if (hour !== 12) {
-                hour += 12;
-            }
-            hiddenInput.value = `${String(hour).padStart(2, '0')}:${minute}`;
-        }
-
-        function setValue(value) {
-            const [rawHour = '00', rawMinute = '00'] = (value || defaultValue || '00:00').split(':');
-            let hour = parseInt(rawHour, 10);
-            const meridiem = hour >= 12 ? '오후' : '오전';
-            if (hour === 0) {
-                hour = 12;
-            } else if (hour > 12) {
-                hour -= 12;
-            }
-            meridiemSelect.value = meridiem;
-            hourSelect.value = String(hour);
-            minuteSelect.value = rawMinute;
-            syncHidden();
-        }
-
-        [meridiemSelect, hourSelect, minuteSelect].forEach(select => select.addEventListener('change', syncHidden));
-        setValue(hiddenInput.value || defaultValue);
-
-        return {
-            setValue,
-            getValue() {
-                return hiddenInput.value;
-            }
-        };
-    }
-
     const pollCreateModal = document.getElementById('poll-create-modal');
     const pollCreateModalContent = document.getElementById('poll-create-modal-content');
     const openPollCreateModalBtn = document.getElementById('open-poll-create-modal-btn');
@@ -282,8 +211,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const pollAddChoiceBtn = document.getElementById('poll-modal-add-choice-btn');
     let pollChoiceCount = 2;
     let pollModalEditor;
-    const pollModalStartsAtPicker = setupTimePicker('poll-modal-starts-at-time', 'poll-modal-starts-at-meridiem', 'poll-modal-starts-at-hour', 'poll-modal-starts-at-minute', '00:00');
-    const pollModalEndsAtPicker = setupTimePicker('poll-modal-ends-at-time', 'poll-modal-ends-at-meridiem', 'poll-modal-ends-at-hour', 'poll-modal-ends-at-minute', '23:59');
 
     function openPollCreateModal() {
         pollCreateModal.classList.remove('hidden');
@@ -344,15 +271,34 @@ document.addEventListener('DOMContentLoaded', function() {
     (function setPollModalDefaults() {
         const now = new Date();
         const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        const pad = n => String(n).padStart(2, '0');
-        document.getElementById('poll-modal-ends-at-date').value = `${week.getFullYear()}-${pad(week.getMonth() + 1)}-${pad(week.getDate())}`;
-        pollModalEndsAtPicker.setValue(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+        
+        const formatLocal = (d) => {
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+        
+        const startsInput = document.getElementById('poll-modal-starts-at');
+        const endsInput = document.getElementById('poll-modal-ends-at');
+        if (startsInput) startsInput.value = formatLocal(now);
+        if (endsInput) endsInput.value = formatLocal(week);
     })();
 
     pollCreateForm?.addEventListener('submit', function() {
         document.getElementById('poll-modal-description-hidden').value = pollModalEditor ? pollModalEditor.getMarkdown() : '';
-        document.getElementById('poll-modal-starts-at-time').value = pollModalStartsAtPicker.getValue();
-        document.getElementById('poll-modal-ends-at-time').value = pollModalEndsAtPicker.getValue();
+        
+        const startsAtVal = document.getElementById('poll-modal-starts-at').value;
+        const endsAtVal = document.getElementById('poll-modal-ends-at').value;
+        
+        if (startsAtVal) {
+            const [d, t] = startsAtVal.split('T');
+            document.getElementById('poll-modal-starts-at-date-hidden').value = d;
+            document.getElementById('poll-modal-starts-at-time-hidden').value = t;
+        }
+        if (endsAtVal) {
+            const [d, t] = endsAtVal.split('T');
+            document.getElementById('poll-modal-ends-at-date-hidden').value = d;
+            document.getElementById('poll-modal-ends-at-time-hidden').value = t;
+        }
     });
 
     document.addEventListener('keydown', event => {

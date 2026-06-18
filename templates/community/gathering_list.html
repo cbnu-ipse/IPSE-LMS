@@ -11,11 +11,11 @@
                 <i class="fa-solid fa-bolt text-[200px]"></i>
             </div>
             <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
                     <i class="fa-solid fa-bolt"></i> IPSE Meetup
                 </span>
-                <h1 class="text-3xl lg:text-4xl font-extrabold mb-3">IPSE 번개 모임</h1>
-                <p class="text-amber-50 text-sm leading-relaxed">
+                <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">IPSE 번개 모임</h1>
+                <p class="text-amber-50 text-xs md:text-sm leading-relaxed">
                     부원들과 오프라인 스터디, 식사, 친목 도모 등 자유롭게 즉석 모임을 개설하고 참여해 보세요.
                 </p>
             </div>
@@ -128,20 +128,28 @@
                     <input type="text" name="title" id="title" required placeholder="예: 오늘 저녁 같이 공부하실 분! (SECCOMP)" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200">
                 </div>
 
+                <input type="hidden" name="description" id="gathering-modal-description-hidden">
                 <div class="space-y-1.5">
-                    <label for="description" class="block text-sm font-semibold text-slate-600">모임 상세 소개</label>
-                    <textarea name="description" id="description" rows="4" placeholder="모임의 목적이나 구체적인 활동 계획을 공유해 주세요." class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200 resize-none" required></textarea>
+                    <label class="block text-sm font-semibold text-slate-600">모임 상세 소개</label>
+                    <div id="gathering-modal-description-editor" class="bg-white"></div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="space-y-1.5">
-                        <label for="event_date" class="block text-sm font-semibold text-slate-600">모임 일시</label>
-                        <input type="datetime-local" name="event_date" id="event_date" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200" required>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600">모임 일시</label>
+                        <div class="flex items-center gap-2.5">
+                            <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                            <input type="datetime-local" name="event_date" id="event_date"
+                                   class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 outline-none focus:border-amber-400 transition" required>
+                        </div>
                     </div>
 
-                    <div class="space-y-1.5">
-                        <label for="max_participants" class="block text-sm font-semibold text-slate-600">모집 정원 (명)</label>
-                        <input type="number" name="max_participants" id="max_participants" min="2" placeholder="최소 2명 이상" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200" required>
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600">모집 정원 (명)</label>
+                        <div class="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                            <i class="fa-solid fa-users w-4 text-center text-slate-400 text-sm"></i>
+                            <input type="number" name="max_participants" id="max_participants" min="2" placeholder="최소 2명 이상" class="flex-1 bg-transparent text-sm text-slate-700 outline-none transition" required>
+                        </div>
                     </div>
                 </div>
 
@@ -184,6 +192,10 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+<!-- Toast UI Editor CDN 로드 -->
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('gathering-create-modal');
@@ -191,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const openBtn = document.getElementById('open-gathering-create-modal-btn');
     const closeBtn = document.getElementById('close-gathering-create-modal-btn');
     const closeBtnAlt = document.getElementById('close-gathering-create-modal-btn-alt');
+    const form = document.getElementById('gathering-create-form');
     
     const toggleMapBtn = document.getElementById('toggle-map-btn');
     const mapContainer = document.getElementById('map-container');
@@ -198,13 +211,31 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let map = null;
     let marker = null;
+    let descEditor = null;
     
     const DEFAULT_LAT = 36.6285;
     const DEFAULT_LNG = 127.4578;
 
+    form?.addEventListener('submit', () => {
+        const descHidden = document.getElementById('gathering-modal-description-hidden');
+        if (descEditor && descHidden) {
+            descHidden.value = descEditor.getMarkdown();
+        }
+    });
+
     function openModal() {
         if (!modal) return;
         modal.classList.remove('hidden');
+        if (!descEditor) {
+            descEditor = new toastui.Editor({
+                el: document.getElementById('gathering-modal-description-editor'),
+                height: '300px',
+                initialEditType: 'markdown',
+                previewStyle: 'vertical',
+                placeholder: '모임의 목적이나 구체적인 활동 계획을 상세히 공유해 주세요.',
+                language: 'ko'
+            });
+        }
         setTimeout(() => {
             modal.classList.remove('opacity-0');
             modalContent.classList.remove('scale-95');

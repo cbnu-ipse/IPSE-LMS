@@ -979,6 +979,15 @@ def delete_notification_api(request, notification_id):
 
 
 @login_required
+@require_POST
+def delete_read_notifications_api(request):
+    """읽은 알림 일괄 삭제"""
+    from .models import Notification
+    Notification.objects.filter(recipient=request.user, is_read=True).delete()
+    return JsonResponse({'success': True})
+
+
+@login_required
 def notification_center(request):
     """알림 센터 페이지 (전체 알림 조회 및 개별 삭제/필터링)"""
     from .models import Notification
