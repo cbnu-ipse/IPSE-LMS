@@ -35,18 +35,70 @@
                     </span>
                 </div>
                 
-                <!-- 모임 상세 소개 내용 -->
-                <div class="text-slate-700 leading-relaxed mt-4 whitespace-pre-wrap text-sm bg-slate-50 border border-slate-100 rounded-2xl p-5">
-                    {{ gathering.description }}
+                <!-- 💬 모집 소개글 -->
+                <div class="relative bg-gradient-to-r from-slate-50 to-slate-100/40 border border-slate-200/60 rounded-2xl p-6 shadow-sm overflow-hidden mt-5">
+                    <div class="absolute -top-3 -right-2 text-slate-200/40 text-7xl font-serif select-none pointer-events-none">“</div>
+                    <div class="relative z-10 flex items-start gap-4">
+                        <div class="w-1.5 self-stretch bg-gradient-to-b from-amber-400 to-amber-500 rounded-full shrink-0"></div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">모임 소개</h3>
+                            <p class="text-slate-700 leading-relaxed whitespace-pre-wrap text-sm font-semibold">{{ gathering.description }}</p>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- 메타 정보 (가로 나열) -->
-                <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 text-xs text-slate-400">
-                    <span><i class="fa-solid fa-users mr-1"></i>정원 {{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
-                    <span>· <i class="fa-solid fa-calendar-check mr-1"></i>일시: {{ gathering.event_date|date:"Y년 m월 d일 H:i" }}</span>
-                    <span>· <i class="fa-solid fa-map-location-dot mr-1"></i>장소: {{ gathering.location }}</span>
-                    <span>· <i class="fa-solid fa-user-shield mr-1"></i>주최: {{ gathering.author.get_full_name|default:gathering.author.username }} ({{ gathering.author.username }})</span>
-                    <span>· 등록일: {{ gathering.created_at|date:"Y.m.d" }}</span>
+                <!-- ⚡ 모임 핵심 메타 정보 (그리드 레이아웃) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+                    <!-- 정원 -->
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5 transition hover:bg-slate-100/70">
+                        <div class="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm shrink-0">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">모임 정원</span>
+                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5">{{ gathering.participants.count }} / {{ gathering.max_participants }}명</span>
+                        </div>
+                    </div>
+                    <!-- 일시 -->
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5 transition hover:bg-slate-100/70">
+                        <div class="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                            <i class="fa-solid fa-calendar-check"></i>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">모임 일시</span>
+                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5">{{ gathering.event_date|date:"Y년 m월 d일 H:i" }}</span>
+                        </div>
+                    </div>
+                    <!-- 주최자 -->
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5 transition hover:bg-slate-100/70">
+                        <div class="w-9 h-9 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center text-sm shrink-0">
+                            <i class="fa-solid fa-user-shield"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">모임 주최</span>
+                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5 truncate">{{ gathering.author.get_full_name|default:gathering.author.username }} ({{ gathering.author.username }})</span>
+                        </div>
+                    </div>
+                    <!-- 장소 -->
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5 transition hover:bg-slate-100/70 col-span-1 sm:col-span-2">
+                        <div class="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-sm shrink-0">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">모임 장소</span>
+                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5 truncate">{{ gathering.location }}</span>
+                        </div>
+                    </div>
+                    <!-- 등록일 -->
+                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5 transition hover:bg-slate-100/70">
+                        <div class="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-sm shrink-0">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">등록 일자</span>
+                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5">{{ gathering.created_at|date:"Y년 m월 d일" }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
