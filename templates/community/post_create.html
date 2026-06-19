@@ -79,7 +79,7 @@
                                name="is_notice" 
                                id="is_notice" 
                                class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
-                               {% if post.is_notice %}checked{% endif %}>
+                               {% if post.is_notice or is_notice_param %}checked{% endif %}>
                         📢 공지사항으로 등록
                     </label>
                     <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
@@ -88,7 +88,7 @@
                                id="is_pinned" 
                                class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
                                {% if post.is_pinned %}checked{% endif %}
-                               {% if not post.is_notice %}disabled{% endif %}>
+                               {% if not post.is_notice and not is_notice_param %}disabled{% endif %}>
                         📌 전체게시판 상단 고정 (전체게시판 표시)
                     </label>
                 </div>

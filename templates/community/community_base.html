@@ -2,32 +2,62 @@
 {% load i18n %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-10">
-    <div class="space-y-8">
-        <!-- 📣 1. 상단 프리미엄 헤더 배너 -->
-        {% block community_banner %}
-        <div class="relative bg-gradient-to-r from-emerald-600 to-teal-500 rounded-3xl px-8 md:px-12 py-12 md:py-16 text-white shadow-md overflow-hidden min-h-[200px] md:min-h-[220px] flex flex-col justify-center">
-            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
-                <i class="fa-solid {% block banner_icon %}fa-leaf{% endblock %} text-[200px]"></i>
+<section class="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
+    <div class="space-y-6 md:space-y-8">
+        <!-- 📣 1. 상단 배너 (모바일에서 숨김) -->
+        <div class="hidden-mobile">
+            {% block community_banner %}
+            <div class="relative bg-gradient-to-r from-emerald-600 to-teal-500 rounded-3xl px-8 md:px-12 py-12 md:py-16 text-white shadow-md overflow-hidden min-h-[200px] md:min-h-[220px] flex flex-col justify-center">
+                <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+                    <i class="fa-solid {% block banner_icon %}fa-comments{% endblock %} text-[200px]"></i>
+                </div>
+                <div class="relative z-10 max-w-2xl">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
+                        <i class="fa-solid {% block banner_badge_icon %}fa-comments{% endblock %}"></i> {% block banner_badge_text %}IPSE Community{% endblock %}
+                    </span>
+                    <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">{% block banner_title %}IPSE 부원 소통 광장{% endblock %}</h1>
+                    <p class="text-emerald-50 text-xs md:text-sm leading-relaxed">
+                        {% block banner_description %}부원들과 자유롭게 소통하고 유용한 학술 정보를 공유하는 공간입니다. 자유게시판, 공지사항 등 다양한 채널을 활용해 보세요.{% endblock %}
+                    </p>
+                </div>
             </div>
-            <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
-                    <i class="fa-solid {% block banner_badge_icon %}fa-comments{% endblock %}"></i> {% block banner_badge_text %}IPSE Community{% endblock %}
-                </span>
-                <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">{% block banner_title %}IPSE 부원 소통 광장{% endblock %}</h1>
-                <p class="text-emerald-50 text-xs md:text-sm leading-relaxed">
-                    {% block banner_description %}부원들과 유용한 학술 정보를 공유하는 자유 게시판과 오프라인 즉석 스터디 및 모임을 열 수 있는 번개 모임 공간입니다. 자유롭게 소통하며 성장해 보세요.{% endblock %}
-                </p>
-            </div>
+            {% endblock %}
         </div>
-        {% endblock %}
 
         {% include 'snippets/messages.html' %}
 
-        <!-- 📂 2. 네이버 카페 스타일의 좌측 메뉴 + 우측 컨텐츠 Grid -->
+        <!-- 📱 모바일 햄버거 헤더 바 -->
+        <div class="mobile-only bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm" style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-leaf text-emerald-600"></i>
+                <span class="font-bold text-slate-800 text-sm">커뮤니티</span>
+            </div>
+            <button id="community-menu-toggle" onclick="toggleCommunityMenu()" class="text-slate-600 text-xs font-bold bg-slate-50 transition" style="display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc;">
+                <i class="fa-solid fa-bars"></i>
+                <span>메뉴</span>
+            </button>
+        </div>
+
+        <!-- 📱 모바일 슬라이드 메뉴 (기본 숨김) -->
+        <div id="community-mobile-menu" class="mobile-only bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" style="display:none;">
+            {% with cur_board=request.GET.board cur_tab=request.GET.tab cur_url=request.resolver_match.url_name %}
+            <div class="px-4 py-3 border-b border-slate-100">
+                <p class="text-xs font-bold text-emerald-700 uppercase tracking-wider">★ 게시판 목록</p>
+            </div>
+            <ul class="divide-y divide-slate-50">
+                <li><a href="{% url 'community_home' %}?board=all" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'all' or cur_url == 'community_home' and not cur_board %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-file-lines w-4 text-slate-400"></i>전체글보기</a></li>
+                <li><a href="{% url 'community_home' %}?board=hot" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'hot' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-fire w-4 text-amber-500"></i>인기글 (HOT)</a></li>
+                <li><a href="{% url 'community_home' %}?board=notice" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'notice' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-bullhorn w-4 text-emerald-600"></i>공지사항</a></li>
+                <li><a href="{% url 'community_home' %}?board=free" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'free' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-comments w-4 text-slate-400"></i>자유게시판</a></li>
+                <li><a href="{% url 'community_home' %}?board=feedback" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'feedback' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-clipboard w-4 text-slate-400"></i>피드백 게시판</a></li>
+            </ul>
+            {% endwith %}
+        </div>
+
+        <!-- 📂 PC + 모바일 메인 Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <!-- 🗂️ 좌측 카페 메뉴바 (3 / 12) -->
-            <aside class="lg:col-span-3 space-y-6">
+            <!-- 🗂️ 좌측 사이드바 (PC만 표시) -->
+            <aside class="hidden-mobile lg:col-span-3 space-y-6">
                 <!-- 카페 정보 / 사용자 미니 프로필 카드 -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                     <div class="flex items-center gap-3">
@@ -82,7 +112,7 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="{% url 'community_main' %}?tab=notice" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_main' and cur_tab == 'notice' or cur_url == 'community_main' and not cur_tab %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                <a href="{% url 'community_home' %}?board=notice" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'notice' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
                                     <span class="flex items-center gap-2">
                                         <i class="fa-solid fa-bullhorn text-emerald-600 w-4"></i>공지사항
                                     </span>
@@ -127,11 +157,36 @@
                 </div>
             </aside>
 
-            <!-- 📝 우측 컨텐츠 영역 (9 / 12) -->
+            <!-- 📝 우측 컨텐츠 영역 -->
             <main class="lg:col-span-9 space-y-6">
                 {% block community_content %}{% endblock %}
             </main>
         </div>
     </div>
 </section>
+
+<style>
+/* 모바일(768px 미만): 배너/사이드바 숨김, 모바일 전용 요소 표시 */
+@media (max-width: 767px) {
+    .hidden-mobile { display: none !important; }
+    .mobile-only { display: block; }
+}
+/* PC(768px 이상): 모바일 전용 요소 숨김 */
+@media (min-width: 768px) {
+    .hidden-mobile { display: block; }
+    .mobile-only { display: none !important; }
+}
+</style>
+
+<script>
+function toggleCommunityMenu() {
+    const menu = document.getElementById('community-mobile-menu');
+    if (!menu) return;
+    if (menu.style.display === 'none' || menu.style.display === '') {
+        menu.style.display = 'block';
+    } else {
+        menu.style.display = 'none';
+    }
+}
+</script>
 {% endblock %}
