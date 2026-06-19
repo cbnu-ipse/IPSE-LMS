@@ -59,4 +59,5 @@ urlpatterns = [
     path('comment/<int:comment_id>/dislike/', views.comment_dislike_toggle, name='comment_dislike_toggle'),
     path('meetup/comment/<int:comment_id>/like/', views.gathering_comment_like_toggle, name='gathering_comment_like_toggle'),
     path('meetup/comment/<int:comment_id>/dislike/', views.gathering_comment_dislike_toggle, name='gathering_comment_dislike_toggle'),
+    path('api/og-preview/', views.og_preview, name='og_preview'),
 ]
