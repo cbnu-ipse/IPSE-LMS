@@ -138,6 +138,10 @@ def _survey_settings_match_existing(survey, title, description, is_anonymous, al
 @login_required
 def community_main(request):
     tab = request.GET.get('tab', 'notice')
+    if tab == 'notice':
+        from django.urls import reverse
+        return redirect(reverse('community_home') + '?board=notice')
+
     notices = CommunityPost.objects.filter(is_notice=True).order_by('-created_at')[:20]
     activities = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:20]
     # 공지쪽으로 등록된 진행 중 투표만 표시
@@ -1438,9 +1442,10 @@ def recruit_apply(request, form_id):
 def community_home(request):
     """자유게시판과 번개 모임 목록을 보여주는 통합 홈 뷰"""
     board = request.GET.get('board', 'all')
-    
+    search_query = request.GET.get('q', '').strip()
+
     posts_qs = CommunityPost.objects.select_related('author').order_by('-created_at')
-    
+
     # 최근 7일 동안의 핫 게시물 계산 (score = views + comment * 5 + likes * 10), 공지글 제외
     seven_days_ago = timezone.now() - dt_module.timedelta(days=7)
     recent_posts = list(CommunityPost.objects.filter(created_at__gte=seven_days_ago, is_notice=False).select_related('author'))
@@ -1452,11 +1457,17 @@ def community_home(request):
 
     base_posts = posts_qs.filter(is_notice=False)
     pinned_notices = []
+    active_polls = []
 
     if board == 'free':
         posts = base_posts.filter(category='free')
     elif board == 'feedback':
         posts = base_posts.filter(category='feedback')
+    elif board == 'notice':
+        posts = posts_qs.filter(is_notice=True)
+        active_polls = Poll.objects.filter(is_active=True, show_as_notice=True).exclude(
+            ends_at__lte=timezone.now()
+        ).order_by('-created_at')
     elif board == 'president':
         posts = base_posts.filter(author__is_president=True)
     elif board == 'seminar':
@@ -1470,12 +1481,33 @@ def community_home(request):
         posts = base_posts
     else:
         posts = base_posts
+
+    # 검색 필터 적용 (제목 + 내용 통합 검색)
+    if search_query:
+        if board == 'hot':
+            # hot은 리스트이므로 Python-level 필터링
+            q_lower = search_query.lower()
+            posts = [p for p in posts if q_lower in p.title.lower() or q_lower in p.content.lower()]
+        else:
+            posts = posts.filter(
+                Q(title__icontains=search_query) | Q(content__icontains=search_query)
+            )
+        if board == 'all':
+            pinned_notices = pinned_notices.filter(
+                Q(title__icontains=search_query) | Q(content__icontains=search_query)
+            )
+        if board == 'notice':
+            q_lower = search_query.lower()
+            active_polls = [p for p in active_polls if q_lower in p.title.lower() or q_lower in p.description.lower()]
+
     return render(request, 'community/community_home.html', {
         'title': '커뮤니티',
         'posts': posts,
         'pinned_notices': pinned_notices,
         'hot_posts': hot_posts[:3],
         'board': board,
+        'search_query': search_query,
+        'active_polls': active_polls,
     })
 
 
@@ -1582,7 +1614,9 @@ def post_detail(request, post_id):
 @login_required
 def post_create(request):
     """자유게시판 게시글 작성"""
-    initial_category = request.GET.get('category') or request.GET.get('board') or 'free'
+    raw_category = request.GET.get('category') or request.GET.get('board') or 'free'
+    is_notice_param = raw_category == 'notice' or request.GET.get('notice') == '1'
+    initial_category = raw_category
     if initial_category not in ['free', 'feedback']:
         initial_category = 'free'
 
@@ -1600,6 +1634,7 @@ def post_create(request):
                 'post_title': title,
                 'post_content': content,
                 'category': category,
+                'is_notice_param': is_notice_param,
             })
 
         is_notice = False
@@ -1638,6 +1673,7 @@ def post_create(request):
     return render(request, 'community/post_create.html', {
         'title': '글쓰기',
         'category': initial_category,
+        'is_notice_param': is_notice_param,
     })
 
 
@@ -2269,4 +2305,107 @@ def gathering_comment_dislike_toggle(request, comment_id):
             'message': message
         })
     return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+
+
+# ==============================================================================
+# OG 미리보기 API
+# ==============================================================================
+
+import urllib.request
+import urllib.parse
+from html.parser import HTMLParser
+from django.views.decorators.http import require_GET
+
+class _OGParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.og_data = {}
+        self.in_title = False
+        self.title_tag = ""
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        if tag == 'meta':
+            property_val = attrs_dict.get('property', '')
+            name_val = attrs_dict.get('name', '')
+            content_val = attrs_dict.get('content', '')
+            
+            if property_val.startswith('og:') and content_val:
+                key = property_val[3:]
+                self.og_data[key] = content_val
+            elif name_val.startswith('og:') and content_val:
+                key = name_val[3:]
+                self.og_data[key] = content_val
+            elif name_val.startswith('twitter:') and content_val:
+                key = name_val[8:]
+                if key not in self.og_data:
+                    self.og_data[key] = content_val
+            elif name_val == 'description' and content_val and 'description' not in self.og_data:
+                self.og_data['description'] = content_val
+        elif tag == 'title':
+            self.in_title = True
+
+    def handle_endtag(self, tag):
+        if tag == 'title':
+            self.in_title = False
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.title_tag += data
+
+@require_GET
+def og_preview(request):
+    url = request.GET.get('url', '').strip()
+    if not url:
+        return JsonResponse({'status': 'error', 'message': 'URL이 제공되지 않았습니다.'}, status=400)
+    
+    if not (url.startswith('http://') or url.startswith('https://')):
+        return JsonResponse({'status': 'error', 'message': '유효하지 않은 URL 형식입니다.'}, status=400)
+        
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as response:
+            content_type = response.headers.get('Content-Type', '')
+            if 'text/html' not in content_type:
+                return JsonResponse({
+                    'title': urllib.parse.urlparse(url).netloc,
+                    'image': '',
+                    'description': '미리보기를 제공하지 않는 링크 유형입니다.',
+                    'url': url
+                })
+            
+            html_bytes = response.read(512 * 1024)
+            html_text = html_bytes.decode('utf-8', errors='ignore')
+            
+        parser = _OGParser()
+        parser.feed(html_text)
+        
+        title = parser.og_data.get('title') or parser.title_tag or urllib.parse.urlparse(url).netloc
+        image = parser.og_data.get('image') or ''
+        description = parser.og_data.get('description') or ''
+        
+        if image and not (image.startswith('http://') or image.startswith('https://')):
+            image = urllib.parse.urljoin(url, image)
+            
+        return JsonResponse({
+            'title': title.strip(),
+            'image': image.strip(),
+            'description': description.strip(),
+            'url': url
+        })
+    except Exception as e:
+        try:
+            domain = urllib.parse.urlparse(url).netloc
+        except Exception:
+            domain = url
+        return JsonResponse({
+            'title': domain,
+            'image': '',
+            'description': '링크 미리보기를 불러올 수 없습니다.',
+            'url': url
+        })
+
 

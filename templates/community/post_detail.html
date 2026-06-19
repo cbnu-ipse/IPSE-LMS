@@ -10,11 +10,15 @@
                 <i class="fa-solid fa-house"></i>
                 <a href="{% url 'community_home' %}" class="hover:text-emerald-600 transition">커뮤니티</a>
                 <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
+                {% if post.is_notice %}
+                <a href="{% url 'community_home' %}?board=notice" class="hover:text-emerald-600 transition">공지사항</a>
+                {% else %}
                 <a href="{% url 'community_home' %}?board={{ post.category }}" class="hover:text-emerald-600 transition">{{ post.get_category_display }}</a>
+                {% endif %}
                 <i class="fa-solid fa-chevron-right text-[8px] text-slate-300"></i>
                 <span class="text-slate-500">상세 보기</span>
             </p>
-            <a href="{% url 'community_home' %}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold bg-slate-50 hover:bg-slate-100 transition">
+            <a href="{% url 'community_home' %}{% if post.is_notice %}?board=notice{% else %}?board={{ post.category }}{% endif %}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold bg-slate-50 hover:bg-slate-100 transition">
                 <i class="fa-solid fa-list"></i> 목록으로
             </a>
         </div>
@@ -91,7 +95,7 @@
             </div>
             {% endif %}
 
-            <!-- 👍👎 추천 / 비추천 캡슐 -->
+            <!-- 👍👎 추천 / 비추천 + 링크 복사 -->
             <div class="flex items-center justify-center gap-3 pt-6 border-t border-slate-100">
                 <button id="post-like-btn" onclick="togglePostLike()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 {% if user_liked %}bg-emerald-50 border-emerald-200 text-emerald-600 scale-105{% else %}bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %}">
                     <i class="{% if user_liked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-up text-base"></i>
@@ -100,6 +104,11 @@
                 <button id="post-dislike-btn" onclick="togglePostDislike()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 {% if user_disliked %}bg-rose-50 border-rose-200 text-rose-600 scale-105{% else %}bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %}">
                     <i class="{% if user_disliked %}fa-solid{% else %}fa-regular{% endif %} fa-thumbs-down text-base"></i>
                     <span>비추천{% if request.user.is_staff %} <span id="post-dislike-count">{{ post.dislike_count }}</span>{% endif %}</span>
+                </button>
+                <!-- 링크 복사 버튼 -->
+                <button id="copy-link-btn" onclick="copyPostLink()" title="링크 복사" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-bold shadow-sm transition-all duration-200 bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+                    <i class="fa-solid fa-link text-base"></i>
+                    <span class="hidden sm:inline">링크 복사</span>
                 </button>
             </div>
         </div>
@@ -265,17 +274,255 @@
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.css" />
 <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
 
+<style>
+    .link-preview-card {
+        display: flex;
+        flex-direction: row;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        border-radius: 16px;
+        overflow: hidden;
+        margin: 1.25rem 0;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        max-width: 640px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        text-decoration: none !important;
+    }
+
+    .link-preview-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .link-preview-image-container {
+        width: 160px;
+        min-width: 160px;
+        height: auto;
+        position: relative;
+        background-color: #f8fafc;
+        border-right: 1px solid rgba(226, 232, 240, 0.6);
+    }
+
+    .link-preview-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    .link-preview-content {
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .link-preview-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 0.35rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .link-preview-description {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-bottom: 0.5rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        line-height: 1.4;
+    }
+
+    .link-preview-domain {
+        font-size: 0.75rem;
+        color: #10b981;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    @media (max-width: 640px) {
+        .link-preview-card {
+            flex-direction: column;
+        }
+        .link-preview-image-container {
+            width: 100%;
+            height: 140px;
+            border-right: none;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const bodyContent = `{{ post.content|escapejs }}`;
-        
+
         // Viewer 초기화
         const viewer = toastui.Editor.factory({
             el: document.getElementById('content-viewer'),
             viewer: true,
             initialValue: bodyContent
         });
+
+        // 뷰어 렌더링 완료 후 평문 URL을 하이퍼링크로 자동 변환 및 OG 미리보기 로드
+        setTimeout(() => {
+            const container = document.getElementById('content-viewer');
+            autoLinkify(container);
+            loadLinkPreviews(container);
+        }, 100);
     });
+
+    // 평문 URL → <a> 하이퍼링크 변환
+    function autoLinkify(container) {
+        const urlPattern = /(https?:\/\/[^\s<>"']+)/g;
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+        const nodesToReplace = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            if (urlPattern.test(node.textContent)) {
+                nodesToReplace.push(node);
+            }
+        }
+        nodesToReplace.forEach(textNode => {
+            const parent = textNode.parentNode;
+            // 이미 <a> 안에 있으면 건너뜀
+            if (parent && parent.tagName === 'A') return;
+            const fragment = document.createDocumentFragment();
+            const parts = textNode.textContent.split(/(https?:\/\/[^\s<>"']+)/g);
+            parts.forEach(part => {
+                if (/^https?:\/\//.test(part)) {
+                    const a = document.createElement('a');
+                    a.href = part;
+                    a.textContent = part;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.className = 'text-emerald-600 underline underline-offset-2 hover:text-emerald-800 transition break-all';
+                    fragment.appendChild(a);
+                } else if (part) {
+                    fragment.appendChild(document.createTextNode(part));
+                }
+            });
+            parent.replaceChild(fragment, textNode);
+        });
+    }
+
+    // 링크 프리뷰 로드 및 렌더링
+    function loadLinkPreviews(container) {
+        if (!container) return;
+        const links = container.querySelectorAll('a');
+        const processedUrls = new Set();
+
+        links.forEach(link => {
+            const href = link.href;
+            if (!href || !/^https?:\/\//.test(href)) return;
+
+            fetch(`/api/og-preview/?url=${encodeURIComponent(href)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.title) {
+                        // 링크 텍스트가 순수 주소 형태였다면 타이틀로 대체
+                        const text = link.textContent.trim();
+                        if (text === href || text === decodeURIComponent(href) || text.replace(/\/$/, '') === href.replace(/\/$/, '')) {
+                            link.innerHTML = `<i class="fa-solid fa-link text-xs mr-1"></i>${data.title}`;
+                        }
+
+                        // 해당 URL에 대해 단 하나의 미리보기 카드만 생성
+                        if (processedUrls.has(href)) return;
+                        processedUrls.add(href);
+
+                        const card = document.createElement('a');
+                        card.href = href;
+                        card.target = '_blank';
+                        card.rel = 'noopener noreferrer';
+                        card.className = 'link-preview-card';
+
+                        let imgHtml = '';
+                        if (data.image) {
+                            imgHtml = `
+                                <div class="link-preview-image-container">
+                                    <img src="${data.image}" alt="${data.title}" class="link-preview-image" onerror="this.parentNode.style.display='none'">
+                                </div>
+                            `;
+                        }
+
+                        card.innerHTML = `
+                            ${imgHtml}
+                            <div class="link-preview-content">
+                                <div class="link-preview-title">${data.title}</div>
+                                <div class="link-preview-description">${data.description || '미리보기 설명이 없습니다.'}</div>
+                                <div class="link-preview-domain">
+                                    <i class="fa-solid fa-earth-americas text-xs"></i>
+                                    ${new URL(href).hostname}
+                                </div>
+                            </div>
+                        `;
+
+                        // 해당 링크가 속한 가장 가까운 블록 요소 뒤에 카드 삽입
+                        const blockParent = link.closest('p, li, blockquote, div');
+                        if (blockParent && blockParent !== container) {
+                            blockParent.parentNode.insertBefore(card, blockParent.nextSibling);
+                        } else {
+                            link.parentNode.insertBefore(card, link.nextSibling);
+                        }
+                    }
+                })
+                .catch(err => console.error('Failed to load link preview:', err));
+        });
+    }
+
+
+    // 링크 복사
+    function copyPostLink() {
+        const url = window.location.href;
+        const btn = document.getElementById('copy-link-btn');
+        const icon = btn ? btn.querySelector('i') : null;
+
+        function onSuccess() {
+            if (window.showToast) window.showToast('링크가 복사되었습니다!', 'success');
+            else alert('링크가 복사되었습니다!\n' + url);
+            if (icon) {
+                icon.className = 'fa-solid fa-check text-base';
+                setTimeout(() => { icon.className = 'fa-solid fa-link text-base'; }, 2000);
+            }
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(onSuccess).catch(() => fallbackCopy(url, onSuccess));
+        } else {
+            fallbackCopy(url, onSuccess);
+        }
+    }
+
+    function fallbackCopy(text, onSuccess) {
+        const el = document.createElement('textarea');
+        el.value = text;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        try {
+            document.execCommand('copy');
+            onSuccess();
+        } catch(e) {
+            alert('복사에 실패했습니다. URL을 직접 복사해주세요:\n' + text);
+        }
+        document.body.removeChild(el);
+    }
 
     // CSRF Token 가져오기
     function getCsrfToken() {

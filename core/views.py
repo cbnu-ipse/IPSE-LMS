@@ -34,8 +34,8 @@ def _current_semester_start():
 def home_view(request):
     """유저의 로그인 상태를 확인하고 대시보드에 필요한 모든 데이터를 공급함"""
     
-    # 1. 오른쪽 위 공지사항 (News)
-    notices = CommunityPost.objects.filter(is_notice=True).order_by('-created_at')[:5]
+    # 1. 오른쪽 위 공지사항 (News) - 상단 고정 체크된 것만 표시
+    notices = CommunityPost.objects.filter(is_notice=True, is_pinned=True).order_by('-created_at')[:5]
 
     # 1b. 진행 중인 투표 (홈 새로운 소식 섹션용)
     from django.utils import timezone
@@ -49,15 +49,16 @@ def home_view(request):
         event_date__gt=timezone.now()
     ).select_related('author').order_by('event_date')[:3]
 
-    # 1c. 주간 핫 게시물 계산 (최근 7일)
+    # 1c. 주간 핫 게시물 계산 (최근 7일) - 일정 수치(좋아요 1개 이상 혹은 조회수 5회 이상) 넘은 것 중 TOP 3
     import datetime as dt_module
     seven_days_ago = timezone.now() - dt_module.timedelta(days=7)
     recent_posts = list(CommunityPost.objects.filter(created_at__gte=seven_days_ago, is_notice=False).select_related('author'))
+    qualified_posts = [p for p in recent_posts if p.like_count > 0 or p.views >= 5]
     hot_posts = sorted(
-        recent_posts,
+        qualified_posts,
         key=lambda p: p.views + (p.comment_count * 5) + (p.like_count * 10),
         reverse=True
-    )[:5]
+    )[:3]
     
     # 2. 왼쪽 아래 달력용 데이터 (Event)
     events = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:5]

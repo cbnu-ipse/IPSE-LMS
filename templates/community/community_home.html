@@ -8,11 +8,11 @@
 {% block banner_badge_icon %}fa-comments{% endblock %}
 {% block banner_badge_text %}IPSE Community{% endblock %}
 {% block banner_title %}IPSE 부원 소통 광장{% endblock %}
-{% block banner_description %}부원들과 유용한 학술 정보를 공유하는 자유 게시판과 오프라인 즉석 스터디 및 모임을 열 수 있는 번개 모임 공간입니다. 자유롭게 소통하며 성장해 보세요.{% endblock %}
+{% block banner_description %}부원들과 유용한 학술 정보를 공유하는 자유 게시판과 오프라인 즉석 스터디 및 모임을 열 수 있는 번개 모임 공간입니다.{% endblock %}
 
 {% block community_content %}
 <!-- 📂 게시판 헤더 영역 -->
-<div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
+<div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-5">
     <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
         {% if board == 'hot' %}
             <i class="fa-solid fa-fire text-amber-500 animate-pulse"></i>인기글 (HOT)
@@ -24,103 +24,185 @@
             <i class="fa-regular fa-comments text-slate-400"></i>자유게시판
         {% elif board == 'feedback' %}
             <i class="fa-regular fa-clipboard text-slate-400"></i>피드백 게시판
+        {% elif board == 'notice' %}
+            <i class="fa-solid fa-bullhorn text-emerald-600"></i>공지사항
         {% else %}
             <i class="fa-regular fa-file-lines text-slate-400"></i>전체글보기
         {% endif %}
     </h2>
+    {% if board != 'notice' or request.user.is_staff %}
+    <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}" class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+        <i class="fa-solid fa-pen-to-square"></i><span class="hidden-xs">게시글 작성</span>
+    </a>
+    {% endif %}
+</div>
 
-    <div>
-        <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' %}?category={{ board }}{% endif %}" class="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 hover:scale-[1.01] transition shadow-sm">
-            <i class="fa-solid fa-pen-to-square"></i>게시글 작성
+<!-- 🔍 검색창 -->
+<form method="GET" action="{% url 'community_home' %}" class="mb-4">
+    <input type="hidden" name="board" value="{{ board }}">
+    <div class="flex gap-2">
+        <input type="text"
+               name="q"
+               value="{{ search_query }}"
+               placeholder="제목 또는 내용으로 검색..."
+               class="flex-1 px-4 py-2 rounded-xl border border-slate-200 bg-white focus:border-emerald-500 outline-none text-sm font-medium text-slate-700 transition">
+        <button type="submit" class="px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900 transition shadow-sm whitespace-nowrap">
+            <i class="fa-solid fa-magnifying-glass"></i> 검색
+        </button>
+        {% if search_query %}
+        <a href="{% url 'community_home' %}?board={{ board }}" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-semibold hover:bg-slate-50 transition whitespace-nowrap">
+            초기화
         </a>
+        {% endif %}
+    </div>
+</form>
+
+{% if search_query %}
+<p class="text-xs text-slate-400 mb-4 font-medium">
+    <span class="text-slate-600 font-bold">"{{ search_query }}"</span> 검색 결과
+    {% if posts %}<span class="text-emerald-600 font-bold"> {{ posts|length }}건</span>{% endif %}
+</p>
+{% endif %}
+
+<!-- 📋 게시글 리스트 -->
+{% if posts or pinned_notices %}
+<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+
+    <!-- PC 테이블 -->
+    <div class="community-table-wrap overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-600">
+            <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    <th class="px-5 py-3">제목</th>
+                    <th class="px-4 py-3 col-author">작성자</th>
+                    <th class="px-4 py-3 text-center col-like">추천</th>
+                    <th class="px-4 py-3 col-date">작성일</th>
+                    <th class="px-4 py-3 text-center col-views">조회</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                <!-- 📌 투표 공지사항 (board == 'notice' 일 때만 표시) -->
+                {% if board == 'notice' and active_polls %}
+                    {% for poll in active_polls %}
+                    <tr class="hover:bg-slate-50 cursor-pointer" onclick="location.href='{% url 'poll_detail' poll.id %}'">
+                        <td class="px-5 py-3 text-slate-900 font-bold max-w-0">
+                            <div style="display:flex; align-items:baseline; gap:4px; min-width:0;">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase shrink-0">
+                                    <i class="fa-solid fa-square-poll-vertical"></i>투표
+                                </span>
+                                <span class="hover:text-indigo-700 transition truncate">{{ poll.title }}</span>
+                            </div>
+                            <!-- 모바일 서브텍스트 -->
+                            <p class="mobile-subtext">
+                                {{ poll.created_by.get_full_name|default:poll.created_by.username }}
+                                · {{ poll.created_at|date:"m/d H:i" }}
+                            </p>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ poll.created_by.get_full_name|default:poll.created_by.username }}</td>
+                        <td class="px-4 py-3 text-center text-xs font-bold text-slate-400 col-like">-</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ poll.created_at|date:"y.m.d" }}</td>
+                        <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">-</td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+
+                <!-- 📌 핀 고정 공지사항 -->
+                {% if board == 'all' and pinned_notices %}
+                    {% for notice in pinned_notices %}
+                    <tr class="bg-emerald-50 hover:bg-emerald-50 cursor-pointer border-l-4 border-l-emerald-500" onclick="location.href='{% url 'post_detail' notice.id %}'">
+                        <td class="px-5 py-3 text-slate-900 font-bold max-w-0">
+                            <div style="display:flex; align-items:baseline; gap:4px; min-width:0;">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase shrink-0">
+                                    <i class="fa-solid fa-bullhorn"></i>공지
+                                </span>
+                                <span class="hover:text-emerald-700 transition truncate">{{ notice.title }}</span>
+                                {% if notice.comment_count > 0 %}<span class="text-xs font-bold text-blue-500 shrink-0">[{{ notice.comment_count }}]</span>{% endif %}
+                            </div>
+                            <!-- 모바일 서브텍스트 -->
+                            <p class="mobile-subtext">
+                                {{ notice.author.get_full_name|default:notice.author.username }}
+                                · {{ notice.created_at|date:"m/d H:i" }}
+                                · 조회 {{ notice.views }}
+                                · <span class="text-emerald-600">추천 {{ notice.like_count|default:0 }}</span>
+                            </p>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ notice.author.get_full_name|default:notice.author.username }}</td>
+                        <td class="px-4 py-3 text-center text-xs font-bold text-emerald-600 col-like">{{ notice.like_count|default:0 }}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ notice.created_at|date:"y.m.d" }}</td>
+                        <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">{{ notice.views }}</td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+
+                <!-- 📝 일반 게시글 -->
+                {% for post in posts %}
+                <tr class="hover:bg-slate-50 cursor-pointer" onclick="location.href='{% url 'post_detail' post.id %}'">
+                    <td class="px-5 py-3 font-semibold text-slate-800 max-w-0">
+                        <div style="display:flex; align-items:baseline; gap:4px; min-width:0;">
+                            <span class="hover:text-emerald-600 transition truncate">{{ post.title }}</span>
+                            {% if post.comment_count > 0 %}<span class="text-xs font-bold text-blue-500 shrink-0">[{{ post.comment_count }}]</span>{% endif %}
+                        </div>
+                        <!-- 모바일 서브텍스트 -->
+                        <p class="mobile-subtext">
+                            {% if post.is_anonymous and not request.user.is_staff %}익명{% else %}{{ post.author.get_full_name|default:post.author.username }}{% endif %}
+                            · {{ post.created_at|date:"m/d H:i" }}
+                            · 조회 {{ post.views }}
+                            · <span class="text-emerald-600">추천 {{ post.like_count|default:0 }}</span>
+                        </p>
+                    </td>
+                    <td class="px-4 py-3 text-xs text-slate-500 font-medium col-author">
+                        {% if post.is_anonymous and not request.user.is_staff %}
+                            <span class="text-slate-400">익명</span>
+                        {% else %}
+                            {{ post.author.get_full_name|default:post.author.username }}
+                            {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold">[익명]</span>{% endif %}
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-emerald-600 col-like">{{ post.like_count|default:0 }}</td>
+                    <td class="px-4 py-3 text-xs text-slate-400 col-date">{{ post.created_at|date:"y.m.d" }}</td>
+                    <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">{{ post.views }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
-    <!-- 📋 자유 게시판 게시글 리스트 영역 -->
-    {% if posts or pinned_notices %}
-    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-slate-600">
-                <thead>
-                    <tr class="bg-slate-50/50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                        <th class="px-6 py-2.5">제목</th>
-                        <th class="px-6 py-2.5">작성자</th>
-                        <th class="px-6 py-2.5 text-center">추천수</th>
-                        <th class="px-6 py-2.5">작성 일시</th>
-                        <th class="px-6 py-2.5 text-center">조회수</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                    <!-- 📌 상단 핀 고정 공지사항 영역 -->
-                    {% if board == 'all' and pinned_notices %}
-                        {% for notice in pinned_notices %}
-                        <tr class="bg-emerald-50/30 hover:bg-emerald-50/50 transition cursor-pointer font-bold border-l-4 border-l-emerald-500" onclick="location.href='{% url 'post_detail' notice.id %}'">
-                            <td class="px-6 py-2.5 text-slate-900 flex items-center gap-2">
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
-                                    <i class="fa-solid fa-bullhorn"></i>공지
-                                </span>
-                                <span class="hover:text-emerald-700 transition">
-                                    {{ notice.title }}
-                                </span>
-                                {% if notice.comment_count > 0 %}
-                                <span class="text-xs font-bold text-blue-500 ml-1">[{{ notice.comment_count }}]</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-2.5 text-xs text-slate-600 font-semibold">
-                                {{ notice.author.get_full_name|default:notice.author.username }} ({{ notice.author.username }})
-                            </td>
-                            <td class="px-6 py-2.5 text-center text-xs font-bold text-emerald-600">
-                                {{ notice.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ notice.dislike_count|default:0 }}</span>{% endif %}
-                            </td>
-                            <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
-                                {{ notice.created_at|date:"Y-m-d H:i" }}
-                            </td>
-                            <td class="px-6 py-2.5 text-center text-xs font-mono text-slate-500">
-                                {{ notice.views }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% endif %}
-
-                    <!-- 📝 일반 게시글 목록 영역 -->
-                    {% for post in posts %}
-                    <tr class="hover:bg-slate-50/50 transition cursor-pointer" onclick="location.href='{% url 'post_detail' post.id %}'">
-                        <td class="px-6 py-2.5 font-semibold text-slate-800 hover:text-emerald-600 transition">
-                            {{ post.title }}
-                            {% if post.comment_count > 0 %}
-                            <span class="text-xs font-bold text-blue-500 ml-1">[{{ post.comment_count }}]</span>
-                            {% endif %}
-                        </td>
-                        <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
-                            {% if post.is_anonymous and not request.user.is_staff %}
-                                <span class="text-slate-400 font-mono">익명</span>
-                            {% else %}
-                                {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
-                                {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold">[익명글]</span>{% endif %}
-                            {% endif %}
-                        </td>
-                        <td class="px-6 py-2.5 text-center text-xs font-bold text-emerald-600">
-                            {{ post.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ post.dislike_count|default:0 }}</span>{% endif %}
-                        </td>
-                        <td class="px-6 py-2.5 text-xs text-slate-400">
-                            {{ post.created_at|date:"Y-m-d H:i" }}
-                        </td>
-                        <td class="px-6 py-2.5 text-center text-xs font-mono text-slate-400">
-                            {{ post.views }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+{% else %}
+<!-- 빈 상태 -->
+<div class="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+    <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+        {% if search_query %}
+        <i class="fa-solid fa-magnifying-glass text-slate-400 text-lg"></i>
+        {% else %}
+        <i class="fa-solid fa-folder-open text-slate-400 text-lg"></i>
+        {% endif %}
     </div>
+    {% if search_query %}
+    <h3 class="text-base font-bold text-slate-700">검색 결과가 없습니다.</h3>
+    <p class="text-xs text-slate-400 mt-1">"{{ search_query }}"에 대한 게시글을 찾을 수 없습니다.</p>
     {% else %}
-    <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
-        <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-            <i class="fa-solid fa-folder-open text-slate-400 text-lg"></i>
-        </div>
-        <h3 class="text-base font-bold text-slate-700">작성된 게시글이 없습니다.</h3>
-        <p class="text-xs text-slate-400 mt-1">가장 먼저 첫 게시글을 작성해 보세요!</p>
-    </div>
+    <h3 class="text-base font-bold text-slate-700">작성된 게시글이 없습니다.</h3>
+    <p class="text-xs text-slate-400 mt-1">가장 먼저 첫 게시글을 작성해 보세요!</p>
     {% endif %}
+</div>
+{% endif %}
+
+<style>
+/* 모바일 서브텍스트: 기본 숨김, 모바일에서 표시 */
+.mobile-subtext {
+    display: none;
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 500;
+    margin-top: 2px;
+}
+/* 모바일(767px 이하): 특정 컬럼 숨기고, 서브텍스트 표시 */
+@media (max-width: 767px) {
+    .col-author, .col-like, .col-date, .col-views { display: none; }
+    .mobile-subtext { display: block; }
+    .community-table-wrap thead tr th:first-child { padding: 10px 16px; }
+    .community-table-wrap tbody tr td:first-child { padding: 10px 16px; }
+}
+</style>
 {% endblock community_content %}
