@@ -157,9 +157,9 @@
                                         <span class="text-xs text-slate-400">{{ notice.created_at|date:"m.d" }}</span>
                                         
                                         {% if user.is_staff %}
-                                        <form action="{% host_url 'post_delete' notice.id host 'community' %}" method="POST" class="inline-block" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');">
+                                        <form action="{% host_url 'post_delete' notice.id host 'community' %}" method="POST" class="inline-flex items-center m-0 p-0" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');">
                                             {% csrf_token %}
-                                            <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-1">
+                                            <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-0.5 flex items-center justify-center">
                                                 <i class="fa-solid fa-trash-can text-[11px]"></i>
                                             </button>
                                         </form>
