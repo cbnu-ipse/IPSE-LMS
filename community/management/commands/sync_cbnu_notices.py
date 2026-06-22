@@ -488,7 +488,7 @@ class Command(BaseCommand):
                 content=final_content,
                 author=author,
                 category="academic",
-                is_notice=True if idx == "1" else False,
+                is_notice=False,
             )
             count += 1
         self.stdout.write(f"Generated {count} mock general notices.")
@@ -577,7 +577,7 @@ class Command(BaseCommand):
                 content=final_content,
                 author=author,
                 category="academic",
-                is_notice=is_pinned_on_site,
+                is_notice=False,
             )
             count += 1
             if count >= 10:
