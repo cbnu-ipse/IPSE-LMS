@@ -334,6 +334,12 @@
             <span class="text-[9px] font-semibold tracking-tight">번개</span>
         </a>
 
+        <!-- 2. 커뮤니티 -->
+        <a href="{% url 'community_home' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'community_home' or request.resolver_match.url_name == 'post_detail' or request.resolver_match.url_name == 'post_create' or request.resolver_match.url_name == 'post_edit' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
+            <i class="fa-solid fa-comments text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">커뮤니티</span>
+        </a>
+
         <!-- 3. 홈 (가운데 돌출 버튼) -->
         <div class="flex-1 flex items-center justify-center relative">
             <a href="/" class="absolute -top-4 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-500 rounded-full flex flex-col items-center justify-center text-white shadow-[0_4px_14px_rgba(16,185,129,0.35)] border-4 border-white active:scale-95 transition-all duration-200 group">

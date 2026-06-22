@@ -31,14 +31,14 @@
         {% endif %}
     </h2>
     {% if board != 'notice' or request.user.is_staff %}
-    <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}" class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
-        <i class="fa-solid fa-pen-to-square"></i><span class="hidden-xs">게시글 작성</span>
+    <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}" class="hidden md:inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+        <i class="fa-solid fa-pen-to-square"></i>게시글 작성
     </a>
     {% endif %}
 </div>
 
 <!-- 🔍 검색창 -->
-<form method="GET" action="{% url 'community_home' %}" class="mb-4">
+<form method="GET" action="{% url 'community_home' %}" class="mb-4 sticky-search-bar">
     <input type="hidden" name="board" value="{{ board }}">
     <div class="flex gap-2">
         <input type="text"
@@ -97,12 +97,14 @@
                             <p class="mobile-subtext">
                                 {{ survey.created_by.get_full_name|default:survey.created_by.username }}
                                 · {{ survey.created_at|date:"m/d H:i" }}
+                                · 조회 {{ survey.post.views|default:0 }}
+                                · <span class="text-emerald-600">추천 {{ survey.post.like_count|default:0 }}</span>
                             </p>
                         </td>
                         <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ survey.created_by.get_full_name|default:survey.created_by.username }}</td>
-                        <td class="px-4 py-3 text-center text-xs font-bold text-slate-400 col-like">-</td>
+                        <td class="px-4 py-3 text-center text-xs font-bold text-emerald-600 col-like">{{ survey.post.like_count|default:0 }}</td>
                         <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ survey.created_at|date:"y.m.d" }}</td>
-                        <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">-</td>
+                        <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">{{ survey.post.views|default:0 }}</td>
                     </tr>
                     {% endif %}
                     {% endfor %}
@@ -190,6 +192,15 @@
 </div>
 {% endif %}
 
+{% if board != 'notice' or request.user.is_staff %}
+<!-- 모바일 플로팅 게시글 작성 버튼 (FAB) -->
+<a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}"
+   class="md:hidden fixed bottom-20 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full flex items-center justify-center shadow-lg transition active:scale-95 z-40 border border-emerald-500/20"
+   title="게시글 작성">
+    <i class="fa-solid fa-plus text-2xl"></i>
+</a>
+{% endif %}
+
 <style>
 /* 모바일 서브텍스트: 기본 숨김, 모바일에서 표시 */
 .mobile-subtext {
@@ -205,6 +216,17 @@
     .mobile-subtext { display: block; }
     .community-table-wrap thead tr th:first-child { padding: 10px 16px; }
     .community-table-wrap tbody tr td:first-child { padding: 10px 16px; }
+    
+    .sticky-search-bar {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        top: 110px !important;
+        z-index: 20 !important;
+        background-color: #f8fafc !important;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+        margin-bottom: 12px !important;
+    }
 }
 </style>
 {% endblock community_content %}

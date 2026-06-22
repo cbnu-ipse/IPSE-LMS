@@ -62,13 +62,14 @@ def home_view(request):
     activity_logs = ActivityLog.objects.filter(user=request.user)[:10]
     metrics = sync_user_profile_metrics(request.user)
 
-    # 4. 미완료된 LMS 과제 일정 (마감일 기준 오름차순, 이번 학기 과제만 최대 5개)
+    # 4. 미완료된 LMS 과제 일정 (마감일 기준 오름차순, 이번 학기 과제 및 일주일 이내 지난 과제만 최대 5개)
     semester_start = _current_semester_start()
+    overdue_limit = timezone.now() - dt_module.timedelta(days=7)
     incomplete_assignments = Schedule.objects.filter(
         user=request.user,
         external_id__startswith='lms:',
         is_completed=False,
-        start_date__gte=semester_start
+        start_date__gte=semester_start if semester_start > overdue_limit else overdue_limit
     ).order_by('start_date')[:5]
 
     import datetime

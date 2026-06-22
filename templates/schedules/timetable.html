@@ -18,6 +18,84 @@
         padding-right: 3px !important;
     }
     
+    .subject-card {
+        position: relative;
+        margin: 1px;
+        border-radius: 8px;
+        padding: 2px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+        text-align: left;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        user-select: none;
+    }
+    .subject-card:hover {
+        transform: scale(1.01);
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+    
+    .subject-name {
+        font-weight: 800;
+        font-size: 9.5px;
+        line-height: 1.2;
+        word-break: break-all;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin: 0;
+        color: #1e293b;
+    }
+    
+    .subject-classroom {
+        font-weight: 500;
+        font-size: 8px;
+        word-break: break-all;
+        line-height: 1.2;
+        margin-top: 2px;
+        color: #475569;
+    }
+    
+    .subject-professor {
+        font-weight: 500;
+        font-size: 8px;
+        color: #64748b;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        line-height: 1;
+        margin-top: 4px;
+        display: none;
+    }
+    
+    .delete-btn {
+        position: absolute;
+        right: 2px;
+        top: 2px;
+        width: 16px;
+        height: 16px;
+        background-color: rgba(0, 0, 0, 0.1);
+        border-radius: 9999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #334155;
+        opacity: 0;
+        transition: opacity 0.2s, background-color 0.2s;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+    }
+    .delete-btn:hover {
+        background-color: rgba(0, 0, 0, 0.25);
+    }
+    .subject-card:hover .delete-btn {
+        opacity: 1;
+    }
+    
     @media (min-width: 640px) {
         #timetable-grid {
             grid-template-columns: 60px repeat(5, minmax(0, 1fr));
@@ -27,6 +105,19 @@
             font-size: 11px !important;
             padding-top: 6px !important;
             padding-right: 10px !important;
+        }
+        .subject-card {
+            padding: 8px;
+        }
+        .subject-name {
+            font-size: 11px;
+        }
+        .subject-classroom {
+            font-size: 9.5px;
+        }
+        .subject-professor {
+            font-size: 9px;
+            display: block;
         }
     }
 </style>
@@ -310,29 +401,25 @@
             const rowEnd = Math.ceil((endTotalMinutes - minStartOffset) / 30) + 2;
 
             // 요일 column
-            const col = subject.day_of_week + 2;
+            const col = Number(subject.day_of_week) + 2;
 
             // 과목 카드 DOM
             const card = document.createElement('div');
-            // 에타 스타일 적용: 모바일 p-0.5, 데스크톱 p-2.5로 패딩 축소 및 콤팩트 패딩 처리
-            card.className = "absolute inset-[1px] rounded-lg p-0.5 sm:p-2 flex flex-col justify-start transition hover:scale-[1.01] hover:shadow-md duration-200 cursor-pointer text-left group border border-black/5 select-none";
+            card.className = "subject-card";
             card.style.backgroundColor = subject.color;
             card.style.gridColumn = col;
             card.style.gridRow = `${rowStart} / ${rowEnd}`;
-            card.style.position = 'relative';
 
-            // 텍스트 가독성 고도화: 배경이 파스텔톤이므로 글자 색상을 어두운 slate 톤으로 변경하여 명도 가독성 극대화
             card.innerHTML = `
-                <div class="h-full flex flex-col justify-between text-slate-800">
-                    <div class="space-y-0.5">
-                        <h4 class="font-extrabold text-[8px] sm:text-[11px] leading-tight break-all" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;" title="${subject.subject_name}">${subject.subject_name}</h4>
-                        ${subject.classroom ? `<p class="text-[7px] sm:text-[9.5px] text-slate-600 font-bold break-all leading-tight mt-0.5">${subject.classroom}</p>` : ''}
+                <div class="h-full flex flex-col justify-between">
+                    <div style="display: flex; flex-direction: column;">
+                        <h4 class="subject-name" title="${subject.subject_name}">${subject.subject_name}</h4>
+                        ${subject.classroom ? `<p class="subject-classroom">${subject.classroom}</p>` : ''}
                     </div>
-                    ${subject.professor ? `<p class="text-[7px] sm:text-[9px] text-slate-500 font-semibold truncate leading-none mt-1 sm:block hidden">${subject.professor}</p>` : ''}
+                    ${subject.professor ? `<p class="subject-professor">${subject.professor}</p>` : ''}
                 </div>
-                <button onclick="event.stopPropagation(); deleteSubject(${subject.id})" 
-                        class="absolute right-0.5 top-0.5 w-4 h-4 bg-black/10 hover:bg-black/25 rounded-full flex items-center justify-center text-slate-700 opacity-0 group-hover:opacity-100 transition shadow-sm">
-                    <i class="fa-solid fa-xmark text-[8px]"></i>
+                <button onclick="event.stopPropagation(); deleteSubject(${subject.id})" class="delete-btn">
+                    <i class="fa-solid fa-xmark" style="font-size: 8px;"></i>
                 </button>
             `;
 
