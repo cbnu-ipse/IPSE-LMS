@@ -1253,7 +1253,7 @@ def community_home(request):
 
     base_posts = posts_qs.filter(is_notice=False)
     pinned_notices = []
-    active_polls = []
+    active_surveys = []
 
     if board == 'free':
         posts = base_posts.filter(category='free')
@@ -1261,9 +1261,9 @@ def community_home(request):
         posts = base_posts.filter(category='feedback')
     elif board == 'notice':
         posts = posts_qs.filter(is_notice=True)
-        active_polls = Poll.objects.filter(is_active=True, show_as_notice=True).exclude(
+        active_surveys = Survey.objects.filter(is_active=True).exclude(
             ends_at__lte=timezone.now()
-        ).order_by('-created_at')
+        ).select_related('post').order_by('-created_at')
     elif board == 'president':
         posts = base_posts.filter(author__is_president=True)
     elif board == 'seminar':
@@ -1294,7 +1294,7 @@ def community_home(request):
             )
         if board == 'notice':
             q_lower = search_query.lower()
-            active_polls = [p for p in active_polls if q_lower in p.title.lower() or q_lower in p.description.lower()]
+            active_surveys = [s for s in active_surveys if q_lower in s.title.lower() or q_lower in s.description.lower()]
 
     return render(request, 'community/community_home.html', {
         'title': '커뮤니티',
@@ -1303,7 +1303,7 @@ def community_home(request):
         'hot_posts': hot_posts[:3],
         'board': board,
         'search_query': search_query,
-        'active_polls': active_polls,
+        'active_surveys': active_surveys,
     })
 
 

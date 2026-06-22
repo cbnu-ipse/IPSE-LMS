@@ -81,26 +81,26 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-                <!-- 📌 투표 공지사항 (board == 'notice' 일 때만 표시) -->
-                {% if board == 'notice' and active_polls %}
-                    {% for poll in active_polls %}
-                    <tr class="hover:bg-slate-50 cursor-pointer" onclick="location.href='{% url 'poll_detail' poll.id %}'">
+                <!-- 📌 설문 공지사항 (board == 'notice' 일 때만 표시) -->
+                {% if board == 'notice' and active_surveys %}
+                    {% for survey in active_surveys %}
+                    <tr class="hover:bg-slate-50 cursor-pointer" onclick="location.href='{% url 'post_detail' survey.post.id %}'">
                         <td class="px-5 py-3 text-slate-900 font-bold max-w-0">
                             <div style="display:flex; align-items:baseline; gap:4px; min-width:0;">
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase shrink-0">
-                                    <i class="fa-solid fa-square-poll-vertical"></i>투표
+                                    <i class="fa-solid fa-square-poll-vertical"></i>설문
                                 </span>
-                                <span class="hover:text-indigo-700 transition truncate">{{ poll.title }}</span>
+                                <span class="hover:text-indigo-700 transition truncate">{{ survey.title }}</span>
                             </div>
                             <!-- 모바일 서브텍스트 -->
                             <p class="mobile-subtext">
-                                {{ poll.created_by.get_full_name|default:poll.created_by.username }}
-                                · {{ poll.created_at|date:"m/d H:i" }}
+                                {{ survey.created_by.get_full_name|default:survey.created_by.username }}
+                                · {{ survey.created_at|date:"m/d H:i" }}
                             </p>
                         </td>
-                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ poll.created_by.get_full_name|default:poll.created_by.username }}</td>
+                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ survey.created_by.get_full_name|default:survey.created_by.username }}</td>
                         <td class="px-4 py-3 text-center text-xs font-bold text-slate-400 col-like">-</td>
-                        <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ poll.created_at|date:"y.m.d" }}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ survey.created_at|date:"y.m.d" }}</td>
                         <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">-</td>
                     </tr>
                     {% endfor %}
