@@ -361,3 +361,136 @@ class CommunityLikeDislikeBestCommentTestCase(TestCase):
         self.assertNotIn(gathering_canceled.id, gathering_ids)
 
 
+class EmbeddedSurveyTestCase(TestCase):
+    def setUp(self):
+        self.staff_user = User.objects.create_user(username='staff_user', password='password123', is_staff=True)
+        self.author_user = User.objects.create_user(username='author_user', password='password123')
+        self.normal_user = User.objects.create_user(username='normal_user', password='password123')
+        self.client = Client()
+
+    def test_post_creation_with_survey(self):
+        self.client.login(username='author_user', password='password123')
+        
+        survey_json = {
+            'title': 'Test Survey',
+            'description': 'Survey Description',
+            'is_anonymous': False,
+            'allow_duplicate_response': False,
+            'questions': [
+                {
+                    'sequence': 1,
+                    'title': 'Which option?',
+                    'question_type': 'CHOICE',
+                    'choices': [{'text': 'Option A'}, {'text': 'Option B'}]
+                },
+                {
+                    'sequence': 2,
+                    'title': 'Rate your experience',
+                    'question_type': 'SCALE'
+                },
+                {
+                    'sequence': 3,
+                    'title': 'Short text',
+                    'question_type': 'TEXT'
+                }
+            ]
+        }
+        
+        import json
+        response = self.client.post(reverse('post_create'), {
+            'title': 'Post with Survey',
+            'content': 'Check out this survey.',
+            'category': 'free',
+            'survey_data': json.dumps(survey_json)
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        from .models import CommunityPost, Survey, SurveyQuestion
+        post = CommunityPost.objects.filter(title='Post with Survey').first()
+        self.assertIsNotNone(post)
+        self.assertIsNotNone(post.survey)
+        self.assertEqual(post.survey.title, 'Test Survey')
+        self.assertEqual(post.survey.questions.count(), 3)
+        
+        questions = list(post.survey.questions.all().order_by('order'))
+        self.assertEqual(questions[0].question_type, 'CHOICE')
+        self.assertEqual(questions[0].choices.count(), 2)
+        self.assertEqual(questions[1].question_type, 'SCALE')
+        self.assertEqual(questions[2].question_type, 'TEXT')
+
+    def test_survey_answering_and_results(self):
+        # 1. Setup a post with a survey
+        from .models import CommunityPost, Survey, SurveyQuestion, SurveyQuestionChoice
+        post = CommunityPost.objects.create(title='Post with Survey', content='Content', author=self.author_user)
+        survey = Survey.objects.create(post=post, title='Test Survey', created_by=self.author_user)
+        q1 = SurveyQuestion.objects.create(survey=survey, question_text='Choice Question', question_type='CHOICE', order=1)
+        choice_a = SurveyQuestionChoice.objects.create(question=q1, choice_text='A', order=1)
+        choice_b = SurveyQuestionChoice.objects.create(question=q1, choice_text='B', order=2)
+        q2 = SurveyQuestion.objects.create(survey=survey, question_text='Scale Question', question_type='SCALE', order=2)
+        q3 = SurveyQuestion.objects.create(survey=survey, question_text='Text Question', question_type='TEXT', order=3)
+        
+        # 2. Answer the survey as a normal user
+        self.client.login(username='normal_user', password='password123')
+        respond_url = reverse('survey_respond', kwargs={'survey_id': survey.id})
+        
+        import json
+        answer_data = {
+            f'question_{q1.id}': choice_a.id,
+            f'question_{q2.id}': 4,
+            f'question_{q3.id}': 'My text answer'
+        }
+        
+        response = self.client.post(respond_url, data=json.dumps(answer_data), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        res_json = response.json()
+        self.assertEqual(res_json['status'], 'success')
+        
+        from .models import SurveyResponse, SurveyAnswer
+        self.assertEqual(SurveyResponse.objects.filter(survey=survey, respondent=self.normal_user).count(), 1)
+        
+        # 3. Check results API (only author or staff)
+        results_api_url = reverse('survey_results_api', kwargs={'survey_id': survey.id})
+        
+        # Regular user should be forbidden
+        response = self.client.get(results_api_url)
+        self.assertEqual(response.status_code, 403)
+        
+        # Author should be allowed
+        self.client.logout()
+        self.client.login(username='author_user', password='password123')
+        response = self.client.get(results_api_url)
+        self.assertEqual(response.status_code, 200)
+        results_data = response.json()['results']
+        self.assertEqual(len(results_data), 3)
+        
+        # Verify stats and answers are loaded successfully without errors
+        # Choice question
+        q1_stats = next(q for q in results_data if q['id'] == q1.id)['stats']
+        self.assertEqual(next(c for c in q1_stats if c['choice_id'] == choice_a.id)['count'], 1)
+        self.assertEqual(next(c for c in q1_stats if c['choice_id'] == choice_b.id)['count'], 0)
+        
+        # Scale question
+        q2_stats = next(q for q in results_data if q['id'] == q2.id)['stats']
+        self.assertEqual(next(s for s in q2_stats if s['scale'] == 4)['count'], 1)
+        self.assertEqual(next(s for s in q2_stats if s['scale'] == 1)['count'], 0)
+        
+        # Text question
+        q3_answers = next(q for q in results_data if q['id'] == q3.id)['answers']
+        self.assertEqual(len(q3_answers), 1)
+        self.assertEqual(q3_answers[0]['text'], 'My text answer')
+
+        # 4. Check CSV Export permission (Staff only)
+        export_url = reverse('survey_results_export', kwargs={'survey_id': survey.id})
+        
+        # Author is not staff, so should get 403 or redirect (302)
+        response = self.client.get(export_url)
+        self.assertIn(response.status_code, [302, 403])
+        
+        # Staff user should get 200 and a CSV download
+        self.client.logout()
+        self.client.login(username='staff_user', password='password123')
+        response = self.client.get(export_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8-sig')
+
+
