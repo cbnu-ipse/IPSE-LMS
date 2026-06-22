@@ -12,7 +12,7 @@
 
 {% block community_content %}
 <!-- 📂 게시판 헤더 영역 -->
-<div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-5">
+<div class="hidden md:flex items-center justify-between border-b border-slate-200 pb-4 mb-5">
     <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
         {% if board == 'hot' %}
             <i class="fa-solid fa-fire text-amber-500 animate-pulse"></i>인기글 (HOT)
@@ -70,14 +70,14 @@
 
     <!-- PC 테이블 -->
     <div class="community-table-wrap overflow-x-auto">
-        <table class="w-full text-left text-sm text-slate-600">
+        <table class="w-full text-left text-sm text-slate-600" style="table-layout: fixed; width: 100%;">
             <thead>
                 <tr class="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    <th class="px-5 py-3">제목</th>
-                    <th class="px-4 py-3 col-author">작성자</th>
-                    <th class="px-4 py-3 text-center col-like">추천</th>
-                    <th class="px-4 py-3 col-date">작성일</th>
-                    <th class="px-4 py-3 text-center col-views">조회</th>
+                    <th class="px-5 py-3" style="width: 50%;">제목</th>
+                    <th class="px-4 py-3 col-author" style="width: 15%;">작성자</th>
+                    <th class="px-4 py-3 text-center col-like" style="width: 10%;">추천</th>
+                    <th class="px-4 py-3 col-date" style="width: 15%;">작성일</th>
+                    <th class="px-4 py-3 text-center col-views" style="width: 10%;">조회</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -217,6 +217,10 @@
     .community-table-wrap thead tr th:first-child { padding: 10px 16px; }
     .community-table-wrap tbody tr td:first-child { padding: 10px 16px; }
     
+    .community-table-wrap {
+        overflow-x: hidden !important;
+    }
+    
     .sticky-search-bar {
         position: -webkit-sticky !important;
         position: sticky !important;
@@ -225,6 +229,7 @@
         background-color: #f8fafc !important;
         padding-top: 8px !important;
         padding-bottom: 8px !important;
+        margin-top: 0 !important;
         margin-bottom: 12px !important;
     }
 }
