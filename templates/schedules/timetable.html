@@ -19,6 +19,9 @@
     }
     
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 41ba89e (style: enhance mobile community layout, sticky search and menu, floating post creation button, and timetable alignment fixes)
     .subject-card {
         position: relative;
         margin: 1px;
@@ -97,8 +100,11 @@
         opacity: 1;
     }
     
+<<<<<<< HEAD
 =======
 >>>>>>> 69e89c7 (style(timetable): optimize layout and font sizes for mobile view)
+=======
+>>>>>>> 41ba89e (style: enhance mobile community layout, sticky search and menu, floating post creation button, and timetable alignment fixes)
     @media (min-width: 640px) {
         #timetable-grid {
             grid-template-columns: 60px repeat(5, minmax(0, 1fr));
@@ -110,6 +116,9 @@
             padding-right: 10px !important;
         }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 41ba89e (style: enhance mobile community layout, sticky search and menu, floating post creation button, and timetable alignment fixes)
         .subject-card {
             padding: 8px;
         }
@@ -123,8 +132,11 @@
             font-size: 9px;
             display: block;
         }
+<<<<<<< HEAD
 =======
 >>>>>>> 69e89c7 (style(timetable): optimize layout and font sizes for mobile view)
+=======
+>>>>>>> 41ba89e (style: enhance mobile community layout, sticky search and menu, floating post creation button, and timetable alignment fixes)
     }
 </style>
 
@@ -410,6 +422,7 @@
             const col = Number(subject.day_of_week) + 2;
 
             // 과목 카드 DOM
+            const card = document.createElement('div');
             card.className = "subject-card";
             card.style.backgroundColor = subject.color;
             card.style.gridColumn = col;
