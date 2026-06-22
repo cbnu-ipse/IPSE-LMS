@@ -38,7 +38,7 @@
 </div>
 
 <!-- 🔍 검색창 -->
-<form method="GET" action="{% url 'community_home' %}" class="mb-4 sticky-search-bar">
+<form method="GET" action="{% url 'community_home' %}" class="mb-4">
     <input type="hidden" name="board" value="{{ board }}">
     <div class="flex gap-2">
         <input type="text"
@@ -219,18 +219,6 @@
     
     .community-table-wrap {
         overflow-x: hidden !important;
-    }
-    
-    .sticky-search-bar {
-        position: -webkit-sticky !important;
-        position: sticky !important;
-        top: 110px !important;
-        z-index: 20 !important;
-        background-color: #f8fafc !important;
-        padding-top: 8px !important;
-        padding-bottom: 8px !important;
-        margin-top: 0 !important;
-        margin-bottom: 12px !important;
     }
 }
 </style>
