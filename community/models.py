@@ -326,7 +326,11 @@ class CommunityPost(models.Model):
     is_pinned = models.BooleanField(default=False, verbose_name="상단 고정 여부")
     category = models.CharField(
         max_length=20,
+<<<<<<< HEAD
         choices=[('free', '자유게시판'), ('feedback', '피드백게시판'), ('academic', '학사공지')],
+=======
+        choices=[('free', '자유게시판'), ('feedback', '피드백게시판'), ('academic', '학사일정')],
+>>>>>>> e8c6f47 (feat: configure dbbackup storage, implement academic notice board & crawler sync_cbnu_notices)
         default='free',
         verbose_name="게시판 분류"
     )
