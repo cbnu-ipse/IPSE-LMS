@@ -538,7 +538,7 @@
 
     // 평문 URL → <a> 하이퍼링크 변환
     function autoLinkify(container) {
-        const urlPattern = /(https?:\/\/[^\s<>"']+)/g;
+        const urlPattern = /(https?:\/\/[^\s<>"']+)/;
         const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
         const nodesToReplace = [];
         let node;
