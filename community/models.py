@@ -141,6 +141,14 @@ class Survey(models.Model):
     is_active = models.BooleanField(default=True, verbose_name="활성 여부")
     allow_duplicate_response = models.BooleanField(default=False, verbose_name="중복 응답 허용")
     is_anonymous = models.BooleanField(default=False, verbose_name="익명 응답")
+    post = models.OneToOneField(
+        'CommunityPost',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='survey',
+        verbose_name="연관 게시글"
+    )
 
     class Meta:
         ordering = ["-created_at"]
