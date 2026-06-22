@@ -34,7 +34,9 @@
                     <div class="flex items-center gap-3">
                         <span class="font-bold text-slate-600">
                             <i class="fa-solid fa-circle-user mr-1 text-slate-400"></i>
-                            {% if post.is_anonymous and not request.user.is_staff %}
+                            {% if post.category == 'academic' %}
+                                <span class="text-indigo-600 font-bold">[컴퓨터공학과]</span>
+                            {% elif post.is_anonymous and not request.user.is_staff %}
                                 <span class="text-slate-400 font-mono">익명</span>
                             {% else %}
                                 {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
