@@ -41,6 +41,119 @@ def _parse_survey_datetime(dt_str):
         return None
 
 
+def _save_survey_for_post(post, survey_data_str, user):
+    """
+    Parses survey_data_str (JSON) and creates or updates a Survey associated with the post.
+    If survey_data_str is empty/invalid, deletes any existing survey for the post.
+    """
+    if not survey_data_str or survey_data_str in ['null', 'undefined']:
+        if hasattr(post, 'survey') and post.survey:
+            post.survey.delete()
+        return None
+
+    try:
+        data = json.loads(survey_data_str)
+    except (ValueError, TypeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    title = data.get('title', '').strip()
+    description = data.get('description', '').strip()
+    is_anonymous = data.get('is_anonymous', False)
+    allow_duplicate = data.get('allow_duplicate_response', False)
+    starts_at_str = data.get('starts_at')
+    ends_at_str = data.get('ends_at')
+    questions_data = data.get('questions', [])
+
+    if not title:
+        title = f"{post.title} 설문"
+
+    starts_at = _parse_survey_datetime(starts_at_str)
+    ends_at = _parse_survey_datetime(ends_at_str)
+
+    survey = getattr(post, 'survey', None)
+
+    if not questions_data:
+        if survey:
+            survey.delete()
+        return None
+
+    if survey:
+        survey_has_responses = survey.responses.exists()
+        if survey_has_responses:
+            if not _survey_structure_matches_existing(survey, questions_data):
+                raise ValueError("이미 응답이 제출된 설문은 질문의 구조(제목, 유형, 선택지 등)를 변경할 수 없습니다.")
+            
+            survey.title = title
+            survey.description = description
+            survey.starts_at = starts_at
+            survey.ends_at = ends_at
+            survey.save()
+
+            for existing_question, incoming_question in zip(survey.questions.all(), questions_data):
+                existing_question.question_description = (incoming_question.get('description') or '').strip()
+                existing_question.save(update_fields=['question_description'])
+            
+            return survey
+
+        survey.title = title
+        survey.description = description
+        survey.is_anonymous = is_anonymous
+        survey.allow_duplicate_response = allow_duplicate
+        survey.starts_at = starts_at
+        survey.ends_at = ends_at
+        survey.save()
+        
+        survey.questions.all().delete()
+    else:
+        survey = Survey.objects.create(
+            post=post,
+            title=title,
+            description=description,
+            created_by=user,
+            is_anonymous=is_anonymous,
+            allow_duplicate_response=allow_duplicate,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+
+    for q_data in questions_data:
+        question_text = (q_data.get('title') or '').strip()
+        question_description = (q_data.get('description') or '').strip()
+        question_type = q_data.get('question_type', 'CHOICE')
+
+        if not question_text:
+            continue
+
+        question = SurveyQuestion.objects.create(
+            survey=survey,
+            question_text=question_text,
+            question_description=question_description,
+            question_type=question_type,
+            order=q_data.get('sequence', 0),
+            required=True,
+        )
+
+        if question_type == 'CHOICE':
+            choices = [
+                (c_data.get('text') or '').strip()
+                for c_data in q_data.get('choices', [])
+                if (c_data.get('text') or '').strip()
+            ]
+
+            for choice_order, choice_text in enumerate(choices):
+                SurveyQuestionChoice.objects.create(
+                    question=question,
+                    choice_text=choice_text,
+                    order=choice_order,
+                )
+
+    return survey
+
+
+
 def _create_notification(recipient, sender, notification_type, gathering=None, post=None, message=""):
     """
     수신자의 알림 수신 설정(notify_gathering_all, notify_gathering_joined, notify_post_comment)을
@@ -716,323 +829,6 @@ def calendar_subscribe(request):
     })
 
 
-# ─────────────────────────────────────────────
-# 설문 (Survey)
-# ─────────────────────────────────────────────
-
-@login_required
-def survey_list(request):
-    """설문 목록 페이지 - 투표/설문 통합 페이지로 리다이렉트"""
-    return redirect('poll_list')
-
-
-@staff_member_required
-def survey_create(request):
-    """설문 생성 페이지"""
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            
-            title = data.get('title', '').strip()
-            description = data.get('description', '').strip()
-            is_anonymous = data.get('is_anonymous', False)
-            allow_duplicate = data.get('allow_duplicate_response', False)
-            starts_at_str = data.get('starts_at')
-            ends_at_str = data.get('ends_at')
-            questions_data = data.get('questions', [])
-
-            if not title:
-                return JsonResponse({'error': '제목을 입력해주세요.'}, status=400)
-
-            if not questions_data:
-                return JsonResponse({'error': '최소 1개 이상의 질문을 추가하세요.'}, status=400)
-
-            starts_at = _parse_survey_datetime(starts_at_str)
-            ends_at = _parse_survey_datetime(ends_at_str)
-
-            with transaction.atomic():
-                survey = Survey.objects.create(
-                    title=title,
-                    description=description,
-                    created_by=request.user,
-                    is_anonymous=is_anonymous,
-                    allow_duplicate_response=allow_duplicate,
-                    starts_at=starts_at,
-                    ends_at=ends_at,
-                )
-
-                for q_data in questions_data:
-                    question_text = (q_data.get('title') or '').strip()
-                    question_description = (q_data.get('description') or '').strip()
-                    question_type = q_data.get('question_type', 'CHOICE')
-
-                    if not question_text:
-                        raise ValueError('질문 제목을 입력해주세요.')
-
-                    question = SurveyQuestion.objects.create(
-                        survey=survey,
-                        question_text=question_text,
-                        question_description=question_description,
-                        question_type=question_type,
-                        order=q_data.get('sequence', 0),
-                        required=True,
-                    )
-
-                    if question_type == 'CHOICE':
-                        choices = [
-                            (c_data.get('text') or '').strip()
-                            for c_data in q_data.get('choices', [])
-                            if (c_data.get('text') or '').strip()
-                        ]
-
-                        if len(choices) < 2:
-                            raise ValueError('객관식 질문은 선택지를 2개 이상 입력해주세요.')
-
-                        for choice_order, choice_text in enumerate(choices):
-                            SurveyQuestionChoice.objects.create(
-                                question=question,
-                                choice_text=choice_text,
-                                order=choice_order,
-                            )
-
-            return JsonResponse({
-                'status': 'success',
-                'survey_id': survey.id,
-                'message': '설문이 성공적으로 만들어졌습니다!'
-            })
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
-
-    return render(request, 'community/survey_create.html')
-
-
-@staff_member_required
-def survey_edit(request, survey_id):
-    """설문 수정 페이지"""
-    survey = get_object_or_404(Survey, id=survey_id)
-    survey_has_responses = survey.responses.exists()
-
-    if not (request.user.is_staff or request.user == survey.created_by):
-        return JsonResponse({'error': '권한이 없습니다.'}, status=403)
-
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-
-            title = data.get('title', '').strip()
-            description = data.get('description', '').strip()
-            is_anonymous = data.get('is_anonymous', False)
-            allow_duplicate = data.get('allow_duplicate_response', False)
-            starts_at_str = data.get('starts_at')
-            ends_at_str = data.get('ends_at')
-            questions_data = data.get('questions', [])
-            starts_at = _parse_survey_datetime(starts_at_str)
-            ends_at = _parse_survey_datetime(ends_at_str)
-
-            if not title:
-                return JsonResponse({'error': '제목을 입력해주세요.'}, status=400)
-
-            if not questions_data:
-                return JsonResponse({'error': '최소 1개 이상의 질문을 추가하세요.'}, status=400)
-
-            with transaction.atomic():
-                if survey_has_responses:
-                    if not _survey_settings_match_existing(
-                        survey,
-                        title,
-                        description,
-                        is_anonymous,
-                        allow_duplicate,
-                        starts_at,
-                        ends_at,
-                    ):
-                        return JsonResponse({
-                            'error': '응답이 있는 설문은 기본 정보와 옵션을 변경할 수 없습니다. 질문 설명만 수정 가능합니다.'
-                        }, status=400)
-
-                    if not _survey_structure_matches_existing(survey, questions_data):
-                        return JsonResponse({
-                            'error': '응답이 있는 설문은 질문 제목, 유형, 순서, 선택지를 변경할 수 없습니다. 질문 설명만 수정 가능합니다.'
-                        }, status=400)
-
-                    for existing_question, incoming_question in zip(survey.questions.all(), questions_data):
-                        existing_question.question_description = (incoming_question.get('description') or '').strip()
-                        existing_question.save(update_fields=['question_description'])
-
-                    return JsonResponse({
-                        'status': 'success',
-                        'survey_id': survey.id,
-                        'message': '질문 설명이 수정되었습니다.'
-                    })
-
-                survey.title = title
-                survey.description = description
-                survey.is_anonymous = is_anonymous
-                survey.allow_duplicate_response = allow_duplicate
-                survey.starts_at = starts_at
-                survey.ends_at = ends_at
-                survey.save()
-
-                survey.questions.all().delete()
-
-                for q_data in questions_data:
-                    question_text = (q_data.get('title') or '').strip()
-                    question_description = (q_data.get('description') or '').strip()
-                    question_type = q_data.get('question_type', 'CHOICE')
-
-                    if not question_text:
-                        raise ValueError('질문 제목을 입력해주세요.')
-
-                    question = SurveyQuestion.objects.create(
-                        survey=survey,
-                        question_text=question_text,
-                        question_description=question_description,
-                        question_type=question_type,
-                        order=q_data.get('sequence', 0),
-                        required=True,
-                    )
-
-                    if question_type == 'CHOICE':
-                        choices = [
-                            (c_data.get('text') or '').strip()
-                            for c_data in q_data.get('choices', [])
-                            if (c_data.get('text') or '').strip()
-                        ]
-
-                        if len(choices) < 2:
-                            raise ValueError('객관식 질문은 선택지를 2개 이상 입력해주세요.')
-
-                        for choice_order, choice_text in enumerate(choices):
-                            SurveyQuestionChoice.objects.create(
-                                question=question,
-                                choice_text=choice_text,
-                                order=choice_order,
-                            )
-
-            return JsonResponse({
-                'status': 'success',
-                'survey_id': survey.id,
-                'message': '설문이 수정되었습니다.'
-            })
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
-
-    survey_payload = {
-        'title': survey.title,
-        'description': survey.description,
-        'starts_at': timezone.localtime(survey.starts_at).strftime('%Y-%m-%dT%H:%M') if survey.starts_at else '',
-        'ends_at': timezone.localtime(survey.ends_at).strftime('%Y-%m-%dT%H:%M') if survey.ends_at else '',
-        'is_anonymous': survey.is_anonymous,
-        'allow_duplicate_response': survey.allow_duplicate_response,
-        'questions': [
-            {
-                'sequence': question.order,
-                'title': question.question_text,
-                'description': question.question_description,
-                'question_type': question.question_type,
-                'choices': [
-                    {
-                        'sequence': choice.order,
-                        'text': choice.choice_text,
-                    }
-                    for choice in question.choices.all()
-                ],
-            }
-            for question in survey.questions.prefetch_related('choices').all()
-        ],
-    }
-
-    return render(request, 'community/survey_create.html', {
-        'survey': survey,
-        'survey_payload': survey_payload,
-        'is_edit_mode': True,
-        'survey_has_responses': survey_has_responses,
-    })
-
-
-@staff_member_required
-def survey_delete(request, survey_id):
-    """설문 삭제"""
-    survey = get_object_or_404(Survey, id=survey_id)
-
-    if not (request.user.is_staff or request.user == survey.created_by):
-        return JsonResponse({'error': '권한이 없습니다.'}, status=403)
-
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST 요청만 허용됩니다.'}, status=400)
-
-    survey.delete()
-    return JsonResponse({'status': 'success', 'message': '설문이 삭제되었습니다.'})
-
-
-@login_required
-def survey_detail(request, survey_id):
-    """설문 상세 및 응답 페이지"""
-    survey = get_object_or_404(Survey, id=survey_id)
-
-    if request.method == 'POST':
-        action = request.POST.get('action', '')
-
-        if action == 'add_comment':
-            content = request.POST.get('content', '').strip()
-            if not content:
-                messages.error(request, '댓글 내용을 입력해주세요.')
-                return redirect('survey_detail', survey_id=survey_id)
-            SurveyComment.objects.create(survey=survey, author=request.user, content=content)
-            return redirect('survey_detail', survey_id=survey_id)
-
-        if action == 'delete_comment':
-            comment_id = request.POST.get('comment_id')
-            comment = get_object_or_404(SurveyComment, id=comment_id, survey=survey)
-            can_delete = request.user == comment.author or (
-                request.user.is_staff and not comment.author.is_staff
-            )
-            if can_delete:
-                comment.delete()
-            return redirect('survey_detail', survey_id=survey_id)
-
-        if action == 'edit_comment':
-            comment_id = request.POST.get('comment_id')
-            comment = get_object_or_404(SurveyComment, id=comment_id, survey=survey)
-            if request.user == comment.author:
-                new_content = request.POST.get('content', '').strip()
-                if new_content:
-                    comment.content = new_content
-                    comment.save(update_fields=['content'])
-            return redirect('survey_detail', survey_id=survey_id)
-
-    questions = list(survey.questions.all().prefetch_related('choices'))
-
-    existing_response = None
-    has_responded = False
-    if not survey.is_anonymous and request.user.is_authenticated:
-        existing_response = SurveyResponse.objects.filter(
-            survey=survey,
-            respondent=request.user,
-        ).prefetch_related('answers').order_by('-created_at').first()
-        has_responded = existing_response is not None
-
-    current_answers = {}
-    if existing_response:
-        current_answers = {
-            answer.question_id: answer
-            for answer in existing_response.answers.all()
-        }
-
-    for question in questions:
-        question.current_answer = current_answers.get(question.id)
-
-    context = {
-        'survey': survey,
-        'questions': questions,
-        'has_responded': has_responded,
-        'existing_response': existing_response,
-        'scale_options': [1, 2, 3, 4, 5],
-        'can_manage_survey': request.user.is_staff or request.user == survey.created_by,
-        'comments': survey.comments.select_related('author').all(),
-    }
-    return render(request, 'community/survey_detail.html', context)
-
 
 @login_required
 def survey_respond(request, survey_id):
@@ -1145,7 +941,7 @@ def survey_results_api(request, survey_id):
         
         if question.question_type == 'CHOICE':
             for choice in question.choices.all():
-                count = question.answers.filter(choice=choice).count()
+                count = question.surveyanswer_set.filter(choice=choice).count()
                 question_result['stats'].append({
                     'choice_id': choice.id,
                     'choice_text': choice.choice_text,
@@ -1154,14 +950,14 @@ def survey_results_api(request, survey_id):
         
         elif question.question_type == 'SCALE':
             for scale in range(1, 6):
-                count = question.answers.filter(scale_answer=scale).count()
+                count = question.surveyanswer_set.filter(scale_answer=scale).count()
                 question_result['stats'].append({
                     'scale': scale,
                     'count': count,
                 })
         
         elif question.question_type == 'TEXT':
-            for answer in question.answers.select_related('response__respondent').all():
+            for answer in question.surveyanswer_set.select_related('response__respondent').all():
                 respondent_name = 'Anonymous'
                 if not survey.is_anonymous and answer.response.respondent:
                     respondent_name = _user_display_name(answer.response.respondent)
@@ -1182,8 +978,8 @@ def survey_results_export(request, survey_id):
     """설문 결과 CSV 다운로드"""
     survey = get_object_or_404(Survey, id=survey_id)
     
-    # 권한 확인
-    if not (request.user.is_staff or request.user == survey.created_by):
+    # 권한 확인: 스태프/관리자만 CSV 다운로드 가능
+    if not request.user.is_staff:
         return JsonResponse({'error': '권한이 없습니다.'}, status=403)
     
     responses = survey.responses.prefetch_related('answers__question', 'answers__choice').order_by('-created_at')
@@ -1601,6 +1397,41 @@ def post_detail(request, post_id):
         c.replies_list = replies_map.get(c.id, [])
         c.replies_list.sort(key=lambda r: r.created_at)
 
+    survey = getattr(post, 'survey', None)
+    questions = []
+    has_responded = False
+    existing_response = None
+    
+    if survey:
+        questions = list(survey.questions.all().prefetch_related('choices'))
+        
+        if request.user.is_authenticated:
+            modify_mode = request.GET.get('modify_response') == '1'
+            if not survey.is_anonymous:
+                existing_response = SurveyResponse.objects.filter(
+                    survey=survey,
+                    respondent=request.user,
+                ).prefetch_related('answers').order_by('-created_at').first()
+            else:
+                response_id = request.session.get(f'survey_{survey.id}_response_id')
+                if response_id:
+                    existing_response = SurveyResponse.objects.filter(
+                        id=response_id,
+                        survey=survey
+                    ).prefetch_related('answers').first()
+            
+            has_responded = (existing_response is not None) if not modify_mode else False
+
+        current_answers = {}
+        if existing_response:
+            current_answers = {
+                answer.question_id: answer
+                for answer in existing_response.answers.all()
+            }
+
+        for question in questions:
+            question.current_answer = current_answers.get(question.id)
+
     return render(request, 'community/post_detail.html', {
         'title': post.title,
         'post': post,
@@ -1608,6 +1439,12 @@ def post_detail(request, post_id):
         'user_liked': user_liked,
         'user_disliked': user_disliked,
         'best_comment': best_comment,
+        'survey': survey,
+        'questions': questions,
+        'has_responded': has_responded,
+        'existing_response': existing_response,
+        'scale_options': [1, 2, 3, 4, 5],
+        'can_manage_survey': request.user.is_staff or request.user == (survey.created_by if survey else None),
     })
 
 
@@ -1624,6 +1461,7 @@ def post_create(request):
         title = request.POST.get('title', '').strip()
         content = request.POST.get('content', '').strip()
         category = request.POST.get('category', 'free')
+        survey_data = request.POST.get('survey_data', '').strip()
         if category not in ['free', 'feedback']:
             category = 'free'
 
@@ -1635,6 +1473,7 @@ def post_create(request):
                 'post_content': content,
                 'category': category,
                 'is_notice_param': is_notice_param,
+                'survey_data_json': survey_data,
             })
 
         is_notice = False
@@ -1648,27 +1487,41 @@ def post_create(request):
         if category == 'feedback':
             is_anonymous = request.POST.get('is_anonymous') == 'on'
 
-        post = CommunityPost.objects.create(
-            title=title,
-            content=content,
-            author=request.user,
-            is_notice=is_notice,
-            is_pinned=is_pinned,
-            category=category,
-            is_anonymous=is_anonymous,
-        )
+        try:
+            with transaction.atomic():
+                post = CommunityPost.objects.create(
+                    title=title,
+                    content=content,
+                    author=request.user,
+                    is_notice=is_notice,
+                    is_pinned=is_pinned,
+                    category=category,
+                    is_anonymous=is_anonymous,
+                )
 
-        # 다중 첨부파일 저장
-        attachments = request.FILES.getlist('attachments')
-        for f in attachments:
-            CommunityPostAttachment.objects.create(
-                post=post,
-                file=f,
-                filename=f.name
-            )
+                # 다중 첨부파일 저장
+                attachments = request.FILES.getlist('attachments')
+                for f in attachments:
+                    CommunityPostAttachment.objects.create(
+                        post=post,
+                        file=f,
+                        filename=f.name
+                    )
 
-        messages.success(request, '게시글이 성공적으로 등록되었습니다.')
-        return redirect('post_detail', post_id=post.id)
+                _save_survey_for_post(post, survey_data, request.user)
+
+            messages.success(request, '게시글이 성공적으로 등록되었습니다.')
+            return redirect('post_detail', post_id=post.id)
+        except ValueError as e:
+            messages.error(request, f'설문 저장 실패: {str(e)}')
+            return render(request, 'community/post_create.html', {
+                'title': '글쓰기',
+                'post_title': title,
+                'post_content': content,
+                'category': category,
+                'is_notice_param': is_notice_param,
+                'survey_data_json': survey_data,
+            })
 
     return render(request, 'community/post_create.html', {
         'title': '글쓰기',
@@ -1686,10 +1539,14 @@ def post_edit(request, post_id):
         messages.error(request, '본인의 게시글만 수정할 수 있습니다.')
         return redirect('post_detail', post_id=post.id)
 
+    survey = getattr(post, 'survey', None)
+    survey_has_responses = survey.responses.exists() if survey else False
+
     if request.method == 'POST':
         title = request.POST.get('title', '').strip()
         content = request.POST.get('content', '').strip()
         category = request.POST.get('category', 'free')
+        survey_data = request.POST.get('survey_data', '').strip()
         if category not in ['free', 'feedback']:
             category = 'free'
 
@@ -1700,37 +1557,84 @@ def post_edit(request, post_id):
                 'post': post,
                 'is_edit': True,
                 'category': category,
+                'survey_data_json': survey_data,
+                'survey_has_responses': survey_has_responses,
             })
 
-        post.title = title
-        post.content = content
-        post.category = category
-        
-        update_fields = ['title', 'content', 'category']
-        if request.user.is_staff:
-            post.is_notice = request.POST.get('is_notice') == 'on'
-            post.is_pinned = request.POST.get('is_pinned') == 'on' if post.is_notice else False
-            update_fields.extend(['is_notice', 'is_pinned'])
+        try:
+            with transaction.atomic():
+                post.title = title
+                post.content = content
+                post.category = category
+                
+                update_fields = ['title', 'content', 'category']
+                if request.user.is_staff:
+                    post.is_notice = request.POST.get('is_notice') == 'on'
+                    post.is_pinned = request.POST.get('is_pinned') == 'on' if post.is_notice else False
+                    update_fields.extend(['is_notice', 'is_pinned'])
 
-        post.save(update_fields=update_fields)
+                post.save(update_fields=update_fields)
 
-        # 다중 첨부파일 저장
-        attachments = request.FILES.getlist('attachments')
-        for f in attachments:
-            CommunityPostAttachment.objects.create(
-                post=post,
-                file=f,
-                filename=f.name
-            )
+                # 다중 첨부파일 저장
+                attachments = request.FILES.getlist('attachments')
+                for f in attachments:
+                    CommunityPostAttachment.objects.create(
+                        post=post,
+                        file=f,
+                        filename=f.name
+                    )
 
-        messages.success(request, '게시글이 수정되었습니다.')
-        return redirect('post_detail', post_id=post.id)
+                _save_survey_for_post(post, survey_data, request.user)
+
+            messages.success(request, '게시글이 수정되었습니다.')
+            return redirect('post_detail', post_id=post.id)
+        except ValueError as e:
+            messages.error(request, f'설문 저장 실패: {str(e)}')
+            return render(request, 'community/post_create.html', {
+                'title': '글 수정',
+                'post': post,
+                'is_edit': True,
+                'category': category,
+                'survey_data_json': survey_data,
+                'survey_has_responses': survey_has_responses,
+            })
+
+    # Prepare existing survey payload
+    survey_payload_json = ""
+    if survey:
+        payload = {
+            'title': survey.title,
+            'description': survey.description,
+            'starts_at': timezone.localtime(survey.starts_at).strftime('%Y-%m-%dT%H:%M') if survey.starts_at else '',
+            'ends_at': timezone.localtime(survey.ends_at).strftime('%Y-%m-%dT%H:%M') if survey.ends_at else '',
+            'is_anonymous': survey.is_anonymous,
+            'allow_duplicate_response': survey.allow_duplicate_response,
+            'questions': [
+                {
+                    'sequence': question.order,
+                    'title': question.question_text,
+                    'description': question.question_description,
+                    'question_type': question.question_type,
+                    'choices': [
+                        {
+                            'sequence': choice.order,
+                            'text': choice.choice_text,
+                        }
+                        for choice in question.choices.all()
+                    ],
+                }
+                for question in survey.questions.prefetch_related('choices').all()
+            ],
+        }
+        survey_payload_json = json.dumps(payload)
 
     return render(request, 'community/post_create.html', {
         'title': '글 수정',
         'post': post,
         'is_edit': True,
         'category': post.category,
+        'survey_data_json': survey_payload_json,
+        'survey_has_responses': survey_has_responses,
     })
 
 
