@@ -75,21 +75,169 @@
             <!-- Toast UI Viewer 본문 영역 -->
             <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed"></div>
 
+            <!-- 📊 설문조사 영역 -->
+            {% if survey %}
+            <div id="survey-wrapper" class="border-t border-slate-100 pt-6 mt-6 space-y-4">
+                <div class="bg-slate-50/50 border border-slate-200/80 rounded-2xl p-6 md:p-8 space-y-6">
+                    <!-- 설문 헤더 -->
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200/60 pb-5">
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">
+                                    <i class="fa-solid fa-square-poll-horizontal"></i> 설문조사
+                                </span>
+                                {% if survey.is_closed %}
+                                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 text-xs font-bold">
+                                    마감됨
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500 text-white text-xs font-bold">
+                                    진행중
+                                </span>
+                                {% endif %}
+                            </div>
+                            <h3 class="text-xl font-extrabold text-slate-800">{{ survey.title }}</h3>
+                            {% if survey.description %}
+                            <p class="text-sm text-slate-500 font-medium">{{ survey.description }}</p>
+                            {% endif %}
+                            <div class="text-xs text-slate-400 font-medium space-y-0.5 mt-2">
+                                {% if survey.starts_at or survey.ends_at %}
+                                <p>🗓️ 기간: {{ survey.starts_at|date:"Y-m-d H:i"|default:"시작 없음" }} ~ {{ survey.ends_at|date:"Y-m-d H:i"|default:"종료 없음" }}</p>
+                                {% endif %}
+                                <p>👥 응답 방식: {% if survey.is_anonymous %}익명 응답{% else %}실명 응답{% endif %} | {% if survey.allow_duplicate_response %}중복 허용{% else %}1인 1회{% endif %}</p>
+                            </div>
+                        </div>
+
+                        <!-- 결과 보기 및 CSV 다운로드 토글 버튼 (스태프 혹은 생성자) -->
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            {% if can_manage_survey or has_responded %}
+                            <button type="button" id="toggle-results-btn" onclick="toggleSurveyResults()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition shadow-sm">
+                                <i class="fa-solid fa-chart-pie text-emerald-600"></i> 결과 통계 보기
+                            </button>
+                            {% endif %}
+                            {% if request.user.is_staff %}
+                            <a href="{% url 'survey_results_export' survey.id %}" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition shadow-sm">
+                                <i class="fa-solid fa-file-excel text-emerald-600"></i> 결과 CSV 다운로드
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- 결과 통계 화면 (기본 hidden) -->
+                    <div id="survey-results-section" class="hidden space-y-6">
+                        <h4 class="text-base font-bold text-slate-800">📊 설문결과 통계</h4>
+                        <div id="results-loader" class="text-center py-8 text-slate-400 text-sm">
+                            <i class="fa-solid fa-spinner fa-spin text-emerald-500 mr-1.5"></i> 통계를 불러오고 있습니다...
+                        </div>
+                        <div id="results-content" class="space-y-6"></div>
+                    </div>
+
+                    <!-- 설문지 답변 화면 / 제출 완료 화면 -->
+                    <div id="survey-form-section">
+                        {% if has_responded and not survey.allow_duplicate_response %}
+                        <!-- 제출 완료 뷰 -->
+                        <div class="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-6 text-center space-y-3">
+                            <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl shadow-sm">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </div>
+                            <div class="space-y-1">
+                                <h4 class="text-base font-bold text-slate-800">설문 응답이 정상적으로 제출되었습니다.</h4>
+                                <p class="text-xs text-slate-400 font-medium">참여해 주셔서 진심으로 감사드립니다.</p>
+                            </div>
+                            {% if not survey.is_closed %}
+                            <button type="button" onclick="allowReResponse()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-emerald-200 text-emerald-600 text-xs font-bold hover:bg-emerald-50 transition shadow-sm">
+                                <i class="fa-solid fa-pen-to-square"></i> 응답 수정하기
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <!-- 설문 응답 폼 -->
+                        <form id="survey-respond-form" class="space-y-5" onsubmit="submitSurveyResponse(event)">
+                            <input type="hidden" name="response_id" value="{{ existing_response.id|default:'' }}">
+                            
+                            <div class="space-y-4">
+                                {% for question in questions %}
+                                <div class="bg-white border border-slate-200/80 rounded-2xl p-5 md:p-6 space-y-3" data-question-id="{{ question.id }}" data-type="{{ question.question_type }}" data-required="{{ question.required|yesno:'true,false' }}">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="space-y-1">
+                                            <h5 class="text-sm font-extrabold text-slate-800">
+                                                {{ forloop.counter }}. {{ question.question_text }}
+                                                {% if question.required %}<span class="text-rose-500" title="필수 문항">*</span>{% endif %}
+                                            </h5>
+                                            {% if question.question_description %}
+                                            <p class="text-xs text-slate-500 font-medium">{{ question.question_description }}</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <!-- 답변 입력 타입별 렌더링 -->
+                                    <div class="pt-2">
+                                        {% if question.question_type == 'CHOICE' %}
+                                        <!-- 객관식 -->
+                                        <div class="space-y-2">
+                                            {% for choice in question.choices.all %}
+                                            <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 cursor-pointer transition select-none">
+                                                <input type="radio" name="question_{{ question.id }}" value="{{ choice.id }}" class="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500" {% if question.current_answer.choice == choice %}checked{% endif %} {% if survey.is_closed %}disabled{% endif %}>
+                                                <span class="text-sm font-semibold text-slate-700">{{ choice.choice_text }}</span>
+                                            </label>
+                                            {% endfor %}
+                                        </div>
+
+                                        {% elif question.question_type == 'TEXT' %}
+                                        <!-- 주관식 -->
+                                        <textarea name="question_{{ question.id }}" rows="3" placeholder="답변을 입력해 주세요." class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm font-medium text-slate-700 transition resize-none bg-white" {% if survey.is_closed %}disabled{% endif %}>{{ question.current_answer.text_answer|default:'' }}</textarea>
+
+                                        {% elif question.question_type == 'SCALE' %}
+                                        <!-- 척도형 (1~5점) -->
+                                        <div class="flex items-center justify-between max-w-md mx-auto py-2">
+                                            <span class="text-xs text-slate-400 font-bold">매우 아님 (1)</span>
+                                            <div class="flex items-center gap-4">
+                                                {% for val in scale_options %}
+                                                <label class="flex flex-col items-center gap-1.5 cursor-pointer">
+                                                    <input type="radio" name="question_{{ question.id }}" value="{{ val }}" class="w-5 h-5 text-emerald-600 border-slate-300 focus:ring-emerald-500" {% if question.current_answer.scale_answer == val %}checked{% endif %} {% if survey.is_closed %}disabled{% endif %}>
+                                                    <span class="text-xs font-bold text-slate-600">{{ val }}</span>
+                                                </label>
+                                                {% endfor %}
+                                            </div>
+                                            <span class="text-xs text-slate-400 font-bold">매우 그렇다 (5)</span>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            {% if not survey.is_closed %}
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" id="survey-submit-btn" class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white text-sm font-bold px-6 py-3 hover:bg-emerald-700 transition active:scale-[0.99] shadow-sm">
+                                    <i class="fa-solid fa-paper-plane"></i> 설문 응답 제출하기
+                                </button>
+                            </div>
+                            {% endif %}
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- 📎 첨부파일 목록 영역 -->
             {% if post.attachments.all %}
-            <div class="border-t border-slate-100 pt-6 mt-4">
-                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <i class="fa-solid fa-paperclip text-slate-400"></i> 첨부파일 ({{ post.attachments.count }}개)
+            <div id="attachments-wrapper" class="border-t border-slate-100 pt-6 mt-4">
+                <h4 id="attachments-header" class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <i class="fa-solid fa-paperclip text-slate-400"></i> 첨부파일 (<span id="attachments-count-badge">{{ post.attachments.count }}</span>개)
                 </h4>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div id="attachments-list-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {% for att in post.attachments.all %}
-                    <a href="{{ att.file.url }}" download class="flex items-center justify-between p-3.5 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/20 rounded-xl transition group">
-                        <div class="flex items-center gap-2.5 truncate">
-                            <i class="fa-solid fa-file text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
-                            <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors truncate">{{ att.filename }}</span>
-                        </div>
-                        <i class="fa-solid fa-download text-xs text-slate-400 group-hover:text-emerald-600 transition-colors pl-2"></i>
-                    </a>
+                    <div id="attachment-item-{{ forloop.counter }}" class="attachment-item-box">
+                        <a href="{{ att.file.url }}" download class="flex items-center justify-between p-3.5 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/20 rounded-xl transition group">
+                            <div class="flex items-center gap-2.5 truncate">
+                                <i class="fa-solid fa-file text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
+                                <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors truncate">{{ att.filename }}</span>
+                            </div>
+                            <i class="fa-solid fa-download text-xs text-slate-400 group-hover:text-emerald-600 transition-colors pl-2"></i>
+                        </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -367,6 +515,7 @@
     }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const bodyContent = `{{ post.content|escapejs }}`;
@@ -378,11 +527,12 @@
             initialValue: bodyContent
         });
 
-        // 뷰어 렌더링 완료 후 평문 URL을 하이퍼링크로 자동 변환 및 OG 미리보기 로드
+        // 뷰어 렌더링 완료 후 평문 URL을 하이퍼링크로 자동 변환 및 OG 미리보기 로드, 설문/첨부파일 중간 삽입 처리
         setTimeout(() => {
             const container = document.getElementById('content-viewer');
             autoLinkify(container);
             loadLinkPreviews(container);
+            processEmbeddedPlaceholders(container);
         }, 100);
     });
 
@@ -418,6 +568,111 @@
             });
             parent.replaceChild(fragment, textNode);
         });
+    }
+
+    // 본문 중간 플레이스홀더 [survey]/[설문] 및 [file:N] 처리
+    function processEmbeddedPlaceholders(container) {
+        if (!container) return;
+
+        // Helper function to replace text node match with a DOM element
+        function replacePlaceholderWithElement(placeholderRegex, elementToInsert) {
+            if (!elementToInsert) return false;
+            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+            let node;
+            const targets = [];
+            while ((node = walker.nextNode())) {
+                if (placeholderRegex.test(node.textContent)) {
+                    targets.push(node);
+                }
+            }
+            if (targets.length === 0) return false;
+
+            // 첫 번째 매치에 삽입 (여러 번 매치되어도 DOM 엘리먼트는 유일하므로 첫 번째에 삽입)
+            const textNode = targets[0];
+            const parent = textNode.parentNode;
+            if (!parent) return false;
+
+            const text = textNode.textContent;
+            const match = text.match(placeholderRegex);
+            if (match) {
+                const index = text.indexOf(match[0]);
+                const beforeText = text.substring(0, index);
+                const afterText = text.substring(index + match[0].length);
+
+                const fragment = document.createDocumentFragment();
+                if (beforeText) fragment.appendChild(document.createTextNode(beforeText));
+                fragment.appendChild(elementToInsert);
+                if (afterText) fragment.appendChild(document.createTextNode(afterText));
+
+                parent.replaceChild(fragment, textNode);
+                return true;
+            }
+            return false;
+        }
+
+        // 1. 설문조사 플레이스홀더 처리
+        const surveyEl = document.getElementById('survey-wrapper');
+        if (surveyEl) {
+            // A. 우선 HTML 요소 플레이스홀더가 있는지 검사
+            const surveyPlaceholderEl = container.querySelector('.editor-survey-placeholder');
+            if (surveyPlaceholderEl) {
+                surveyPlaceholderEl.parentNode.replaceChild(surveyEl, surveyPlaceholderEl);
+                surveyEl.classList.remove('border-t', 'mt-6');
+                surveyEl.classList.add('my-6');
+            } else {
+                // B. 차선책으로 텍스트 플레이스홀더 검사 (하위 호환)
+                const surveyRegex = /\[survey\]|\[설문\]/i;
+                const didEmbedSurvey = replacePlaceholderWithElement(surveyRegex, surveyEl);
+                if (didEmbedSurvey) {
+                    surveyEl.classList.remove('border-t', 'mt-6');
+                    surveyEl.classList.add('my-6');
+                }
+            }
+        }
+
+        // 2. 첨부파일 플레이스홀더 처리
+        const attachmentsList = document.getElementById('attachments-list-grid');
+        const attachmentsWrapper = document.getElementById('attachments-wrapper');
+        if (attachmentsWrapper && attachmentsList) {
+            const totalAttachments = attachmentsList.querySelectorAll('.attachment-item-box').length;
+            let embeddedCount = 0;
+
+            for (let i = 1; i <= totalAttachments; i++) {
+                const itemEl = document.getElementById(`attachment-item-${i}`);
+                if (itemEl) {
+                    // A. 우선 HTML 요소 플레이스홀더가 있는지 검사
+                    const filePlaceholderEl = container.querySelector(`.editor-file-placeholder[data-file-index="${i}"]`);
+                    if (filePlaceholderEl) {
+                        filePlaceholderEl.parentNode.replaceChild(itemEl, filePlaceholderEl);
+                        embeddedCount++;
+                        itemEl.style.display = 'block';
+                        itemEl.style.maxWidth = '380px';
+                        itemEl.classList.add('my-3');
+                    } else {
+                        // B. 차선책으로 텍스트 플레이스홀더 검사 (하위 호환)
+                        const fileRegex = new RegExp(`\\[file:${i}\\]`, 'i');
+                        const didEmbedFile = replacePlaceholderWithElement(fileRegex, itemEl);
+                        if (didEmbedFile) {
+                            embeddedCount++;
+                            itemEl.style.display = 'block';
+                            itemEl.style.maxWidth = '380px';
+                            itemEl.classList.add('my-3');
+                        }
+                    }
+                }
+            }
+
+            // 만약 모든 파일이 본문 중간에 삽입되었다면 하단 첨부파일 영역 전체를 숨김
+            if (embeddedCount === totalAttachments) {
+                attachmentsWrapper.style.display = 'none';
+            } else if (embeddedCount > 0) {
+                // 일부만 삽입된 경우 하단 첨부파일 개수 뱃지 갱신
+                const badge = document.getElementById('attachments-count-badge');
+                if (badge) {
+                    badge.textContent = totalAttachments - embeddedCount;
+                }
+            }
+        }
     }
 
     // 링크 프리뷰 로드 및 렌더링
@@ -746,6 +1001,330 @@
         if (container) {
             container.classList.toggle('hidden');
         }
+    }
+
+    // --- Survey Functions ---
+    const surveyChartInstances = {};
+    let cachedSurveyResults = null;
+    let surveyResultsLoaded = false;
+
+    function toggleSurveyResults() {
+        const resultsSection = document.getElementById('survey-results-section');
+        if (!resultsSection) return;
+        
+        const isHidden = resultsSection.classList.contains('hidden');
+        if (isHidden) {
+            resultsSection.classList.remove('hidden');
+            const toggleBtn = document.getElementById('toggle-results-btn');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = '<i class="fa-solid fa-square-poll-horizontal text-emerald-600"></i> 설문 응답지 보기';
+            }
+            if (!surveyResultsLoaded) {
+                loadSurveyResults();
+            } else {
+                Object.values(surveyChartInstances).forEach(chart => chart.resize());
+            }
+        } else {
+            resultsSection.classList.add('hidden');
+            const toggleBtn = document.getElementById('toggle-results-btn');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = '<i class="fa-solid fa-chart-pie text-emerald-600"></i> 결과 통계 보기';
+            }
+        }
+    }
+
+    async function loadSurveyResults() {
+        const loader = document.getElementById('results-loader');
+        const content = document.getElementById('results-content');
+        const surveyId = "{{ survey.id }}";
+        if (!surveyId) return;
+        
+        try {
+            const response = await fetch(`/community/api/surveys/${surveyId}/results/`, {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (!response.ok) {
+                if (loader) loader.textContent = '통계 정보를 불러오는 데 실패했습니다.';
+                return;
+            }
+            const data = await response.json();
+            cachedSurveyResults = data;
+            
+            renderSurveyResultsHTML(data);
+            
+            if (loader) loader.classList.add('hidden');
+            surveyResultsLoaded = true;
+            
+            renderSurveyCharts(data);
+        } catch (e) {
+            console.error(e);
+            if (loader) loader.textContent = '통계 로딩 중 오류가 발생했습니다.';
+        }
+    }
+
+    function renderSurveyResultsHTML(data) {
+        const content = document.getElementById('results-content');
+        if (!content) return;
+        content.innerHTML = '';
+        
+        if (!data || !Array.isArray(data.results)) return;
+        
+        data.results.forEach((question, index) => {
+            const card = document.createElement('div');
+            card.className = 'bg-white border border-slate-200 rounded-2xl p-5 md:p-6 space-y-4';
+            
+            let qTypeDisplay = '객관식';
+            if (question.type === 'TEXT') qTypeDisplay = '주관식';
+            else if (question.type === 'SCALE') qTypeDisplay = '척도형 (1~5점)';
+            
+            let html = `
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h5 class="text-sm font-extrabold text-slate-800">${index + 1}. ${escapeHtml(question.title)}</h5>
+                    <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">${qTypeDisplay}</span>
+                </div>
+            `;
+            
+            if (question.type === 'CHOICE') {
+                const total = question.stats.reduce((s, x) => s + x.count, 0) || 1;
+                let rowsHtml = '';
+                question.stats.forEach(stat => {
+                    const pct = Math.round((stat.count / total) * 100);
+                    rowsHtml += `
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-semibold">
+                                <span class="text-slate-700">${escapeHtml(stat.choice_text)}</span>
+                                <span class="text-emerald-600">${stat.count}명 (${pct}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-emerald-500 rounded-full" style="width: ${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                        <div class="space-y-3.5">${rowsHtml}</div>
+                        <div class="bg-slate-50/50 border border-slate-100 rounded-xl p-3 max-h-48 flex items-center justify-center">
+                            <canvas id="survey_chart_${question.id}" class="w-full max-h-40"></canvas>
+                        </div>
+                    </div>
+                `;
+            } else if (question.type === 'SCALE') {
+                const total = question.stats.reduce((s, x) => s + x.count, 0) || 1;
+                const statsMap = {};
+                question.stats.forEach(s => { statsMap[s.scale] = s.count; });
+                
+                let rowsHtml = '';
+                for (let i = 1; i <= 5; i++) {
+                    const count = statsMap[i] || 0;
+                    const pct = Math.round((count / total) * 100);
+                    rowsHtml += `
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-semibold">
+                                <span class="text-slate-700">${i}점</span>
+                                <span class="text-emerald-600">${count}명 (${pct}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-emerald-500 rounded-full" style="width: ${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                        <div class="space-y-3.5">${rowsHtml}</div>
+                        <div class="bg-slate-50/50 border border-slate-100 rounded-xl p-3 max-h-48 flex items-center justify-center">
+                            <canvas id="survey_chart_${question.id}" class="w-full max-h-40"></canvas>
+                        </div>
+                    </div>
+                `;
+            } else if (question.type === 'TEXT') {
+                let answersHtml = '';
+                if (question.answers.length === 0) {
+                    answersHtml = '<p class="text-xs text-slate-400 py-3 text-center">제출된 답변이 없습니다.</p>';
+                } else {
+                    answersHtml = '<div class="space-y-2 max-h-60 overflow-y-auto pr-1">';
+                    question.answers.forEach(ans => {
+                        answersHtml += `
+                            <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs leading-relaxed space-y-1">
+                                <p class="text-slate-700 font-semibold">${escapeHtml(ans.text)}</p>
+                                <p class="text-[10px] text-slate-400 text-right font-medium">— ${escapeHtml(ans.respondent)}</p>
+                            </div>
+                        `;
+                    });
+                    answersHtml += '</div>';
+                }
+                
+                html += answersHtml;
+            }
+            
+            card.innerHTML = html;
+            content.appendChild(card);
+        });
+    }
+
+    function renderSurveyCharts(data) {
+        if (!data || !Array.isArray(data.results)) return;
+        
+        data.results.forEach(question => {
+            const canvas = document.getElementById(`survey_chart_${question.id}`);
+            if (!canvas) return;
+            
+            if (surveyChartInstances[question.id]) {
+                surveyChartInstances[question.id].destroy();
+            }
+            
+            const ctx = canvas.getContext('2d');
+            let cfg = null;
+            const COLORS = ['#059669','#10b981','#34d399','#6ee7b7','#a7f3d0','#d1fae5'];
+            
+            if (question.type === 'CHOICE') {
+                cfg = {
+                    type: 'bar',
+                    data: {
+                        labels: question.stats.map(s => s.choice_text),
+                        datasets: [{
+                            label: '응답 수',
+                            data: question.stats.map(s => s.count),
+                            backgroundColor: COLORS.slice(0, question.stats.length),
+                            borderRadius: 6,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                    }
+                };
+            } else if (question.type === 'SCALE') {
+                const counts = [0,0,0,0,0];
+                question.stats.forEach(s => { counts[s.scale-1] = s.count; });
+                cfg = {
+                    type: 'bar',
+                    data: {
+                        labels: ['1점','2점','3점','4점','5점'],
+                        datasets: [{
+                            label: '응답 수',
+                            data: counts,
+                            backgroundColor: '#059669',
+                            borderRadius: 6,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                    }
+                };
+            }
+            
+            if (cfg) {
+                surveyChartInstances[question.id] = new Chart(ctx, cfg);
+            }
+        });
+    }
+
+    function submitSurveyResponse(e) {
+        e.preventDefault();
+        
+        const form = document.getElementById('survey-respond-form');
+        const submitBtn = document.getElementById('survey-submit-btn');
+        const surveyId = "{{ survey.id }}";
+        const csrfToken = getCsrfToken();
+        
+        const answers = {};
+        const responseIdInput = form.querySelector('input[name="response_id"]');
+        if (responseIdInput && responseIdInput.value) {
+            answers['response_id'] = responseIdInput.value;
+        }
+        
+        let validationError = false;
+        
+        form.querySelectorAll('[data-question-id]').forEach(qDiv => {
+            const questionId = qDiv.dataset.questionId;
+            const type = qDiv.dataset.type;
+            const required = qDiv.dataset.required === 'true';
+            
+            let answerValue = null;
+            if (type === 'CHOICE' || type === 'SCALE') {
+                const checkedRadio = qDiv.querySelector('input[type="radio"]:checked');
+                if (checkedRadio) {
+                    answerValue = checkedRadio.value;
+                }
+            } else if (type === 'TEXT') {
+                const textVal = qDiv.querySelector('textarea').value.trim();
+                if (textVal) {
+                    answerValue = textVal;
+                }
+            }
+            
+            if (required && !answerValue) {
+                validationError = true;
+                qDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                qDiv.classList.add('border-rose-400');
+                setTimeout(() => qDiv.classList.remove('border-rose-400'), 2500);
+            }
+            
+            if (answerValue) {
+                answers[`question_${questionId}`] = answerValue;
+            }
+        });
+        
+        if (validationError) {
+            alert('필수 문항의 답변을 입력해 주세요.');
+            return;
+        }
+        
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 제출 중...';
+        }
+        
+        fetch(`/community/surveys/${surveyId}/respond/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify(answers)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message || '응답이 정상적으로 등록되었습니다.');
+                window.location.reload();
+            } else {
+                alert(data.error || '제출에 실패했습니다.');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 설문 응답 제출하기';
+                }
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('오류가 발생했습니다.');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 설문 응답 제출하기';
+            }
+        });
+    }
+
+    function allowReResponse() {
+        const url = window.location.href.split('?')[0] + '?modify_response=1';
+        window.location.href = url;
+    }
+
+    function escapeHtml(text) {
+        const m = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return String(text).replace(/[&<>"']/g, c => m[c]);
     }
 </script>
 {% endblock content %}
