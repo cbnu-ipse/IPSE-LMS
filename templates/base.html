@@ -116,10 +116,6 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             동아리 일정
                         </a>
-                        <a href="{% url 'poll_list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' or request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
-                            투표/설문
-                        </a>
                         {% if request.user.is_staff %}
                         <a href="{% url 'recruit_list' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'recruit_list' or request.resolver_match.url_name == 'recruit_edit' or request.resolver_match.url_name == 'recruit_manage' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
@@ -329,16 +325,10 @@
         </div>
     </footer>
 
-    <!-- 모바일 5탭 Bottom Navigation Bar -->
+    <!-- 모바일 Bottom Navigation Bar -->
     {% if request.host.name != 'judge' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
-        <!-- 1. 투표/설문 -->
-        <a href="{% url 'poll_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'poll_list' or request.resolver_match.url_name == 'poll_detail' or request.resolver_match.url_name == 'survey_list' or request.resolver_match.url_name == 'survey_detail' or request.resolver_match.url_name == 'survey_results' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
-            <i class="fa-solid fa-square-poll-vertical text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">투표/설문</span>
-        </a>
-
-        <!-- 2. 번개 모임 -->
+        <!-- 1. 번개 모임 -->
         <a href="{% url 'gathering_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
             <i class="fa-solid fa-bolt text-[17px]"></i>
             <span class="text-[9px] font-semibold tracking-tight">번개</span>
