@@ -122,6 +122,13 @@ def home_view(request):
         request.session['last_lms_sync_date'] = today_str
         request.session['just_logged_in'] = False
 
+    # 하루 1회 백그라운드 학사공지(CBNU) 크롤러 연동 트리거 체크 (세션 저장)
+    last_notice_sync = request.session.get('last_notice_sync_date')
+    trigger_notice_sync = False
+    if last_notice_sync != today_str:
+        trigger_notice_sync = True
+        request.session['last_notice_sync_date'] = today_str
+
     context = {
         'notices': notices,
         'active_gatherings': active_gatherings,
@@ -134,6 +141,7 @@ def home_view(request):
         'problem_points': metrics['problem_points'],
         'contest_wins': metrics['contest_wins'],
         'trigger_lms_sync': trigger_lms_sync,
+        'trigger_notice_sync': trigger_notice_sync,
         'title': 'IPSE AI Academy 대시보드'
     }
     return render(request, 'core/index.html', context)

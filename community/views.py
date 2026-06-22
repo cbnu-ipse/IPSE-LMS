@@ -2334,3 +2334,26 @@ def og_preview(request):
         })
 
 
+@login_required
+def sync_notices_api(request):
+    """학사공지 백그라운드 동기화 API"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
+    
+    import threading
+    from django.core.management import call_command
+
+    def run_sync():
+        try:
+            call_command('sync_cbnu_notices')
+        except Exception as e:
+            print(f"Error running sync_cbnu_notices: {e}")
+
+    thread = threading.Thread(target=run_sync)
+    thread.daemon = True
+    thread.start()
+
+    return JsonResponse({'status': 'success', 'message': '학사공지 동기화가 백그라운드에서 시작되었습니다.'})
+
+
+

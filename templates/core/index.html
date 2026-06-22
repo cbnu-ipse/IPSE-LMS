@@ -575,6 +575,21 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('LMS background sync error: ', err);
     });
     {% endif %}
+
+    {% if trigger_notice_sync %}
+    // 하루 1회 백그라운드에서 학사공지 동기화를 실행합니다.
+    fetch('{% url "sync_notices_api" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        }
+    }).then(res => res.json()).then(data => {
+        console.log('Notice sync triggered: ' + data.message);
+    }).catch(err => {
+        console.error('Notice background sync error: ', err);
+    });
+    {% endif %}
 });
 </script>
 {% endblock %}
