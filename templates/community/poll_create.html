@@ -135,8 +135,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+{% include 'snippets/wysiwyg_editor.html' %}
 <script>
 (function() {
     // 마감 일시 기본값: 1주일 후
@@ -179,17 +178,17 @@
         btn.closest('.choice-row').remove();
     };
 
-    const descEditor = new toastui.Editor({
-        el: document.getElementById('description-editor'),
+    const descEditor = window.initializeWYSIWYGEditor({
+        editorId: 'description-editor',
+        inputId: 'description-hidden',
         height: '400px',
-        initialEditType: 'markdown',
-        previewStyle: 'vertical',
-        placeholder: '투표 설명을 마크다운으로 작성해 주세요.',
-        language: 'ko'
+        placeholder: '투표 설명을 작성해 주세요.',
+        initialValue: '',
+        formId: 'poll-form'
     });
 
     document.getElementById('poll-form').addEventListener('submit', function() {
-        document.getElementById('description-hidden').value = descEditor.getMarkdown();
+        document.getElementById('description-hidden').value = descEditor.getHTML();
         
         const startsAtVal = document.getElementById('starts_at').value;
         const endsAtVal = document.getElementById('ends_at').value;

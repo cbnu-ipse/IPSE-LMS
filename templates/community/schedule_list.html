@@ -92,13 +92,6 @@
             <h3 class="text-sm font-semibold text-slate-500">새 일정</h3>
             <button id="close-add-btn" class="text-slate-400 hover:text-slate-700 transition"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <!-- 탭 -->
-        <div class="flex border-b border-slate-100">
-            <button id="tab-schedule" type="button"
-                    class="flex-1 py-2.5 text-sm font-semibold text-emerald-700 border-b-2 border-emerald-500 transition">일반 일정</button>
-            <button id="tab-poll" type="button"
-                    class="flex-1 py-2.5 text-sm font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition">투표</button>
-        </div>
         <!-- 일반 일정 폼 -->
         <form id="add-form" class="p-5 space-y-4">
             {% csrf_token %}
@@ -160,14 +153,7 @@
             </div>
             <button type="submit" class="w-full py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition">추가</button>
         </form>
-        <!-- 투표 영역 -->
-        <div id="poll-form-area" class="hidden p-5">
-            <p class="text-sm text-slate-500 mb-3">투표는 시작/마감 일시가 자동으로 캘린더에 표시됩니다.</p>
-            <a href="{% url 'poll_create' %}"
-               class="block w-full text-center py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition">
-               투표 만들기 페이지로 이동
-            </a>
-        </div>
+
     </div>
 </div>
 
@@ -377,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const isPast = evDt < now;
 
                 // 색상 (이벤트별 고유 색상, 미완료 LMS 과제이거나 과거는 회색)
-                const evColor = (isPast || isIncompleteLms) ? '#94a3b8' : hashColor(ev.id);
+                const evColor = (isPast || isIncompleteLms) ? '#94a3b8' : (ev.color || '#10b981');
                 const evColorLight = evColor + '33';
                 const titleCls = (isPast || isIncompleteLms) ? 'text-slate-400' : 'text-slate-800';
                 const startDate = ev.start ? ev.start.slice(0,10) : dateStr;
@@ -432,11 +418,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (isLms) {
                     item.classList.add('cursor-pointer');
                     item.addEventListener('click', () => { closeDayPanel(); openLmsModal(ev); });
-                } else if (type === 'poll' && ev.extendedProps.poll_id) {
+                } else if (type === 'gathering' && ev.extendedProps.gathering_id) {
                     item.classList.add('cursor-pointer');
-                    item.addEventListener('click', () => { window.location.href = '/community/polls/'+ev.extendedProps.poll_id+'/'; });
+                    item.addEventListener('click', () => { window.location.href = '/community/meetup/'+ev.extendedProps.gathering_id+'/'; });
                 } else if (isStaff) {
-                    // 지난 일정도 클릭 가능 (삭제 용도)
                     item.classList.add('cursor-pointer');
                     item.addEventListener('click', () => { closeDayPanel(); openEditModal(ev); });
                 }
@@ -484,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const end = arg.event.end;
             const isMultiDay = end && (end - start) > 24 * 60 * 60 * 1000;
             const isGlobal = !!(arg.event.extendedProps.is_global);
-            const bg = hashColor(arg.event.id);
+            const bg = arg.event.backgroundColor || '#10b981';
 
             if (arg.event.allDay || isMultiDay) {
                 // 시작 / 끝 세그먼트에만 둥근 모서리, 중간 세그먼트는 플랫
@@ -515,6 +500,7 @@ document.addEventListener('DOMContentLoaded', function () {
             allEvents = events.map(ev => ({
                 id: ev.id, title: ev.title,
                 start: ev.startStr, end: ev.endStr||null,
+                color: ev.backgroundColor,
                 extendedProps: {...ev.extendedProps}
             }));
         },
@@ -540,27 +526,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const addModal  = document.getElementById('add-modal');
         const addMC     = document.getElementById('add-modal-content');
         const addForm   = document.getElementById('add-form');
-        const pollArea  = document.getElementById('poll-form-area');
-        const tabSch    = document.getElementById('tab-schedule');
-        const tabPoll   = document.getElementById('tab-poll');
         const alldayBtn = document.getElementById('allday-toggle');
         const alldayDot = document.getElementById('allday-dot');
         let isAllDay = false;
-
-        tabSch.addEventListener('click', ()=>{
-            tabSch.classList.add('text-emerald-700','border-emerald-500');
-            tabSch.classList.remove('text-slate-400','border-transparent');
-            tabPoll.classList.remove('text-emerald-700','border-emerald-500');
-            tabPoll.classList.add('text-slate-400','border-transparent');
-            addForm.classList.remove('hidden'); pollArea.classList.add('hidden');
-        });
-        tabPoll.addEventListener('click', ()=>{
-            tabPoll.classList.add('text-emerald-700','border-emerald-500');
-            tabPoll.classList.remove('text-slate-400','border-transparent');
-            tabSch.classList.remove('text-emerald-700','border-emerald-500');
-            tabSch.classList.add('text-slate-400','border-transparent');
-            pollArea.classList.remove('hidden'); addForm.classList.add('hidden');
-        });
 
         alldayBtn.addEventListener('click', ()=>{
             isAllDay = !isAllDay;
@@ -609,7 +577,6 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('add-date-only').value = base;
             addRecurType.value = 'NONE';
             recurEndRow.classList.add('hidden');
-            tabSch.click();
             openModal(addModal, addMC);
             setTimeout(()=>document.getElementById('add-title').focus(), 60);
         });

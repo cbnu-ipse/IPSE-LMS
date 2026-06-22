@@ -2,7 +2,7 @@
 {% load i18n %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
+<section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-6 md:space-y-8">
         <!-- 📣 1. 상단 배너 (모바일에서 숨김) -->
         <div class="hidden-mobile">
@@ -27,10 +27,21 @@
         {% include 'snippets/messages.html' %}
 
         <!-- 📱 모바일 햄버거 헤더 바 -->
-        <div class="mobile-only bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm" style="display:flex; align-items:center; justify-content:space-between;">
+        <div class="mobile-only bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm sticky-mobile-header" style="display:flex; align-items:center; justify-content:space-between;">
             <div style="display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-leaf text-emerald-600"></i>
-                <span class="font-bold text-slate-800 text-sm">커뮤니티</span>
+                <span class="font-bold text-slate-800 text-sm">
+                    {% block mobile_header_title %}
+                        {% with board=request.GET.board %}
+                            {% if board == 'hot' %}인기글 (HOT)
+                            {% elif board == 'notice' %}공지사항
+                            {% elif board == 'free' %}자유게시판
+                            {% elif board == 'feedback' %}피드백 게시판
+                            {% else %}전체글보기
+                            {% endif %}
+                        {% endwith %}
+                    {% endblock %}
+                </span>
             </div>
             <button id="community-menu-toggle" onclick="toggleCommunityMenu()" class="text-slate-600 text-xs font-bold bg-slate-50 transition" style="display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc;">
                 <i class="fa-solid fa-bars"></i>
@@ -39,7 +50,7 @@
         </div>
 
         <!-- 📱 모바일 슬라이드 메뉴 (기본 숨김) -->
-        <div id="community-mobile-menu" class="mobile-only bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" style="display:none;">
+        <div id="community-mobile-menu" class="mobile-only bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden sticky-mobile-menu" style="display:none;">
             {% with cur_board=request.GET.board cur_tab=request.GET.tab cur_url=request.resolver_match.url_name %}
             <div class="px-4 py-3 border-b border-slate-100">
                 <p class="text-xs font-bold text-emerald-700 uppercase tracking-wider">★ 게시판 목록</p>
@@ -55,9 +66,9 @@
         </div>
 
         <!-- 📂 PC + 모바일 메인 Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full max-w-full overflow-hidden min-w-0">
             <!-- 🗂️ 좌측 사이드바 (PC만 표시) -->
-            <aside class="hidden-mobile lg:col-span-3 space-y-6">
+            <aside class="hidden-mobile lg:col-span-3 space-y-6 shrink-0">
                 <!-- 카페 정보 / 사용자 미니 프로필 카드 -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                     <div class="flex items-center gap-3">
@@ -158,7 +169,7 @@
             </aside>
 
             <!-- 📝 우측 컨텐츠 영역 -->
-            <main class="lg:col-span-9 space-y-6">
+            <main class="lg:col-span-9 space-y-6 w-full max-w-full overflow-hidden min-w-0">
                 {% block community_content %}{% endblock %}
             </main>
         </div>
@@ -170,6 +181,18 @@
 @media (max-width: 767px) {
     .hidden-mobile { display: none !important; }
     .mobile-only { display: block; }
+    .sticky-mobile-header {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        top: 64px !important;
+        z-index: 30 !important;
+    }
+    .sticky-mobile-menu {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        top: 110px !important;
+        z-index: 30 !important;
+    }
 }
 /* PC(768px 이상): 모바일 전용 요소 숨김 */
 @media (min-width: 768px) {

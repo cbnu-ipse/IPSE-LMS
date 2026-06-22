@@ -334,8 +334,7 @@
 
 {% block extra_js %}
 {% if user.is_staff %}
-<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+{% include 'snippets/wysiwyg_editor.html' %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // ============================================================
@@ -354,13 +353,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function openPollCreateModal() {
         pollCreateModal.classList.remove('hidden');
         if (!pollModalEditor) {
-            pollModalEditor = new toastui.Editor({
-                el: document.getElementById('poll-modal-description-editor'),
+            pollModalEditor = window.initializeWYSIWYGEditor({
+                editorId: 'poll-modal-description-editor',
+                inputId: 'poll-modal-description-hidden',
                 height: '400px',
-                initialEditType: 'markdown',
-                previewStyle: 'vertical',
-                placeholder: '투표 설명을 마크다운으로 작성해 주세요.',
-                language: 'ko'
+                placeholder: '투표 설명을 작성해 주세요.',
+                initialValue: '',
+                formId: 'poll-create-form'
             });
         }
         setTimeout(() => {
@@ -423,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
     })();
 
     pollCreateForm?.addEventListener('submit', function() {
-        document.getElementById('poll-modal-description-hidden').value = pollModalEditor ? pollModalEditor.getMarkdown() : '';
+        document.getElementById('poll-modal-description-hidden').value = pollModalEditor ? pollModalEditor.getHTML() : '';
         
         const startsAtVal = document.getElementById('poll-modal-starts-at').value;
         const endsAtVal = document.getElementById('poll-modal-ends-at').value;
@@ -458,13 +457,12 @@ document.addEventListener('DOMContentLoaded', function() {
     function openSurveyModal() {
         surveyModal.classList.remove('hidden');
         if (!surveyDescEditor) {
-            surveyDescEditor = new toastui.Editor({
-                el: document.getElementById('survey-modal-description-editor'),
+            surveyDescEditor = window.initializeWYSIWYGEditor({
+                editorId: 'survey-modal-description-editor',
+                inputId: 'survey-modal-description-hidden',
                 height: '400px',
-                initialEditType: 'markdown',
-                previewStyle: 'vertical',
-                placeholder: '설문 설명을 마크다운으로 작성해 주세요.',
-                language: 'ko'
+                placeholder: '설문 설명을 작성해 주세요.',
+                initialValue: ''
             });
         }
         setTimeout(() => {
@@ -483,7 +481,7 @@ document.addEventListener('DOMContentLoaded', function() {
         surveyCountEl.textContent = surveyContainer.querySelectorAll('.survey-modal-question-item').length;
     }
 
-    function addChoiceInput(choiceContainer) {
+    function addSurveyChoiceInput(choiceContainer) {
         const row = document.createElement('div');
         row.className = 'flex items-center gap-2';
         row.innerHTML = `
@@ -492,6 +490,7 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         row.querySelector('.survey-modal-remove-choice').addEventListener('click', function() {
             if (choiceContainer.querySelectorAll('.survey-modal-choice-text').length <= 2) {
+                showToast('선택지는 최소 2개 이상이어야 합니다.', 'error');
                 return;
             }
             row.remove();
@@ -500,107 +499,108 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addSurveyQuestion() {
-        const questionDiv = document.createElement('div');
-        questionDiv.className = 'survey-modal-question-item mb-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 shadow-sm';
-        questionDiv.innerHTML = `
-            <div class="mb-4 flex items-center justify-between gap-3">
-                <div>
-                    <p class="text-xs font-semibold tracking-[0.16em] text-emerald-700">QUESTION ${surveyQuestionIndex + 1}</p>
-                    <p class="mt-1 text-sm text-slate-500">응답자가 이해하기 쉽게 질문을 작성해 주세요.</p>
-                </div>
-                <button type="button" class="survey-modal-remove-question inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500"><i class="fas fa-trash"></i></button>
+        surveyQuestionIndex++;
+        const qDiv = document.createElement('div');
+        qDiv.className = 'survey-modal-question-item bg-slate-50/50 border border-slate-200/80 rounded-2xl p-6 space-y-4';
+        qDiv.dataset.questionIndex = surveyQuestionIndex;
+        qDiv.innerHTML = `
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">질문 <span class="question-number"></span></span>
+                <button type="button" class="survey-modal-remove-question text-xs text-rose-500 hover:text-rose-700 font-bold flex items-center gap-1"><i class="fas fa-trash"></i> 삭제</button>
             </div>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
-                <input type="text" class="survey-modal-question-title w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문을 입력하세요" required>
+            <div class="space-y-1.5">
+                <input type="text" class="survey-modal-question-title w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문 내용을 입력하세요" required>
+            </div>
+            <div class="space-y-1.5">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">질문 유형</label>
                 <select class="survey-modal-question-type w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                    <option value="CHOICE">객관식</option>
-                    <option value="TEXT">주관식</option>
-                    <option value="SCALE">척도형</option>
+                    <option value="text">주관식 단답형</option>
+                    <option value="paragraph">주관식 서술형</option>
+                    <option value="choice">객관식 단일 선택</option>
+                    <option value="multiple_choice">객관식 다중 선택</option>
                 </select>
             </div>
-            <div class="mt-4">
-                <input type="text" class="survey-modal-question-description w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문 설명을 입력하세요 (선택사항)">
-            </div>
-            <div class="survey-modal-choices-container mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <label class="mb-3 block text-sm font-semibold text-slate-700">답변 선택지</label>
+            <div class="survey-modal-choices-section hidden space-y-3">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">선택지 목록</label>
                 <div class="survey-modal-choices-list space-y-2"></div>
-                <button type="button" class="survey-modal-add-choice mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"><i class="fas fa-plus"></i> 선택지 추가</button>
+                <button type="button" class="survey-modal-add-choice-btn w-full py-2.5 rounded-xl border border-dashed border-slate-200 text-xs font-semibold text-slate-500 hover:border-emerald-500 hover:text-emerald-600 hover:bg-emerald-50/20 transition flex items-center justify-center gap-1.5"><i class="fas fa-plus"></i> 선택지 추가</button>
             </div>
         `;
 
-        const typeSelect = questionDiv.querySelector('.survey-modal-question-type');
-        const choicesContainer = questionDiv.querySelector('.survey-modal-choices-container');
-        const choicesList = questionDiv.querySelector('.survey-modal-choices-list');
-        addChoiceInput(choicesList);
-        addChoiceInput(choicesList);
-        typeSelect.addEventListener('change', function() {
-            if (this.value === 'CHOICE') {
-                choicesContainer.classList.remove('hidden');
-            } else {
-                choicesContainer.classList.add('hidden');
-            }
-        });
-        questionDiv.querySelector('.survey-modal-add-choice').addEventListener('click', function() {
-            addChoiceInput(choicesList);
-        });
-        questionDiv.querySelector('.survey-modal-remove-question').addEventListener('click', function() {
-            questionDiv.remove();
+        qDiv.querySelector('.survey-modal-remove-question').addEventListener('click', function() {
+            qDiv.remove();
+            updateQuestionNumbers();
             updateSurveyCount();
         });
-        surveyContainer.appendChild(questionDiv);
-        surveyQuestionIndex += 1;
+
+        const qTypeSelect = qDiv.querySelector('.survey-modal-question-type');
+        const choicesSection = qDiv.querySelector('.survey-modal-choices-section');
+        const choicesList = qDiv.querySelector('.survey-modal-choices-list');
+        const addChoiceBtn = qDiv.querySelector('.survey-modal-add-choice-btn');
+
+        qTypeSelect.addEventListener('change', function() {
+            if (this.value === 'choice' || this.value === 'multiple_choice') {
+                choicesSection.classList.remove('hidden');
+                if (choicesList.children.length === 0) {
+                    addSurveyChoiceInput(choicesList);
+                    addSurveyChoiceInput(choicesList);
+                }
+            } else {
+                choicesSection.classList.add('hidden');
+            }
+        });
+
+        addChoiceBtn.addEventListener('click', function() {
+            addSurveyChoiceInput(choicesList);
+        });
+
+        surveyContainer.appendChild(qDiv);
+        updateQuestionNumbers();
         updateSurveyCount();
     }
 
-    openSurveyBtn?.addEventListener('click', openSurveyModal);
-    closeSurveyBtn?.addEventListener('click', closeSurveyModal);
-    surveyModal?.addEventListener('click', event => {
-        if (event.target === surveyModal) {
-            closeSurveyModal();
-        }
-    });
-    surveyAddBtn?.addEventListener('click', addSurveyQuestion);
-
-    if (surveyContainer && surveyContainer.children.length === 0) {
-        addSurveyQuestion();
+    function updateQuestionNumbers() {
+        surveyContainer.querySelectorAll('.survey-modal-question-item').forEach((item, index) => {
+            item.querySelector('.question-number').textContent = index + 1;
+        });
     }
 
-    (function setSurveyModalDefaults() {
-        const now = new Date();
-        const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        
-        const formatLocal = (d) => {
-            const pad = n => String(n).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        };
-        
-        const startsInput = document.getElementById('survey-modal-starts-at');
-        const endsInput = document.getElementById('survey-modal-ends-at');
-        if (startsInput) startsInput.value = formatLocal(now);
-        if (endsInput) endsInput.value = formatLocal(week);
-    })();
+    surveyAddBtn.addEventListener('click', addSurveyQuestion);
 
-    surveyForm?.addEventListener('submit', async function(e) {
+    surveyForm.addEventListener('submit', async function(e) {
         e.preventDefault();
+
         const questions = [];
-        surveyContainer.querySelectorAll('.survey-modal-question-item').forEach((questionDiv, index) => {
-            const questionType = questionDiv.querySelector('.survey-modal-question-type').value;
-            const question = {
-                sequence: index,
-                title: questionDiv.querySelector('.survey-modal-question-title').value,
-                description: questionDiv.querySelector('.survey-modal-question-description').value,
-                question_type: questionType,
-                choices: []
-            };
-            if (questionType === 'CHOICE') {
-                questionDiv.querySelectorAll('.survey-modal-choice-text').forEach((input, choiceIndex) => {
-                    if (input.value.trim()) {
-                        question.choices.push({ sequence: choiceIndex, text: input.value.trim() });
+        let isValid = true;
+
+        surveyContainer.querySelectorAll('.survey-modal-question-item').forEach(item => {
+            const title = item.querySelector('.survey-modal-question-title').value;
+            const type = item.querySelector('.survey-modal-question-type').value;
+            
+            const question = { title, type, choices: [] };
+
+            if (type === 'choice' || type === 'multiple_choice') {
+                item.querySelectorAll('.survey-modal-choice-text').forEach(choiceInput => {
+                    const val = choiceInput.value.trim();
+                    if (val) {
+                        question.choices.push(val);
                     }
                 });
+
+                if (question.choices.length < 2) {
+                    showToast('객관식 질문의 선택지는 최소 2개 이상 작성해야 합니다.', 'error');
+                    isValid = false;
+                }
             }
             questions.push(question);
         });
+
+        if (!isValid) return;
+
+        if (questions.length === 0) {
+            showToast('최소 1개 이상의 질문을 생성해야 합니다.', 'error');
+            return;
+        }
 
         surveySubmitBtn.disabled = true;
         surveySubmitBtn.textContent = '설문 등록 중...';

@@ -103,6 +103,88 @@
                     <input type="hidden" name="content" id="hidden-content">
                 </div>
 
+                <!-- 📊 설문조사 첨부 영역 -->
+                <div class="space-y-4 bg-slate-50/50 border border-slate-200/80 rounded-2xl p-6">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            📊 설문조사 첨부
+                        </label>
+                        <button type="button" id="toggle-survey-btn" class="inline-flex items-center gap-1.5 px-6 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition shadow-sm">
+                            <i class="fa-solid fa-plus text-emerald-600" id="survey-btn-icon"></i>
+                            <span id="survey-btn-text">설문조사 추가</span>
+                        </button>
+                    </div>
+
+                    <div id="survey-designer" class="hidden space-y-5 border-t border-slate-200/60 pt-4">
+                        <input type="hidden" name="survey_data" id="hidden-survey-data">
+                        
+                        <!-- 기본 설문 정보 -->
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label for="survey_title" class="mb-2 block text-xs font-bold text-slate-500 uppercase tracking-wider">설문 제목 <span class="text-rose-500">*</span></label>
+                                <input type="text" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="survey_title" placeholder="설문 제목을 입력하세요 (미입력 시 게시글 제목 사용)">
+                            </div>
+                            <div>
+                                <label for="survey_description" class="mb-2 block text-xs font-bold text-slate-500 uppercase tracking-wider">설문 설명</label>
+                                <input type="text" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" id="survey_description" placeholder="설문에 대한 설명을 입력하세요">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div class="space-y-2">
+                                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">설문 시작 시간</label>
+                                <div class="flex items-center gap-2.5">
+                                    <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                                    <input type="datetime-local" id="survey_starts_at"
+                                           class="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">설문 종료 시간</label>
+                                <div class="flex items-center gap-2.5">
+                                    <i class="fa-regular fa-clock w-4 text-center text-slate-400 text-sm"></i>
+                                    <input type="datetime-local" id="survey_ends_at"
+                                           class="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-emerald-400 transition">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/40 transition">
+                                <input class="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" type="checkbox" id="survey_is_anonymous">
+                                <span>
+                                    <span class="block text-sm font-semibold text-slate-800">익명 응답 허용</span>
+                                    <span class="mt-1 block text-xs text-slate-500">응답자 이름을 저장하지 않습니다.</span>
+                                </span>
+                            </label>
+
+                            <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/40 transition">
+                                <input class="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" type="checkbox" id="survey_allow_duplicate">
+                                <span>
+                                    <span class="block text-sm font-semibold text-slate-800">중복 응답 허용</span>
+                                    <span class="mt-1 block text-xs text-slate-500">한 사람이 여러 번 응답할 수 있습니다.</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <!-- 질문 목록 영역 -->
+                        <div class="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <h4 class="text-sm font-bold text-slate-800">질문 목록</h4>
+                                <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                                    총 <span id="post_survey_question_count">0</span>개
+                                </span>
+                            </div>
+
+                            <div id="survey-questions-container" class="space-y-4"></div>
+
+                            <button type="button" id="post-survey-add-question-btn" class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 px-4 py-3.5 text-sm font-semibold text-emerald-700 hover:border-emerald-400 hover:bg-emerald-100/70 transition">
+                                <i class="fas fa-plus"></i> 질문 추가
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 📎 첨부파일 필드 -->
                 <div class="space-y-3 bg-slate-50/50 border border-slate-200/80 rounded-2xl p-6">
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -162,12 +244,15 @@
     </div>
 </section>
 
+{% if survey_data_json %}
+<script id="survey-initial-data" type="application/json">{{ survey_data_json|safe }}</script>
+{% endif %}
+
 <!-- Toast UI Editor CDN 리소스 로드 -->
-<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+{% include 'snippets/wysiwyg_editor.html' %}
 
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
+    function initEditor() {
         // 공지 및 상단 고정 연동 스크립트 (스태프 전용)
         const isNoticeCheckbox = document.getElementById('is_notice');
         const isPinnedCheckbox = document.getElementById('is_pinned');
@@ -200,52 +285,396 @@
         // 백엔드에서 전달된 기존 내용 (수정 시)
         const initialVal = `{% if is_edit %}{{ post.content|escapejs }}{% else %}{{ post_content|escapejs|default:'' }}{% endif %}`;
 
-        const editor = new toastui.Editor({
-            el: document.getElementById('content-editor'),
+        // 공용 초기화 함수 실행
+        const editor = window.initializeWYSIWYGEditor({
+            editorId: 'content-editor',
+            inputId: 'hidden-content',
             height: '600px',
-            initialEditType: 'wysiwyg',
-            initialValue: initialVal,
-            language: 'ko-KR',
             placeholder: '부원들과 나눌 지식이나 자유로운 이야기를 편하게 적어 주세요. 이미지는 드래그&드롭이나 클립보드 붙여넣기로 바로 삽입할 수 있습니다.',
-            hooks: {
-                addImageBlobHook: (blob, callback) => {
-                    const formData = new FormData();
-                    formData.append('image', blob);
+            initialValue: initialVal,
+            formId: 'post-form'
+        });
 
-                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        // 설문조사 디자이너 초기화
+        initSurveyDesigner();
+    }
 
-                    fetch('/community/upload-image/', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrfToken },
-                        body: formData
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.url) {
-                            callback(data.url, '이미지');
-                        } else {
-                            showToast('이미지 업로드에 실패했습니다.', 'error');
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEditor);
+    } else {
+        initEditor();
+    }
+
+    // --- 설문조사 디자이너 스크립트 ---
+    let surveyQuestionIndex = 0;
+    const surveyHasResponses = {% if survey_has_responses %}true{% else %}false{% endif %};
+
+    function initSurveyDesigner() {
+        const toggleSurveyBtn = document.getElementById('toggle-survey-btn');
+        const surveyDesigner = document.getElementById('survey-designer');
+        const surveyBtnText = document.getElementById('survey-btn-text');
+        const surveyBtnIcon = document.getElementById('survey-btn-icon');
+        const questionsContainer = document.getElementById('survey-questions-container');
+        const hiddenSurveyData = document.getElementById('hidden-survey-data');
+
+        if (toggleSurveyBtn) {
+            toggleSurveyBtn.addEventListener('click', function() {
+                const isHidden = surveyDesigner.classList.contains('hidden');
+                if (isHidden) {
+                    surveyDesigner.classList.remove('hidden');
+                    surveyBtnText.textContent = '설문조사 제거';
+                    surveyBtnIcon.className = 'fa-solid fa-minus text-rose-500';
+                    toggleSurveyBtn.classList.remove('border-slate-200');
+                    toggleSurveyBtn.classList.add('border-rose-200', 'text-rose-600');
+                    
+                    if (questionsContainer.children.length === 0) {
+                        addSurveyQuestion();
+                    }
+                } else {
+                    if (surveyHasResponses) {
+                        if (!confirm("이미 응답이 있는 설문입니다. 설문을 삭제하면 제출된 모든 응답과 통계가 삭제됩니다. 정말 삭제하시겠습니까?")) {
+                            return;
                         }
-                    })
-                    .catch(() => {
-                        showToast('이미지 업로드 중 오류가 발생했습니다.', 'error');
-                    });
+                    }
+                    surveyDesigner.classList.add('hidden');
+                    surveyBtnText.textContent = '설문조사 추가';
+                    surveyBtnIcon.className = 'fa-solid fa-plus text-emerald-600';
+                    toggleSurveyBtn.classList.remove('border-rose-200', 'text-rose-600');
+                    toggleSurveyBtn.classList.add('border-slate-200');
+                    hiddenSurveyData.value = '';
+                }
+            });
+        }
+
+        const addQuestionBtn = document.getElementById('post-survey-add-question-btn');
+        if (addQuestionBtn) {
+            addQuestionBtn.addEventListener('click', function() {
+                addSurveyQuestion();
+            });
+        }
+
+        function addSurveyQuestion() {
+            const questionDiv = document.createElement('div');
+            questionDiv.className = 'post-survey-question-item mb-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 shadow-sm';
+            questionDiv.id = 'post_survey_question_' + surveyQuestionIndex;
+            
+            questionDiv.innerHTML = `
+                <div>
+                    <div class="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">QUESTION <span class="q-num-label">${questionsContainer.children.length + 1}</span></p>
+                            <p class="mt-1 text-[11px] text-slate-400 font-medium">질문 문항을 구성해 주세요.</p>
+                        </div>
+                        <button type="button" class="remove-question-btn inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 transition">
+                            <i class="fas fa-trash text-xs"></i>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                        <div>
+                            <label class="mb-1.5 block text-xs font-bold text-slate-500 uppercase">질문 제목</label>
+                            <input type="text" class="question-title w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문을 입력하세요" required>
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-xs font-bold text-slate-500 uppercase">유형</label>
+                            <select class="question-type w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" required>
+                                <option value="CHOICE">객관식</option>
+                                <option value="TEXT">주관식</option>
+                                <option value="SCALE">척도형 (1~5점)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="mb-1.5 block text-xs font-bold text-slate-500 uppercase">설명 (선택)</label>
+                        <input type="text" class="question-description w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="질문 설명을 입력하세요 (선택사항)">
+                    </div>
+
+                    <div class="choices-container mt-4 hidden rounded-2xl border border-slate-200 bg-white p-4">
+                        <label class="mb-3 block text-xs font-bold text-slate-500 uppercase">답변 선택지</label>
+                        <div class="choices-list space-y-2"></div>
+                        <button type="button" class="add-choice-btn mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                            <i class="fas fa-plus"></i> 선택지 추가
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            questionsContainer.appendChild(questionDiv);
+            updateQuestionIndices();
+            
+            const typeSelect = questionDiv.querySelector('.question-type');
+            const choicesContainer = questionDiv.querySelector('.choices-container');
+            const choicesList = choicesContainer.querySelector('.choices-list');
+
+            function ensureChoiceInputs() {
+                if (choicesList.children.length === 0) {
+                    addChoiceInput(choicesList);
+                    addChoiceInput(choicesList);
                 }
             }
-        });
-
-        // 폼 제출 시 hidden 필드에 editor의 HTML 내용 대입
-        const form = document.getElementById('post-form');
-        form.addEventListener('submit', (e) => {
-            const htmlVal = editor.getHTML().trim();
-            document.getElementById('hidden-content').value = htmlVal;
             
-            if (!htmlVal || htmlVal === '<p><br></p>') {
+            typeSelect.addEventListener('change', function() {
+                if (this.value === 'CHOICE') {
+                    choicesContainer.classList.remove('hidden');
+                    ensureChoiceInputs();
+                    choicesList.querySelectorAll('.choice-text').forEach(input => {
+                        input.required = true;
+                    });
+                } else {
+                    choicesContainer.classList.add('hidden');
+                    choicesList.querySelectorAll('.choice-text').forEach(input => {
+                        input.required = false;
+                    });
+                }
+            });
+            
+            questionDiv.querySelector('.add-choice-btn').addEventListener('click', function(e) {
                 e.preventDefault();
-                showToast('내용을 입력해 주세요.', 'error');
+                addChoiceInput(choicesList);
+            });
+            
+            questionDiv.querySelector('.remove-question-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                if (surveyHasResponses) {
+                    alert("응답이 제출된 설문의 질문은 삭제할 수 없습니다.");
+                    return;
+                }
+                questionDiv.remove();
+                updateQuestionIndices();
+            });
+
+            if (typeSelect.value === 'CHOICE') {
+                choicesContainer.classList.remove('hidden');
+                ensureChoiceInputs();
             }
-        });
-    });
+            
+            surveyQuestionIndex++;
+
+            if (surveyHasResponses) {
+                lockQuestionStructure(questionDiv);
+            }
+            
+            return questionDiv;
+        }
+
+        function addChoiceInput(container) {
+            const choiceDiv = document.createElement('div');
+            choiceDiv.className = 'flex items-center gap-2';
+            choiceDiv.innerHTML = `
+                <input type="text" class="choice-text w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" placeholder="선택지를 입력하세요" required>
+                <button type="button" class="remove-choice-btn inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 transition">
+                    <i class="fas fa-trash text-xs"></i>
+                </button>
+            `;
+            
+            choiceDiv.querySelector('.remove-choice-btn').addEventListener('click', function() {
+                if (surveyHasResponses) {
+                    alert("응답이 제출된 설문의 선택지는 삭제할 수 없습니다.");
+                    return;
+                }
+                choiceDiv.remove();
+            });
+            
+            container.appendChild(choiceDiv);
+        }
+
+        function updateQuestionIndices() {
+            const count = questionsContainer.children.length;
+            document.getElementById('post_survey_question_count').textContent = count;
+            Array.from(questionsContainer.children).forEach((qDiv, index) => {
+                qDiv.querySelector('.q-num-label').textContent = index + 1;
+            });
+        }
+
+        function lockQuestionStructure(questionDiv) {
+            questionDiv.querySelector('.question-title')?.setAttribute('readonly', 'readonly');
+            questionDiv.querySelector('.question-title')?.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+            questionDiv.querySelector('.question-type')?.setAttribute('disabled', 'disabled');
+            questionDiv.querySelector('.question-type')?.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+            questionDiv.querySelectorAll('.choice-text').forEach(input => {
+                input.setAttribute('readonly', 'readonly');
+                input.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+            });
+            questionDiv.querySelector('.remove-question-btn')?.classList.add('hidden');
+            questionDiv.querySelector('.add-choice-btn')?.classList.add('hidden');
+            questionDiv.querySelectorAll('.remove-choice-btn').forEach(button => button.classList.add('hidden'));
+        }
+
+        function applyResponseLockUI() {
+            if (!surveyHasResponses) {
+                return;
+            }
+
+            ['survey_title', 'survey_starts_at', 'survey_ends_at'].forEach(id => {
+                const input = document.getElementById(id);
+                if (!input) return;
+                input.setAttribute('readonly', 'readonly');
+                input.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+            });
+
+            ['survey_is_anonymous', 'survey_allow_duplicate'].forEach(id => {
+                const input = document.getElementById(id);
+                if (!input) return;
+                input.setAttribute('disabled', 'disabled');
+            });
+
+            const addQuestionBtn = document.getElementById('post-survey-add-question-btn');
+            if (addQuestionBtn) {
+                addQuestionBtn.setAttribute('disabled', 'disabled');
+                addQuestionBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            document.querySelectorAll('.post-survey-question-item').forEach(lockQuestionStructure);
+        }
+
+        function setDateDefaults() {
+            const now = new Date();
+            const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            
+            const formatLocal = (d) => {
+                const pad = n => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            };
+            
+            const startsInput = document.getElementById('survey_starts_at');
+            const endsInput = document.getElementById('survey_ends_at');
+            if (startsInput && !startsInput.value) startsInput.value = formatLocal(now);
+            if (endsInput && !endsInput.value) endsInput.value = formatLocal(week);
+        }
+
+        function loadInitialSurveyData() {
+            const dataElement = document.getElementById('survey-initial-data');
+            if (!dataElement) return;
+
+            const initialData = JSON.parse(dataElement.textContent);
+            if (!initialData || !initialData.questions || initialData.questions.length === 0) return;
+
+            if (toggleSurveyBtn && surveyDesigner.classList.contains('hidden')) {
+                toggleSurveyBtn.click();
+            }
+
+            document.getElementById('survey_title').value = initialData.title || '';
+            document.getElementById('survey_description').value = initialData.description || '';
+            
+            if (initialData.starts_at) {
+                document.getElementById('survey_starts_at').value = initialData.starts_at.substring(0, 16);
+            }
+            if (initialData.ends_at) {
+                document.getElementById('survey_ends_at').value = initialData.ends_at.substring(0, 16);
+            }
+            document.getElementById('survey_is_anonymous').checked = Boolean(initialData.is_anonymous);
+            document.getElementById('survey_allow_duplicate').checked = Boolean(initialData.allow_duplicate_response);
+
+            questionsContainer.innerHTML = '';
+            (initialData.questions || []).forEach(questionData => {
+                const questionDiv = addSurveyQuestion();
+                questionDiv.querySelector('.question-title').value = questionData.title || '';
+                questionDiv.querySelector('.question-description').value = questionData.description || '';
+
+                const typeSelect = questionDiv.querySelector('.question-type');
+                typeSelect.value = questionData.question_type || 'CHOICE';
+                typeSelect.dispatchEvent(new Event('change'));
+
+                if (questionData.question_type === 'CHOICE') {
+                    const choicesList = questionDiv.querySelector('.choices-list');
+                    choicesList.innerHTML = '';
+                    (questionData.choices || []).forEach(choiceData => {
+                        addChoiceInput(choicesList);
+                        choicesList.lastElementChild.querySelector('.choice-text').value = choiceData.text || '';
+                    });
+                    if (!choicesList.children.length) {
+                        addChoiceInput(choicesList);
+                        addChoiceInput(choicesList);
+                    }
+                }
+            });
+            updateQuestionIndices();
+            applyResponseLockUI();
+        }
+
+        setDateDefaults();
+        loadInitialSurveyData();
+
+        // Form submission serialization
+        const postForm = document.getElementById('post-form');
+        if (postForm) {
+            postForm.addEventListener('submit', function(e) {
+                const isSurveyVisible = !surveyDesigner.classList.contains('hidden');
+                if (isSurveyVisible) {
+                    const questions = [];
+                    let hasEmptyTitle = false;
+                    let hasInsufficientChoices = false;
+                    
+                    document.querySelectorAll('.post-survey-question-item').forEach((qDiv, index) => {
+                        const type = qDiv.querySelector('.question-type').value;
+                        const title = qDiv.querySelector('.question-title').value.trim();
+                        const description = qDiv.querySelector('.question-description').value.trim();
+                        
+                        if (!title) {
+                            hasEmptyTitle = true;
+                        }
+                        
+                        const question = {
+                            sequence: index,
+                            title: title,
+                            description: description,
+                            question_type: type,
+                            choices: []
+                        };
+                        
+                        if (type === 'CHOICE') {
+                            qDiv.querySelectorAll('.choice-text').forEach((input, choiceIndex) => {
+                                const choiceText = input.value.trim();
+                                if (choiceText) {
+                                    question.choices.push({
+                                        sequence: choiceIndex,
+                                        text: choiceText
+                                    });
+                                }
+                            });
+                            if (question.choices.length < 2) {
+                                hasInsufficientChoices = true;
+                            }
+                        }
+                        questions.push(question);
+                    });
+                    
+                    if (questions.length === 0) {
+                        alert("설문조사 질문을 최소 1개 이상 추가해야 합니다.");
+                        e.preventDefault();
+                        return;
+                    }
+                    
+                    if (hasEmptyTitle) {
+                        alert("설문조사 질문 제목을 모두 입력해 주세요.");
+                        e.preventDefault();
+                        return;
+                    }
+                    
+                    if (hasInsufficientChoices) {
+                        alert("객관식 질문은 선택지를 최소 2개 이상 입력해야 합니다.");
+                        e.preventDefault();
+                        return;
+                    }
+                    
+                    const surveyData = {
+                        title: document.getElementById('survey_title').value.trim() || document.getElementById('title').value.trim() || "설문조사",
+                        description: document.getElementById('survey_description').value.trim(),
+                        starts_at: document.getElementById('survey_starts_at').value || null,
+                        ends_at: document.getElementById('survey_ends_at').value || null,
+                        is_anonymous: document.getElementById('survey_is_anonymous').checked,
+                        allow_duplicate_response: document.getElementById('survey_allow_duplicate').checked,
+                        questions: questions
+                    };
+                    
+                    hiddenSurveyData.value = JSON.stringify(surveyData);
+                } else {
+                    hiddenSurveyData.value = '';
+                }
+            });
+        }
+    }
 
     function updateFileList(input) {
         const previewDiv = document.getElementById('file-list-preview');

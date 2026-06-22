@@ -6,7 +6,7 @@ from django.http import JsonResponse, HttpResponse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.db.models import Q
-from community.models import NewsAndEvents, Poll, CommunityPost, GatheringEvent
+from community.models import NewsAndEvents, Survey, CommunityPost, GatheringEvent
 from .models import ActivityLog, Schedule 
 from ranking.utils import sync_user_profile_metrics
 
@@ -33,15 +33,10 @@ def _current_semester_start():
 @login_required
 def home_view(request):
     """유저의 로그인 상태를 확인하고 대시보드에 필요한 모든 데이터를 공급함"""
+    from django.utils import timezone
     
     # 1. 오른쪽 위 공지사항 (News) - 상단 고정 체크된 것만 표시
     notices = CommunityPost.objects.filter(is_notice=True, is_pinned=True).order_by('-created_at')[:5]
-
-    # 1b. 진행 중인 투표 (홈 새로운 소식 섹션용)
-    from django.utils import timezone
-    active_polls = Poll.objects.filter(is_active=True).exclude(
-        ends_at__lte=timezone.now()
-    ).order_by('-created_at')[:3]
 
     # 1d. 진행 중인 번개 모임 (홈 새로운 소식 섹션용)
     active_gatherings = GatheringEvent.objects.filter(
@@ -67,14 +62,20 @@ def home_view(request):
     activity_logs = ActivityLog.objects.filter(user=request.user)[:10]
     metrics = sync_user_profile_metrics(request.user)
 
-    # 4. 미완료된 LMS 과제 일정 (마감일 기준 오름차순, 이번 학기 과제만 최대 5개)
+    # 4. 미완료된 LMS 과제 일정 (마감일 기준 오름차순, 이번 학기 과제 및 일주일 이내 지난 과제만 최대 5개)
     semester_start = _current_semester_start()
+    overdue_limit = timezone.now() - dt_module.timedelta(days=7)
     incomplete_assignments = Schedule.objects.filter(
         user=request.user,
         external_id__startswith='lms:',
         is_completed=False,
-        start_date__gte=semester_start
+        start_date__gte=semester_start if semester_start > overdue_limit else overdue_limit
     ).order_by('start_date')[:5]
+
+    import datetime
+    import zoneinfo
+    kst = zoneinfo.ZoneInfo("Asia/Seoul")
+    today = datetime.date.today()
 
     for assign in incomplete_assignments:
         desc = assign.description or ""
@@ -93,6 +94,16 @@ def home_view(request):
             assign.intro = ""
             assign.attachments = []
 
+        # D-Day 계산 (KST 기준)
+        assign_date = assign.start_date.astimezone(kst).date()
+        delta_days = (assign_date - today).days
+        if delta_days == 0:
+            assign.d_day_str = "D-Day"
+        elif delta_days > 0:
+            assign.d_day_str = f"D-{delta_days}"
+        else:
+            assign.d_day_str = f"D+{abs(delta_days)} (지남)"
+
     # 하루 1회 백그라운드 LMS 자동 연동 트리거 체크 (자동 로그인 세션 대응)
     import datetime
     today_str = datetime.date.today().isoformat()
@@ -107,7 +118,6 @@ def home_view(request):
 
     context = {
         'notices': notices,
-        'active_polls': active_polls,
         'active_gatherings': active_gatherings,
         'hot_posts': hot_posts,
         'events': events,
@@ -126,6 +136,9 @@ def home_view(request):
 @login_required
 def get_schedules_api(request):
     """달력에 표시할 일정들을 JSON으로 반환하는 API"""
+    import zoneinfo
+    kst = zoneinfo.ZoneInfo("Asia/Seoul")
+
     semester_start = _current_semester_start()
 
     all_schedules = Schedule.objects.filter(Q(is_global=True) | Q(user=request.user)).distinct()
@@ -138,6 +151,7 @@ def get_schedules_api(request):
     events = []
     for s in schedules:
         is_lms = s.external_id.startswith("lms:")
+        is_gathering = s.external_id.startswith("gathering:")
         if is_lms:
             color = '#cbd5e1' if s.is_completed else '#f97316'
         else:
@@ -150,22 +164,29 @@ def get_schedules_api(request):
             except:
                 pass
 
-        # 하루 종일 이벤트: end가 없고 시작 시각이 자정(00:00:00)인 경우
-        end_val = s.end_date.isoformat() if s.end_date else None
+        # 한국 표준시(KST) 기준으로 날짜/시간을 파싱하여 종일 및 일반 일정 시간대를 일치시킵니다.
+        kst_start = s.start_date.astimezone(kst)
+        kst_end = s.end_date.astimezone(kst) if s.end_date else None
+
         if is_lms:
-            # LMS 과제인 경우, 한국 표준시(KST) 기준으로 날짜를 파싱하여 종일 일정(allDay)으로 내려보냅니다.
-            # 이를 통해 FullCalendar 타임존 및 듀레이션 해석 버그로 인해 다음날까지 막대가 걸쳐지는 현상을 원천 방지합니다.
-            import zoneinfo
-            kst = zoneinfo.ZoneInfo("Asia/Seoul")
-            kst_start = s.start_date.astimezone(kst)
+            # LMS 과제는 종일 일정으로 처리
             start_val = kst_start.date().isoformat()
             end_val = None
             is_all_day_event = True
         else:
-            is_all_day_event = (s.end_date is None and s.start_date.hour == 0
-                                and s.start_date.minute == 0 and s.start_date.second == 0)
-            start_val = s.start_date.date().isoformat() if is_all_day_event else s.start_date.isoformat()
+            is_all_day_event = (s.end_date is None and kst_start.hour == 0
+                                and kst_start.minute == 0 and kst_start.second == 0)
+            start_val = kst_start.date().isoformat() if is_all_day_event else kst_start.isoformat()
+            end_val = kst_end.isoformat() if kst_end else None
             is_all_day_event = bool(is_all_day_event)
+
+        # 번개 모임 ID 추출
+        gathering_id = None
+        if is_gathering:
+            try:
+                gathering_id = int(s.external_id.split(':')[1])
+            except:
+                pass
 
         events.append({
             'id': s.id,
@@ -177,7 +198,8 @@ def get_schedules_api(request):
             'extendedProps': {
                 'description': desc_val,
                 'is_global': s.is_global,
-                'event_type': 'schedule',
+                'event_type': 'gathering' if is_gathering else ('lms' if is_lms else 'schedule'),
+                'gathering_id': gathering_id,
                 'is_completed': s.is_completed,
                 'is_lms': is_lms,
                 'recurrence_group': s.recurrence_group,

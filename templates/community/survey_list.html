@@ -167,8 +167,7 @@
 
 {% block extra_js %}
 {% if user.is_staff %}
-<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+{% include 'snippets/wysiwyg_editor.html' %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const modal = document.getElementById('survey-create-modal');
@@ -186,13 +185,12 @@ document.addEventListener('DOMContentLoaded', function() {
     function openModal() {
         modal.classList.remove('hidden');
         if (!descEditor) {
-            descEditor = new toastui.Editor({
-                el: document.getElementById('survey-modal-description-editor'),
+            descEditor = window.initializeWYSIWYGEditor({
+                editorId: 'survey-modal-description-editor',
+                inputId: 'survey-modal-description',
                 height: '400px',
-                initialEditType: 'markdown',
-                previewStyle: 'vertical',
-                placeholder: '설문 설명을 마크다운으로 작성해 주세요.',
-                language: 'ko'
+                placeholder: '설문 설명을 작성해 주세요.',
+                initialValue: ''
             });
         }
         setTimeout(() => {
@@ -342,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify({
                     title: document.getElementById('survey-modal-title').value,
-                    description: descEditor ? descEditor.getMarkdown() : '',
+                    description: descEditor ? descEditor.getHTML() : '',
                     starts_at: document.getElementById('survey-modal-starts-at').value || null,
                     ends_at: document.getElementById('survey-modal-ends-at').value || null,
                     is_anonymous: document.getElementById('survey-modal-is-anonymous').checked,

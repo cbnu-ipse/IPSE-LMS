@@ -126,8 +126,7 @@
 {{ survey_payload|json_script:'survey-initial-data' }}
 {% endif %}
 
-<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+{% include 'snippets/wysiwyg_editor.html' %}
 <script>
 let questionIndex = 0;
 const surveyCreateForm = document.getElementById('surveyCreateForm');
@@ -150,13 +149,12 @@ const descriptionInput = document.getElementById('description');
     if (endsInput && !endsInput.value) endsInput.value = formatLocal(week);
 })();
 
-const descriptionEditor = new toastui.Editor({
-    el: document.getElementById('description-editor'),
+const descriptionEditor = window.initializeWYSIWYGEditor({
+    editorId: 'description-editor',
+    inputId: 'description',
     height: '400px',
-    initialEditType: 'markdown',
-    previewStyle: 'vertical',
-    placeholder: '응답자에게 안내할 내용을 마크다운으로 작성해 주세요.',
-    language: 'ko'
+    placeholder: '응답자에게 안내할 내용을 작성해 주세요.',
+    initialValue: ''
 });
 
 document.getElementById('addQuestionBtn').addEventListener('click', function() {
@@ -379,7 +377,7 @@ surveyCreateForm.addEventListener('submit', async function(e) {
     
     const surveyData = {
         title: document.getElementById('title').value,
-        description: descriptionEditor.getMarkdown(),
+        description: descriptionEditor.getHTML(),
         starts_at: document.getElementById('starts_at').value || null,
         ends_at: document.getElementById('ends_at').value || null,
         is_anonymous: document.getElementById('is_anonymous').checked,
@@ -426,7 +424,7 @@ function loadInitialSurveyData() {
     const initialData = JSON.parse(dataElement.textContent);
     document.getElementById('title').value = initialData.title || '';
     descriptionInput.value = initialData.description || '';
-    descriptionEditor.setMarkdown(initialData.description || '');
+    descriptionEditor.setHTML(initialData.description || '');
     if (initialData.starts_at) {
         document.getElementById('starts_at').value = initialData.starts_at.substring(0, 16);
     }

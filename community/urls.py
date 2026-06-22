@@ -12,22 +12,8 @@ urlpatterns = [
     path('schedules/', views.schedule_list, name='schedule_list'),
     path('schedule/<int:schedule_id>/', views.schedule_detail, name='schedule_detail'),
     # 투표
-    path('polls/', views.poll_list, name='poll_list'),
-    path('polls/create/', views.poll_create, name='poll_create'),
-    path('polls/<int:poll_id>/', views.poll_detail, name='poll_detail'),
-    path('polls/<int:poll_id>/toggle/', views.poll_toggle, name='poll_toggle'),
-    path('polls/<int:poll_id>/delete/', views.poll_delete, name='poll_delete'),
-    path('polls/<int:poll_id>/votes/', views.poll_votes, name='poll_votes'),
-    path('polls/<int:poll_id>/edit/', views.poll_edit, name='poll_edit'),
-    path('polls/<int:poll_id>/votes/export/', views.poll_votes_export, name='poll_votes_export'),
-    # 설문
-    path('surveys/', views.survey_list, name='survey_list'),
-    path('surveys/create/', views.survey_create, name='survey_create'),
-    path('surveys/<int:survey_id>/edit/', views.survey_edit, name='survey_edit'),
-    path('surveys/<int:survey_id>/delete/', views.survey_delete, name='survey_delete'),
-    path('surveys/<int:survey_id>/', views.survey_detail, name='survey_detail'),
+    # 설문조사 API 및 CSV 내보내기
     path('surveys/<int:survey_id>/respond/', views.survey_respond, name='survey_respond'),
-    path('surveys/<int:survey_id>/results/', views.survey_results, name='survey_results'),
     path('surveys/<int:survey_id>/results/export/', views.survey_results_export, name='survey_results_export'),
     path('api/surveys/<int:survey_id>/results/', views.survey_results_api, name='survey_results_api'),
     # iCal 캘린더 피드
