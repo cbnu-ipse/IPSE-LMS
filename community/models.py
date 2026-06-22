@@ -327,10 +327,14 @@ class CommunityPost(models.Model):
     category = models.CharField(
         max_length=20,
 <<<<<<< HEAD
+<<<<<<< HEAD
         choices=[('free', '자유게시판'), ('feedback', '피드백게시판'), ('academic', '학사공지')],
 =======
         choices=[('free', '자유게시판'), ('feedback', '피드백게시판'), ('academic', '학사일정')],
 >>>>>>> e8c6f47 (feat: configure dbbackup storage, implement academic notice board & crawler sync_cbnu_notices)
+=======
+        choices=[('free', '자유게시판'), ('feedback', '피드백게시판'), ('academic', '학사공지')],
+>>>>>>> c931ac3 (fix: resolve notice content container, attachment filename decoding, and link preview 404/race conditions)
         default='free',
         verbose_name="게시판 분류"
     )

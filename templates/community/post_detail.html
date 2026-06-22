@@ -35,7 +35,7 @@
                         <span class="font-bold text-slate-600">
                             <i class="fa-solid fa-circle-user mr-1 text-slate-400"></i>
                             {% if post.category == 'academic' %}
-                                <span class="text-indigo-600 font-bold">[컴퓨터공학과]</span>
+                                <span class="text-indigo-600 font-bold">{{ post.display_author }}</span>
                             {% elif post.is_anonymous and not request.user.is_staff %}
                                 <span class="text-slate-400 font-mono">익명</span>
                             {% else %}
