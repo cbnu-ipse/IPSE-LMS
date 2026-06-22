@@ -104,6 +104,12 @@ def home_view(request):
         else:
             assign.d_day_str = f"D+{abs(delta_days)} (지남)"
 
+    # 1e. 일주일 이내 학사 일정 (홈 새로운 소식 섹션용)
+    recent_academics = CommunityPost.objects.filter(
+        category='academic',
+        created_at__gte=timezone.now() - dt_module.timedelta(days=7)
+    ).order_by('-created_at')[:5]
+
     # 하루 1회 백그라운드 LMS 자동 연동 트리거 체크 (자동 로그인 세션 대응)
     import datetime
     today_str = datetime.date.today().isoformat()
@@ -120,6 +126,7 @@ def home_view(request):
         'notices': notices,
         'active_gatherings': active_gatherings,
         'hot_posts': hot_posts,
+        'recent_academics': recent_academics,
         'events': events,
         'activity_logs': activity_logs,
         'incomplete_assignments': incomplete_assignments,

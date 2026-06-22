@@ -35,7 +35,7 @@
                         {% with board=request.GET.board %}
                             {% if board == 'hot' %}인기글 (HOT)
                             {% elif board == 'notice' %}공지사항
-                            {% elif board == 'academic' %}학사일정
+                            {% elif board == 'academic' %}학사공지
                             {% elif board == 'free' %}자유게시판
                             {% elif board == 'feedback' %}피드백 게시판
                             {% else %}전체글보기
@@ -60,7 +60,7 @@
                 <li><a href="{% url 'community_home' %}?board=all" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'all' or cur_url == 'community_home' and not cur_board %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-file-lines w-4 text-slate-400"></i>전체글보기</a></li>
                 <li><a href="{% url 'community_home' %}?board=hot" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'hot' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-fire w-4 text-amber-500"></i>인기글 (HOT)</a></li>
                 <li><a href="{% url 'community_home' %}?board=notice" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'notice' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-bullhorn w-4 text-emerald-600"></i>공지사항</a></li>
-                <li><a href="{% url 'community_home' %}?board=academic" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'academic' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-graduation-cap w-4 text-indigo-600"></i>학사일정</a></li>
+                <li><a href="{% url 'community_home' %}?board=academic" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'academic' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-graduation-cap w-4 text-indigo-600"></i>학사공지</a></li>
                 <li><a href="{% url 'community_home' %}?board=free" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'free' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-comments w-4 text-slate-400"></i>자유게시판</a></li>
                 <li><a href="{% url 'community_home' %}?board=feedback" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'feedback' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-clipboard w-4 text-slate-400"></i>피드백 게시판</a></li>
             </ul>
@@ -134,7 +134,7 @@
                             <li>
                                 <a href="{% url 'community_home' %}?board=academic" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'academic' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
                                     <span class="flex items-center gap-2">
-                                        <i class="fa-solid fa-graduation-cap text-indigo-600 w-4"></i>학사일정
+                                        <i class="fa-solid fa-graduation-cap text-indigo-600 w-4"></i>학사공지
                                     </span>
                                 </a>
                             </li>
