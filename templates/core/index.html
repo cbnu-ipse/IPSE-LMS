@@ -118,7 +118,7 @@
                             </div>
                         
                         <ul class="space-y-3">
-                            {% if notices or hot_posts or active_gatherings %}
+                            {% if notices or hot_posts or active_gatherings or recent_academics %}
                                 <!-- ⚡ 번개 모임 목록 -->
                                 {% for meetup in active_gatherings %}
                                 <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
@@ -163,6 +163,17 @@
                                         <span class="font-bold text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded mr-1">인기</span>{{ post.title }}
                                     </a>
                                     <span class="text-xs text-slate-400 flex-shrink-0">{{ post.created_at|date:"m.d" }}</span>
+                                </li>
+                                {% endfor %}
+
+                                <!-- 📅 학사 일정 목록 -->
+                                {% for academic in recent_academics %}
+                                <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
+                                    <a href="{% host_url 'post_detail' academic.id host 'community' %}" class="font-medium text-slate-700 hover:text-indigo-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                        <span class="text-indigo-500 text-sm mr-1.5"><i class="fa-solid fa-calendar-days"></i></span>
+                                        <span class="font-bold text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded mr-1">학사</span>{{ academic.title }}
+                                    </a>
+                                    <span class="text-xs text-slate-400 flex-shrink-0">{{ academic.created_at|date:"m.d" }}</span>
                                 </li>
                                 {% endfor %}
                             {% else %}

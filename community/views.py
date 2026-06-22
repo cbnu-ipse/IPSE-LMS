@@ -1259,6 +1259,8 @@ def community_home(request):
         posts = base_posts.filter(category='free')
     elif board == 'feedback':
         posts = base_posts.filter(category='feedback')
+    elif board == 'academic':
+        posts = base_posts.filter(category='academic')
     elif board == 'notice':
         posts = posts_qs.filter(is_notice=True)
         active_surveys = Survey.objects.filter(is_active=True).exclude(
@@ -2281,8 +2283,27 @@ def og_preview(request):
                     'url': url
                 })
             
+            # Determine charset from headers or default to utf-8
+            charset = 'utf-8'
+            if 'charset=' in content_type.lower():
+                try:
+                    charset = content_type.lower().split('charset=')[-1].split(';')[0].strip()
+                except Exception:
+                    pass
+            
             html_bytes = response.read(512 * 1024)
-            html_text = html_bytes.decode('utf-8', errors='ignore')
+            html_text = None
+            # Try to decode with parsed charset, then common Korean encodings
+            for enc in [charset, 'utf-8', 'euc-kr', 'cp949']:
+                if not enc:
+                    continue
+                try:
+                    html_text = html_bytes.decode(enc)
+                    break
+                except Exception:
+                    continue
+            if html_text is None:
+                html_text = html_bytes.decode('utf-8', errors='ignore')
             
         parser = _OGParser()
         parser.feed(html_text)

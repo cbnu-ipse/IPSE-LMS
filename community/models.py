@@ -326,7 +326,7 @@ class CommunityPost(models.Model):
     is_pinned = models.BooleanField(default=False, verbose_name="상단 고정 여부")
     category = models.CharField(
         max_length=20,
-        choices=[('free', '자유게시판'), ('feedback', '피드백게시판')],
+        choices=[('free', '자유게시판'), ('feedback', '피드백게시판'), ('academic', '학사공지')],
         default='free',
         verbose_name="게시판 분류"
     )
@@ -337,6 +337,22 @@ class CommunityPost(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def display_author(self):
+        if self.category == 'academic':
+            if "cbnu_main_" in self.content or "충북대학교 홈페이지" in self.content:
+                return "충북대학교"
+            return "컴퓨터공학과"
+        if self.is_anonymous:
+            return "익명"
+        full_name = getattr(self.author, 'get_full_name', None)
+        if callable(full_name):
+            try:
+                full_name = full_name()
+            except Exception:
+                full_name = str(full_name)
+        return full_name or self.author.username
 
     @property
     def like_count(self):

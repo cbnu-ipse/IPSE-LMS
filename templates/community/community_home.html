@@ -26,11 +26,13 @@
             <i class="fa-regular fa-clipboard text-slate-400"></i>피드백 게시판
         {% elif board == 'notice' %}
             <i class="fa-solid fa-bullhorn text-emerald-600"></i>공지사항
+        {% elif board == 'academic' %}
+            <i class="fa-solid fa-graduation-cap text-indigo-600"></i>학사공지
         {% else %}
             <i class="fa-regular fa-file-lines text-slate-400"></i>전체글보기
         {% endif %}
     </h2>
-    {% if board != 'notice' or request.user.is_staff %}
+    {% if board != 'academic' and board != 'notice' or board != 'academic' and request.user.is_staff %}
     <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}" class="hidden md:inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
         <i class="fa-solid fa-pen-to-square"></i>게시글 작성
     </a>
@@ -148,17 +150,19 @@
                         </div>
                         <!-- 모바일 서브텍스트 -->
                         <p class="mobile-subtext">
-                            {% if post.is_anonymous and not request.user.is_staff %}익명{% else %}{{ post.author.get_full_name|default:post.author.username }}{% endif %}
+                            {{ post.display_author }}
                             · {{ post.created_at|date:"m/d H:i" }}
                             · 조회 {{ post.views }}
                             · <span class="text-emerald-600">추천 {{ post.like_count|default:0 }}</span>
                         </p>
                     </td>
                     <td class="px-4 py-3 text-xs text-slate-500 font-medium col-author">
-                        {% if post.is_anonymous and not request.user.is_staff %}
+                        {% if post.category == 'academic' %}
+                            <span class="text-indigo-600 font-bold">{{ post.display_author }}</span>
+                        {% elif post.is_anonymous and not request.user.is_staff %}
                             <span class="text-slate-400">익명</span>
                         {% else %}
-                            {{ post.author.get_full_name|default:post.author.username }}
+                            {{ post.display_author }}
                             {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold">[익명]</span>{% endif %}
                         {% endif %}
                     </td>
@@ -192,7 +196,7 @@
 </div>
 {% endif %}
 
-{% if board != 'notice' or request.user.is_staff %}
+{% if board != 'academic' and board != 'notice' or board != 'academic' and request.user.is_staff %}
 <!-- 모바일 플로팅 게시글 작성 버튼 (FAB) -->
 <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}"
    class="md:hidden fixed bottom-20 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full flex items-center justify-center shadow-lg transition active:scale-95 z-40 border border-emerald-500/20"

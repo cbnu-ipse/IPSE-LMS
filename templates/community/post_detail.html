@@ -34,10 +34,12 @@
                     <div class="flex items-center gap-3">
                         <span class="font-bold text-slate-600">
                             <i class="fa-solid fa-circle-user mr-1 text-slate-400"></i>
-                            {% if post.is_anonymous and not request.user.is_staff %}
+                            {% if post.category == 'academic' %}
+                                <span class="text-indigo-600 font-bold">{{ post.display_author }}</span>
+                            {% elif post.is_anonymous and not request.user.is_staff %}
                                 <span class="text-slate-400 font-mono">익명</span>
                             {% else %}
-                                {{ post.author.get_full_name|default:post.author.username }} ({{ post.author.username }})
+                                {{ post.display_author }} ({{ post.author.username }})
                                 {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold ml-1">[익명글]</span>{% endif %}
                             {% endif %}
                         </span>
@@ -72,8 +74,12 @@
                 </div>
             </div>
 
-            <!-- Toast UI Viewer 본문 영역 -->
-            <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed"></div>
+            <!-- Toast UI Viewer / HTML 본문 영역 -->
+            <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed">
+                {% if post.category == 'academic' %}
+                    {{ post.content|safe }}
+                {% endif %}
+            </div>
 
             <!-- 📊 설문조사 영역 -->
             {% if survey %}
@@ -518,14 +524,18 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const bodyContent = `{{ post.content|escapejs }}`;
+        const isAcademic = {% if post.category == 'academic' %}true{% else %}false{% endif %};
 
-        // Viewer 초기화
-        const viewer = toastui.Editor.factory({
-            el: document.getElementById('content-viewer'),
-            viewer: true,
-            initialValue: bodyContent
-        });
+        if (!isAcademic) {
+            const bodyContent = `{{ post.content|escapejs }}`;
+
+            // Viewer 초기화
+            const viewer = toastui.Editor.factory({
+                el: document.getElementById('content-viewer'),
+                viewer: true,
+                initialValue: bodyContent
+            });
+        }
 
         // 뷰어 렌더링 완료 후 평문 URL을 하이퍼링크로 자동 변환 및 OG 미리보기 로드, 설문/첨부파일 중간 삽입 처리
         setTimeout(() => {
@@ -538,7 +548,7 @@
 
     // 평문 URL → <a> 하이퍼링크 변환
     function autoLinkify(container) {
-        const urlPattern = /(https?:\/\/[^\s<>"']+)/g;
+        const urlPattern = /(https?:\/\/[^\s<>"']+)/;
         const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
         const nodesToReplace = [];
         let node;
@@ -685,7 +695,10 @@
             const href = link.href;
             if (!href || !/^https?:\/\//.test(href)) return;
 
-            fetch(`/api/og-preview/?url=${encodeURIComponent(href)}`)
+            if (processedUrls.has(href)) return;
+            processedUrls.add(href);
+
+            fetch(`{% url 'og_preview' %}?url=${encodeURIComponent(href)}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.title) {
@@ -694,10 +707,6 @@
                         if (text === href || text === decodeURIComponent(href) || text.replace(/\/$/, '') === href.replace(/\/$/, '')) {
                             link.innerHTML = `<i class="fa-solid fa-link text-xs mr-1"></i>${data.title}`;
                         }
-
-                        // 해당 URL에 대해 단 하나의 미리보기 카드만 생성
-                        if (processedUrls.has(href)) return;
-                        processedUrls.add(href);
 
                         const card = document.createElement('a');
                         card.href = href;
