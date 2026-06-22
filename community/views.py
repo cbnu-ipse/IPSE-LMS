@@ -1259,6 +1259,8 @@ def community_home(request):
         posts = base_posts.filter(category='free')
     elif board == 'feedback':
         posts = base_posts.filter(category='feedback')
+    elif board == 'academic':
+        posts = base_posts.filter(category='academic')
     elif board == 'notice':
         posts = posts_qs.filter(is_notice=True)
         active_surveys = Survey.objects.filter(is_active=True).exclude(

@@ -78,6 +78,7 @@ THIRD_PARTY_APPS = [
     "django_hosts",
     "rest_framework",
     "django_filters",
+    "dbbackup",
 ]
 
 # Custom apps (IPSE LMS 핵심 모듈들)
@@ -273,3 +274,20 @@ if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
         pass
 
 # Trigger reload to pick up ALLOWED_HOSTS update (with .lvh.me) in .env
+
+# 🗄️ 데이터베이스 및 미디어 백업 설정 (django-dbbackup)
+# django-dbbackup 5.x+ version uses STORAGES setting format
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+    "dbbackup": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {
+            "location": os.path.join(BASE_DIR, "backups"),
+        },
+    },
+}

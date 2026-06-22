@@ -26,11 +26,13 @@
             <i class="fa-regular fa-clipboard text-slate-400"></i>피드백 게시판
         {% elif board == 'notice' %}
             <i class="fa-solid fa-bullhorn text-emerald-600"></i>공지사항
+        {% elif board == 'academic' %}
+            <i class="fa-solid fa-graduation-cap text-indigo-600"></i>학사일정
         {% else %}
             <i class="fa-regular fa-file-lines text-slate-400"></i>전체글보기
         {% endif %}
     </h2>
-    {% if board != 'notice' or request.user.is_staff %}
+    {% if board != 'academic' and (board != 'notice' or request.user.is_staff) %}
     <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}" class="hidden md:inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
         <i class="fa-solid fa-pen-to-square"></i>게시글 작성
     </a>
@@ -192,7 +194,7 @@
 </div>
 {% endif %}
 
-{% if board != 'notice' or request.user.is_staff %}
+{% if board != 'academic' and (board != 'notice' or request.user.is_staff) %}
 <!-- 모바일 플로팅 게시글 작성 버튼 (FAB) -->
 <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}"
    class="md:hidden fixed bottom-20 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full flex items-center justify-center shadow-lg transition active:scale-95 z-40 border border-emerald-500/20"

@@ -493,4 +493,39 @@ class EmbeddedSurveyTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8-sig')
 
+    def test_academic_board_restrictions(self):
+        # 1. Normal users trying to post with 'academic' category should be restricted (coerced to 'free')
+        self.client.login(username='author_user', password='password123')
+        create_url = reverse('post_create')
+        response = self.client.post(create_url, {
+            'title': '임의의 학사일정 글',
+            'content': '학사공지를 임의로 작성해봅니다.',
+            'category': 'academic'
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        from .models import CommunityPost
+        post = CommunityPost.objects.filter(title='임의의 학사일정 글').first()
+        self.assertIsNotNone(post)
+        self.assertEqual(post.category, 'free')  # Coerced to 'free'
+
+        # 2. Staff user trying to post with 'academic' category should also be restricted
+        staff_user = User.objects.create_user(
+            username='staff_post_user',
+            password='password123',
+            is_staff=True
+        )
+        self.client.logout()
+        self.client.login(username='staff_post_user', password='password123')
+        response = self.client.post(create_url, {
+            'title': '스태프 임의 학사일정 글',
+            'content': '스태프도 막아야 함.',
+            'category': 'academic'
+        })
+        self.assertEqual(response.status_code, 302)
+        post_staff = CommunityPost.objects.filter(title='스태프 임의 학사일정 글').first()
+        self.assertIsNotNone(post_staff)
+        self.assertEqual(post_staff.category, 'free')  # Coerced to 'free'
+
+
 
