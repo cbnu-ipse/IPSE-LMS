@@ -19,7 +19,8 @@
     <div class="{% if is_embedded %}bg-transparent border-0 shadow-none p-0{% else %}bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm{% endif %} space-y-6 relative overflow-hidden">
         
         <!-- 헤더 및 타이틀 -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-5 gap-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between {% if not is_embedded %}border-b border-slate-100 pb-5{% endif %} gap-4">
+            {% if not is_embedded %}
             <div class="flex items-center gap-3">
                 <div class="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600">
                     <i class="fa-solid fa-dice text-2xl"></i>
@@ -29,8 +30,9 @@
                     <p class="text-xs text-slate-400 font-medium">낙엽 1개로 행운의 학점 캡슐을 뽑아보세요!</p>
                 </div>
             </div>
+            {% endif %}
             <!-- 오늘 남은 횟수 및 낙엽 잔액 -->
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 {% if is_embedded %}w-full justify-start{% endif %}">
                 <div class="bg-amber-50 border border-amber-100 px-3.5 py-2 rounded-xl text-xs font-bold text-amber-800 flex items-center gap-1.5 shadow-sm">
                     <i class="fa-solid fa-leaf text-amber-600"></i> 잔여 낙엽: 
                     <span id="slot-leaves-badge" class="font-extrabold text-sm">{{ request.user.leaves }}</span>개
