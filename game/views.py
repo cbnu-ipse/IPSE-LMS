@@ -27,10 +27,14 @@ def slot_machine_view(request):
     played_today_count = SlotPlayLog.objects.filter(user=request.user, played_date=today).count()
     remaining_count = max(0, 5 - played_today_count)
 
+    # iframe 내에 순수 게임 영역만 임베딩하기 위한 분기 처리
+    is_embedded = request.GET.get("embed", "false").lower() == "true"
+
     context = {
         "title": "학점 캡슐 슬롯머신",
         "remaining_count": remaining_count,
         "played_today_count": played_today_count,
+        "is_embedded": is_embedded,
     }
     return render(request, "game/slot_machine.html", context)
 

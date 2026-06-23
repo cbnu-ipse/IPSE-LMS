@@ -329,8 +329,8 @@
             gameHeaderTitle.textContent = "학점 캡슐 슬롯머신";
             gameHeaderDesc.textContent = "낙엽 1개로 행운의 학점 캡슐을 뽑아보세요!";
 
-            // iframe에 슬롯머신 url 설정
-            gameIframe.src = "{% url 'slot_machine' %}";
+            // iframe에 슬롯머신 url 설정 (임베드 모드)
+            gameIframe.src = "{% url 'slot_machine' %}?embed=true";
         });
 
         backBtn.addEventListener('click', () => {

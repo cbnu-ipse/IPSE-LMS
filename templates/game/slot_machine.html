@@ -5,16 +5,18 @@
 {% block title %}IPSE 놀이터 | 학점 캡슐 슬롯머신{% endblock %}
 
 {% block content %}
-<section class="max-w-4xl mx-auto px-6 py-10">
+<section class="{% if is_embedded %}w-full p-2{% else %}max-w-4xl mx-auto px-6 py-10{% endif %}">
+    {% if not is_embedded %}
     <!-- 뒤로가기 버튼 -->
     <div class="mb-6">
         <a href="{% url 'game_lobby' %}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition shadow-sm font-semibold text-xs">
             <i class="fa-solid fa-arrow-left"></i> 놀이터 로비로 돌아가기
         </a>
     </div>
+    {% endif %}
 
     <!-- 🎰 슬롯머신 기계 카드 -->
-    <div class="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-8 relative overflow-hidden">
+    <div class="{% if is_embedded %}bg-transparent border-0 shadow-none p-0{% else %}bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm{% endif %} space-y-6 relative overflow-hidden">
         
         <!-- 헤더 및 타이틀 -->
         <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-5 gap-4">
