@@ -2,6 +2,9 @@
 {% load i18n %}
 {% block title %}{{ gathering.title }} | 번개 모임 | IPSE LMS{% endblock title %}
 
+{% block og_title %}{{ gathering.title }}{% endblock %}
+{% block og_description %}일시: {{ gathering.event_date|date:"Y-m-d H:i" }} | 장소: {{ gathering.location }} | {{ gathering.description|striptags|truncatechars:100 }}{% endblock %}
+
 {% block content %}
 <section class="max-w-4xl mx-auto px-6 py-10">
     <div class="space-y-8">

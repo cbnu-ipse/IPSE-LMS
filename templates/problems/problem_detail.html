@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}{{ problem.title }} - IPSE AI Academy{% endblock %}
 
+{% block og_title %}{{ problem.title }}{% endblock %}
+{% block og_description %}Lv.{{ problem.difficulty }} | {{ problem.description|striptags|truncatechars:150 }}{% endblock %}
+
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 py-12 space-y-6">
     <section class="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-slate-50 px-7 py-8 shadow-sm">

@@ -1,6 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}{{ activity.title }} - IPSE 활동{% endblock %}
 
+{% block og_title %}{{ activity.title }}{% endblock %}
+{% block og_description %}{{ activity.summary|striptags|truncatechars:150 }}{% endblock %}
+{% if activity.thumbnail %}
+{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{{ activity.thumbnail.url }}{% endblock %}
+{% endif %}
+
 {% block content %}
 <section class="max-w-5xl mx-auto px-6 py-12">
     <div class="relative space-y-6">

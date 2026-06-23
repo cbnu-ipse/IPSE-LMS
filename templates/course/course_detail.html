@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}{{ course.title }}{% endblock %}
 
+{% block og_title %}{{ course.title }}{% endblock %}
+{% block og_description %}멘토: {{ course.instructor.username|default:"IPSE 운영진" }} | {{ course.summary|default:"충북대학교 소프트웨어학부 학술동아리 IPSE 학습 코스"|striptags|truncatechars:150 }}{% endblock %}
+
 {% block content %}
 <div class="bg-gradient-to-r from-emerald-50 via-white to-slate-50 border-b border-slate-200 pt-12 pb-12">
     <div class="max-w-7xl mx-auto px-6">
