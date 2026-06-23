@@ -346,13 +346,7 @@ class CommunityPost(models.Model):
             return "컴퓨터공학과"
         if self.is_anonymous:
             return "익명"
-        full_name = getattr(self.author, 'get_full_name', None)
-        if callable(full_name):
-            try:
-                full_name = full_name()
-            except Exception:
-                full_name = str(full_name)
-        return full_name or self.author.username
+        return self.author.display_author
 
     @property
     def like_count(self):

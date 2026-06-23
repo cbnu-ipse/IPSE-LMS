@@ -12,7 +12,7 @@
 
 {% block community_content %}
 <!-- 📂 게시판 헤더 영역 -->
-<div class="hidden md:flex items-center justify-between border-b border-slate-200 pb-4 mb-5">
+<div class="hidden md:flex items-center justify-between border-b border-slate-200 pb-4 mb-5" style="min-height: 56px;">
     <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
         {% if board == 'hot' %}
             <i class="fa-solid fa-fire text-amber-500 animate-pulse"></i>인기글 (HOT)
@@ -97,13 +97,13 @@
                             </div>
                             <!-- 모바일 서브텍스트 -->
                             <p class="mobile-subtext">
-                                {{ survey.created_by.get_full_name|default:survey.created_by.username }}
+                                {{ survey.created_by.display_author }}
                                 · {{ survey.created_at|date:"m/d H:i" }}
                                 · 조회 {{ survey.post.views|default:0 }}
                                 · <span class="text-emerald-600">추천 {{ survey.post.like_count|default:0 }}</span>
                             </p>
                         </td>
-                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ survey.created_by.get_full_name|default:survey.created_by.username }}</td>
+                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ survey.created_by.display_author }}</td>
                         <td class="px-4 py-3 text-center text-xs font-bold text-emerald-600 col-like">{{ survey.post.like_count|default:0 }}</td>
                         <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ survey.created_at|date:"y.m.d" }}</td>
                         <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">{{ survey.post.views|default:0 }}</td>
@@ -126,13 +126,13 @@
                             </div>
                             <!-- 모바일 서브텍스트 -->
                             <p class="mobile-subtext">
-                                {{ notice.author.get_full_name|default:notice.author.username }}
+                                {{ notice.author.display_author }}
                                 · {{ notice.created_at|date:"m/d H:i" }}
                                 · 조회 {{ notice.views }}
                                 · <span class="text-emerald-600">추천 {{ notice.like_count|default:0 }}</span>
                             </p>
                         </td>
-                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ notice.author.get_full_name|default:notice.author.username }}</td>
+                        <td class="px-4 py-3 text-xs text-slate-600 font-semibold col-author">{{ notice.author.display_author }}</td>
                         <td class="px-4 py-3 text-center text-xs font-bold text-emerald-600 col-like">{{ notice.like_count|default:0 }}</td>
                         <td class="px-4 py-3 text-xs text-slate-500 col-date">{{ notice.created_at|date:"y.m.d" }}</td>
                         <td class="px-4 py-3 text-center text-xs font-mono text-slate-400 col-views">{{ notice.views }}</td>
@@ -145,6 +145,15 @@
                 <tr class="hover:bg-slate-50 cursor-pointer" onclick="location.href='{% url 'post_detail' post.id %}'">
                     <td class="px-5 py-3 font-semibold text-slate-800 max-w-0">
                         <div style="display:flex; align-items:baseline; gap:4px; min-width:0;">
+                            {% if post.is_notice %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase shrink-0">
+                                <i class="fa-solid fa-bullhorn"></i>공지
+                            </span>
+                            {% elif post.category == 'academic' %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase shrink-0">
+                                <i class="fa-solid fa-graduation-cap"></i>학사
+                            </span>
+                            {% endif %}
                             <span class="hover:text-emerald-600 transition truncate">{{ post.title }}</span>
                             {% if post.comment_count > 0 %}<span class="text-xs font-bold text-blue-500 shrink-0">[{{ post.comment_count }}]</span>{% endif %}
                         </div>

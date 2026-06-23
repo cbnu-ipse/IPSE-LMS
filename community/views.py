@@ -1276,7 +1276,7 @@ def community_home(request):
         posts = hot_posts
     elif board == 'all':
         pinned_notices = posts_qs.filter(is_notice=True, is_pinned=True)
-        posts = base_posts
+        posts = posts_qs.filter(Q(is_notice=False) | Q(is_notice=True, is_pinned=False))
     else:
         posts = base_posts
 
