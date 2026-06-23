@@ -5,16 +5,21 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog
+from .models import SlotPlayLog, LobbyChatMessage
 from accounts.models import User, LeafTransaction
 
 @login_required
 def lobby_view(request):
     """게임 서브도메인의 로비 (Roblox 스타일 게임 목록)"""
+    # 최근 50개 채팅 메시지를 역순으로 조회한 후 시간 오름차순 정렬
+    latest_messages = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    chat_messages = list(latest_messages)[::-1]
     context = {
         "title": "IPSE 놀이터",
+        "chat_messages": chat_messages,
     }
     return render(request, "game/lobby.html", context)
+
 
 @login_required
 def slot_machine_view(request):
@@ -23,10 +28,14 @@ def slot_machine_view(request):
     played_today_count = SlotPlayLog.objects.filter(user=request.user, played_date=today).count()
     remaining_count = max(0, 5 - played_today_count)
 
+    # iframe 내에 순수 게임 영역만 임베딩하기 위한 분기 처리
+    is_embedded = request.GET.get("embed", "false").lower() == "true"
+
     context = {
         "title": "학점 캡슐 슬롯머신",
         "remaining_count": remaining_count,
         "played_today_count": played_today_count,
+        "is_embedded": is_embedded,
     }
     return render(request, "game/slot_machine.html", context)
 

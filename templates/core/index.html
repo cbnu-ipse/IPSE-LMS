@@ -578,7 +578,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     {% if trigger_notice_sync %}
     // 하루 1회 백그라운드에서 학사공지 동기화를 실행합니다.
-    fetch('{% url "sync_notices_api" %}', {
+    fetch('{% host_url "sync_notices_api" host "community" %}', {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}',

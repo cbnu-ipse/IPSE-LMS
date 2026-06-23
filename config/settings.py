@@ -53,11 +53,16 @@ for host in _raw_hosts:
                 ALLOWED_HOSTS.append(dot_host)
 
 CSRF_TRUSTED_ORIGINS = [
+    # 프로덕션
     "https://cbnu-ipse.co.kr",
+    "https://www.cbnu-ipse.co.kr",
+    "https://game.cbnu-ipse.co.kr",
     "https://judge.cbnu-ipse.co.kr",
+    # 로컬 개발
     "http://127.0.0.1:8000",
     "http://localhost:8000",
     "http://*.lvh.me:8000",
+    "http://lvh.me:8000",
 ]
 
 
@@ -65,7 +70,11 @@ CSRF_TRUSTED_ORIGINS = [
 AUTH_USER_MODEL = "accounts.User"
 
 # Application definition
+# NOTE: daphne must be first in INSTALLED_APPS to override manage.py runserver
+# with an ASGI-compatible server (required for WebSocket support in development).
+# channels-redis is used in production; InMemoryChannelLayer is used locally.
 DJANGO_APPS = [
+    "daphne",  # ASGI server — must be first (channels 4.x 에서 WebSocket runserver 지원)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -79,6 +88,7 @@ THIRD_PARTY_APPS = [
     "rest_framework",
     "django_filters",
     "dbbackup",
+    "channels",  # WebSocket / ASGI 채널 레이어
 ]
 
 # Custom apps (IPSE LMS 핵심 모듈들)
@@ -144,6 +154,26 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
+
+# Django Channels — 채널 레이어 설정
+# 프로덕션: REDIS_URL 환경변수 설정 시 Redis 사용 (멀티 프로세스 브로드캐스트)
+# 로컬 개발: REDIS_URL 미설정 시 InMemoryChannelLayer 폴백 (단일 프로세스 테스트용)
+_redis_url = config("REDIS_URL", default="")
+if _redis_url:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [_redis_url],
+            },
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 # Database
 # DATABASE_URL 환경변수가 있으면 PostgreSQL, 없으면 로컬 SQLite 사용

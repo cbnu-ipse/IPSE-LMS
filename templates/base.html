@@ -94,6 +94,7 @@
     </div>
 
     {% block navbar %}
+    {% if not is_embedded %}
     <nav class="bg-white/70 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-stretch">
 
@@ -257,12 +258,9 @@
                         <i class="fa-solid fa-leaf text-emerald-600"></i>
                         <span>{{ user.leaves }}</span>
                     </div>
-                    <form action="{% host_url 'logout' host 'community' %}" method="post" class="flex">
-                        {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
+                    <button type="button" onclick="doLogout()" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
                             <i class="fa-solid fa-right-from-bracket text-xs"></i>
                         </button>
-                    </form>
                 </div>
                 {% else %}
                 <a href="{% host_url 'login' host 'community' %}"
@@ -310,10 +308,7 @@
                             </div>
                         </div>
                     </a>
-                    <form action="{% host_url 'logout' host 'community' %}" method="post" class="inline">
-                        {% csrf_token %}
-                        <button type="submit" class="text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl border border-rose-100 transition">로그아웃</button>
-                    </form>
+                    <button type="button" onclick="doLogout()" class="text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl border border-rose-100 transition">로그아웃</button>
                 </div>
                 {% else %}
                 <!-- 로그인 유도 박스 -->
@@ -375,12 +370,14 @@
         </div>
 
     </nav>
+    {% endif %}
     {% endblock %}
 
     <main class="flex-grow">
         {% block content %}{% endblock %}
     </main>
 
+    {% if not is_embedded %}
     <footer class="bg-white border-t border-slate-200 pt-8 pb-24 md:pb-8 text-center text-slate-500 text-xs flex flex-col items-center gap-4">
         <!-- 소셜 링크 바 (4개) -->
         <div class="flex items-center gap-6">
@@ -443,25 +440,7 @@
             <span class="text-[9px] font-semibold tracking-tight">시간표</span>
         </a>
     </div>
-    {% elif request.host.name == 'game' %}
-    <!-- 🎮 모바일 Bottom Navigation Bar (게임 전용) -->
-    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
-        <!-- 1. 잎새로 돌아가기 -->
-        <a href="{% host_url 'community_main' host 'community' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-slate-500 hover:text-emerald-600">
-            <i class="fa-solid fa-leaf text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">커뮤니티</span>
-        </a>
-        <!-- 2. 오락실 로비 -->
-        <a href="{% host_url 'game_lobby' host 'game' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-amber-600 font-bold">
-            <i class="fa-solid fa-gamepad text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">놀이터</span>
-        </a>
-        <!-- 3. 채점 사이트 -->
-        <a href="{% host_url 'course_list' host 'judge' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-slate-500 hover:text-sky-600">
-            <i class="fa-solid fa-arrow-up-right-from-square text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">채점/대회</span>
-        </a>
-    </div>
+    {% endif %}
     {% endif %}
 
     {% block extra_js %}{% endblock %}
@@ -554,14 +533,56 @@
           }, 0);
         }, { capture: true });
 
-        // 페이지 로드 완료 시 마무리
-        window.addEventListener('pageshow',function(){ finishBar(); });
+        // 페이지 로드 완료 시 마무리 및 로그아웃 후 뒤로가기 시 캐시 무효화(리로드)
+        window.addEventListener('pageshow', function(e) {
+          // 브라우저 캐시(BF Cache)에서 복원되었거나, 뒤로가기(type: 2)로 탐색해 돌아온 경우에만 리로드 실행
+          if (e.persisted || (window.performance && window.performance.navigation && window.performance.navigation.type === 2)) {
+            window.location.reload(true);
+          }
+          finishBar();
+        });
       })();
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch(() => {});
         });
       }
+
+      // 로그아웃: CORS/cross-subdomain 문제를 완벽히 방지하기 위해 표준 HTML Form POST 전송 방식을 사용합니다.
+      // 이렇게 하면 브라우저 수준에서 세션 쿠키 삭제(Set-Cookie)가 정상 처리됩니다.
+      window.doLogout = function() {
+        const csrfCookie = document.cookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith('csrftoken='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '{{ csrf_token }}';
+        const logoutUrl = "/accounts/logout/";
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = logoutUrl;
+        form.style.display = 'none';
+
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = csrfToken;
+        form.appendChild(csrfInput);
+
+        const nextInput = document.createElement('input');
+        nextInput.type = 'hidden';
+        nextInput.name = 'next';
+        nextInput.value = "{% host_url 'login' host 'community' %}";
+        form.appendChild(nextInput);
+
+        document.body.appendChild(form);
+        form.submit();
+      };
+
+      // 뒤로가기 시 브라우저 캐시로 인해 로그인 세션 상태가 잘못 보이는 현상 방지
+      window.addEventListener('pageshow', function(event) {
+        if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+          window.location.reload();
+        }
+      });
       // 모바일 햄버거 메뉴
       const mobileMenuBtn = document.getElementById('mobile-menu-btn');
       const mobileMenu = document.getElementById('mobile-menu');

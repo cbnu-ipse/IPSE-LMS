@@ -20,3 +20,23 @@ class SlotPlayLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.result_grade}(+{self.result_reward}) at {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class LobbyChatMessage(models.Model):
+    """로비 채팅 메시지 — WebSocket으로 수신된 메시지를 영속화합니다."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lobby_chat_messages",
+        verbose_name="작성자"
+    )
+    message = models.TextField(verbose_name="메시지 내용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성 시각")
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "로비 채팅 메시지"
+        verbose_name_plural = "로비 채팅 메시지 목록"
+
+    def __str__(self):
+        return f"[{self.created_at.strftime('%H:%M')}] {self.user.username}: {self.message[:30]}"
