@@ -1669,6 +1669,9 @@ def post_delete(request, post_id):
 def gathering_detail(request, gathering_id):
     """번개 모임 상세 보기 및 댓글"""
     gathering = get_object_or_404(GatheringEvent, id=gathering_id)
+    if gathering.is_canceled:
+        messages.warning(request, "취소된 모임입니다.")
+        return redirect('gathering_list')
     
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -1805,16 +1808,17 @@ def gathering_create(request):
             # 주최자 참가 자동 등록
             gathering.participants.add(request.user)
 
-            # 주최자 개인 일정 등록
-            Schedule.objects.create(
-                user=request.user,
-                title=f"[번개] {gathering.title}",
-                start_date=event_date,
-                end_date=None,
-                is_global=False,
-                external_id=f"gathering:{gathering.id}",
-                description=f"장소: {location} / 주최: {request.user.get_full_name or request.user.username}"
-            )
+            # 주최자 개인 일정 등록 (미래 모임인 경우에만 일정 등록)
+            if event_date > timezone.now():
+                Schedule.objects.create(
+                    user=request.user,
+                    title=f"[번개] {gathering.title}",
+                    start_date=event_date,
+                    end_date=None,
+                    is_global=False,
+                    external_id=f"gathering:{gathering.id}",
+                    description=f"장소: {location} / 주최: {request.user.get_full_name or request.user.username}"
+                )
 
         # 모든 활성화된 유저에게 새 번개 모임 생성 알림 전송 (단, 수신 설정이 허용된 유저만 필터링됨)
         from django.contrib.auth import get_user_model
@@ -1904,18 +1908,19 @@ def gathering_join_toggle(request, gathering_id):
                 if leave_log:
                     leave_log.delete()
 
-                # 개인 일정 등록
-                Schedule.objects.update_or_create(
-                    user=request.user,
-                    external_id=f"gathering:{gathering.id}",
-                    defaults={
-                        "title": f"[번개] {gathering.title}",
-                        "start_date": gathering.event_date,
-                        "end_date": None,
-                        "is_global": False,
-                        "description": f"장소: {gathering.location} / 주최: {gathering.author.get_full_name or gathering.author.username}",
-                    }
-                )
+                # 개인 일정 등록 (미래 모임인 경우에만 일정 등록)
+                if gathering.event_date > timezone.now():
+                    Schedule.objects.update_or_create(
+                        user=request.user,
+                        external_id=f"gathering:{gathering.id}",
+                        defaults={
+                            "title": f"[번개] {gathering.title}",
+                            "start_date": gathering.event_date,
+                            "end_date": None,
+                            "is_global": False,
+                            "description": f"장소: {gathering.location} / 주최: {gathering.author.get_full_name or gathering.author.username}",
+                        }
+                    )
                 # 모임 개설자에게 알림 전송 (신청자가 개설자가 아닐 때)
                 if gathering.author != request.user:
                     _create_notification(
