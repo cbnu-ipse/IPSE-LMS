@@ -101,8 +101,6 @@ class User(AbstractUser):
                     prefix = un[2:4]
                 else:
                     prefix = un[:2]
-            else:
-                prefix = un[:2]
             
             if prefix:
                 return f"[{prefix}] {name}"
