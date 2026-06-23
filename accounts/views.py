@@ -961,6 +961,9 @@ def read_and_redirect(request, notification_id):
         n.save(update_fields=['is_read'])
     
     if n.gathering:
+        if n.gathering.is_canceled:
+            messages.warning(request, "취소된 모임입니다.")
+            return redirect('gathering_list')
         return redirect('gathering_detail', gathering_id=n.gathering.id)
     elif n.post:
         return redirect('post_detail', post_id=n.post.id)

@@ -152,7 +152,14 @@ def home_view(request):
 def get_schedules_api(request):
     """달력에 표시할 일정들을 JSON으로 반환하는 API"""
     import zoneinfo
+    from django.utils import timezone
     kst = zoneinfo.ZoneInfo("Asia/Seoul")
+
+    # 종료된(시간이 지난) 번개 모임의 스케줄 일괄 삭제
+    Schedule.objects.filter(
+        external_id__startswith="gathering:",
+        start_date__lt=timezone.now()
+    ).delete()
 
     semester_start = _current_semester_start()
 
