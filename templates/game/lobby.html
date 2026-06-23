@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load hosts %}
+
+{% block title %}IPSE 놀이터 | 게임 로비{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-10">
+    <!-- 🎮 게임 로비 헤더 -->
+    <div class="bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl px-8 py-10 text-white shadow-lg overflow-hidden relative mb-8 flex flex-col justify-center">
+        <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
+            <i class="fa-solid fa-gamepad text-[180px]"></i>
+        </div>
+        <div class="relative z-10">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
+                <i class="fa-solid fa-gamepad"></i> IPSE Playground
+            </span>
+            <h1 class="text-2xl lg:text-3xl font-extrabold mb-1">IPSE 놀이터 & 미니게임</h1>
+            <p class="text-amber-50 text-xs md:text-sm leading-relaxed max-w-xl">
+                낙엽을 소모해 슬롯머신을 돌리거나 다양한 미니게임을 즐기고, 동아리원들과 노닥거릴 수 있는 오락실 공간입니다.
+            </p>
+        </div>
+    </div>
+
+    <!-- 🎰 메인 레이아웃 Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+        
+        <!-- 🎮 게임 카탈로그 영역 (왼쪽 8) -->
+        <div class="lg:col-span-8 bg-slate-50/50 border border-slate-200/60 rounded-3xl p-6 shadow-sm space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-200/60 pb-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                        <i class="fa-solid fa-shapes text-amber-600 text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm">전체 게임 카탈로그</h3>
+                        <p class="text-[11px] text-slate-400 font-medium">로블록스 스타일로 즐기는 다양한 오락 거리</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 게임 카드 그리드 (Roblox 스타일) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                
+                <!-- 1. 학점 캡슐 슬롯머신 (플레이 가능) -->
+                <a href="{% url 'slot_machine' %}" class="game-card">
+                    <!-- 썸네일 -->
+                    <div class="game-thumbnail slot">
+                        <!-- 배경 그리드/데코 패턴 -->
+                        <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                        <!-- 오락실 네온 테두리 효과 -->
+                        <div class="thumbnail-decor"></div>
+                        
+                        <div class="thumbnail-content">
+                            <i class="fa-solid fa-dice text-4xl drop-shadow-md" style="animation: bounce 2s infinite;"></i>
+                            <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-amber-200">SLOT MACHINE</div>
+                        </div>
+                        <span class="game-badge playable">
+                            PLAYABLE
+                        </span>
+                    </div>
+                    <!-- 콘텐츠 정보 -->
+                    <div class="p-4 flex-grow flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm card-title">학점 캡슐 슬롯머신</h4>
+                            <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                매일 1회 무료로 참여가 가능하며, 자정에 횟수가 초기화됩니다.
+                            </p>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
+                            <div class="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+                                <span class="flex items-center gap-0.5 text-rose-500">
+                                    <i class="fa-solid fa-thumbs-up"></i> 98%
+                                </span>
+                                <span class="w-1 h-1 rounded-full bg-slate-300"></span>
+                                <span>Active: 8</span>
+                            </div>
+                            <span class="w-7 h-7 rounded-full bg-amber-50 card-play-btn flex items-center justify-center text-amber-600 text-xs transition">
+                                <i class="fa-solid fa-play"></i>
+                            </span>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- 2. 잎새 미니 야구 (준비 중) -->
+                <div class="game-card opacity-75">
+                    <!-- 썸네일 -->
+                    <div class="game-thumbnail baseball">
+                        <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                        <div class="thumbnail-content" style="opacity: 0.6;">
+                            <i class="fa-solid fa-baseball-bat-ball text-4xl"></i>
+                            <div class="text-[10px] font-bold tracking-widest uppercase mt-2">BASEBALL</div>
+                        </div>
+                        <span class="game-badge coming-soon">
+                            COMING SOON
+                        </span>
+                    </div>
+                    <!-- 콘텐츠 정보 -->
+                    <div class="p-4 flex-grow flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-500 text-sm">잎새 미니 야구</h4>
+                            <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                투수가 던지는 학점 볼을 타이밍에 맞춰 홈런으로 날리세요!
+                            </p>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
+                            <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                                <span class="flex items-center gap-0.5">
+                                    <i class="fa-solid fa-thumbs-up"></i> --%
+                                </span>
+                            </div>
+                            <span class="w-7 h-7 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-lock"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 잎새 사다리 타기 (준비 중) -->
+                <div class="game-card opacity-75">
+                    <!-- 썸네일 -->
+                    <div class="game-thumbnail ghostleg">
+                        <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                        <div class="thumbnail-content" style="opacity: 0.6;">
+                            <i class="fa-solid fa-route text-4xl"></i>
+                            <div class="text-[10px] font-bold tracking-widest uppercase mt-2">GHOST LEG</div>
+                        </div>
+                        <span class="game-badge coming-soon">
+                            COMING SOON
+                        </span>
+                    </div>
+                    <!-- 콘텐츠 정보 -->
+                    <div class="p-4 flex-grow flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-500 text-sm">잎새 사다리 타기</h4>
+                            <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                간식 내기를 위한 클래식 사다리 타기. 랜덤 확률로 결과를 확인하세요.
+                            </p>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
+                            <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                                <span class="flex items-center gap-0.5">
+                                    <i class="fa-solid fa-thumbs-up"></i> --%
+                                </span>
+                            </div>
+                            <span class="w-7 h-7 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
+                                <i class="fa-solid fa-lock"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 💬 실시간 동아리 로비 채팅 (오른쪽 4) -->
+        <div class="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 flex flex-col h-[550px]">
+            <div class="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
+                        <i class="fa-solid fa-comments text-indigo-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm">놀이터 로비 채팅</h3>
+                        <p class="text-[10px] text-slate-400 font-medium">동아리원들과 나누는 실시간 대화</p>
+                    </div>
+                </div>
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">
+                    실시간 채널
+                </span>
+            </div>
+
+            <!-- 대화창 영역 -->
+            <div id="chat-messages" class="flex-grow overflow-y-auto space-y-3 pr-2 text-xs text-slate-600">
+                <!-- 임시 고정안내 -->
+                <div class="bg-slate-50 border border-slate-100 p-3 rounded-xl">
+                    <p class="font-semibold text-slate-800">📣 놀이터 알림</p>
+                    <p class="text-slate-500 text-[11px] mt-0.5">서브도메인 채팅 및 라이어 게임용 실시간 WebSocket 기능이 연동 준비 중입니다.</p>
+                </div>
+            </div>
+
+            <!-- 메시지 입력 영역 -->
+            <div class="flex gap-2 shrink-0">
+                <input type="text" id="chat-input" disabled placeholder="채팅 기능 준비 중..." class="flex-1 px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 transition">
+                <button disabled class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold whitespace-nowrap shadow-sm">전송</button>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<style>
+.game-card {
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-decoration: none !important;
+}
+.game-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+.game-thumbnail {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.game-thumbnail.slot {
+    background: linear-gradient(135deg, #f59e0b, #ea580c, #f43f5e);
+}
+.game-thumbnail.baseball {
+    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+}
+.game-thumbnail.ghostleg {
+    background: linear-gradient(135deg, #10b981, #0d9488);
+}
+.game-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 20;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 9999px;
+    padding: 4px 10px;
+    color: #ffffff;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+.game-badge.playable {
+    background-color: #10b981;
+}
+.game-badge.coming-soon {
+    background-color: #4b5563;
+}
+.thumbnail-decor {
+    position: absolute;
+    inset: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.75rem;
+    pointer-events: none;
+    transition: border-color 0.3s;
+}
+.game-card:hover .thumbnail-decor {
+    border-color: rgba(255, 255, 255, 0.4);
+}
+.thumbnail-content {
+    color: #ffffff;
+    text-align: center;
+    z-index: 10;
+    transition: transform 0.3s;
+}
+.game-card:hover .thumbnail-content {
+    transform: scale(1.1);
+}
+.game-card:hover .card-title {
+    color: #ea580c !important;
+}
+.game-card:hover .card-play-btn {
+    background-color: #ffedd5 !important;
+}
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+        animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+    }
+    50% {
+        transform: translateY(-25%);
+        animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    }
+}
+</style>
+{% endblock %}
