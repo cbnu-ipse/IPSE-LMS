@@ -21,6 +21,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %} | {% block title %}{% endblock %}</title>
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}충북대학교 소프트웨어학부 학술동아리 IPSE 플랫폼{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'img/IPSE-LOGO.png' %}{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
+    <meta property="og:site_name" content="{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}">
+
     {% if request.host.name == 'judge' %}
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse-judge.svg' %}">
     {% else %}

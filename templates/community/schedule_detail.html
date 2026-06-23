@@ -1,6 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}{{ schedule.title }} - IPSE 동아리 일정{% endblock %}
 
+{% block og_title %}{{ schedule.title }}{% endblock %}
+{% block og_description %}{{ schedule.summary|striptags|truncatechars:150 }}{% endblock %}
+{% if schedule.thumbnail %}
+{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{{ schedule.thumbnail.url }}{% endblock %}
+{% endif %}
+
 {% block content %}
 <section class="max-w-5xl mx-auto px-6 py-12">
     <div class="relative space-y-6">
