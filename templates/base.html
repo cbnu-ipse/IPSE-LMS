@@ -440,25 +440,6 @@
             <span class="text-[9px] font-semibold tracking-tight">시간표</span>
         </a>
     </div>
-    {% elif request.host.name == 'game' %}
-    <!-- 🎮 모바일 Bottom Navigation Bar (게임 전용) -->
-    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
-        <!-- 1. 잎새로 돌아가기 -->
-        <a href="{% host_url 'community_main' host 'community' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-slate-500 hover:text-emerald-600">
-            <i class="fa-solid fa-leaf text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">커뮤니티</span>
-        </a>
-        <!-- 2. 오락실 로비 -->
-        <a href="{% host_url 'game_lobby' host 'game' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-amber-600 font-bold">
-            <i class="fa-solid fa-gamepad text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">놀이터</span>
-        </a>
-        <!-- 3. 채점 사이트 -->
-        <a href="{% host_url 'course_list' host 'judge' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-slate-500 hover:text-sky-600">
-            <i class="fa-solid fa-arrow-up-right-from-square text-[17px]"></i>
-            <span class="text-[9px] font-semibold tracking-tight">채점/대회</span>
-        </a>
-    </div>
     {% endif %}
     {% endif %}
 
