@@ -148,7 +148,21 @@
 
                     <!-- 설문지 답변 화면 / 제출 완료 화면 -->
                     <div id="survey-form-section">
-                        {% if has_responded and not survey.allow_duplicate_response %}
+                        {% if not user.is_authenticated %}
+                        <!-- 로그인 유도 박스 -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center space-y-3">
+                            <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto text-xl shadow-sm">
+                                <i class="fa-solid fa-lock"></i>
+                            </div>
+                            <div class="space-y-1">
+                                <h4 class="text-base font-bold text-slate-700">설문에 참여하려면 로그인이 필요합니다.</h4>
+                                <p class="text-xs text-slate-400 font-medium">동아리 회원으로 로그인 후 설문에 응답할 수 있습니다.</p>
+                            </div>
+                            <a href="{% url 'login' %}?next={{ request.path }}" class="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm">
+                                로그인하기
+                            </a>
+                        </div>
+                        {% elif has_responded and not survey.allow_duplicate_response %}
                         <!-- 제출 완료 뷰 -->
                         <div class="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-6 text-center space-y-3">
                             <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl shadow-sm">
