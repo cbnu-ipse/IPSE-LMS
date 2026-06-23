@@ -160,7 +160,7 @@
         </div>
 
         <!-- 💬 실시간 동아리 로비 채팅 (오른쪽 4) -->
-        <div class="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 flex flex-col h-[550px]">
+        <div id="lobby-chat-container" class="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 flex flex-col h-[550px] mobile-hidden">
             <div class="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-2">
                     <div class="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
@@ -202,6 +202,11 @@
         </div>
 
     </div>
+
+    <!-- 💬 모바일 전용 실시간 채팅 플로팅 버튼 (FAB) -->
+    <button type="button" id="toggle-chat-fab" class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500" title="실시간 채팅 켜기/끄기">
+        <i class="fa-solid fa-comments text-xl"></i>
+    </button>
 </section>
 
 <style>
@@ -293,6 +298,23 @@
     50% {
         transform: translateY(-25%);
         animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    }
+}
+@media (max-width: 1023px) {
+    #lobby-chat-container {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+        background-color: white !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    #lobby-chat-container.mobile-hidden {
+        display: none !important;
     }
 }
 </style>
@@ -449,6 +471,24 @@
         sendMessage();
     });
     // ────────────────────────────────────────────────────────────────────────
+
+    // ─── 모바일 채팅 토글 FAB 기능 ───
+    const chatContainer = document.getElementById('lobby-chat-container');
+    const toggleChatFab = document.getElementById('toggle-chat-fab');
+    if (toggleChatFab && chatContainer) {
+        toggleChatFab.addEventListener('click', () => {
+            const isHidden = chatContainer.classList.toggle('mobile-hidden');
+            const icon = toggleChatFab.querySelector('i');
+            if (isHidden) {
+                icon.className = 'fa-solid fa-comments text-xl';
+            } else {
+                icon.className = 'fa-solid fa-xmark text-xl';
+                setTimeout(() => {
+                    messagesBox.scrollTop = messagesBox.scrollHeight;
+                }, 50);
+            }
+        });
+    }
 
     // 페이지 로드 시 즉시 연결 시작 + 스크롤 맨 아래
     connect();
