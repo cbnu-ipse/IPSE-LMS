@@ -35,15 +35,20 @@
                 <h1 class="text-2xl lg:text-3xl font-extrabold text-slate-800 mb-4">{{ post.title }}</h1>
                 <div class="flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
                     <div class="flex items-center gap-3">
-                        <span class="font-bold text-slate-600">
-                            <i class="fa-solid fa-circle-user mr-1 text-slate-400"></i>
-                            {% if post.category == 'academic' %}
-                                <span class="text-indigo-600 font-bold">{{ post.display_author }}</span>
-                            {% elif post.is_anonymous and not request.user.is_staff %}
+                        <span class="font-bold text-slate-600 flex items-center gap-2">
+                            {% if post.is_anonymous and not request.user.is_staff %}
+                                <img src="/media/default.png" alt="익명" class="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0">
                                 <span class="text-slate-400 font-mono">익명</span>
                             {% else %}
-                                {{ post.display_author }} ({{ post.author.username }})
-                                {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold ml-1">[익명글]</span>{% endif %}
+                                {% if post.category == 'academic' %}
+                                    <img src="/media/default.png" alt="{{ post.display_author }}" class="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0">
+                                    <span class="text-indigo-600 font-bold">{{ post.display_author }}</span>
+                                  {% else %}
+                                    <img src="{{ post.author.get_picture }}" alt="{{ post.display_author }}" class="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0">
+                                    {{ post.display_author }}
+                                    {{ post.author.badge_html }}
+                                    {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold ml-1">[익명글]</span>{% endif %}
+                                  {% endif %}
                             {% endif %}
                         </span>
                         <span class="text-slate-300">|</span>
@@ -301,8 +306,10 @@
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500 text-white text-[10px] font-extrabold shadow-sm animate-pulse">
                             <i class="fa-solid fa-crown"></i> BEST
                         </span>
+                        <img src="{{ best_comment.author.get_picture }}" alt="{{ best_comment.author.display_author }}" class="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0">
                         <span class="text-xs font-extrabold text-slate-700">
-                            {{ best_comment.author.get_full_name|default:best_comment.author.username }} ({{ best_comment.author.username }})
+                            {{ best_comment.author.display_author }}
+                            {{ best_comment.author.badge_html }}
                         </span>
                         <span class="text-[10px] text-slate-400">
                             {{ best_comment.created_at|date:"Y-m-d H:i" }}
@@ -324,10 +331,12 @@
                 <div class="py-4 space-y-3">
                     <!-- 최상위 댓글 -->
                     <div class="flex justify-between items-start gap-4">
+                        <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.display_author }}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
                         <div class="space-y-2 flex-1">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-bold text-slate-700">
-                                    {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
+                                    {{ comment.author.display_author }}
+                                    {{ comment.author.badge_html }}
                                 </span>
                                 <span class="text-[10px] text-slate-400">
                                     {{ comment.created_at|date:"Y-m-d H:i" }}
@@ -373,10 +382,12 @@
                     <div class="space-y-2.5 pl-8 border-l-2 border-slate-100 mt-2">
                         {% for reply in comment.replies_list %}
                         <div class="bg-slate-50/70 border border-slate-100 rounded-xl p-4 flex justify-between items-start gap-4">
+                            <img src="{{ reply.author.get_picture }}" alt="{{ reply.author.display_author }}" class="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0">
                             <div class="space-y-1.5 flex-1">
                                 <div class="flex items-center gap-2">
                                     <span class="text-xs font-bold text-slate-700">
-                                        {{ reply.author.get_full_name|default:reply.author.username }} ({{ reply.author.username }})
+                                        {{ reply.author.display_author }}
+                                        {{ reply.author.badge_html }}
                                     </span>
                                     <span class="text-[10px] text-slate-400">
                                         {{ reply.created_at|date:"Y-m-d H:i" }}

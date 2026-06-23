@@ -80,8 +80,15 @@ class User(AbstractUser):
     @property
     def display_author(self):
         """댓글, 공지, 투표, 설문 등 작성자 표시용 포맷:
+        설정한 닉네임이 있으면 닉네임, 없으면 기존 포맷:
         이름(성+이름)이 있으면 '[학번 앞2자리] 이름', 없으면 '학번(username)'
         """
+        try:
+            if hasattr(self, "student") and self.student.nickname:
+                return self.student.nickname
+        except Student.DoesNotExist:
+            pass
+
         last = self.last_name or ""
         first = self.first_name or ""
         name = f"{last}{first}".strip()
@@ -138,6 +145,53 @@ class User(AbstractUser):
         elif self.is_executive or self.is_lecturer:
             return "bg-violet-100 text-violet-700 border border-violet-200"
         return ""
+
+    @property
+    def get_rank_medal_class(self):
+        """문제 풀이 랭킹 1, 2, 3위에 따라 gold, silver, bronze를 반환합니다. 캐시를 적용합니다."""
+        if not self.is_student or self.total_points <= 0:
+            return ""
+        from django.core.cache import cache
+        top_3_ids = cache.get('top_3_solved_user_ids')
+        if top_3_ids is None:
+            top_3_ids = list(
+                User.objects.filter(is_student=True, total_points__gt=0)
+                .order_by('-total_points', 'username')
+                .values_list('id', flat=True)[:3]
+            )
+            cache.set('top_3_solved_user_ids', top_3_ids, 60)
+            
+        if self.id in top_3_ids:
+            idx = top_3_ids.index(self.id)
+            if idx == 0:
+                return 'gold'
+            elif idx == 1:
+                return 'silver'
+            elif idx == 2:
+                return 'bronze'
+        return ""
+
+    @property
+    def badge_html(self):
+        """회원 직책 및 랭킹 메달을 아이콘 형태로 반환합니다."""
+        from django.utils.safestring import mark_safe
+        badges = []
+        if self.is_president:
+            badges.append('<i class="fa-solid fa-crown text-yellow-500" title="회장" style="margin-left: 2px; margin-right: 2px;"></i>')
+        elif self.is_vice_president:
+            badges.append('<i class="fa-solid fa-crown text-slate-400" title="부회장" style="margin-left: 2px; margin-right: 2px;"></i>')
+        elif self.is_executive or self.is_lecturer:
+            badges.append('<i class="fa-solid fa-id-badge text-violet-500" title="임원진" style="margin-left: 2px; margin-right: 2px;"></i>')
+            
+        medal = self.get_rank_medal_class
+        if medal == 'gold':
+            badges.append('<i class="fa-solid fa-medal text-yellow-500" title="우수부원 1등" style="margin-left: 2px; margin-right: 2px;"></i>')
+        elif medal == 'silver':
+            badges.append('<i class="fa-solid fa-medal text-slate-400" title="우수부원 2등" style="margin-left: 2px; margin-right: 2px;"></i>')
+        elif medal == 'bronze':
+            badges.append('<i class="fa-solid fa-medal text-amber-600" title="우수부원 3등" style="margin-left: 2px; margin-right: 2px;"></i>')
+            
+        return mark_safe("".join(badges))
 
     def save(self, *args, **kwargs):
         """프로필 이미지 최적화 로직 유지"""

@@ -79,7 +79,8 @@
                             </span>
                         </td>
                         <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
-                            {{ poll.created_by.get_full_name|default:poll.created_by.username }} ({{ poll.created_by.username }})
+                            {{ poll.created_by.display_author }}
+                            {{ poll.created_by.badge_html }}
                         </td>
                         <td class="px-6 py-2.5 text-center text-xs font-bold text-slate-400">-</td>
                         <td class="px-6 py-2.5 text-xs text-slate-400">
@@ -104,7 +105,8 @@
                             {% endif %}
                         </td>
                         <td class="px-6 py-2.5 text-xs text-slate-500 font-medium">
-                            {{ notice.author.get_full_name|default:notice.author.username }} ({{ notice.author.username }})
+                            {{ notice.author.display_author }}
+                            {{ notice.author.badge_html }}
                         </td>
                         <td class="px-6 py-2.5 text-center text-xs font-bold text-emerald-600">
                             {{ notice.like_count|default:0 }}{% if request.user.is_staff %} / <span class="text-rose-500">-{{ notice.dislike_count|default:0 }}</span>{% endif %}

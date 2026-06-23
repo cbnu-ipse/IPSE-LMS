@@ -88,7 +88,13 @@
                         </div>
                         <div class="min-w-0">
                             <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">모임 주최</span>
-                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5 truncate">{{ gathering.author.get_full_name|default:gathering.author.username }} ({{ gathering.author.username }})</span>
+                            <span class="block text-xs font-extrabold text-slate-700 mt-0.5 truncate flex items-center gap-1.5">
+                                 <img src="{{ gathering.author.get_picture }}" alt="{{ gathering.author.display_author }}" class="w-5 h-5 rounded-full object-cover border border-slate-200 shrink-0">
+                                 <span>
+                                     {{ gathering.author.display_author }}
+                                     {{ gathering.author.badge_html }}
+                                 </span>
+                             </span>
                         </div>
                     </div>
                     <!-- 장소 -->
@@ -198,10 +204,12 @@
                 <div class="py-4 space-y-3">
                     <!-- 최상위 댓글 -->
                     <div class="flex justify-between items-start gap-4">
+                        <img src="{{ comment.author.get_picture }}" alt="{{ comment.author.display_author }}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
                         <div class="space-y-2 flex-1">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-bold text-slate-700">
-                                    {{ comment.author.get_full_name|default:comment.author.username }} ({{ comment.author.username }})
+                                    {{ comment.author.display_author }}
+                                    {{ comment.author.badge_html }}
                                 </span>
                                 <span class="text-[10px] text-slate-400">
                                     {{ comment.created_at|date:"Y-m-d H:i" }}
@@ -247,10 +255,12 @@
                     <div class="space-y-2.5 pl-8 border-l-2 border-slate-100 mt-2">
                         {% for reply in comment.replies_list %}
                         <div class="bg-slate-50/70 border border-slate-100 rounded-xl p-4 flex justify-between items-start gap-4">
+                            <img src="{{ reply.author.get_picture }}" alt="{{ reply.author.display_author }}" class="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0">
                             <div class="space-y-1.5 flex-1">
                                 <div class="flex items-center gap-2">
                                     <span class="text-xs font-bold text-slate-700">
-                                        {{ reply.author.get_full_name|default:reply.author.username }} ({{ reply.author.username }})
+                                        {{ reply.author.display_author }}
+                                        {{ reply.author.badge_html }}
                                     </span>
                                     <span class="text-[10px] text-slate-400">
                                         {{ reply.created_at|date:"Y-m-d H:i" }}

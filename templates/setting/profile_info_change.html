@@ -107,6 +107,23 @@
                                     {{ form.blog_url }}
                                 </div>
                             </div>
+
+                            {% if form.verification_document %}
+                            <div class="border-t border-slate-100 pt-5 mt-5">
+                                <label class="block text-xs font-bold text-slate-500 mb-2">
+                                    <i class="fa-solid fa-file-shield text-emerald-600 mr-1"></i>동아리원 인증 서류 추가/변경
+                                </label>
+                                {{ form.verification_document }}
+                                <p class="text-[11px] text-slate-400 leading-relaxed mt-2">재학증명서 또는 학생증 사진을 새로 업로드하여 인증을 신청하거나 변경할 수 있습니다. (JPG, PNG, PDF, 최대 10MB)</p>
+                                {% if request.user.student.verification_document %}
+                                    <p class="text-[11px] text-emerald-600 font-semibold mt-2 flex items-center gap-1">
+                                        <i class="fa-solid fa-circle-check"></i> 기존에 제출한 서류가 있습니다:
+                                        <a href="{{ request.user.student.verification_document.url }}" target="_blank" class="underline hover:text-emerald-700">기존 서류 확인</a>
+                                    </p>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+
                         </div>
                     </div>
                     {% endif %}

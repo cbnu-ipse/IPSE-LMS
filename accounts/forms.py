@@ -181,9 +181,29 @@ class ProfileUpdateForm(forms.ModelForm):
         "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
     }))
 
+    verification_document = forms.FileField(
+        required=False,
+        label="동아리원 인증 서류",
+        help_text="재학증명서 또는 학생증 사진 (JPG, PNG, PDF, 최대 10MB)",
+        widget=forms.FileInput(attrs={
+            "class": "block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 transition-all duration-150",
+            "accept": ".jpg,.jpeg,.png,.pdf"
+        })
+    )
+
     class Meta:
         model = User
         fields = ["first_name", "last_name", "gender", "email", "phone", "address", "picture"]
+
+    def clean_verification_document(self):
+        f = self.cleaned_data.get("verification_document")
+        if f:
+            if f.size > 10 * 1024 * 1024:
+                raise forms.ValidationError("파일 크기가 10MB를 초과합니다.")
+            allowed = (".jpg", ".jpeg", ".png", ".pdf")
+            if not any(f.name.lower().endswith(ext) for ext in allowed):
+                raise forms.ValidationError("JPG, PNG, PDF 파일만 업로드할 수 있습니다.")
+        return f
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -201,20 +221,9 @@ class ProfileUpdateForm(forms.ModelForm):
                 pass
         else:
             # 학생이 아닌 경우 커스텀 필드 제거
-            if 'nickname' in self.fields:
-                del self.fields['nickname']
-            if 'bio' in self.fields:
-                del self.fields['bio']
-            if 'github_url' in self.fields:
-                del self.fields['github_url']
-            if 'blog_url' in self.fields:
-                del self.fields['blog_url']
-            if 'notify_gathering_all' in self.fields:
-                del self.fields['notify_gathering_all']
-            if 'notify_gathering_joined' in self.fields:
-                del self.fields['notify_gathering_joined']
-            if 'notify_post_comment' in self.fields:
-                del self.fields['notify_post_comment']
+            for f_name in ['nickname', 'bio', 'github_url', 'blog_url', 'notify_gathering_all', 'notify_gathering_joined', 'notify_post_comment', 'verification_document']:
+                if f_name in self.fields:
+                    del self.fields[f_name]
 
     @transaction.atomic()
     def save(self, commit=True):
@@ -231,6 +240,9 @@ class ProfileUpdateForm(forms.ModelForm):
             student.notify_gathering_all = self.cleaned_data.get('notify_gathering_all', False)
             student.notify_gathering_joined = self.cleaned_data.get('notify_gathering_joined', False)
             student.notify_post_comment = self.cleaned_data.get('notify_post_comment', False)
+            doc = self.cleaned_data.get('verification_document')
+            if doc:
+                student.verification_document = doc
             student.save()
             
         return user

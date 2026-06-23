@@ -81,7 +81,10 @@
                     </div>
 
                     <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}" class="w-24 h-24 rounded-full border-4 border-slate-100 object-cover mx-auto mb-4">
-                    <p class="text-xl font-bold text-slate-800">{{ row.user.display_name }}</p>
+                    <p class="text-xl font-bold text-slate-800 flex items-center justify-center gap-1">
+                        {{ row.user.display_name }}
+                        {{ row.user.badge_html }}
+                    </p>
                     {% if row.user.role_badge_label %}
                     <span class="mt-1 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
                     {% endif %}
@@ -137,6 +140,7 @@
                                         <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}" class="w-9 h-9 rounded-full border border-slate-200 object-cover">
                                         <div class="flex items-center gap-2">
                                             <span class="font-semibold text-slate-800">{{ row.user.display_name }}</span>
+                                            {{ row.user.badge_html }}
                                             {% if row.user.role_badge_label %}
                                             <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
                                             {% endif %}
