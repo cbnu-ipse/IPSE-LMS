@@ -98,6 +98,12 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if 'ranking' in request.resolver_match.app_name or 'ranking' in request.resolver_match.url_name %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             랭킹
                         </a>
+                    {% elif request.host.name == 'game' %}
+                        <!-- 🎮 게임 서브도메인 메뉴 (로비 전용) -->
+                        <a href="{% host_url 'game_lobby' host 'game' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 border-emerald-600 text-emerald-700 font-bold">
+                            IPSE 놀이터
+                        </a>
                     {% else %}
                         <!-- 📣 동아리 커뮤니티 메인 도메인 메뉴 (신규 커뮤니티 포함) -->
                         <a href="{% url 'community_home' %}"
@@ -136,6 +142,13 @@
                 </div>
                 
                 {% if request.host.name == 'judge' %}
+                <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
+                <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
+                    <a href="{% host_url 'game_lobby' host 'game' %}"
+                       class="w-10 h-10 rounded-full flex items-center justify-center bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 hover:text-amber-700 hover:scale-105 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-gamepad text-sm"></i>
+                    </a>
+                </div>
                 <!-- 📣 잎새 커뮤니티 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center" title="잎새 커뮤니티 바로가기">
                     <a href="{% host_url 'community_main' host 'community' %}"
@@ -143,7 +156,29 @@
                         <i class="fa-solid fa-leaf text-sm"></i>
                     </a>
                 </div>
+                {% elif request.host.name == 'game' %}
+                <!-- 📣 잎새 커뮤니티 사이트 원형 버튼 (데스크톱) -->
+                <div class="hidden md:flex items-center mr-1" title="잎새 커뮤니티 바로가기">
+                    <a href="{% host_url 'community_main' host 'community' %}"
+                       class="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 border border-green-200 text-green-600 hover:bg-green-100 hover:text-green-700 hover:scale-105 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-leaf text-sm"></i>
+                    </a>
+                </div>
+                <!-- ⚖️ 대회 및 채점 사이트 원형 버튼 (데스크톱) -->
+                <div class="hidden md:flex items-center" title="대회 및 채점 사이트 바로가기">
+                    <a href="{% host_url 'course_list' host 'judge' %}"
+                       class="w-10 h-10 rounded-full flex items-center justify-center bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 hover:text-sky-700 hover:scale-105 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
+                    </a>
+                </div>
                 {% else %}
+                <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
+                <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
+                    <a href="{% host_url 'game_lobby' host 'game' %}"
+                       class="w-10 h-10 rounded-full flex items-center justify-center bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 hover:text-amber-700 hover:scale-105 transition-all duration-200 shadow-sm">
+                        <i class="fa-solid fa-gamepad text-sm"></i>
+                    </a>
+                </div>
                 <!-- ⚖️ 대회 및 채점 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center" title="대회 및 채점 사이트 바로가기">
                     <a href="{% host_url 'course_list' host 'judge' %}"
@@ -264,6 +299,15 @@
                         <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">문제</a>
                         <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">대회</a>
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
+                    {% elif request.host.name == 'game' %}
+                        <a href="{% host_url 'community_main' host 'community' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
+                            <span>← 잎새로 돌아가기</span>
+                            <i class="fa-solid fa-arrow-left text-[10px]"></i>
+                        </a>
+                        <a href="{% host_url 'course_list' host 'judge' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
+                            <span>대회 및 채점 사이트 바로가기</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </a>
                     {% else %}
                         <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">커뮤니티</a>
                         <a href="{% url 'timetable' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">수업 시간표</a>
@@ -274,6 +318,10 @@
                         </a>
                         {% endif %}
                         <div class="border-t border-slate-100 my-2"></div>
+                        <a href="{% host_url 'game_lobby' host 'game' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100/70 transition">
+                            <span>IPSE 놀이터 바로가기</span>
+                            <i class="fa-solid fa-gamepad text-[10px]"></i>
+                        </a>
                         <a href="{% host_url 'course_list' host 'judge' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
                             <span>대회 및 채점 사이트 바로가기</span>
                             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
@@ -326,7 +374,7 @@
     </footer>
 
     <!-- 모바일 Bottom Navigation Bar -->
-    {% if request.host.name != 'judge' %}
+    {% if request.host.name != 'judge' and request.host.name != 'game' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
         <!-- 1. 번개 모임 -->
         <a href="{% url 'gathering_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
@@ -358,6 +406,25 @@
         <a href="{% url 'timetable' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'timetable' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
             <i class="fa-solid fa-table-cells text-[17px]"></i>
             <span class="text-[9px] font-semibold tracking-tight">시간표</span>
+        </a>
+    </div>
+    {% elif request.host.name == 'game' %}
+    <!-- 🎮 모바일 Bottom Navigation Bar (게임 전용) -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
+        <!-- 1. 잎새로 돌아가기 -->
+        <a href="{% host_url 'community_main' host 'community' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-slate-500 hover:text-emerald-600">
+            <i class="fa-solid fa-leaf text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">커뮤니티</span>
+        </a>
+        <!-- 2. 오락실 로비 -->
+        <a href="{% host_url 'game_lobby' host 'game' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-amber-600 font-bold">
+            <i class="fa-solid fa-gamepad text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">놀이터</span>
+        </a>
+        <!-- 3. 채점 사이트 -->
+        <a href="{% host_url 'course_list' host 'judge' %}" class="flex-grow flex flex-col items-center justify-center gap-1 transition text-slate-500 hover:text-sky-600">
+            <i class="fa-solid fa-arrow-up-right-from-square text-[17px]"></i>
+            <span class="text-[9px] font-semibold tracking-tight">채점/대회</span>
         </a>
     </div>
     {% endif %}

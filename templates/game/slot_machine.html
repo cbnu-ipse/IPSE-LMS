@@ -1,0 +1,325 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load hosts %}
+
+{% block title %}IPSE 놀이터 | 학점 캡슐 슬롯머신{% endblock %}
+
+{% block content %}
+<section class="max-w-4xl mx-auto px-6 py-10">
+    <!-- 뒤로가기 버튼 -->
+    <div class="mb-6">
+        <a href="{% url 'game_lobby' %}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition shadow-sm font-semibold text-xs">
+            <i class="fa-solid fa-arrow-left"></i> 놀이터 로비로 돌아가기
+        </a>
+    </div>
+
+    <!-- 🎰 슬롯머신 기계 카드 -->
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-8 relative overflow-hidden">
+        
+        <!-- 헤더 및 타이틀 -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-5 gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                    <i class="fa-solid fa-dice text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-extrabold text-slate-800 text-lg">학점 캡슐 슬롯머신</h2>
+                    <p class="text-xs text-slate-400 font-medium">낙엽 1개로 행운의 학점 캡슐을 뽑아보세요!</p>
+                </div>
+            </div>
+            <!-- 오늘 남은 횟수 및 낙엽 잔액 -->
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-50 border border-amber-100 px-3.5 py-2 rounded-xl text-xs font-bold text-amber-800 flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-leaf text-amber-600"></i> 잔여 낙엽: 
+                    <span id="slot-leaves-badge" class="font-extrabold text-sm">{{ request.user.leaves }}</span>개
+                </div>
+                <div class="bg-slate-100 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-calendar-check"></i> 오늘 참여: 
+                    <span id="slot-remaining-badge" class="text-amber-600 font-extrabold text-sm">{{ played_today_count }}</span> / 1회
+                </div>
+            </div>
+        </div>
+
+        <!-- 🎰 슬롯머신 비주얼 구역 -->
+        <div class="relative bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col items-center justify-center min-h-[380px] shadow-2xl">
+            <!-- 네온 장식 등 -->
+            <div class="absolute inset-0 pointer-events-none rounded-3xl border border-amber-500/20 shadow-[inset_0_0_40px_rgba(245,158,11,0.05)]"></div>
+            
+            <!-- 슬롯 윈도우 프레임 (아케이드 느낌) -->
+            <div class="relative bg-slate-950 border-4 border-slate-700 rounded-2xl p-6 shadow-[0_12px_24px_rgba(0,0,0,0.6),inset_0_4px_16px_rgba(0,0,0,0.9)] w-full max-w-md">
+                
+                <!-- 릴 중심 라인 (가로 가이드선) -->
+                <div class="absolute inset-y-0 left-0 right-0 pointer-events-none flex flex-col justify-between py-12 z-20">
+                    <div class="w-full h-0.5 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
+                    <div class="w-full h-0.5 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
+                </div>
+
+                <!-- 릴 홀더 -->
+                <div class="flex items-center justify-center gap-4 relative z-10">
+                    <!-- 릴 1 -->
+                    <div class="reel-window w-24 h-24 bg-white border-2 border-slate-800 rounded-xl overflow-hidden relative flex items-center justify-center">
+                        <div id="reel1" class="reel-strip absolute flex flex-col justify-start items-center w-full" style="top: 0px;">
+                            <!-- JS에서 채워짐 -->
+                        </div>
+                    </div>
+
+                    <!-- 릴 2 -->
+                    <div class="reel-window w-24 h-24 bg-white border-2 border-slate-800 rounded-xl overflow-hidden relative flex items-center justify-center">
+                        <div id="reel2" class="reel-strip absolute flex flex-col justify-start items-center w-full" style="top: 0px;">
+                            <!-- JS에서 채워짐 -->
+                        </div>
+                    </div>
+
+                    <!-- 릴 3 -->
+                    <div class="reel-window w-24 h-24 bg-white border-2 border-slate-800 rounded-xl overflow-hidden relative flex items-center justify-center">
+                        <div id="reel3" class="reel-strip absolute flex flex-col justify-start items-center w-full" style="top: 0px;">
+                            <!-- JS에서 채워짐 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 스핀 버튼 및 카운트다운 -->
+            <div class="mt-8 relative flex flex-col items-center gap-3">
+                <button id="spin-btn" onclick="spinSlot()" class="relative z-10 px-10 py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white font-extrabold text-base hover:brightness-110 active:scale-95 transition-all duration-200 shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:opacity-50 disabled:pointer-events-none">
+                    <span id="spin-btn-text" class="flex items-center gap-2">
+                        <!-- JS에서 버튼 텍스트가 동적으로 채워짐 -->
+                    </span>
+                </button>
+                <div id="countdown-container" class="text-xs font-bold text-slate-400 hidden">
+                    다음 무료 뽑기 충전까지: <span id="countdown-timer" class="text-rose-500 font-extrabold"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 🎁 보상 테이블 안내 -->
+        <div class="bg-slate-50 border border-slate-100 rounded-2xl p-5">
+            <h4 class="text-xs font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                <i class="fa-solid fa-gift text-amber-600"></i> 당첨 등급 및 확률표
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                <div class="bg-white border border-slate-200/60 p-4 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                    <span class="text-xs font-bold text-amber-600 block">S등급 (0.01%)</span>
+                    <span class="text-[10px] text-slate-400 mt-1 block">🍁🍁🍁 (황금 은행잎)</span>
+                    <span class="text-sm font-extrabold text-slate-800 mt-2 block">+100 낙엽</span>
+                </div>
+                <div class="bg-white border border-slate-200/60 p-4 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                    <span class="text-xs font-bold text-emerald-600 block">A등급 (1.00%)</span>
+                    <span class="text-[10px] text-slate-400 mt-1 block">🍀🍀🍀 (초록 네잎클로버)</span>
+                    <span class="text-sm font-extrabold text-slate-800 mt-2 block">+50 낙엽</span>
+                </div>
+                <div class="bg-white border border-slate-200/60 p-4 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                    <span class="text-xs font-bold text-rose-500 block">B등급 (10.00%)</span>
+                    <span class="text-[10px] text-slate-400 mt-1 block">🍂🍂🍂 (붉은 단풍잎)</span>
+                    <span class="text-sm font-extrabold text-slate-800 mt-2 block">+5 낙엽</span>
+                </div>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-4 leading-relaxed text-center">
+                * 매일 1회 무료로 참여가 가능하며, 자정(00:00)에 횟수가 초기화됩니다. 추가 참여는 불가능합니다.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- 파티클 이펙트 라이브러리 추가 (Confetti) -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+<style>
+.reel-window {
+    box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.4);
+    flex-shrink: 0;
+}
+.reel-strip {
+    width: 100%;
+}
+.reel-item {
+    font-size: 2.2rem;
+    height: 96px; /* 고정 높이 */
+    width: 100%;
+}
+.animate-spin-slow {
+    animation: spin 3s linear infinite;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+<script>
+let isSpinning = false;
+const ITEM_HEIGHT = 96; // 릴 아이템 1개의 높이
+const REPEAT_COUNT = 15; // 릴 아이콘을 무한대 느낌으로 보이기 위해 반복 복제할 횟수
+let playedToday = {{ played_today_count }};
+
+// 릴 아이템 리스트
+const items = [
+    { id: 0, char: '🍁' }, // S
+    { id: 1, char: '🍀' }, // A
+    { id: 2, char: '🍂' }, // B
+    { id: 3, char: '💥' }  // F
+];
+
+const reel1 = document.getElementById("reel1");
+const reel2 = document.getElementById("reel2");
+const reel3 = document.getElementById("reel3");
+
+// 페이지 로드 시 릴 아이콘들을 길게 생성하여 채움
+function initReels() {
+    const reels = [reel1, reel2, reel3];
+    reels.forEach(reel => {
+        reel.innerHTML = '';
+        for (let i = 0; i < REPEAT_COUNT; i++) {
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'reel-item h-24 flex items-center justify-center text-4xl';
+                el.dataset.id = item.id;
+                el.textContent = item.char;
+                reel.appendChild(el);
+            });
+        }
+    });
+}
+
+// 릴을 최종 결과값 기준으로 초기 0 위치로 보정 (애니메이션 없이 복귀용)
+function resetReelPosition(reel, targetId) {
+    reel.style.transition = "none";
+    reel.style.top = `-${targetId * ITEM_HEIGHT}px`;
+}
+
+function updateButtonState() {
+    const btn = document.getElementById("spin-btn");
+    const btnText = document.getElementById("spin-btn-text");
+    const countdownContainer = document.getElementById("countdown-container");
+    
+    if (playedToday === 0) {
+        btn.disabled = false;
+        btnText.innerHTML = `<i class="fa-solid fa-gift animate-pulse"></i> 오늘의 무료 캡슐 뽑기!`;
+        countdownContainer.classList.add("hidden");
+    } else {
+        btn.disabled = true;
+        btnText.innerHTML = `<i class="fa-solid fa-calendar-check"></i> 오늘 참여 완료 (내일 다시 참여 가능)`;
+        countdownContainer.classList.remove("hidden");
+    }
+}
+
+// Countdown timer interval
+function startCountdown() {
+    function updateTimer() {
+        if (playedToday > 0) {
+            const countdownTimer = document.getElementById("countdown-timer");
+            if (countdownTimer) {
+                const now = new Date();
+                const midnight = new Date();
+                midnight.setHours(24, 0, 0, 0);
+                const diff = midnight - now;
+                
+                if (diff <= 0) {
+                    playedToday = 0;
+                    updateButtonState();
+                    return;
+                }
+                
+                const hours = String(Math.floor((diff / (1000 * 60 * 60)) % 24)).padStart(2, '0');
+                const mins = String(Math.floor((diff / (1000 * 60)) % 60)).padStart(2, '0');
+                const secs = String(Math.floor((diff / 1000) % 60)).padStart(2, '0');
+                countdownTimer.textContent = `${hours}:${mins}:${secs}`;
+            }
+        }
+    }
+    updateTimer();
+    setInterval(updateTimer, 1000);
+}
+
+// 초기화 호출
+initReels();
+updateButtonState();
+startCountdown();
+
+function spinSlot() {
+    if (isSpinning) return;
+    
+    const btn = document.getElementById("spin-btn");
+    btn.disabled = true;
+    isSpinning = true;
+
+    // 서버에 슬롯 머신 스핀 API 호출
+    fetch("{% url 'slot_spin' %}", {
+        method: "POST",
+        headers: {
+            "X-CSRFToken": "{{ csrf_token }}",
+            "Content-Type": "application/json"
+        }
+    })
+    .then(res => {
+        if (!res.ok) {
+            return res.json().then(err => { throw new Error(err.message || "오류가 발생했습니다."); });
+        }
+        return res.json();
+    })
+    .then(data => {
+        // 서버 결과 릴 아이디 리스트 (예: [1, 1, 1])
+        const targetReels = data.reels; 
+        
+        // 릴 애니메이션 속도 및 Easing 설정
+        const extraLoops = 10;
+        const totalItemsInLoop = items.length; // 4
+        
+        const offset1 = (extraLoops * totalItemsInLoop + targetReels[0]) * ITEM_HEIGHT;
+        const offset2 = ((extraLoops + 3) * totalItemsInLoop + targetReels[1]) * ITEM_HEIGHT;
+        const offset3 = ((extraLoops + 6) * totalItemsInLoop + targetReels[2]) * ITEM_HEIGHT;
+
+        // 시간차 멈춤 애니메이션 적용
+        reel1.style.transition = "top cubic-bezier(0.15, 0.85, 0.2, 1.0) 2.0s";
+        reel2.style.transition = "top cubic-bezier(0.15, 0.85, 0.2, 1.0) 2.6s";
+        reel3.style.transition = "top cubic-bezier(0.15, 0.85, 0.2, 1.0) 3.2s";
+
+        // 애니메이션 시작
+        reel1.style.top = `-${offset1}px`;
+        reel2.style.top = `-${offset2}px`;
+        reel3.style.top = `-${offset3}px`;
+
+        // 모든 애니메이션이 끝난 후 결과 처리
+        setTimeout(() => {
+            resetReelPosition(reel1, targetReels[0]);
+            resetReelPosition(reel2, targetReels[1]);
+            resetReelPosition(reel3, targetReels[2]);
+
+            // 상태 변수 업데이트 및 뱃지 갱신
+            playedToday = data.played_today;
+            updateButtonState();
+
+            document.getElementById("slot-remaining-badge").textContent = data.played_today;
+            document.getElementById("slot-leaves-badge").textContent = data.leaves;
+
+            // 글로벌 네비게이션 헤더의 낙엽 수치 갱신
+            const leafHeaderBadge = document.querySelector('[title="낙엽 잔액"] span');
+            if (leafHeaderBadge) {
+                leafHeaderBadge.textContent = data.leaves;
+            }
+
+            // 결과 안내 알림
+            if (data.grade !== "F") {
+                confetti({
+                    particleCount: data.grade === "S" ? 180 : 80,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+                window.showToast(`🎉 축하합니다! ${data.grade}등급 당첨으로 낙엽 ${data.reward}개를 획득했습니다!`, "success");
+            } else {
+                window.showToast("아쉽게도 꽝입니다! (F학점 당첨)", "error");
+            }
+
+            btn.disabled = false;
+            isSpinning = false;
+        }, 3300);
+
+    })
+    .catch(err => {
+        window.showToast(err.message, "error");
+        btn.disabled = false;
+        isSpinning = false;
+    });
+}
+</script>
+{% endblock %}

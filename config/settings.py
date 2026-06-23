@@ -93,6 +93,7 @@ PROJECT_APPS = [
     "ranking.apps.RankingConfig",
     "compiler.apps.CompilerConfig",
     "schedules.apps.SchedulesConfig",
+    "game.apps.GameConfig",
 ]
 
 # Combine all apps
