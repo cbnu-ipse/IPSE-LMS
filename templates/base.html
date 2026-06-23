@@ -257,12 +257,9 @@
                         <i class="fa-solid fa-leaf text-emerald-600"></i>
                         <span>{{ user.leaves }}</span>
                     </div>
-                    <form action="{% host_url 'logout' host 'community' %}" method="post" class="flex">
-                        {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
+                    <button type="button" onclick="doLogout()" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
                             <i class="fa-solid fa-right-from-bracket text-xs"></i>
                         </button>
-                    </form>
                 </div>
                 {% else %}
                 <a href="{% host_url 'login' host 'community' %}"
@@ -310,10 +307,7 @@
                             </div>
                         </div>
                     </a>
-                    <form action="{% host_url 'logout' host 'community' %}" method="post" class="inline">
-                        {% csrf_token %}
-                        <button type="submit" class="text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl border border-rose-100 transition">로그아웃</button>
-                    </form>
+                    <button type="button" onclick="doLogout()" class="text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl border border-rose-100 transition">로그아웃</button>
                 </div>
                 {% else %}
                 <!-- 로그인 유도 박스 -->
@@ -562,6 +556,29 @@
           navigator.serviceWorker.register('/sw.js').catch(() => {});
         });
       }
+
+      // 로그아웃: cross-subdomain CSRF 문제를 피하기 위해 fetch + X-CSRFToken 헤더 사용
+      window.doLogout = function() {
+        const csrfCookie = document.cookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith('csrftoken='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '{{ csrf_token }}';
+        const logoutUrl = "{% host_url 'logout' host 'community' %}";
+
+        fetch(logoutUrl, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: '',
+        }).then(res => {
+          // 로그아웃 후 커뮤니티 메인으로 이동
+          window.location.href = "{% host_url 'login' host 'community' %}";
+        }).catch(() => {
+          window.location.href = "{% host_url 'login' host 'community' %}";
+        });
+      };
       // 모바일 햄버거 메뉴
       const mobileMenuBtn = document.getElementById('mobile-menu-btn');
       const mobileMenu = document.getElementById('mobile-menu');

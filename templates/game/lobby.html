@@ -165,24 +165,33 @@
                         <p class="text-[10px] text-slate-400 font-medium">동아리원들과 나누는 실시간 대화</p>
                     </div>
                 </div>
-                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">
-                    실시간 채널
+                <span id="chat-status-badge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
                 </span>
             </div>
 
             <!-- 대화창 영역 -->
-            <div id="chat-messages" class="flex-grow overflow-y-auto space-y-3 pr-2 text-xs text-slate-600">
-                <!-- 임시 고정안내 -->
-                <div class="bg-slate-50 border border-slate-100 p-3 rounded-xl">
-                    <p class="font-semibold text-slate-800">📣 놀이터 알림</p>
-                    <p class="text-slate-500 text-[11px] mt-0.5">서브도메인 채팅 및 라이어 게임용 실시간 WebSocket 기능이 연동 준비 중입니다.</p>
+            <div id="chat-messages" class="flex-grow overflow-y-auto space-y-2 pr-1 text-xs text-slate-600">
+                {% for msg in chat_messages %}
+                <div class="chat-msg flex gap-2 items-start">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
+                        {{ msg.user.username|slice:":1" }}
+                    </span>
+                    <div>
+                        <span class="font-semibold text-slate-700">{{ msg.user.username }}</span>
+                        <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                        <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                    </div>
                 </div>
+                {% empty %}
+                <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
+                {% endfor %}
             </div>
 
             <!-- 메시지 입력 영역 -->
             <div class="flex gap-2 shrink-0">
-                <input type="text" id="chat-input" disabled placeholder="채팅 기능 준비 중..." class="flex-1 px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 transition">
-                <button disabled class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold whitespace-nowrap shadow-sm">전송</button>
+                <input type="text" id="chat-input" maxlength="300" placeholder="메시지를 입력하세요..." class="flex-1 px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                <button id="chat-send-btn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold whitespace-nowrap shadow-sm hover:bg-indigo-700 transition">전송</button>
             </div>
         </div>
 
@@ -280,4 +289,107 @@
     }
 }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const messagesBox = document.getElementById('chat-messages');
+    const chatInput   = document.getElementById('chat-input');
+    const sendBtn     = document.getElementById('chat-send-btn');
+    const statusBadge = document.getElementById('chat-status-badge');
+
+    // 프로토콜 자동 분기: 로컬(http) → ws://, 프로덕션(https) → wss://
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/`;
+
+    let socket = null;
+
+    function setStatus(state) {
+        if (state === 'open') {
+            statusBadge.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold transition';
+            statusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 실시간 채널';
+            chatInput.disabled = false;
+        } else {
+            statusBadge.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition';
+            statusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 끊김';
+            chatInput.disabled = true;
+        }
+    }
+
+    function appendMessage(username, message, time) {
+        // 빈 안내 메시지 제거
+        const empty = messagesBox.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+
+        const div = document.createElement('div');
+        div.className = 'chat-msg flex gap-2 items-start';
+        div.innerHTML = `
+            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
+                ${username.charAt(0)}
+            </span>
+            <div>
+                <span class="font-semibold text-slate-700">${username}</span>
+                <span class="text-[10px] text-slate-400 ml-1">${time}</span>
+                <p class="text-slate-600 mt-0.5 break-all">${message}</p>
+            </div>`;
+        messagesBox.appendChild(div);
+        messagesBox.scrollTop = messagesBox.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = function () {
+            setStatus('open');
+            messagesBox.scrollTop = messagesBox.scrollHeight;
+        };
+
+        socket.onmessage = function (e) {
+            const data = JSON.parse(e.data);
+            appendMessage(data.username, data.message, data.created_at);
+        };
+
+        socket.onclose = function () {
+            setStatus('closed');
+            // 5초 후 자동 재연결
+            setTimeout(connect, 5000);
+        };
+
+        socket.onerror = function () {
+            socket.close();
+        };
+    }
+
+    function sendMessage() {
+        const msg = chatInput.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        chatInput.value = '';
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+
+    // ─── 한글/CJK IME 이중 전송 방지 ───────────────────────────────────────
+    // keydown 이벤트 발생 시점에 이미 글자 조합 중(e.isComposing === true)에
+    // Enter를 누르면 브라우저의 기본 동작 및 중복 입력을 막기 위해 이벤트를 완전히 무시합니다.
+    chatInput.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        
+        // CJK(한글) 입력기 조합 중인 엔터키는 차단
+        if (e.isComposing || e.keyCode === 229) {
+            e.preventDefault();
+            return;
+        }
+        
+        e.preventDefault();
+        sendMessage();
+    });
+    // ────────────────────────────────────────────────────────────────────────
+
+    // 페이지 로드 시 즉시 연결 시작 + 스크롤 맨 아래
+    connect();
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+})();
+</script>
 {% endblock %}

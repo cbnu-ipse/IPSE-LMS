@@ -5,16 +5,20 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog
+from .models import SlotPlayLog, LobbyChatMessage
 from accounts.models import User, LeafTransaction
 
 @login_required
 def lobby_view(request):
     """게임 서브도메인의 로비 (Roblox 스타일 게임 목록)"""
+    # 최근 50개 채팅 메시지를 시간 오름차순으로 조회
+    chat_messages = LobbyChatMessage.objects.select_related("user").order_by("created_at")[:50]
     context = {
         "title": "IPSE 놀이터",
+        "chat_messages": chat_messages,
     }
     return render(request, "game/lobby.html", context)
+
 
 @login_required
 def slot_machine_view(request):
