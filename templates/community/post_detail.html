@@ -244,13 +244,20 @@
                 <div id="attachments-list-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {% for att in post.attachments.all %}
                     <div id="attachment-item-{{ forloop.counter }}" class="attachment-item-box">
-                        <a href="{{ att.file.url }}" download class="flex items-center justify-between p-3.5 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/20 rounded-xl transition group">
-                            <div class="flex items-center gap-2.5 truncate">
-                                <i class="fa-solid fa-file text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
-                                <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors truncate">{{ att.filename }}</span>
+                        <div class="flex items-center justify-between p-3.5 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/20 rounded-xl transition group">
+                            <div onclick="openAttachmentPreview('{{ att.file.url }}', '{{ att.filename }}')" class="flex items-center gap-2.5 truncate cursor-pointer flex-1 min-w-0">
+                                <i class="fa-solid fa-file text-slate-400 group-hover:text-emerald-500 transition-colors shrink-0"></i>
+                                <span class="text-sm font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors truncate" title="클릭하여 미리보기">{{ att.filename }}</span>
                             </div>
-                            <i class="fa-solid fa-download text-xs text-slate-400 group-hover:text-emerald-600 transition-colors pl-2"></i>
-                        </a>
+                            <div class="flex items-center gap-2 pl-2 shrink-0">
+                                <button type="button" onclick="openAttachmentPreview('{{ att.file.url }}', '{{ att.filename }}')" class="p-1 text-slate-400 hover:text-emerald-600 transition-colors" title="미리보기">
+                                    <i class="fa-solid fa-eye text-xs"></i>
+                                </button>
+                                <a href="{{ att.file.url }}" download class="p-1 text-slate-400 hover:text-emerald-600 transition-colors" title="다운로드">
+                                    <i class="fa-solid fa-download text-xs"></i>
+                                </a>
+                            </div>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -437,6 +444,31 @@
         </div>
     </div>
 </section>
+
+<!-- 첨부파일 미리보기 모달 -->
+<div id="attachment-preview-modal" class="fixed inset-0 z-[9999] hidden bg-slate-900/60 backdrop-blur-md flex justify-center items-center opacity-0 transition-opacity duration-300">
+    <div id="attachment-preview-modal-content" class="bg-white rounded-2xl border border-slate-100 shadow-2xl overflow-hidden transform scale-95 transition-all duration-300 flex flex-col mx-4" style="width: 90%; max-width: 1000px; height: 85vh; max-height: 90vh;">
+        <!-- 모달 헤더 -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <i id="preview-file-icon" class="fa-solid fa-file text-emerald-600 text-lg shrink-0"></i>
+                <h3 id="preview-file-title" class="text-base font-bold text-slate-800 truncate">파일명.ext</h3>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                <a id="preview-download-btn" href="#" download class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold bg-white hover:bg-slate-50 transition shadow-sm">
+                    <i class="fa-solid fa-download"></i> 다운로드
+                </a>
+                <button type="button" onclick="closeAttachmentPreview()" class="text-slate-400 hover:text-rose-500 transition p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+        </div>
+        <!-- 모달 바디 -->
+        <div id="preview-content-container" class="flex-1 overflow-auto bg-slate-50 flex items-center justify-center min-h-0 w-full" style="padding: 1.5rem; height: calc(100% - 64px);">
+            <!-- 동적 프리뷰 콘텐츠 -->
+        </div>
+    </div>
+</div>
 
 <!-- Toast UI Viewer CDN 리소스 로드 -->
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.css" />
@@ -1433,5 +1465,151 @@
         const m = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
         return String(text).replace(/[&<>"']/g, c => m[c]);
     }
+
+    // 첨부파일 확장자별 아이콘 클래스 취득
+    function getFileIconClass(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        switch(ext) {
+            case 'pdf': return 'fa-solid fa-file-pdf text-red-500';
+            case 'jpg':
+            case 'jpeg':
+            case 'png':
+            case 'gif':
+            case 'webp':
+            case 'svg':
+                return 'fa-solid fa-file-image text-blue-500';
+            case 'txt':
+            case 'py':
+            case 'js':
+            case 'json':
+            case 'html':
+            case 'css':
+            case 'md':
+            case 'c':
+            case 'cpp':
+            case 'h':
+            case 'java':
+            case 'sh':
+            case 'bat':
+            case 'yml':
+            case 'yaml':
+            case 'rs':
+            case 'go':
+            case 'ts':
+            case 'sql':
+                return 'fa-solid fa-file-code text-emerald-500';
+            case 'zip':
+            case 'tar':
+            case 'gz':
+            case 'rar':
+            case '7z':
+                return 'fa-solid fa-file-zipper text-amber-500';
+            case 'doc':
+            case 'docx':
+                return 'fa-solid fa-file-word text-blue-600';
+            case 'xls':
+            case 'xlsx':
+                return 'fa-solid fa-file-excel text-emerald-600';
+            case 'ppt':
+            case 'pptx':
+                return 'fa-solid fa-file-powerpoint text-orange-500';
+            default: return 'fa-solid fa-file text-slate-400';
+        }
+    }
+
+    // 첨부파일 미리보기 열기
+    function openAttachmentPreview(url, filename) {
+        const modal = document.getElementById('attachment-preview-modal');
+        const modalContent = document.getElementById('attachment-preview-modal-content');
+        const titleEl = document.getElementById('preview-file-title');
+        const iconEl = document.getElementById('preview-file-icon');
+        const downloadBtn = document.getElementById('preview-download-btn');
+        const container = document.getElementById('preview-content-container');
+
+        if (!modal || !container) return;
+
+        titleEl.textContent = filename;
+        iconEl.className = getFileIconClass(filename);
+        downloadBtn.href = url;
+
+        // 로딩 표시
+        container.innerHTML = '<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-emerald-500 mr-2 text-xl"></i> 로딩 중...</div>';
+
+        // 모달 열기
+        modal.classList.remove('hidden');
+        requestAnimationFrame(() => {
+            modal.classList.remove('opacity-0');
+            modalContent.classList.remove('scale-95');
+        });
+
+        const ext = filename.split('.').pop().toLowerCase();
+        
+        // 확장자별 렌더링
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) {
+            container.innerHTML = `<img src="${url}" alt="${escapeHtml(filename)}" style="max-width: 100%; max-height: 100%; object-fit: contain;" class="mx-auto rounded-lg shadow-sm">`;
+        } else if (ext === 'pdf') {
+            container.innerHTML = `<iframe src="${url}" style="width: 100%; height: 100%; border: 0;" class="rounded-lg bg-white shadow-inner"></iframe>`;
+        } else if (['txt', 'py', 'js', 'json', 'html', 'css', 'md', 'c', 'cpp', 'h', 'java', 'sh', 'bat', 'yml', 'yaml', 'rs', 'go', 'ts', 'sql'].includes(ext)) {
+            fetch(url)
+                .then(res => {
+                    if (!res.ok) throw new Error('Network response was not ok');
+                    return res.text();
+                })
+                .then(text => {
+                    container.innerHTML = `<pre style="width: 100%; height: 100%; margin: 0;" class="bg-slate-900 text-slate-100 p-5 rounded-xl text-xs font-mono overflow-auto leading-relaxed shadow-inner"><code>${escapeHtml(text)}</code></pre>`;
+                })
+                .catch(err => {
+                    console.error(err);
+                    container.innerHTML = `<div class="text-center py-12 text-slate-500 font-medium">파일 내용을 불러오는 중 오류가 발생했습니다.</div>`;
+                });
+        } else {
+            // 지원하지 않는 포맷
+            container.innerHTML = `
+                <div class="text-center py-12 px-6 max-w-sm mx-auto space-y-4">
+                    <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto text-2xl shadow-sm">
+                        <i class="fa-solid fa-file-shield text-slate-500"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <h4 class="text-slate-800 font-bold text-base">미리보기를 지원하지 않는 형식입니다</h4>
+                        <p class="text-slate-400 text-xs font-medium">아래 버튼을 눌러 파일을 다운로드하여 확인해 주세요.</p>
+                    </div>
+                    <a href="${url}" download class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white text-sm font-bold px-6 py-2.5 hover:bg-emerald-700 transition w-full shadow-sm">
+                        <i class="fa-solid fa-download"></i> 파일 다운로드
+                    </a>
+                </div>
+            `;
+        }
+    }
+
+    // 첨부파일 미리보기 닫기
+    function closeAttachmentPreview() {
+        const modal = document.getElementById('attachment-preview-modal');
+        const modalContent = document.getElementById('attachment-preview-modal-content');
+        if (!modal) return;
+        modal.classList.add('opacity-0');
+        modalContent.classList.add('scale-95');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            const container = document.getElementById('preview-content-container');
+            if (container) container.innerHTML = '';
+        }, 300);
+    }
+
+    // 모달 외부 클릭 및 ESC 단축키 지원 바인딩
+    document.addEventListener('DOMContentLoaded', () => {
+        const previewModal = document.getElementById('attachment-preview-modal');
+        if (previewModal) {
+            previewModal.addEventListener('click', (e) => {
+                if (e.target === previewModal) {
+                    closeAttachmentPreview();
+                }
+            });
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !previewModal.classList.contains('hidden')) {
+                    closeAttachmentPreview();
+                }
+            });
+        }
+    });
 </script>
 {% endblock content %}
