@@ -11,8 +11,9 @@ from accounts.models import User, LeafTransaction
 @login_required
 def lobby_view(request):
     """게임 서브도메인의 로비 (Roblox 스타일 게임 목록)"""
-    # 최근 50개 채팅 메시지를 시간 오름차순으로 조회
-    chat_messages = LobbyChatMessage.objects.select_related("user").order_by("created_at")[:50]
+    # 최근 50개 채팅 메시지를 역순으로 조회한 후 시간 오름차순 정렬
+    latest_messages = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    chat_messages = list(latest_messages)[::-1]
     context = {
         "title": "IPSE 놀이터",
         "chat_messages": chat_messages,
