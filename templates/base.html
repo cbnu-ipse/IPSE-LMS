@@ -50,6 +50,32 @@
 </head>
 
 <body class="{% if request.host.name == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
+    <!-- 카카오톡 인앱 브라우저 아웃 배너 -->
+    <div id="kakaotalk-out-banner" class="hidden w-full bg-[#fee500] text-[#191919] px-4 py-3 items-center justify-between text-xs font-bold sticky top-0 z-[99999] shadow-md gap-3">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-comment text-base shrink-0"></i>
+            <span>더 원활한 서비스 이용을 위해 외부 브라우저로 실행을 권장합니다.</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button onclick="openExternalBrowser()" class="bg-[#191919] text-white px-3 py-1.5 rounded-lg text-[11px] font-black hover:bg-slate-800 transition">앱(외부 브라우저)으로 열기</button>
+            <button onclick="document.getElementById('kakaotalk-out-banner').style.display = 'none'" class="text-[#191919] p-1 text-sm hover:opacity-75"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </div>
+    
+    <script>
+        function openExternalBrowser() {
+            location.href = 'kakaotalk://web/openExternalApp?url=' + encodeURIComponent(window.location.href);
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            const ua = navigator.userAgent.toLowerCase();
+            if (ua.indexOf('kakaotalk') !== -1) {
+                const banner = document.getElementById('kakaotalk-out-banner');
+                if (banner) {
+                    banner.style.display = 'flex';
+                }
+            }
+        });
+    </script>
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
 
     <!-- 전체 화면 로딩 오버레이 (클릭 방지용) -->
@@ -383,7 +409,7 @@
     </footer>
 
     <!-- 모바일 Bottom Navigation Bar -->
-    {% if request.host.name != 'judge' and request.host.name != 'game' %}
+    {% if request.host.name != 'judge' and request.host.name != 'game' and request.resolver_match.url_name != 'login' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
         <!-- 1. 번개 모임 -->
         <a href="{% url 'gathering_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">

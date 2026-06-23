@@ -86,7 +86,7 @@
                 <!-- 📌 설문 공지사항 (board == 'notice' 일 때만 표시) -->
                 {% if board == 'notice' and active_surveys %}
                     {% for survey in active_surveys %}
-                    {% if survey.post %}
+                    {% if survey.post and not survey.post.is_notice %}
                     <tr class="hover:bg-slate-50 cursor-pointer" onclick="location.href='{% url 'post_detail' survey.post.id %}'">
                         <td class="px-5 py-3 text-slate-900 font-bold max-w-0">
                             <div style="display:flex; align-items:baseline; gap:4px; min-width:0;">

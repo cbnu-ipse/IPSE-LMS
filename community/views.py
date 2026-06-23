@@ -1309,7 +1309,6 @@ def community_home(request):
     })
 
 
-@login_required
 def post_detail(request, post_id):
     """자유게시판 상세 보기 및 댓글 목록/작성"""
     post = get_object_or_404(CommunityPost, id=post_id)
@@ -1319,6 +1318,10 @@ def post_detail(request, post_id):
     post.save(update_fields=['views'])
 
     if request.method == 'POST':
+        if not request.user.is_authenticated:
+            from django.urls import reverse
+            login_url = reverse('login')
+            return redirect(f"{login_url}?next={request.path}")
         action = request.POST.get('action')
         if action == 'add_comment':
             content = request.POST.get('content', '').strip()
@@ -1365,11 +1368,16 @@ def post_detail(request, post_id):
 
     all_comments = list(post.community_comments.select_related('author').all())
     
-    user_liked = post.likes.filter(user=request.user).exists()
-    user_disliked = post.dislikes.filter(user=request.user).exists()
+    user_liked = False
+    user_disliked = False
+    liked_comment_ids = set()
+    disliked_comment_ids = set()
     
-    liked_comment_ids = set(CommunityCommentLike.objects.filter(comment__post=post, user=request.user).values_list('comment_id', flat=True))
-    disliked_comment_ids = set(CommunityCommentDislike.objects.filter(comment__post=post, user=request.user).values_list('comment_id', flat=True))
+    if request.user.is_authenticated:
+        user_liked = post.likes.filter(user=request.user).exists()
+        user_disliked = post.dislikes.filter(user=request.user).exists()
+        liked_comment_ids = set(CommunityCommentLike.objects.filter(comment__post=post, user=request.user).values_list('comment_id', flat=True))
+        disliked_comment_ids = set(CommunityCommentDislike.objects.filter(comment__post=post, user=request.user).values_list('comment_id', flat=True))
     
     best_comment = None
     max_likes = 0
@@ -1446,7 +1454,7 @@ def post_detail(request, post_id):
         'has_responded': has_responded,
         'existing_response': existing_response,
         'scale_options': [1, 2, 3, 4, 5],
-        'can_manage_survey': request.user.is_staff or request.user == (survey.created_by if survey else None),
+        'can_manage_survey': request.user.is_authenticated and (request.user.is_staff or request.user == (survey.created_by if survey else None)),
     })
 
 
