@@ -164,7 +164,13 @@ if _redis_url:
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [_redis_url],
+                "hosts": [{
+                    "address": _redis_url,
+                    "health_check_interval": 20,
+                    "socket_timeout": 5,
+                    "socket_connect_timeout": 5,
+                    "retry_on_timeout": True,
+                }],
             },
         }
     }
