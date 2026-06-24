@@ -84,7 +84,6 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
-    "django_hosts",
     "rest_framework",
     "django_filters",
     "dbbackup",
@@ -110,7 +109,6 @@ PROJECT_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 
 MIDDLEWARE = [
-    "django_hosts.middleware.HostsRequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -119,15 +117,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "django_hosts.middleware.HostsResponseMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
-ROOT_HOSTCONF = "config.hosts"
-DEFAULT_HOST = "community"
 PARENT_HOST = config("PARENT_HOST", default="lvh.me:8000" if DEBUG else "cbnu-ipse.co.kr")
-SESSION_COOKIE_DOMAIN = config("SESSION_COOKIE_DOMAIN", default=".lvh.me" if DEBUG else ".cbnu-ipse.co.kr")
-CSRF_COOKIE_DOMAIN = config("CSRF_COOKIE_DOMAIN", default=".lvh.me" if DEBUG else ".cbnu-ipse.co.kr")
 
 # Nginx / Cloudflare 뒤에서 HTTPS 식별을 위한 설정
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
