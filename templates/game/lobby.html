@@ -490,6 +490,23 @@
         });
     }
 
+    // ─── 뒤로가기(BFCache) 진입 시 화면 강제 리셋 ───
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+            const catalog = document.getElementById('catalog-container');
+            const play = document.getElementById('game-play-container');
+            const back = document.getElementById('back-to-catalog-btn');
+            const iframe = document.getElementById('game-iframe');
+            const pokerSetup = document.getElementById('indian-poker-setup-container');
+
+            if (catalog) catalog.classList.remove('hidden');
+            if (play) play.classList.add('hidden');
+            if (back) back.classList.add('hidden');
+            if (iframe) iframe.src = "";
+            if (pokerSetup) pokerSetup.classList.add('hidden');
+        }
+    });
+
     // 페이지 로드 시 즉시 연결 시작 + 스크롤 맨 아래
     connect();
     messagesBox.scrollTop = messagesBox.scrollHeight;
