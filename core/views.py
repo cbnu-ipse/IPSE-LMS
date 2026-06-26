@@ -6,7 +6,7 @@ from django.http import JsonResponse, HttpResponse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.db.models import Q
-from community.models import NewsAndEvents, Survey, CommunityPost, GatheringEvent
+from community.models import NewsAndEvents, Survey, CommunityPost, GatheringEvent, Guestbook
 from .models import ActivityLog, Schedule 
 from ranking.utils import sync_user_profile_metrics
 
@@ -129,6 +129,18 @@ def home_view(request):
         trigger_notice_sync = True
         request.session['last_notice_sync_date'] = today_str
 
+    # 5. 오늘 방명록 항목 (KST 기준 오늘 날짜의 UTC 범위로 쿼리)
+    from django.utils import timezone as tz
+    today_utc_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0) - dt_module.timedelta(hours=9)
+    today_guestbook_entries = Guestbook.objects.filter(
+        created_at__gte=today_utc_start
+    ).select_related('author').order_by('-created_at')[:10]
+
+    has_written_guestbook_today = Guestbook.objects.filter(
+        author=request.user,
+        created_at__gte=today_utc_start
+    ).exists()
+
     context = {
         'notices': notices,
         'active_gatherings': active_gatherings,
@@ -142,6 +154,8 @@ def home_view(request):
         'contest_wins': metrics['contest_wins'],
         'trigger_lms_sync': trigger_lms_sync,
         'trigger_notice_sync': trigger_notice_sync,
+        'today_guestbook_entries': today_guestbook_entries,
+        'has_written_guestbook_today': has_written_guestbook_today,
         'title': 'IPSE AI Academy 대시보드'
     }
     return render(request, 'core/index.html', context)

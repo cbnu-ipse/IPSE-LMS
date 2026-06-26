@@ -109,7 +109,44 @@
             </div>
 
                 <div class="lg:col-span-2 space-y-8">
-            
+
+                    <!-- 🪶 오늘 방명록 위젯 -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-semibold text-[#3F3F3F] flex items-center gap-2">
+                                <i class="fa-solid fa-feather-pointed text-emerald-500 text-base"></i>오늘의 방명록
+                            </h3>
+                            {% if has_written_guestbook_today %}
+                            <button disabled class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed border border-slate-200">
+                                <i class="fa-solid fa-circle-check"></i> 작성 완료!
+                            </button>
+                            {% else %}
+                            <a href="{% host_url 'guestbook' host 'community' %}" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition shadow-sm">
+                                <i class="fa-solid fa-feather-pointed"></i> 방명록 남기기
+                                <span class="ml-0.5 text-emerald-200 text-[10px]">+🍂1</span>
+                            </a>
+                            {% endif %}
+                        </div>
+
+                        {% if today_guestbook_entries %}
+                        <ul class="space-y-2">
+                            {% for entry in today_guestbook_entries %}
+                            <li class="flex items-center gap-2.5 py-1.5">
+                                <img src="{{ entry.author.get_picture }}" alt="" class="w-7 h-7 rounded-lg object-cover shrink-0 border border-slate-100">
+                                <span class="text-xs font-bold text-slate-600 shrink-0">{{ entry.author.display_author }}</span>
+                                <span class="text-xs text-slate-500 truncate flex-1">{{ entry.content }}</span>
+                                <span class="text-[10px] text-slate-300 shrink-0">{{ entry.created_at|date:"H:i" }}</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <div class="py-6 text-center text-slate-400">
+                            <i class="fa-solid fa-book-open text-2xl mb-2 block"></i>
+                            <p class="text-xs">오늘 첫 번째 방명록을 남겨보세요!</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
                     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                         <div class="flex justify-between items-center mb-4">
                             <div class="flex items-center space-x-2">
