@@ -24,6 +24,12 @@
             <i class="fa-regular fa-comments text-slate-400"></i>자유게시판
         {% elif board == 'feedback' %}
             <i class="fa-regular fa-clipboard text-slate-400"></i>피드백 게시판
+        {% elif board == 'ai' %}
+            <i class="fa-solid fa-robot text-violet-500"></i>AI 게시판
+        {% elif board == 'algorithm' %}
+            <i class="fa-solid fa-code text-blue-500"></i>알고리즘 게시판
+        {% elif board == 'hackathon' %}
+            <i class="fa-solid fa-trophy text-amber-500"></i>해커톤 게시판
         {% elif board == 'notice' %}
             <i class="fa-solid fa-bullhorn text-emerald-600"></i>공지사항
         {% elif board == 'academic' %}
@@ -33,7 +39,7 @@
         {% endif %}
     </h2>
     {% if board != 'academic' and board != 'notice' or request.user.is_staff %}
-    <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' %}?category={{ board }}{% endif %}" class="hidden md:inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+    <a href="{% url 'post_create' %}{% if board == 'free' or board == 'feedback' or board == 'notice' or board == 'ai' or board == 'algorithm' or board == 'hackathon' %}?category={{ board }}{% endif %}" class="hidden md:inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
         <i class="fa-solid fa-pen-to-square"></i>게시글 작성
     </a>
     {% endif %}

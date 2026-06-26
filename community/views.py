@@ -1261,6 +1261,12 @@ def community_home(request):
         posts = base_posts.filter(category='feedback')
     elif board == 'academic':
         posts = base_posts.filter(category='academic')
+    elif board == 'ai':
+        posts = base_posts.filter(category='ai')
+    elif board == 'algorithm':
+        posts = base_posts.filter(category='algorithm')
+    elif board == 'hackathon':
+        posts = base_posts.filter(category='hackathon')
     elif board == 'notice':
         posts = posts_qs.filter(is_notice=True)
         active_surveys = Survey.objects.filter(is_active=True).exclude(
@@ -1464,7 +1470,7 @@ def post_create(request):
     raw_category = request.GET.get('category') or request.GET.get('board') or 'free'
     is_notice_param = raw_category == 'notice' or request.GET.get('notice') == '1'
     initial_category = raw_category
-    if initial_category not in ['free', 'feedback']:
+    if initial_category not in ['free', 'feedback', 'ai', 'algorithm', 'hackathon']:
         initial_category = 'free'
 
     if request.method == 'POST':
@@ -1472,7 +1478,7 @@ def post_create(request):
         content = request.POST.get('content', '').strip()
         category = request.POST.get('category', 'free')
         survey_data = request.POST.get('survey_data', '').strip()
-        if category not in ['free', 'feedback']:
+        if category not in ['free', 'feedback', 'ai', 'algorithm', 'hackathon']:
             category = 'free'
 
         if not title or not content:
@@ -1557,7 +1563,7 @@ def post_edit(request, post_id):
         content = request.POST.get('content', '').strip()
         category = request.POST.get('category', 'free')
         survey_data = request.POST.get('survey_data', '').strip()
-        if category not in ['free', 'feedback']:
+        if category not in ['free', 'feedback', 'ai', 'algorithm', 'hackathon']:
             category = 'free'
 
         if not title or not content:
