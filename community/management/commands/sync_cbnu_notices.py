@@ -78,6 +78,58 @@ class Command(BaseCommand):
                 return f"{current_year}-{match_short.group(1)}-{match_short.group(2)}"
         return None
 
+    _DATETIME_RE = re.compile(
+        r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?"
+    )
+    _DATE_ONLY_RE = re.compile(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})")
+
+    def extract_datetime_from_detail(self, detail_soup):
+        """Try to extract posting datetime (including time) from a detail page header."""
+        if not detail_soup:
+            return None
+
+        # 1. Look inside common metadata / header containers first
+        metadata_selectors = [
+            '.view_info', '.board_view_info', '#view_info', '.info_area',
+            '.write_info', '.bbs_view_info', '.nttInfo', '.board-info',
+            'table.view', '.view_tbl', '.view_top', '.view_content_wrap',
+            '.brd-view', '.bbs-view',
+        ]
+        for selector in metadata_selectors:
+            el = detail_soup.select_one(selector)
+            if el:
+                m = self._DATETIME_RE.search(el.get_text())
+                if m:
+                    return self._build_aware_datetime(m)
+
+        # 2. Look after common Korean date-label text nodes
+        for label in ['작성일', '등록일', '게시일', '작성 일시', '등록일시']:
+            node = detail_soup.find(string=re.compile(label))
+            if not node:
+                continue
+            parent = node.find_parent(['td', 'th', 'dt', 'li', 'span', 'div', 'p'])
+            if not parent:
+                continue
+            sibling = parent.find_next_sibling(['td', 'dd', 'span', 'div'])
+            search_text = (sibling.get_text() if sibling else "") or parent.get_text()
+            m = self._DATETIME_RE.search(search_text)
+            if m:
+                return self._build_aware_datetime(m)
+
+        return None
+
+    def _build_aware_datetime(self, match):
+        """Build a timezone-aware datetime from a regex match of the DATETIME_RE pattern."""
+        try:
+            from datetime import datetime as _dt
+            naive = _dt(
+                int(match.group(1)), int(match.group(2)), int(match.group(3)),
+                int(match.group(4)), int(match.group(5)), int(match.group(6) or 0),
+            )
+            return timezone.make_aware(naive)
+        except (ValueError, OverflowError):
+            return None
+
     def unquote_fully(self, text):
         if not text:
             return ""
@@ -288,14 +340,6 @@ class Command(BaseCommand):
                 if CommunityPost.objects.filter(content__contains=source_marker).exists():
                     continue
 
-                parsed_datetime = None
-                row = a.find_parent("tr")
-                date_str = self.extract_date_from_row(row)
-                if date_str:
-                    p_date = parse_date(date_str)
-                    if p_date:
-                        parsed_datetime = timezone.make_aware(timezone.datetime.combine(p_date, timezone.datetime.min.time()))
-
                 # Fallback content
                 content_body = f"이 게시글은 충북대학교 컴퓨터공학과 공지사항에서 자동 수집되었습니다."
                 detail_soup = None
@@ -308,6 +352,18 @@ class Command(BaseCommand):
                             content_body = self.clean_and_resolve_html(view_con, detail_url)
                 except Exception as e:
                     self.stdout.write(f"Error fetching CS detail {detail_url}: {e}")
+
+                # Extract datetime: prefer detail page (includes time), fall back to list-row date
+                parsed_datetime = self.extract_datetime_from_detail(detail_soup)
+                if not parsed_datetime:
+                    row = a.find_parent("tr")
+                    date_str = self.extract_date_from_row(row)
+                    if date_str:
+                        p_date = parse_date(date_str)
+                        if p_date:
+                            parsed_datetime = timezone.make_aware(
+                                timezone.datetime.combine(p_date, timezone.datetime.min.time())
+                            )
 
                 # Premium button layout
                 button_html = f"""
@@ -377,14 +433,6 @@ class Command(BaseCommand):
                 if CommunityPost.objects.filter(content__contains=source_marker).exists():
                     continue
 
-                parsed_datetime = None
-                row = a.find_parent("tr")
-                date_str = self.extract_date_from_row(row)
-                if date_str:
-                    p_date = parse_date(date_str)
-                    if p_date:
-                        parsed_datetime = timezone.make_aware(timezone.datetime.combine(p_date, timezone.datetime.min.time()))
-
                 # Fallback content
                 content_body = f"이 게시글은 충북대학교 홈페이지 공지사항에서 자동 수집되었습니다."
                 detail_soup = None
@@ -397,6 +445,18 @@ class Command(BaseCommand):
                             content_body = self.clean_and_resolve_html(view_con, detail_url)
                 except Exception as e:
                     self.stdout.write(f"Error fetching Main detail {detail_url}: {e}")
+
+                # Extract datetime: prefer detail page (includes time), fall back to list-row date
+                parsed_datetime = self.extract_datetime_from_detail(detail_soup)
+                if not parsed_datetime:
+                    row = a.find_parent("tr")
+                    date_str = self.extract_date_from_row(row)
+                    if date_str:
+                        p_date = parse_date(date_str)
+                        if p_date:
+                            parsed_datetime = timezone.make_aware(
+                                timezone.datetime.combine(p_date, timezone.datetime.min.time())
+                            )
 
                 # Premium button layout
                 button_html = f"""

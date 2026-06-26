@@ -1240,7 +1240,7 @@ def community_home(request):
     board = request.GET.get('board', 'all')
     search_query = request.GET.get('q', '').strip()
 
-    posts_qs = CommunityPost.objects.select_related('author').order_by('-created_at')
+    posts_qs = CommunityPost.objects.select_related('author').order_by('-created_at', '-pk')
 
     # 최근 7일 동안의 핫 게시물 계산 (score = views + comment * 5 + likes * 10), 공지글 제외
     seven_days_ago = timezone.now() - dt_module.timedelta(days=7)
