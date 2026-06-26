@@ -45,8 +45,19 @@
     <meta name="apple-mobile-web-app-title" content="IPSE">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={% now 'U' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- 페이지 전환 로딩 바 -->
-    <div id="page-loader" style="position:fixed;top:0;left:0;width:0%;height:3px;background:linear-gradient(90deg,var(--color-emerald-600),var(--color-teal-500));z-index:99999;transition:width 0.3s ease,opacity 0.4s ease;opacity:0;pointer-events:none;"></div>
+    <style>
+    @keyframes sk-shimmer {
+        0%   { background-position: -600px 0; }
+        100% { background-position:  600px 0; }
+    }
+    .sk {
+        background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+        background-size: 1200px 100%;
+        animation: sk-shimmer 1.4s ease infinite;
+        border-radius: 0.5rem;
+    }
+    #skeleton-overlay { transition: opacity 0.12s ease; }
+    </style>
 </head>
 
 <body class="{% if request.host.name == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
@@ -78,17 +89,93 @@
     </script>
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
 
-    <!-- 전체 화면 로딩 오버레이 (클릭 방지용) -->
-    <div id="loading-overlay" class="fixed inset-0 z-[99998] flex items-center justify-center bg-slate-900/10 backdrop-blur-[1px] transition-all duration-300 opacity-0 pointer-events-none">
-        <div class="bg-white/95 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-slate-100 flex flex-col items-center gap-4 transition-transform duration-300 scale-90">
-            <div class="relative w-16 h-16 flex items-center justify-center">
-                <div class="absolute inset-0 rounded-full border-4 border-slate-100"></div>
-                <div class="absolute inset-0 rounded-full border-4 border-t-emerald-600 border-r-teal-500 animate-spin"></div>
-                <i class="fa-solid fa-leaf text-2xl text-emerald-600 animate-pulse z-10"></i>
+    <!-- 페이지 전환 Skeleton 오버레이 -->
+    <div id="skeleton-overlay" class="fixed top-16 inset-x-0 bottom-0 z-[40] bg-white overflow-hidden" style="opacity:0;pointer-events:none;">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-24">
+            <!-- 헤더 skeleton -->
+            <div class="flex items-center justify-between mb-5">
+                <div class="sk h-6 w-44"></div>
+                <div class="sk h-9 w-28 hidden sm:block"></div>
             </div>
-            <div class="text-center">
-                <h4 class="text-sm font-bold text-slate-800">잠시만 기다려주세요</h4>
-                <p class="text-[11px] text-slate-400 mt-1">데이터를 불러오는 중입니다...</p>
+            <!-- 검색바 skeleton -->
+            <div class="flex gap-2 mb-4">
+                <div class="sk h-9 flex-1" style="border-radius:0.75rem;"></div>
+                <div class="sk h-9 w-16" style="border-radius:0.75rem;"></div>
+            </div>
+            <!-- 목록 카드 skeleton -->
+            <div style="border-radius:1rem;border:1px solid #f1f5f9;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+                <!-- 테이블 헤더 -->
+                <div style="background:#f8fafc;border-bottom:1px solid #f1f5f9;padding:12px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-3" style="flex:3;"></div>
+                    <div class="sk h-3 w-16 hidden sm:block"></div>
+                    <div class="sk h-3 w-8 hidden sm:block"></div>
+                    <div class="sk h-3 w-16 hidden sm:block"></div>
+                    <div class="sk h-3 w-8 hidden sm:block"></div>
+                </div>
+                <!-- 행 1~9 -->
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.05s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.05s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.05s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.05s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.1s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.1s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.1s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.1s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.15s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.15s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.15s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.15s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.2s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.2s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.2s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.2s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.25s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.25s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.25s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.25s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.3s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.3s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.3s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.3s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.35s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.35s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.35s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.35s;"></div>
+                </div>
+                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.4s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.4s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.4s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.4s;"></div>
+                </div>
+                <div style="padding:15px 20px;display:flex;gap:16px;align-items:center;">
+                    <div class="sk h-4" style="flex:3;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.45s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.45s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.45s;"></div>
+                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.45s;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -445,101 +532,63 @@
 
     {% block extra_js %}{% endblock %}
     <script>
-      // 페이지 전환 로딩 바 및 오버레이
+      // 페이지 전환 Skeleton 로딩
       (function(){
-        const bar = document.getElementById('page-loader');
-        const overlay = document.getElementById('loading-overlay');
-        const overlayContent = overlay ? overlay.firstElementChild : null;
+        const sk = document.getElementById('skeleton-overlay');
         window.isPageLoading = false;
 
-        function showBar(){
+        function showSkeleton(){
           window.isPageLoading = true;
-          // 상단 로딩 바 실행
-          bar.style.opacity='1'; bar.style.width='0%';
-          requestAnimationFrame(()=>{ bar.style.width='70%'; });
-
-          // 전체화면 로딩 오버레이 실행 (클릭 차단)
-          if (overlay) {
-            overlay.classList.remove('opacity-0', 'pointer-events-none');
-            overlay.classList.add('opacity-100');
-            if (overlayContent) {
-              overlayContent.classList.remove('scale-90');
-              overlayContent.classList.add('scale-100');
-            }
-          }
+          if (sk) { sk.style.opacity='1'; sk.style.pointerEvents='all'; }
         }
-        function finishBar(){
+        function hideSkeleton(){
           window.isPageLoading = false;
-          // 상단 로딩 바 완료
-          bar.style.width='100%';
-          setTimeout(()=>{ 
-            bar.style.opacity='0'; 
-            setTimeout(()=>{ bar.style.width='0%'; },400); 
-          },200);
-
-          // 전체화면 로딩 오버레이 완료
-          if (overlay) {
-            overlay.classList.remove('opacity-100');
-            overlay.classList.add('opacity-0', 'pointer-events-none');
-            if (overlayContent) {
-              overlayContent.classList.remove('scale-100');
-              overlayContent.classList.add('scale-90');
-            }
-          }
+          if (sk) { sk.style.opacity='0'; sk.style.pointerEvents='none'; }
         }
-        // 링크 클릭 시 바/오버레이 시작
+
+        // 링크 클릭 시 skeleton 표시
         document.addEventListener('click',function(e){
-          // 이미 로딩 중인 경우 추가 클릭을 차단 (연속 터치 방지)
           if (window.isPageLoading) {
             e.preventDefault();
             e.stopPropagation();
             return;
           }
-
           const a = e.target.closest('a[href]');
           if(!a) return;
           const href = a.getAttribute('href');
           if(!href||href.startsWith('#')||href.startsWith('javascript')||a.target==='_blank'||a.hasAttribute('download')) return;
           if(href.startsWith('http')&&!href.includes(location.hostname)) return;
 
-          // 모바일 제한 대상 탭인 경우 로딩바 시작하지 않음 (이동이 제한될 것이므로)
           const isMobileSize = window.innerWidth < 768;
           const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
           try {
             const urlObj = new URL(href, window.location.origin);
             const path = urlObj.pathname;
-            const isRestricted = restrictedPaths.some(p => path.startsWith(p));
-            if (isRestricted && isMobileSize) {
-              return;
-            }
+            if (restrictedPaths.some(p => path.startsWith(p)) && isMobileSize) return;
           } catch(err) {}
 
-          showBar();
+          showSkeleton();
         }, { capture: true });
 
-        // 폼 제출 시 바/오버레이 시작
+        // 폼 제출 시 skeleton 표시
         document.addEventListener('submit',function(e){
-          // 이미 로딩 중인 경우 중복 제출 방지
           if (window.isPageLoading) {
             e.preventDefault();
             e.stopPropagation();
             return;
           }
-
-          // confirm() 등으로 인해 취소된 경우 무한 로딩에 걸리지 않도록 비동기 처리
           setTimeout(() => {
             if (e.defaultPrevented) return;
-            showBar();
+            showSkeleton();
           }, 0);
         }, { capture: true });
 
-        // 페이지 로드 완료 시 마무리 및 로그아웃 후 뒤로가기 시 캐시 무효화(리로드)
+        // 페이지 로드 완료 시 skeleton 해제 및 BF Cache 무효화
         window.addEventListener('pageshow', function(e) {
-          // 브라우저 캐시(BF Cache)에서 복원되었거나, 뒤로가기(type: 2)로 탐색해 돌아온 경우에만 리로드 실행
           if (e.persisted || (window.performance && window.performance.navigation && window.performance.navigation.type === 2)) {
             window.location.reload(true);
           }
-          finishBar();
+          hideSkeleton();
         });
       })();
       if ('serviceWorker' in navigator) {
