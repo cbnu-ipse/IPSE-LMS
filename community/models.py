@@ -656,3 +656,26 @@ class CommunityPostAttachment(models.Model):
 
     def __str__(self):
         return self.filename
+
+
+# ─────────────────────────────────────────────
+# 방명록 (Guestbook)
+# ─────────────────────────────────────────────
+
+class Guestbook(models.Model):
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='guestbook_entries',
+        verbose_name="작성자"
+    )
+    content = models.CharField(max_length=100, verbose_name="방명록 내용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "방명록"
+        verbose_name_plural = "방명록 목록"
+
+    def __str__(self):
+        return f"{self.author.display_name}: {self.content[:30]}"

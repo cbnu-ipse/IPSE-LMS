@@ -47,4 +47,7 @@ urlpatterns = [
     path('meetup/comment/<int:comment_id>/dislike/', views.gathering_comment_dislike_toggle, name='gathering_comment_dislike_toggle'),
     path('api/og-preview/', views.og_preview, name='og_preview'),
     path('api/sync-notices/', views.sync_notices_api, name='sync_notices_api'),
+    # 방명록
+    path('guestbook/', views.guestbook, name='guestbook'),
+    path('guestbook/api/create/', views.guestbook_create_api, name='guestbook_create_api'),
 ]

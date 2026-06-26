@@ -182,19 +182,11 @@ def profile(request):
 
     leaf_transactions = user.leaf_transactions.all().order_by('-created_at')[:10]
 
-    from django.utils import timezone
-    from datetime import timedelta
-    from .models import Attendance
-    kst_now = timezone.now() + timedelta(hours=9)
-    today = kst_now.date()
-    has_attended_today = Attendance.objects.filter(user=user, date=today).exists()
-
     return render(request, 'accounts/profile.html', {
         'title': '내 프로필',
         'courses': courses,
         'level': student_obj,
         'leaf_transactions': leaf_transactions,
-        'has_attended_today': has_attended_today,
     })
 
 

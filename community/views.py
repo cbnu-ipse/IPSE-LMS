@@ -22,7 +22,7 @@ from .models import (
     Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer, SurveyComment,
     RecruitmentForm, RecruitmentApplication,
     CommunityPost, CommunityComment, GatheringEvent, GatheringComment, CommunityPostLike, CommunityPostDislike, CommunityCommentLike, CommunityCommentDislike,
-    CommunityPostAttachment
+    CommunityPostAttachment, Guestbook
 )
 
 
@@ -2370,3 +2370,77 @@ def sync_notices_api(request):
 
 
 
+
+
+# ─── Guestbook Views ──────────────────────────────────────────────────────────
+
+@login_required
+def guestbook(request):
+    from django.core.paginator import Paginator
+    entries = Guestbook.objects.select_related('author').all()
+    paginator = Paginator(entries, 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    from django.utils import timezone
+    from datetime import timedelta
+    kst_now = timezone.now() + timedelta(hours=9)
+    today = kst_now.date()
+    has_written_today = Guestbook.objects.filter(
+        author=request.user,
+        created_at__date=timezone.now().date()
+    ).exists()
+
+    return render(request, 'community/guestbook.html', {
+        'title': '방명록',
+        'page_obj': page_obj,
+        'has_written_today': has_written_today,
+    })
+
+
+@login_required
+@require_POST
+def guestbook_create_api(request):
+    """방명록 한 줄 등록 + 하루 첫 번째 작성 시 낙엽 1개 지급"""
+    try:
+        data = json.loads(request.body)
+        content = data.get('content', '').strip()
+        if not content:
+            return JsonResponse({'status': 'error', 'message': '내용을 입력해 주세요.'}, status=400)
+        if len(content) > 100:
+            return JsonResponse({'status': 'error', 'message': '100자 이내로 입력해 주세요.'}, status=400)
+
+        from django.utils import timezone
+
+        with transaction.atomic():
+            # 오늘(UTC) 이미 쓴 글이 있는지 확인 (낙엽 지급용)
+            already_today = Guestbook.objects.filter(
+                author=request.user,
+                created_at__date=timezone.now().date()
+            ).exists()
+
+            entry = Guestbook.objects.create(author=request.user, content=content)
+
+            leaf_given = False
+            if not already_today:
+                request.user.adjust_leaves(
+                    amount=1,
+                    transaction_type='guestbook',
+                    description='방명록 작성 보상 (하루 1회)',
+                )
+                leaf_given = True
+
+        request.user.refresh_from_db()
+        return JsonResponse({
+            'status': 'success',
+            'message': '방명록에 글을 남겼습니다!' + (' 낙엽 1개가 적립되었습니다.' if leaf_given else ''),
+            'leaf_given': leaf_given,
+            'leaves': request.user.leaves,
+            'entry': {
+                'id': entry.id,
+                'author': request.user.display_author,
+                'content': entry.content,
+                'created_at': entry.created_at.strftime('%Y-%m-%d %H:%M'),
+            }
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

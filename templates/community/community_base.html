@@ -53,16 +53,27 @@
         <!-- 📱 모바일 슬라이드 메뉴 (기본 숨김) -->
         <div id="community-mobile-menu" class="mobile-only bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden sticky-mobile-menu" style="display:none;">
             {% with cur_board=request.GET.board cur_tab=request.GET.tab cur_url=request.resolver_match.url_name %}
-            <div class="px-4 py-3 border-b border-slate-100">
-                <p class="text-xs font-bold text-emerald-700 uppercase tracking-wider">★ 게시판 목록</p>
+            <div class="px-4 py-2 border-b border-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">탐색</p>
             </div>
             <ul class="divide-y divide-slate-50">
                 <li><a href="{% url 'community_home' %}?board=all" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'all' or cur_url == 'community_home' and not cur_board %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-file-lines w-4 text-slate-400"></i>전체글보기</a></li>
                 <li><a href="{% url 'community_home' %}?board=hot" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'hot' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-fire w-4 text-amber-500"></i>인기글 (HOT)</a></li>
+            </ul>
+            <div class="px-4 py-2 border-b border-slate-100 border-t border-t-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">공지</p>
+            </div>
+            <ul class="divide-y divide-slate-50">
                 <li><a href="{% url 'community_home' %}?board=notice" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'notice' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-bullhorn w-4 text-emerald-600"></i>공지사항</a></li>
                 <li><a href="{% url 'community_home' %}?board=academic" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'academic' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-graduation-cap w-4 text-indigo-600"></i>학사공지</a></li>
+            </ul>
+            <div class="px-4 py-2 border-b border-slate-100 border-t border-t-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">게시판</p>
+            </div>
+            <ul class="divide-y divide-slate-50">
                 <li><a href="{% url 'community_home' %}?board=free" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'free' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-comments w-4 text-slate-400"></i>자유게시판</a></li>
                 <li><a href="{% url 'community_home' %}?board=feedback" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'community_home' and cur_board == 'feedback' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-regular fa-clipboard w-4 text-slate-400"></i>피드백 게시판</a></li>
+                <li><a href="{% url 'guestbook' %}" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold {% if cur_url == 'guestbook' %}text-emerald-700 bg-emerald-50{% else %}text-slate-600{% endif %}"><i class="fa-solid fa-feather-pointed w-4 text-emerald-400"></i>방명록<span class="ml-auto text-[10px] font-bold text-amber-500 flex items-center gap-0.5"><i class="fa-solid fa-leaf text-amber-400"></i>+1</span></a></li>
             </ul>
             {% endwith %}
         </div>
@@ -101,60 +112,69 @@
                 </div>
 
                 <!-- 게시판 목록 메뉴 -->
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-6">
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                     {% with cur_board=request.GET.board cur_tab=request.GET.tab cur_url=request.resolver_match.url_name %}
-                    
-                    <!-- 카테고리 1: 게시판 목록 -->
+
+                    <!-- 그룹 1: 전체 / 인기 -->
                     <div>
-                        <div class="flex items-center justify-between text-xs font-bold text-emerald-700 uppercase tracking-wider mb-3 px-1">
-                            <span>★ 게시판 목록</span>
-                        </div>
-                        <ul class="space-y-1">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-1.5">탐색</p>
+                        <ul class="space-y-0.5">
                             <li>
                                 <a href="{% url 'community_home' %}?board=all" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'all' or cur_url == 'community_home' and not cur_board %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-                                    <span class="flex items-center gap-2">
-                                        <i class="fa-regular fa-file-lines text-slate-400 w-4"></i>전체글보기
-                                    </span>
+                                    <span class="flex items-center gap-2"><i class="fa-regular fa-file-lines text-slate-400 w-4"></i>전체글보기</span>
                                 </a>
                             </li>
                             <li>
                                 <a href="{% url 'community_home' %}?board=hot" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'hot' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-                                    <span class="flex items-center gap-2">
-                                        <i class="fa-solid fa-fire text-amber-500 w-4 animate-pulse"></i>인기글 (HOT)
-                                    </span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{% url 'community_home' %}?board=notice" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'notice' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-                                    <span class="flex items-center gap-2">
-                                        <i class="fa-solid fa-bullhorn text-emerald-600 w-4"></i>공지사항
-                                    </span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{% url 'community_home' %}?board=academic" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'academic' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-                                    <span class="flex items-center gap-2">
-                                        <i class="fa-solid fa-graduation-cap text-indigo-600 w-4"></i>학사공지
-                                    </span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{% url 'community_home' %}?board=free" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'free' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-                                    <span class="flex items-center gap-2">
-                                        <i class="fa-regular fa-comments text-slate-400 w-4"></i>자유게시판
-                                    </span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{% url 'community_home' %}?board=feedback" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'feedback' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-                                    <span class="flex items-center gap-2">
-                                        <i class="fa-regular fa-clipboard text-slate-400 w-4"></i>피드백 게시판
-                                    </span>
+                                    <span class="flex items-center gap-2"><i class="fa-solid fa-fire text-amber-500 w-4 animate-pulse"></i>인기글 (HOT)</span>
                                 </a>
                             </li>
                         </ul>
                     </div>
 
+                    <div class="border-t border-slate-100"></div>
+
+                    <!-- 그룹 2: 공지 -->
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-1.5">공지</p>
+                        <ul class="space-y-0.5">
+                            <li>
+                                <a href="{% url 'community_home' %}?board=notice" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'notice' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                    <span class="flex items-center gap-2"><i class="fa-solid fa-bullhorn text-emerald-600 w-4"></i>공지사항</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% url 'community_home' %}?board=academic" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'academic' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                    <span class="flex items-center gap-2"><i class="fa-solid fa-graduation-cap text-indigo-600 w-4"></i>학사공지</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="border-t border-slate-100"></div>
+
+                    <!-- 그룹 3: 게시판 + 방명록 -->
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-1.5">게시판</p>
+                        <ul class="space-y-0.5">
+                            <li>
+                                <a href="{% url 'community_home' %}?board=free" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'free' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                    <span class="flex items-center gap-2"><i class="fa-regular fa-comments text-slate-400 w-4"></i>자유게시판</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% url 'community_home' %}?board=feedback" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'community_home' and cur_board == 'feedback' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                    <span class="flex items-center gap-2"><i class="fa-regular fa-clipboard text-slate-400 w-4"></i>피드백 게시판</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{% url 'guestbook' %}" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition {% if cur_url == 'guestbook' %}bg-emerald-50 text-emerald-700 font-bold{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+                                    <span class="flex items-center gap-2"><i class="fa-solid fa-feather-pointed text-emerald-400 w-4"></i>방명록</span>
+                                    <span class="text-[10px] font-bold text-amber-500 flex items-center gap-0.5"><i class="fa-solid fa-leaf text-amber-400"></i>+1</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
                     <div class="border-t border-slate-100"></div>
 
