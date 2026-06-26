@@ -47,14 +47,28 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
     @keyframes sk-shimmer {
-        0%   { background-position: -600px 0; }
-        100% { background-position:  600px 0; }
+        100% { transform: translateX(100%); }
     }
     .sk {
-        background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
-        background-size: 1200px 100%;
-        animation: sk-shimmer 1.4s ease infinite;
+        position: relative;
+        overflow: hidden;
+        background: #dde3ec;
         border-radius: 0.5rem;
+    }
+    .sk::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(255,255,255,0.55) 40%,
+            rgba(255,255,255,0.85) 50%,
+            rgba(255,255,255,0.55) 60%,
+            transparent 100%
+        );
+        transform: translateX(-100%);
+        animation: sk-shimmer 1.6s ease-in-out infinite;
     }
     #skeleton-overlay { transition: opacity 0.12s ease; }
     </style>
@@ -115,66 +129,66 @@
                 <!-- 행 1~9 -->
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.05s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.05s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.05s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.05s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.1s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.1s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.1s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.1s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.15s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.15s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.15s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.15s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.2s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.2s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.2s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.2s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.25s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.25s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.25s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.25s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.3s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.3s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.3s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.3s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.35s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.35s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.35s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.35s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.4s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.4s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.4s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.4s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
                 <div style="padding:15px 20px;display:flex;gap:16px;align-items:center;">
                     <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.45s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.45s;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block" style="animation-delay:.45s;"></div>
-                    <div class="sk h-4 w-8 hidden sm:block" style="animation-delay:.45s;"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
+                    <div class="sk h-4 w-14 hidden sm:block"></div>
+                    <div class="sk h-4 w-8 hidden sm:block"></div>
                 </div>
             </div>
         </div>
