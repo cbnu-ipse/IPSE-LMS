@@ -173,11 +173,15 @@
             <div id="chat-messages" class="flex-grow overflow-y-auto space-y-2 pr-1 text-xs text-slate-600">
                 {% for msg in chat_messages %}
                 <div class="chat-msg flex gap-2 items-start">
+                    {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                    <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                    {% else %}
                     <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
-                        {{ msg.user.username|slice:":1" }}
+                        {{ msg.user.display_chat_name|slice:":1" }}
                     </span>
+                    {% endif %}
                     <div>
-                        <span class="font-semibold text-slate-700">{{ msg.user.username }}</span>
+                        <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
                         <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
                         <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
                     </div>
@@ -382,7 +386,19 @@
         }
     }
 
-    function appendMessage(username, message, time, isError = false) {
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function buildAvatar(displayName, pictureUrl) {
+        if (pictureUrl)
+            return `<img src="${esc(pictureUrl)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`;
+        return `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(displayName.charAt(0))}</span>`;
+    }
+
+    function appendMessage(displayName, message, time, isError = false, pictureUrl = '') {
         // 빈 안내 메시지 제거
         const empty = messagesBox.querySelector('p.text-slate-400');
         if (empty) empty.remove();
@@ -393,18 +409,16 @@
             div.innerHTML = `
                 <div class="flex-grow">
                     <span class="font-semibold text-rose-700 text-[10px]"><i class="fa-solid fa-triangle-exclamation"></i> 시스템 경고</span>
-                    <p class="text-rose-600 mt-0.5 break-all">${message}</p>
+                    <p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p>
                 </div>`;
         } else {
             div.className = 'chat-msg flex gap-2 items-start';
             div.innerHTML = `
-                <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
-                    ${username.charAt(0)}
-                </span>
+                ${buildAvatar(displayName, pictureUrl)}
                 <div>
-                    <span class="font-semibold text-slate-700">${username}</span>
-                    <span class="text-[10px] text-slate-400 ml-1">${time}</span>
-                    <p class="text-slate-600 mt-0.5 break-all">${message}</p>
+                    <span class="font-semibold text-slate-700">${esc(displayName)}</span>
+                    <span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span>
+                    <p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p>
                 </div>`;
         }
         messagesBox.appendChild(div);
@@ -422,9 +436,10 @@
         socket.onmessage = function (e) {
             const data = JSON.parse(e.data);
             if (data.error === 'spam_blocked') {
-                appendMessage('SYSTEM', data.message, '', true);
+                appendMessage('SYSTEM', data.message, '', true, '');
             } else {
-                appendMessage(data.username, data.message, data.created_at);
+                const displayName = data.display_name || data.username;
+                appendMessage(displayName, data.message, data.created_at, false, data.picture_url || '');
             }
         };
 
