@@ -20,17 +20,17 @@
 </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}IPSE Judge{% else %}IPSE{% endif %} | {% block title %}{% endblock %}</title>
+    <title>{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %} | {% block title %}{% endblock %}</title>
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
-    <meta property="og:title" content="{% block og_title %}{% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}IPSE Judge{% else %}IPSE{% endif %}{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}{% endblock %}">
     <meta property="og:description" content="{% block og_description %}충북대학교 컴퓨터공학과 학술동아리 IPSE 플랫폼{% endblock %}">
     <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'img/IPSE-LOGO.png' %}{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
-    <meta property="og:site_name" content="{% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}IPSE Judge{% else %}IPSE{% endif %}">
+    <meta property="og:site_name" content="{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}">
 
-    {% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}
+    {% if request.host.name == 'judge' %}
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse-judge.svg' %}">
     {% else %}
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse.svg' %}">
@@ -38,7 +38,7 @@
     <link rel="alternate icon" type="image/png" href="{% static 'img/IPSE-LOGO.png' %}">
     <link rel="apple-touch-icon" href="{% static 'img/icons/apple-touch-icon.png' %}">
     <link rel="manifest" href="{% url 'manifest_json' %}">
-    <meta name="theme-color" content="{% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}#0284c7{% else %}#059669{% endif %}">
+    <meta name="theme-color" content="{% if request.host.name == 'judge' %}#0284c7{% else %}#059669{% endif %}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -49,7 +49,7 @@
     <div id="page-loader" style="position:fixed;top:0;left:0;width:0%;height:3px;background:linear-gradient(90deg,var(--color-emerald-600),var(--color-teal-500));z-index:99999;transition:width 0.3s ease,opacity 0.4s ease;opacity:0;pointer-events:none;"></div>
 </head>
 
-<body class="{% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
+<body class="{% if request.host.name == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
     <!-- 카카오톡 인앱 브라우저 아웃 배너 -->
     <div id="kakaotalk-out-banner" class="hidden w-full bg-[#fee500] text-[#191919] px-4 py-3 items-center justify-between text-xs font-bold sticky top-0 z-[99999] shadow-md gap-3">
         <div class="flex items-center gap-2">
@@ -99,7 +99,7 @@
         <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-stretch">
 
             <div class="flex items-center gap-10">
-                {% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}
+                {% if request.host.name == 'judge' %}
                 <a href="/" class="flex items-center gap-2 group">
                     <i class="fa-solid fa-square-terminal text-emerald-600 text-[1.7rem] group-hover:scale-110 transition"></i>
                     <span class="text-[2.15rem] font-semibold text-[#2f2f2f] tracking-[-0.04em] leading-none transition">
@@ -116,7 +116,7 @@
                 {% endif %}
 
                 <div class="hidden md:flex h-full items-end gap-6 text-sm font-medium text-slate-700">
-                    {% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}
+                    {% if request.host.name == 'judge' %}
                         <!-- ⚖️ 대회/문제풀이/학습 서브도메인 메뉴 -->
                         <a href="{% url 'course_list' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'course_list' or request.resolver_match.url_name == 'course_detail' or request.resolver_match.url_name == 'lesson_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
@@ -134,7 +134,7 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if 'ranking' in request.resolver_match.app_name or 'ranking' in request.resolver_match.url_name %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             랭킹
                         </a>
-                    {% elif request.path|slice:":6" == "/game/" or request.path == "/game" %}
+                    {% elif request.host.name == 'game' %}
                         <!-- 🎮 게임 서브도메인 메뉴 (로비 전용) -->
                         <a href="{% host_url 'game_lobby' host 'game' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 border-emerald-600 text-emerald-700 font-bold">
@@ -177,7 +177,7 @@
                     <span class="self-center text-slate-300 text-[22px] leading-none -translate-y-[1px]">|</span>
                 </div>
                 
-                {% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}
+                {% if request.host.name == 'judge' %}
                 <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
                     <a href="{% host_url 'game_lobby' host 'game' %}"
@@ -192,7 +192,7 @@
                         <i class="fa-solid fa-leaf text-sm"></i>
                     </a>
                 </div>
-                {% elif request.path|slice:":6" == "/game/" or request.path == "/game" %}
+                {% elif request.host.name == 'game' %}
                 <!-- 📣 잎새 커뮤니티 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="잎새 커뮤니티 바로가기">
                     <a href="{% host_url 'community_main' host 'community' %}"
@@ -320,7 +320,7 @@
 
                 <!-- 메뉴 링크 리스트 (하단바와 중복 제외) -->
                 <div class="space-y-1">
-                    {% if request.path|slice:":7" == "/judge/" or request.path == "/judge" %}
+                    {% if request.host.name == 'judge' %}
                         <a href="{% host_url 'community_main' host 'community' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
                             <span>← 잎새로 돌아가기</span>
                             <i class="fa-solid fa-arrow-left text-[10px]"></i>
@@ -329,7 +329,7 @@
                         <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">문제</a>
                         <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">대회</a>
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
-                    {% elif request.path|slice:":6" == "/game/" or request.path == "/game" %}
+                    {% elif request.host.name == 'game' %}
                         <a href="{% host_url 'community_main' host 'community' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
                             <span>← 잎새로 돌아가기</span>
                             <i class="fa-solid fa-arrow-left text-[10px]"></i>
@@ -406,7 +406,7 @@
     </footer>
 
     <!-- 모바일 Bottom Navigation Bar -->
-    {% if request.path|slice:":7" != "/judge/" and request.path != "/judge" and request.path|slice:":6" != "/game/" and request.path != "/game" and request.resolver_match.url_name != 'login' %}
+    {% if request.host.name != 'judge' and request.host.name != 'game' and request.resolver_match.url_name != 'login' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-stretch h-16" style="padding-bottom: env(safe-area-inset-bottom);">
         <!-- 1. 번개 모임 -->
         <a href="{% url 'gathering_list' %}" class="flex-1 flex flex-col items-center justify-center gap-1 transition text-slate-400 {% if request.resolver_match.url_name == 'gathering_list' or request.resolver_match.url_name == 'gathering_detail' or request.resolver_match.url_name == 'gathering_create' %}text-emerald-600 font-bold{% else %}hover:text-slate-700{% endif %}">
