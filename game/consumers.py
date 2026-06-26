@@ -61,6 +61,7 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
 
         # DB 저장 (비동기 래퍼 사용)
         saved = await self._save_message(user, message)
+        chat_info = await self._get_user_chat_info(user)
 
         # 그룹 전체에 브로드캐스트
         await self.channel_layer.group_send(
@@ -69,6 +70,8 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
                 "type": "chat_message",
                 "message": message,
                 "username": user.username,
+                "display_name": chat_info["display_name"],
+                "picture_url": chat_info["picture_url"],
                 "created_at": saved.created_at.strftime("%H:%M"),
             },
         )
@@ -80,6 +83,8 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
                 {
                     "message": event["message"],
                     "username": event["username"],
+                    "display_name": event["display_name"],
+                    "picture_url": event["picture_url"],
                     "created_at": event["created_at"],
                 },
                 ensure_ascii=False,
@@ -90,4 +95,19 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
     def _save_message(self, user, message):
         from .models import LobbyChatMessage
         return LobbyChatMessage.objects.create(user=user, message=message)
+
+    @database_sync_to_async
+    def _get_user_chat_info(self, user):
+        from accounts.models import User
+        from django.conf import settings as django_settings
+        try:
+            u = User.objects.get(pk=user.pk)
+            display_name = u.display_author
+        except Exception:
+            display_name = user.username
+        try:
+            picture_url = user.get_picture()
+        except Exception:
+            picture_url = django_settings.MEDIA_URL + "default.png"
+        return {"display_name": display_name, "picture_url": picture_url}
 
