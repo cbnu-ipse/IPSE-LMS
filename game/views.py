@@ -160,3 +160,43 @@ def slot_spin(request):
             "leaves": user_db.leaves,
             "played_today": played_today_count + 1,
         })
+
+
+# ─── 디버그 전용: 강제 등급 스핀 (DEBUG=True 환경에서만 URL 등록됨) ────────────
+@login_required
+@require_POST
+def slot_debug_spin(request):
+    from django.conf import settings
+    if not settings.DEBUG:
+        return JsonResponse({"error": "forbidden"}, status=403)
+
+    grade = request.POST.get("grade", "S").upper()
+    if grade not in ("S", "A", "B", "C", "D", "E", "F"):
+        return JsonResponse({"error": "invalid grade"}, status=400)
+
+    today = timezone.localdate()
+    reward = {"S": 100, "A": 30, "B": 15, "C": 8, "D": 4, "E": 2, "F": 0}.get(grade, 0)
+
+    # 심볼 ID 매핑 (같은 심볼 3개로 구성)
+    symbol_map = {"S": 5, "A": 4, "B": 3, "C": 2, "D": 1, "E": 0, "F": 0}
+    sym = symbol_map[grade]
+    s1, s2, s3 = (sym, sym, sym) if grade != "F" else (0, 1, 2)
+
+    with transaction.atomic():
+        user_db = User.objects.select_for_update().get(id=request.user.id)
+        SlotPlayLog.objects.filter(user=user_db, played_date=today).delete()
+
+        if reward > 0:
+            user_db.adjust_leaves(reward, "SLOT_MACHINE_REWARD", f"[DEBUG] 슬롯머신 {grade}등급")
+
+        SlotPlayLog.objects.create(user=user_db, result_grade=grade, result_reward=reward)
+        user_db.refresh_from_db()
+
+    return JsonResponse({
+        "status": "success",
+        "grade": grade,
+        "reward": reward,
+        "reels": [s1, s2, s3],
+        "leaves": user_db.leaves,
+        "played_today": 1,
+    })
