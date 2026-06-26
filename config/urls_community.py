@@ -10,15 +10,10 @@ urlpatterns = [
     path(settings.ADMIN_PATH, admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("accounts/", include("django.contrib.auth.urls")),
-    path("course/", include("course.urls")),
-    path("quiz/", include("quiz.urls")),
-    path("contest/", include("contest.urls")),
-    path("problems/", include("problems.urls")),
     path("community/", include("community.urls")),
+    path("schedules/", include("schedules.urls")),
     path("ranking/", include("ranking.urls")),
     path("accounts/api/", include("accounts.api.urls", namespace="accounts-api")),
-    path("compiler/", include("compiler.urls")),
-    path("schedules/", include("schedules.urls")),
     path("recruit/<int:form_id>/", community.views.recruit_apply, name="recruit_apply"),
 ]
 
