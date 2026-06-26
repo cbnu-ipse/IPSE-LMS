@@ -99,15 +99,19 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _get_user_chat_info(self, user):
         from accounts.models import User
-        from django.conf import settings as django_settings
         try:
-            u = User.objects.get(pk=user.pk)
-            display_name = u.display_name
+            u = User.objects.select_related("student").get(pk=user.pk)
         except Exception:
-            display_name = user.username
+            return {"display_name": user.username, "picture_url": ""}
+
+        display_name = u.display_chat_name
+
+        picture_url = ""
         try:
-            picture_url = user.get_picture()
+            if u.picture and u.picture.name and u.picture.name != "default.png":
+                picture_url = u.picture.url
         except Exception:
-            picture_url = django_settings.MEDIA_URL + "default.png"
+            pass
+
         return {"display_name": display_name, "picture_url": picture_url}
 

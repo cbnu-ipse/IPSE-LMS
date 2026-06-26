@@ -173,17 +173,15 @@
             <div id="chat-messages" class="flex-grow overflow-y-auto space-y-2 pr-1 text-xs text-slate-600">
                 {% for msg in chat_messages %}
                 <div class="chat-msg flex gap-2 items-start">
-                    {% with pic=msg.user.get_picture %}
-                    {% if pic %}
-                    <img src="{{ pic }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                    {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                    <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
                     {% else %}
                     <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
-                        {{ msg.user.display_name|slice:":1" }}
+                        {{ msg.user.display_chat_name|slice:":1" }}
                     </span>
                     {% endif %}
-                    {% endwith %}
                     <div>
-                        <span class="font-semibold text-slate-700">{{ msg.user.display_name }}</span>
+                        <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
                         <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
                         <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
                     </div>

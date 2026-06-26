@@ -78,6 +78,17 @@ class User(AbstractUser):
         return self.username
 
     @property
+    def display_chat_name(self):
+        """채팅용 표시 이름: 닉네임 → 실명 → 학번 순 폴백."""
+        try:
+            if hasattr(self, "student") and self.student.nickname:
+                return self.student.nickname
+        except Student.DoesNotExist:
+            pass
+        name = f"{self.last_name or ''}{self.first_name or ''}".strip()
+        return name if name else self.username
+
+    @property
     def display_author(self):
         """댓글, 공지, 투표, 설문 등 작성자 표시용 포맷:
         설정한 닉네임이 있으면 닉네임, 없으면 기존 포맷:
