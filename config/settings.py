@@ -10,6 +10,10 @@ SECRET_KEY = config("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=True, cast=bool)
 
+# django.template.context_processors.debug 가 debug=True 를 주입하려면 INTERNAL_IPS 필요
+if DEBUG:
+    INTERNAL_IPS = ["127.0.0.1", "::1"]
+
 # 어드민 페이지 경로 설정 (개발 환경: 'admin/', 배포 환경: .env의 ADMIN_PATH 또는 자동 생성)
 if DEBUG:
     ADMIN_PATH = config("ADMIN_PATH", default="admin")
@@ -121,6 +125,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 PARENT_HOST = config("PARENT_HOST", default="lvh.me:8000" if DEBUG else "cbnu-ipse.co.kr")
+
+# 서브도메인(judge, game 등)에서도 세션/CSRF 쿠키를 공유하기 위해 쿠키 도메인을 루트 도메인으로 설정
+_cookie_domain_host = PARENT_HOST.split(":")[0]  # 포트 제거
+CSRF_COOKIE_DOMAIN = f".{_cookie_domain_host}"
+SESSION_COOKIE_DOMAIN = f".{_cookie_domain_host}"
 
 # Nginx / Cloudflare 뒤에서 HTTPS 식별을 위한 설정
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

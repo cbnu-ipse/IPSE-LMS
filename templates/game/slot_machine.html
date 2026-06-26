@@ -99,6 +99,24 @@
             </div>
         </div>
 
+        {% if debug %}
+        <!-- ── 개발 전용 테스트 패널 (DEBUG=True 일 때만 노출) ── -->
+        <div id="debug-panel" style="margin-top:16px;padding:12px 16px;border:1px dashed #f59e0b;border-radius:10px;background:rgba(245,158,11,0.07);font-size:13px;">
+            <div style="color:#fbbf24;font-weight:700;margin-bottom:8px;">🛠 Debug: 강제 등급 테스트</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                {% for g in "S,A,B,C,D,E,F" %}{% endfor %}
+                <button onclick="debugSpin('S')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">S</button>
+                <button onclick="debugSpin('A')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">A</button>
+                <button onclick="debugSpin('B')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">B</button>
+                <button onclick="debugSpin('C')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">C</button>
+                <button onclick="debugSpin('D')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">D</button>
+                <button onclick="debugSpin('E')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">E</button>
+                <button onclick="debugSpin('F')" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-weight:700;">F</button>
+            </div>
+            <div id="debug-status" style="margin-top:6px;color:#94a3b8;font-size:12px;"></div>
+        </div>
+        {% endif %}
+
         <!-- 심볼 범례 (확률표 대신 심볼만 표시) -->
         <div class="symbols-legend">
             <div class="legend-item"><span class="legend-sym">🍒</span><span class="legend-name">체리</span></div>
@@ -410,16 +428,22 @@ const reelEls = [
 ];
 
 // ─── 릴 초기화 ────────────────────────────────────────────────────
+// 연속 스크롤을 위해 패턴을 REEL_COPIES번 반복 → 애니메이션 범위 내에서 빈 공간 없음
+const REEL_COPIES = 20;
+const SPIN_LOOPS  = 2; // stopAfterMs 동안 진행할 패턴 루프 수 (스핀 속도 결정)
+
 function buildReelStrip(reelEl, pattern) {
     reelEl.innerHTML = '';
-    pattern.forEach(symId => {
-        const sym = SYMBOLS.find(s => s.id === symId);
-        const div = document.createElement('div');
-        div.className = 'reel-item';
-        div.dataset.sid = symId;
-        div.textContent = sym.char;
-        reelEl.appendChild(div);
-    });
+    for (let c = 0; c < REEL_COPIES; c++) {
+        pattern.forEach(symId => {
+            const sym = SYMBOLS.find(s => s.id === symId);
+            const div = document.createElement('div');
+            div.className = 'reel-item';
+            div.dataset.sid = symId;
+            div.textContent = sym.char;
+            reelEl.appendChild(div);
+        });
+    }
 }
 
 // 각 릴에 랜덤 심볼 패턴 생성 (실물처럼 여러 심볼이 보이게)
@@ -458,43 +482,55 @@ reelEls.forEach(el => {
 });
 
 // ─── 스핀 애니메이션 ───────────────────────────────────────────────
-function spinReel(reelEl, pattern, targetSymId, delayMs, durationMs) {
+// stopAfterMs: 이 시각(ms)에 릴이 딱 멈춤. 3릴 동시 스핀 → 왼쪽부터 순차 정지.
+// buildReelStrip이 REEL_COPIES개 패턴을 쌓아두므로 스핀 전 구간 빈 공간 없음.
+function spinReel(reelEl, pattern, targetSymId, stopAfterMs) {
     return new Promise(resolve => {
-        // 결과 심볼 ID가 패턴 어디에 있는지 찾기 (마지막 발견 위치 사용)
-        let landingIdx = -1;
-        for (let i = pattern.length - 1; i >= 0; i--) {
-            if (pattern[i] === targetSymId) { landingIdx = i; break; }
-        }
-        // 없으면 강제로 마지막에 추가
-        if (landingIdx === -1) {
-            pattern.push(targetSymId);
-            buildReelStrip(reelEl, pattern);
-            landingIdx = pattern.length - 1;
+        const patLen     = pattern.length;
+        const oneCopyLen = patLen * SYMBOL_HEIGHT;
+
+        // 안전 범위: startY가 스트립 안에 들어오도록 SPIN_LOOPS 이상 위의 카피에서 탐색
+        const safeStart = (SPIN_LOOPS + 1) * patLen + 1;
+        const safeEnd   = (REEL_COPIES - 2) * patLen - 1;
+
+        const allItems = reelEl.querySelectorAll('.reel-item');
+        let landingGlobalIdx = -1;
+        for (let i = safeEnd; i >= safeStart; i--) {
+            if (parseInt(allItems[i]?.dataset.sid) === targetSymId) {
+                landingGlobalIdx = i;
+                break;
+            }
         }
 
-        // 목표 translateY: landingIdx 심볼이 중앙에 오려면
-        const targetY = -(landingIdx * SYMBOL_HEIGHT) + SYMBOL_HEIGHT;
+        if (landingGlobalIdx === -1) {
+            // 폴백: 안전 범위 중간에 심볼 직접 주입 (패턴 배열은 변경하지 않음)
+            const injectIdx = Math.floor((safeStart + safeEnd) / 2);
+            const sym = SYMBOLS.find(s => s.id === targetSymId);
+            if (allItems[injectIdx]) {
+                allItems[injectIdx].dataset.sid = targetSymId;
+                allItems[injectIdx].textContent = sym.char;
+            }
+            landingGlobalIdx = injectIdx;
+        }
 
-        // 스핀 시작 — 먼저 현재 위치에서 위로 빠르게 올렸다가 감속 착지
-        // 1) 즉시 시작 위치 = 현재에서 REPEAT_LOOPS 만큼 위로
-        const EXTRA_LOOPS = 6;
-        const jumpY = targetY - (EXTRA_LOOPS * pattern.length * SYMBOL_HEIGHT);
+        const targetY = -(landingGlobalIdx * SYMBOL_HEIGHT) + SYMBOL_HEIGHT;
+        const startY  = targetY - (SPIN_LOOPS * oneCopyLen);
+        const endY    = targetY + oneCopyLen; // 1카피 여유 후 스냅
+        // totalDuration: stopAfterMs에 정확히 targetY에 도달하는 전체 시간
+        const totalDuration = Math.round((SPIN_LOOPS + 1) / SPIN_LOOPS * stopAfterMs);
 
         reelEl.style.transition = 'none';
-        reelEl.style.transform = `translateY(${jumpY}px)`;
+        reelEl.style.transform  = `translateY(${startY}px)`;
+        reelEl.getBoundingClientRect(); // 스타일 플러시
 
-        // 브라우저 레이아웃 flush
-        reelEl.getBoundingClientRect();
+        reelEl.style.transition = `transform ${totalDuration}ms linear`;
+        reelEl.style.transform  = `translateY(${endY}px)`;
 
         setTimeout(() => {
-            reelEl.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.82, 0.2, 1.0)`;
-            reelEl.style.transform = `translateY(${targetY}px)`;
-
-            setTimeout(() => {
-                reelEl.style.transition = 'none';
-                resolve(landingIdx);
-            }, durationMs + 50);
-        }, delayMs);
+            reelEl.style.transition = 'none';
+            reelEl.style.transform  = `translateY(${targetY}px)`;
+            setTimeout(() => resolve(landingGlobalIdx), 30);
+        }, stopAfterMs);
     });
 }
 
@@ -503,9 +539,10 @@ function showResult(grade, reward) {
     const banner = document.getElementById('result-banner');
     banner.classList.remove('hidden', 'win', 'jackpot', 'lose');
 
+
     if (grade === 'S') {
         banner.className = 'result-banner jackpot';
-        banner.innerHTML = '💎 JACKPOT! 잭팟 당첨 — 낙엽 100개 획득!';
+        banner.innerHTML = `💎 JACKPOT! 잭팟 당첨 — 낙엽 100개 획득!`;
     } else if (grade !== 'F') {
         const gradeMsg = {
             'A': '⭐ 스타 3개! 낙엽',
@@ -616,14 +653,13 @@ async function spinSlot() {
     // 서버 결과 심볼 ID
     const [s0, s1, s2] = data.reels;
 
-    // 3개 릴 순차 감속 애니메이션
-    const DURATIONS = [2000, 2600, 3200];
-    const DELAYS    = [0, 0, 0];  // 동시 시작, 순차 정지
+    // 3릴 동시 스핀 → 왼쪽부터 순차 정지 (딱딱딱)
+    const STOP_TIMES = [2200, 2700, 3200]; // 각 릴 정지 시각 (ms)
 
     const results = await Promise.all([
-        spinReel(reelEls[0], reelPatterns[0], s0, DELAYS[0], DURATIONS[0]),
-        spinReel(reelEls[1], reelPatterns[1], s1, DELAYS[1], DURATIONS[1]),
-        spinReel(reelEls[2], reelPatterns[2], s2, DELAYS[2], DURATIONS[2]),
+        spinReel(reelEls[0], reelPatterns[0], s0, STOP_TIMES[0]),
+        spinReel(reelEls[1], reelPatterns[1], s1, STOP_TIMES[1]),
+        spinReel(reelEls[2], reelPatterns[2], s2, STOP_TIMES[2]),
     ]);
 
     const isWin = data.grade !== 'F';
@@ -654,5 +690,56 @@ async function spinSlot() {
     updateButtonState();
     isSpinning = false;
 }
+
+// ─── 디버그 전용: 강제 등급 스핀 ─────────────────────────────────────────────
+{% if debug %}
+async function debugSpin(grade) {
+    if (isSpinning) return;
+    const status = document.getElementById('debug-status');
+    status.textContent = `${grade}등급 강제 스핀 중...`;
+
+    const fd = new FormData();
+    fd.append('grade', grade);
+    const res = await fetch("{% url 'slot_debug_spin' %}", {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+        body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) { status.textContent = `오류: ${data.error}`; return; }
+
+    status.textContent = `✅ ${grade}등급 결과 주입 완료 — 애니메이션 시작`;
+
+    // 스핀 버튼 활성화 후 자동 구동
+    document.getElementById('spin-btn').disabled = false;
+    const s0 = data.reels[0], s1 = data.reels[1], s2 = data.reels[2];
+
+    isSpinning = true;
+    const results = await Promise.all([
+        spinReel(reelEls[0], reelPatterns[0], s0, 2200),
+        spinReel(reelEls[1], reelPatterns[1], s1, 2700),
+        spinReel(reelEls[2], reelPatterns[2], s2, 3200),
+    ]);
+
+    const isWin = data.grade !== 'F';
+    highlightWinners(results, isWin);
+    showResult(data.grade, data.reward);
+
+    document.getElementById('slot-leaves-badge').textContent = data.leaves;
+    const navLeaf = document.querySelector('[title="낙엽 잔액"] span');
+    if (navLeaf) navLeaf.textContent = data.leaves;
+
+    if (data.grade === 'S') {
+        confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } });
+        setTimeout(() => confetti({ particleCount: 100, spread: 60, origin: { y: 0.4 } }), 600);
+    } else if (isWin) {
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+    }
+
+    updateButtonState();
+    isSpinning = false;
+    status.textContent = `✅ ${grade}등급 테스트 완료`;
+}
+{% endif %}
 </script>
 {% endblock %}
