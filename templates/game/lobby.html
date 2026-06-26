@@ -178,12 +178,12 @@
                     <img src="{{ pic }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
                     {% else %}
                     <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
-                        {{ msg.user.display_author|slice:":1" }}
+                        {{ msg.user.display_name|slice:":1" }}
                     </span>
                     {% endif %}
                     {% endwith %}
                     <div>
-                        <span class="font-semibold text-slate-700">{{ msg.user.display_author }}</span>
+                        <span class="font-semibold text-slate-700">{{ msg.user.display_name }}</span>
                         <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
                         <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
                     </div>

@@ -102,7 +102,7 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
         from django.conf import settings as django_settings
         try:
             u = User.objects.get(pk=user.pk)
-            display_name = u.display_author
+            display_name = u.display_name
         except Exception:
             display_name = user.username
         try:
