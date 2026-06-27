@@ -46,6 +46,7 @@
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={% now 'U' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+    /* ── 컴포넌트 단위 skeleton (홈 일정 위젯 등) ── */
     @keyframes sk-shimmer {
         100% { transform: translateX(100%); }
     }
@@ -59,18 +60,31 @@
         content: '';
         position: absolute;
         inset: 0;
-        background: linear-gradient(
-            90deg,
-            transparent 0%,
-            rgba(255,255,255,0.55) 40%,
-            rgba(255,255,255,0.85) 50%,
-            rgba(255,255,255,0.55) 60%,
-            transparent 100%
-        );
+        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 40%, rgba(255,255,255,0.85) 50%, rgba(255,255,255,0.55) 60%, transparent 100%);
         transform: translateX(-100%);
         animation: sk-shimmer 1.6s ease-in-out infinite;
     }
-    #skeleton-overlay { transition: opacity 0.12s ease; }
+    /* ── 페이지 전환 shimmer: 현재 페이지 <main> 위에 직접 ── */
+    @keyframes sk-page-sweep {
+        0%   { transform: translateX(-150%); }
+        100% { transform: translateX( 150%); }
+    }
+    main.sk-loading {
+        pointer-events: none;
+        position: relative;
+        overflow: hidden;
+        opacity: 0.88;
+        transition: opacity 0.1s ease;
+    }
+    main.sk-loading::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 35%, rgba(255,255,255,0.75) 50%, rgba(255,255,255,0.5) 65%, transparent 100%);
+        animation: sk-page-sweep 1.5s ease-in-out infinite;
+        z-index: 9999;
+        pointer-events: none;
+    }
     </style>
 </head>
 
@@ -102,97 +116,6 @@
         });
     </script>
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
-
-    <!-- 페이지 전환 Skeleton 오버레이 -->
-    <div id="skeleton-overlay" class="fixed top-16 inset-x-0 bottom-0 z-[40] bg-white overflow-hidden" style="opacity:0;pointer-events:none;">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-24">
-            <!-- 헤더 skeleton -->
-            <div class="flex items-center justify-between mb-5">
-                <div class="sk h-6 w-44"></div>
-                <div class="sk h-9 w-28 hidden sm:block"></div>
-            </div>
-            <!-- 검색바 skeleton -->
-            <div class="flex gap-2 mb-4">
-                <div class="sk h-9 flex-1" style="border-radius:0.75rem;"></div>
-                <div class="sk h-9 w-16" style="border-radius:0.75rem;"></div>
-            </div>
-            <!-- 목록 카드 skeleton -->
-            <div style="border-radius:1rem;border:1px solid #f1f5f9;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);">
-                <!-- 테이블 헤더 -->
-                <div style="background:#f8fafc;border-bottom:1px solid #f1f5f9;padding:12px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-3" style="flex:3;"></div>
-                    <div class="sk h-3 w-16 hidden sm:block"></div>
-                    <div class="sk h-3 w-8 hidden sm:block"></div>
-                    <div class="sk h-3 w-16 hidden sm:block"></div>
-                    <div class="sk h-3 w-8 hidden sm:block"></div>
-                </div>
-                <!-- 행 1~9 -->
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="border-bottom:1px solid #f8fafc;padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-                <div style="padding:15px 20px;display:flex;gap:16px;align-items:center;">
-                    <div class="sk h-4" style="flex:3;"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                    <div class="sk h-4 w-14 hidden sm:block"></div>
-                    <div class="sk h-4 w-8 hidden sm:block"></div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     {% block navbar %}
     {% if not is_embedded %}
@@ -548,16 +471,16 @@
     <script>
       // 페이지 전환 Skeleton 로딩
       (function(){
-        const sk = document.getElementById('skeleton-overlay');
+        const mainEl = document.querySelector('main');
         window.isPageLoading = false;
 
         function showSkeleton(){
           window.isPageLoading = true;
-          if (sk) { sk.style.opacity='1'; sk.style.pointerEvents='all'; }
+          if (mainEl) mainEl.classList.add('sk-loading');
         }
         function hideSkeleton(){
           window.isPageLoading = false;
-          if (sk) { sk.style.opacity='0'; sk.style.pointerEvents='none'; }
+          if (mainEl) mainEl.classList.remove('sk-loading');
         }
 
         // 링크 클릭 시 skeleton 표시
