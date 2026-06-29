@@ -2504,7 +2504,7 @@ def guestbook_create_api(request):
                 'author': request.user.display_author,
                 'picture': request.user.get_picture(),
                 'content': entry.content,
-                'created_at': entry.created_at.strftime('%Y-%m-%d %H:%M'),
+                'created_at': timezone.localtime(entry.created_at).strftime('%Y-%m-%d %H:%M'),
             },
         })
     except Exception as e:
