@@ -88,4 +88,7 @@ urlpatterns = [
     
     # ─── Attendance ────────────────────────────────────────────────────────────
     path('attendance/check/', views.attendance_check_api, name='attendance_check_api'),
+
+    # ─── DEBUG ONLY ────────────────────────────────────────────────────────────
+    path('debug/reset-today/', views.debug_reset_today, name='debug_reset_today'),
 ]

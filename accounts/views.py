@@ -170,6 +170,10 @@ def redeem_code_api(request):
 @login_required
 def profile(request):
     """로그인한 사용자의 프로필 페이지"""
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Attendance, get_attendance_streak
+
     user = request.user
     courses = None
     if user.is_lecturer:
@@ -182,11 +186,74 @@ def profile(request):
 
     leaf_transactions = user.leaf_transactions.all().order_by('-created_at')[:10]
 
+    # 출석 히트맵 데이터 준비 (GitHub contribution 스타일, KST 기준 52주)
+    from datetime import date as dt_date, timedelta as td
+    kst_now = timezone.now() + timedelta(hours=9)
+    today_kst = kst_now.date()
+
+    # 51주 전 월요일부터 시작
+    start_date = today_kst - td(weeks=51)
+    start_date -= td(days=start_date.weekday())  # 월요일로 정렬
+
+    all_attendance = set(
+        Attendance.objects.filter(
+            user=user,
+            date__gte=start_date,
+            date__lte=today_kst,
+        ).values_list('date', flat=True)
+    )
+
+    MONTH_NAMES = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+    heatmap_weeks = []
+    month_labels = []
+    current_month = None
+    cur = start_date
+
+    for col in range(52):
+        week_cells = []
+        for row in range(7):  # 0=월 ... 6=일
+            d = cur + td(days=row)
+            is_future = d > today_kst
+            week_cells.append({
+                'date': d.isoformat(),
+                'day': d.day,
+                'month': d.month,
+                'attended': (not is_future) and (d in all_attendance),
+                'is_today': d == today_kst,
+                'is_future': is_future,
+            })
+            if row == 0 and d.month != current_month:
+                month_labels.append({'col': col, 'label': MONTH_NAMES[d.month - 1]})
+                current_month = d.month
+        heatmap_weeks.append(week_cells)
+        cur += td(weeks=1)
+
+    total_attendance = Attendance.objects.filter(user=user).count()
+    already_attended_today = today_kst in all_attendance
+
+    # 오늘 출석했으면 오늘 기준, 아직 안 했으면 어제 기준으로 연속 출석 계산
+    if already_attended_today:
+        streak = get_attendance_streak(user, today_kst)
+        streak_is_current = True
+    else:
+        yesterday_kst = today_kst - td(days=1)
+        streak = get_attendance_streak(user, yesterday_kst)
+        streak_is_current = False
+
+    from django.conf import settings
     return render(request, 'accounts/profile.html', {
         'title': '내 프로필',
         'courses': courses,
         'level': student_obj,
         'leaf_transactions': leaf_transactions,
+        'heatmap_weeks': heatmap_weeks,
+        'month_labels': month_labels,
+        'today_kst': today_kst,
+        'total_attendance': total_attendance,
+        'streak': streak,
+        'streak_is_current': streak_is_current,
+        'already_attended_today': already_attended_today,
+        'is_debug': settings.DEBUG,
     })
 
 
@@ -211,6 +278,10 @@ def edit_profile(request):
 @login_required
 def profile_single(request, user_id):
     """특정 사용자의 프로필 페이지 (관리자: 편집 버튼 포함)"""
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Attendance, get_attendance_streak
+
     profile_user = get_object_or_404(User, pk=user_id)
     courses = None
     if profile_user.is_lecturer:
@@ -223,6 +294,49 @@ def profile_single(request, user_id):
 
     leaf_transactions = profile_user.leaf_transactions.all().order_by('-created_at')[:10]
 
+    kst_now = timezone.now() + timedelta(hours=9)
+    today_kst = kst_now.date()
+
+    from datetime import date as dt_date, timedelta as td
+    start_date = today_kst - td(weeks=51)
+    start_date -= td(days=start_date.weekday())
+
+    all_attendance = set(
+        Attendance.objects.filter(
+            user=profile_user,
+            date__gte=start_date,
+            date__lte=today_kst,
+        ).values_list('date', flat=True)
+    )
+
+    MONTH_NAMES = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+    heatmap_weeks = []
+    month_labels = []
+    current_month = None
+    cur = start_date
+
+    for col in range(52):
+        week_cells = []
+        for row in range(7):
+            d = cur + td(days=row)
+            is_future = d > today_kst
+            week_cells.append({
+                'date': d.isoformat(),
+                'day': d.day,
+                'month': d.month,
+                'attended': (not is_future) and (d in all_attendance),
+                'is_today': d == today_kst,
+                'is_future': is_future,
+            })
+            if row == 0 and d.month != current_month:
+                month_labels.append({'col': col, 'label': MONTH_NAMES[d.month - 1]})
+                current_month = d.month
+        heatmap_weeks.append(week_cells)
+        cur += td(weeks=1)
+
+    total_attendance = Attendance.objects.filter(user=profile_user).count()
+    streak = get_attendance_streak(profile_user, today_kst)
+
     return render(request, 'accounts/profile_single.html', {
         'title': profile_user.display_name,
         'user': profile_user,
@@ -230,6 +344,12 @@ def profile_single(request, user_id):
         'level': student_obj,
         'student': student_obj,
         'leaf_transactions': leaf_transactions,
+        'heatmap_weeks': heatmap_weeks,
+        'month_labels': month_labels,
+        'today_kst': today_kst,
+        'total_attendance': total_attendance,
+        'streak': streak,
+        'already_attended_today': False,
     })
 
 
@@ -1077,7 +1197,10 @@ def attendance_check_api(request):
     """일일 출석 체크 및 낙엽 1개 지급 API (KST 기준 하루 1회 제한 및 동시성 제어 적용)"""
     from django.utils import timezone
     from datetime import timedelta
-    from .models import Attendance, User
+    from .models import Attendance, User, get_attendance_streak
+
+    # 연속 출석 일수별 보너스 낙엽 정의
+    STREAK_BONUSES = {7: 2, 14: 3, 30: 5, 60: 8, 100: 15}
 
     try:
         # KST(한국 시각) 기준 오늘 날짜 구하기
@@ -1087,27 +1210,84 @@ def attendance_check_api(request):
         with transaction.atomic():
             # 동시 출석 요청에 따른 중복 낙엽 지급 방지를 위해 락 획득
             user = User.objects.select_for_update().get(id=request.user.id)
-            
+
             # 오늘 이미 출석했는지 검사
             already_attended = Attendance.objects.filter(user=user, date=today).exists()
             if already_attended:
                 return JsonResponse({'success': False, 'error': '오늘은 이미 출석 체크를 하셨습니다.'}, status=400)
-            
+
             # 출석 데이터 저장
             Attendance.objects.create(user=user, date=today)
-            
+
             # 낙엽 보상 1개 지급 (LeafTransaction 해시 체인 자동 생성 포함)
             user.adjust_leaves(
                 amount=1,
                 transaction_type="attendance",
                 description=f"{today.strftime('%Y-%m-%d')} 일일 출석 체크 보상"
             )
-            
+
+            # 연속 출석 streak 계산 (오늘 출석 포함)
+            streak = get_attendance_streak(user, today)
+
+            # 연속 출석 마일스톤 보너스 지급
+            bonus = STREAK_BONUSES.get(streak, 0)
+            bonus_message = ""
+            if bonus:
+                user.adjust_leaves(
+                    amount=bonus,
+                    transaction_type="streak_bonus",
+                    description=f"{streak}일 연속 출석 보너스"
+                )
+                bonus_message = f" 🎉 {streak}일 연속 출석 보너스 낙엽 {bonus}개 추가 지급!"
+
         return JsonResponse({
             'success': True,
-            'message': '출석 체크가 완료되었습니다! 낙엽 1개가 적립되었습니다.',
-            'leaves': user.leaves + 1  # 획득 이후 잔여 갯수 반환 (트랜잭션 커밋 후 갱신되므로 +1 처리 또는 최신값)
+            'message': f'출석 체크가 완료되었습니다! 낙엽 1개가 적립되었습니다.{bonus_message}',
+            'leaves': user.leaves + 1 + bonus,
+            'streak': streak,
+            'bonus': bonus,
         })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
+
+
+@login_required
+def debug_reset_today(request):
+    """[DEBUG 전용] 지정 날짜(기본=오늘 KST)의 방명록·출석 기록을 삭제해 재테스트가 가능하게 합니다."""
+    from django.conf import settings
+    from django.utils import timezone as dj_tz
+    if not settings.DEBUG:
+        return JsonResponse({'error': 'DEBUG 모드에서만 사용할 수 있습니다.'}, status=403)
+
+    from datetime import datetime, timezone as py_utc, timedelta, date as dt_date
+    from .models import Attendance
+    from community.models import Guestbook
+
+    # ?date=YYYY-MM-DD 파라미터가 있으면 그 날짜, 없으면 KST 오늘
+    date_param = request.GET.get('date') or request.POST.get('date')
+    if date_param:
+        try:
+            target_date = dt_date.fromisoformat(date_param)
+        except ValueError:
+            return JsonResponse({'error': '날짜 형식이 올바르지 않습니다 (YYYY-MM-DD).'}, status=400)
+    else:
+        kst_now = dj_tz.now() + timedelta(hours=9)
+        target_date = kst_now.date()
+
+    kst_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=py_utc.utc) - timedelta(hours=9)
+    kst_end = kst_start + timedelta(days=1)
+
+    deleted_attendance, _ = Attendance.objects.filter(user=request.user, date=target_date).delete()
+    deleted_guestbook, _ = Guestbook.objects.filter(
+        author=request.user,
+        created_at__gte=kst_start,
+        created_at__lt=kst_end,
+    ).delete()
+
+    return JsonResponse({
+        'success': True,
+        'target_date': target_date.isoformat(),
+        'deleted_attendance': deleted_attendance,
+        'deleted_guestbook': deleted_guestbook,
+    })
