@@ -5,42 +5,21 @@
 {% block title %}IPSE 놀이터 | 학점 캡슐 슬롯머신{% endblock %}
 
 {% block content %}
-<section class="{% if is_embedded %}w-full p-0{% else %}max-w-3xl mx-auto px-4 py-8{% endif %}">
-    {% if not is_embedded %}
-    <div class="mb-5">
-        <a href="{% url 'game_lobby' %}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition shadow-sm font-semibold text-xs">
-            <i class="fa-solid fa-arrow-left"></i> 놀이터 로비로 돌아가기
-        </a>
-    </div>
-    {% endif %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
 
-    <!-- 슬롯머신 컨테이너 (고정 크기) -->
-    <div class="slot-outer {% if is_embedded %}slot-embedded{% endif %}">
+        <!-- LEFT: 슬롯머신 -->
+        <div class="lg:col-span-8">
+            <div class="slot-outer">
 
-        <!-- 헤더 -->
-        {% if not is_embedded %}
-        <div class="slot-header">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-500">
-                    <i class="fa-solid fa-dice text-xl"></i>
-                </div>
-                <div>
-                    <h2 class="font-extrabold text-slate-100 text-base">학점 캡슐 슬롯머신</h2>
-                    <p class="text-[11px] text-slate-400">매일 1회 무료 — 실물 슬롯머신 방식</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <div class="stat-pill">
-                    <i class="fa-solid fa-leaf text-amber-400"></i>
-                    <span id="slot-leaves-badge" class="font-extrabold">{{ request.user.leaves }}</span>개
-                </div>
-                <div class="stat-pill">
-                    <i class="fa-solid fa-calendar-check text-slate-400"></i>
-                    <span id="slot-remaining-badge" class="font-extrabold text-amber-400">{{ played_today_count }}</span>/1회
-                </div>
-            </div>
+        <!-- 컴팩트 상태 바 -->
+        <div class="slot-stat-bar">
+            <i class="fa-solid fa-leaf text-amber-400 text-xs"></i>
+            <span id="slot-leaves-badge" class="font-bold">{{ request.user.leaves }}</span>개
+            <span class="text-slate-600/40 mx-2">|</span>
+            <i class="fa-solid fa-calendar-check text-slate-500 text-xs"></i>
+            오늘 <span id="slot-remaining-badge" class="font-bold text-amber-400">{{ played_today_count }}</span>/1회
         </div>
-        {% endif %}
 
         <!-- 슬롯머신 본체 -->
         <div class="slot-machine-body">
@@ -119,20 +98,149 @@
 
         <!-- 심볼 범례 (확률표 대신 심볼만 표시) -->
         <div class="symbols-legend">
-            <div class="legend-item"><span class="legend-sym">🍒</span><span class="legend-name">체리</span></div>
-            <div class="legend-item"><span class="legend-sym">🍋</span><span class="legend-name">레몬</span></div>
-            <div class="legend-item"><span class="legend-sym">🍊</span><span class="legend-name">오렌지</span></div>
-            <div class="legend-item"><span class="legend-sym">🔔</span><span class="legend-name">벨</span></div>
-            <div class="legend-item"><span class="legend-sym">⭐</span><span class="legend-name">스타</span></div>
-            <div class="legend-item jackpot-sym"><span class="legend-sym">💎</span><span class="legend-name">잭팟</span></div>
+            <div class="legend-item"><span class="legend-sym">🌱</span><span class="legend-name">새싹</span></div>
+            <div class="legend-item"><span class="legend-sym">🍃</span><span class="legend-name">잎새</span></div>
+            <div class="legend-item"><span class="legend-sym">💻</span><span class="legend-name">코딩</span></div>
+            <div class="legend-item"><span class="legend-sym">⚡</span><span class="legend-name">번개</span></div>
+            <div class="legend-item"><span class="legend-sym">🎯</span><span class="legend-name">챌린지</span></div>
+            <div class="legend-item jackpot-sym"><span class="legend-sym">🚀</span><span class="legend-name">잭팟</span></div>
         </div>
         <p class="slot-hint">3개 동일 심볼 정렬 시 당첨 · 매일 자정 초기화</p>
-    </div>
+            </div><!-- /.slot-outer -->
+        </div><!-- lg:col-span-8 -->
+
+        <!-- RIGHT: 채팅 + 랭킹 탭 -->
+        <div class="lg:col-span-4" style="position:sticky;top:6rem">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'slot-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'slot-tab-rank')">
+                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="slot-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="slot-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
+                        </span>
+                    </div>
+                    <div id="slot-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input type="text" id="slot-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="slot-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 랭킹 탭 -->
+                <div id="slot-tab-rank" class="gsp-pane" style="display:none">
+                    <div id="slot-ranking-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- grid -->
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
 <style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; background: #fff; }
+.gsp-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    font-size: .72rem;
+    color: #475569;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking { flex: 1; overflow-y: auto; }
+/* ── 컴팩트 상태 바 ────────────────────────────── */
+.slot-stat-bar {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .4rem 1rem;
+    background: rgba(255,255,255,.05);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: .7rem;
+    color: #94a3b8;
+}
 /* ── 전체 컨테이너 고정 ─────────────────────────── */
 .slot-outer {
     width: 100%;
@@ -146,14 +254,6 @@
     flex-direction: column;
     box-shadow: 0 25px 60px rgba(0,0,0,0.6);
 }
-.slot-embedded {
-    border-radius: 0;
-    border: none;
-    max-width: 100%;
-    min-height: 100vh;
-    box-shadow: none;
-}
-
 /* ── 헤더 ───────────────────────────────────────── */
 .slot-header {
     display: flex;
@@ -407,12 +507,12 @@
 
 const SYMBOL_HEIGHT = 88;   // px, reel-item height
 const SYMBOLS = [
-    { id: 0, char: '🍒' },
-    { id: 1, char: '🍋' },
-    { id: 2, char: '🍊' },
-    { id: 3, char: '🔔' },
-    { id: 4, char: '⭐' },
-    { id: 5, char: '💎' },
+    { id: 0, char: '🌱' },   // 새싹 (매우 흔함)
+    { id: 1, char: '🍃' },   // 잎새 (흔함)
+    { id: 2, char: '💻' },   // 코딩 (보통)
+    { id: 3, char: '⚡' },   // 번개 (드묾)
+    { id: 4, char: '🎯' },   // 챌린지 (매우 드묾)
+    { id: 5, char: '🚀' },   // 잭팟 (극희귀)
 ];
 
 // 릴 1개에 표시할 심볼 패턴 (무작위로 섞어서 배치)
@@ -542,14 +642,14 @@ function showResult(grade, reward) {
 
     if (grade === 'S') {
         banner.className = 'result-banner jackpot';
-        banner.innerHTML = `💎 JACKPOT! 잭팟 당첨 — 낙엽 100개 획득!`;
+        banner.innerHTML = `🚀 IPSE 잭팟! 발사 성공 — 낙엽 100개 획득!`;
     } else if (grade !== 'F') {
         const gradeMsg = {
-            'A': '⭐ 스타 3개! 낙엽',
-            'B': '🔔 벨 3개! 낙엽',
-            'C': '🍊 오렌지 3개! 낙엽',
-            'D': '🍋 레몬 3개! 낙엽',
-            'E': '🍒 체리 3개! 낙엽',
+            'A': '🎯 챌린지 클리어! 낙엽',
+            'B': '⚡ 번개 강타! 낙엽',
+            'C': '💻 코딩 성공! 낙엽',
+            'D': '🍃 잎새 획득! 낙엽',
+            'E': '🌱 새싹 발견! 낙엽',
         };
         banner.className = 'result-banner win';
         banner.innerHTML = `${gradeMsg[grade] || '당첨!'} ${reward}개 획득!`;
@@ -689,6 +789,51 @@ async function spinSlot() {
 
     updateButtonState();
     isSpinning = false;
+    loadSlotRanking();
+}
+
+// ─── 슬롯머신 랭킹 로드 ──────────────────────────────────────────────────────
+function loadSlotRanking() {
+    const GRADE_COLOR = { S:'text-violet-600', A:'text-amber-500', B:'text-sky-500', C:'text-emerald-600', D:'text-slate-600', E:'text-slate-400' };
+    const list = document.getElementById('slot-ranking-list');
+    fetch('{% url "slot_ranking" %}', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ranking || data.ranking.length === 0) {
+                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
+                return;
+            }
+            const MEDALS = ['🥇', '🥈', '🥉'];
+            list.innerHTML = data.ranking.map(row => {
+                const badge = row.rank <= 3
+                    ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
+                    : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
+                const cls   = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
+                const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
+                const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
+                const gradeCls = GRADE_COLOR[row.grade] || 'text-slate-500';
+                return `
+                    <div class="flex items-center gap-3 px-5 py-3 ${cls}">
+                        <div class="w-8 text-center leading-none">${badge}</div>
+                        <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
+                        <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
+                        <span class="font-bold text-sm ${gradeCls} flex-shrink-0">${row.grade_display}</span>
+                    </div>`;
+            }).join('');
+        })
+        .catch(() => {
+            list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
+        });
+}
+
+document.addEventListener('DOMContentLoaded', loadSlotRanking);
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
 }
 
 // ─── 디버그 전용: 강제 등급 스핀 ─────────────────────────────────────────────
@@ -741,5 +886,84 @@ async function debugSpin(grade) {
     status.textContent = `✅ ${grade}등급 테스트 완료`;
 }
 {% endif %}
+</script>
+
+<script>
+// ─── 로비 채팅 WebSocket ─────────────────────────────────────────────────────
+(function () {
+    const box    = document.getElementById('slot-chat-messages');
+    const input  = document.getElementById('slot-chat-input');
+    const btn    = document.getElementById('slot-chat-send');
+    const badge  = document.getElementById('slot-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    let socket   = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold transition';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 실시간 채널';
+            input.disabled = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 끊김';
+            input.disabled = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function avatar(name, pic) {
+        return pic
+            ? `<img src="${esc(pic)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+            : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+    }
+
+    function append(name, message, time, isError, pic) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+        const d = document.createElement('div');
+        if (isError) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700 text-[10px]"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar(name, pic)}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen    = () => { setStatus(true);  box.scrollTop = box.scrollHeight; };
+        socket.onmessage = e  => {
+            const data = JSON.parse(e.data);
+            if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
+            else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+        };
+        socket.onclose   = () => { setStatus(false); setTimeout(connect, 5000); };
+        socket.onerror   = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
 </script>
 {% endblock %}
