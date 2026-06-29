@@ -1,0 +1,756 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load hosts %}
+
+{% block title %}IPSE 놀이터 | 사과게임{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- LEFT: 사과게임 -->
+        <div class="lg:col-span-8">
+            <div class="ag-outer">
+        <!-- 컴팩트 상태 바 -->
+        <div class="ag-stat-bar">
+            <span class="ag-stat-bar-item">점수 <strong id="ag-score">0</strong></span>
+            <span class="ag-stat-bar-sep"></span>
+            <span class="ag-stat-bar-item">남은 시간 <strong id="ag-timer" style="color:#10b981">2:00</strong></span>
+        </div>
+
+        <!-- 캔버스 영역 -->
+        <div class="ag-canvas-wrap" id="ag-canvas-wrap">
+            <canvas id="ag-canvas"></canvas>
+
+            <!-- 시작 오버레이 -->
+            <div id="ag-start-overlay" class="ag-overlay">
+                <div class="ag-overlay-content">
+                    <div class="text-6xl mb-4">🍎</div>
+                    <h3>사과게임</h3>
+                    <p>
+                        드래그로 사각형 영역을 선택하면 해당 사과들의 합이 나타납니다.<br>
+                        합이 <strong class="text-emerald-600 font-extrabold">10</strong>이 되면 사과가 사라지고 점수를 획득해요!<br>
+                        <span class="text-slate-400 text-[11px]">2분 안에 최대한 많은 점수를 획득하세요.</span>
+                    </p>
+                    <button id="ag-start-btn" class="ag-btn">
+                        <i class="fa-solid fa-play"></i> 게임 시작
+                    </button>
+                </div>
+            </div>
+
+            <!-- 게임 오버 오버레이 -->
+            <div id="ag-over-overlay" class="ag-overlay hidden">
+                <div class="ag-overlay-content">
+                    <div class="text-5xl mb-3">🎉</div>
+                    <h3>게임 종료!</h3>
+                    <div class="ag-final-box">
+                        <span class="ag-stat-label">최종 점수</span>
+                        <span id="ag-final-val" class="ag-final-score-val">0</span>
+                        <span class="text-[11px] text-slate-400">개의 사과 제거</span>
+                    </div>
+                    <button id="ag-restart-btn" class="ag-btn">
+                        <i class="fa-solid fa-rotate-right"></i> 다시 하기
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <p class="ag-hint">드래그로 사각형 영역을 선택 · 합 = 10이면 사과 제거 · 빈 칸은 0으로 합산</p>
+            </div><!-- /.ag-outer -->
+        </div><!-- lg:col-span-8 -->
+
+        <!-- RIGHT: 채팅 + 랭킹 탭 -->
+        <div class="lg:col-span-4" style="position:sticky;top:6rem">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'ag-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'ag-tab-rank')">
+                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="ag-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="ag-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
+                        </span>
+                    </div>
+                    <div id="ag-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input type="text" id="ag-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="ag-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 랭킹 탭 -->
+                <div id="ag-tab-rank" class="gsp-pane" style="display:none">
+                    <div id="ag-ranking-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- grid -->
+</section>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; background: #fff; }
+.gsp-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    font-size: .72rem;
+    color: #475569;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking { flex: 1; overflow-y: auto; }
+/* ── 컴팩트 상태 바 ────────────────────────────── */
+.ag-stat-bar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .5rem 1rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: .72rem;
+    color: #64748b;
+    flex-shrink: 0;
+}
+.ag-stat-bar-sep { width: 1px; height: .9rem; background: #e2e8f0; }
+.ag-stat-bar-item strong { color: #0f172a; }
+/* ── 외부 컨테이너 (IPSE 라이트 카드) ───────────────────────────────── */
+.ag-outer {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1.5rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── 에메랄드 그라디언트 헤더 띠 ────────────────────────────────────── */
+.ag-hero {
+    padding: 20px 24px 16px;
+    background: linear-gradient(to right, #065f46, #059669, #0d9488);
+    border-bottom: 1px solid #e2e8f0;
+}
+.ag-stat {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 12px;
+    padding: 6px 14px;
+    min-width: 68px;
+    backdrop-filter: blur(4px);
+}
+.ag-stat-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.ag-stat-value {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin-top: 1px;
+    font-variant-numeric: tabular-nums;
+}
+.ag-timer-urgent {
+    color: #fcd34d !important;
+    animation: ag-pulse 0.5s ease-in-out infinite;
+}
+@keyframes ag-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ── 캔버스 래퍼 ─────────────────────────────────────────────────────── */
+.ag-canvas-wrap {
+    position: relative;
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+    background: #0a0f1e;
+}
+#ag-canvas {
+    display: block;
+    cursor: crosshair;
+    max-width: 100%;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    border-radius: 8px;
+}
+
+/* ── 오버레이 (라이트 테마) ──────────────────────────────────────────── */
+.ag-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248, 250, 252, 0.96);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 10;
+}
+.ag-overlay.hidden { display: none; }
+
+.ag-overlay-content {
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 380px;
+    width: 100%;
+}
+.ag-overlay-content h3 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 10px;
+}
+.ag-overlay-content p {
+    font-size: 0.85rem;
+    color: #64748b;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+.ag-final-box {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 16px 24px;
+    margin: 0 auto 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 200px;
+}
+.ag-final-score-val {
+    font-size: 3.2rem;
+    font-weight: 900;
+    color: #059669;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── 버튼 (IPSE 에메랄드) ────────────────────────────────────────────── */
+.ag-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 28px;
+    background: linear-gradient(135deg, #065f46, #059669, #0d9488);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 20px rgba(5,150,105,0.4);
+}
+.ag-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(5,150,105,0.5);
+}
+.ag-btn:active { transform: scale(0.97); }
+
+/* ── 힌트 푸터 ───────────────────────────────────────────────────────── */
+.ag-hint {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 10px;
+    padding: 10px 20px;
+    border-top: 1px solid #f1f5f9;
+    font-weight: 500;
+    background: #f8fafc;
+}
+</style>
+
+<script>
+(function () {
+    const CSRF   = '{{ csrf_token }}';
+    const COLS = 17, ROWS = 10, DURATION = 120;
+
+    let grid, score, timeLeft, timerInterval, isRunning;
+    let isDragging = false, dragStart = null, dragEnd = null;
+    let cellSize = 46;
+
+    const canvas  = document.getElementById('ag-canvas');
+    const ctx     = canvas.getContext('2d');
+    const wrap    = document.getElementById('ag-canvas-wrap');
+    const scoreEl = document.getElementById('ag-score');
+    const timerEl = document.getElementById('ag-timer');
+    const startOv = document.getElementById('ag-start-overlay');
+    const overOv  = document.getElementById('ag-over-overlay');
+    const finalEl = document.getElementById('ag-final-val');
+
+    // ── 그리드 초기화 ─────────────────────────────────────────────────
+    function initGrid() {
+        grid = Array.from({ length: ROWS }, () =>
+            Array.from({ length: COLS }, () => Math.floor(Math.random() * 9) + 1)
+        );
+    }
+
+    // ── 캔버스 크기 조정 ──────────────────────────────────────────────
+    function resize() {
+        const availW = wrap.clientWidth - 32;
+        cellSize = Math.max(26, Math.floor(availW / COLS));
+        canvas.width  = COLS * cellSize;
+        canvas.height = ROWS * cellSize;
+        draw();
+    }
+
+    // ── 이벤트 → 셀 좌표 변환 ────────────────────────────────────────
+    function cellFromEvent(e) {
+        const rect = canvas.getBoundingClientRect();
+        const pt   = e.touches ? e.touches[0] : e;
+        const sx   = canvas.width  / rect.width;
+        const sy   = canvas.height / rect.height;
+        return {
+            c: Math.max(0, Math.min(COLS - 1, Math.floor((pt.clientX - rect.left) * sx / cellSize))),
+            r: Math.max(0, Math.min(ROWS - 1, Math.floor((pt.clientY - rect.top)  * sy / cellSize))),
+        };
+    }
+
+    // ── 선택 영역 계산 ────────────────────────────────────────────────
+    function selRect() {
+        if (!dragStart || !dragEnd) return null;
+        return {
+            r1: Math.min(dragStart.r, dragEnd.r),
+            r2: Math.max(dragStart.r, dragEnd.r),
+            c1: Math.min(dragStart.c, dragEnd.c),
+            c2: Math.max(dragStart.c, dragEnd.c),
+        };
+    }
+
+    // 선택 영역 내 빈 칸 제외 합산
+    function selSum(sel) {
+        if (!sel) return 0;
+        let s = 0;
+        for (let r = sel.r1; r <= sel.r2; r++)
+            for (let c = sel.c1; c <= sel.c2; c++)
+                s += grid[r][c]; // 0(빈 칸)은 자동으로 합산 무시
+        return s;
+    }
+
+    // ── 렌더링 ────────────────────────────────────────────────────────
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 배경
+        ctx.fillStyle = '#0a0f1e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const sel   = selRect();
+        const sum   = selSum(sel);
+        const valid = (sum === 10);
+
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const x  = c * cellSize;
+                const y  = r * cellSize;
+                const v  = grid[r][c];
+                const cx = x + cellSize / 2;
+                const cy = y + cellSize / 2;
+                const radius = cellSize / 2 - 3;
+
+                if (v === 0) {
+                    // 빈 칸
+                    ctx.fillStyle = '#0f172a';
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    continue;
+                }
+
+                const inSel = sel &&
+                    r >= sel.r1 && r <= sel.r2 &&
+                    c >= sel.c1 && c <= sel.c2;
+
+                // 사과 원
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                if (inSel) {
+                    ctx.fillStyle = valid ? '#15803d' : '#991b1b';
+                } else {
+                    ctx.fillStyle = '#dc2626';
+                }
+                ctx.fill();
+
+                // 광택
+                ctx.beginPath();
+                ctx.arc(cx - radius * 0.28, cy - radius * 0.32, radius * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.18)';
+                ctx.fill();
+
+                // 숫자
+                ctx.fillStyle = inSel ? (valid ? '#86efac' : '#fca5a5') : '#ffffff';
+                ctx.font      = `700 ${Math.round(cellSize * 0.4)}px system-ui, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(v, cx, cy + 1);
+            }
+        }
+
+        // 선택 사각형 + 합 배지
+        if (isDragging && sel) {
+            const sx = sel.c1 * cellSize;
+            const sy = sel.r1 * cellSize;
+            const sw = (sel.c2 - sel.c1 + 1) * cellSize;
+            const sh = (sel.r2 - sel.r1 + 1) * cellSize;
+
+            ctx.strokeStyle = valid ? '#22c55e' : '#ef4444';
+            ctx.lineWidth   = 2.5;
+            ctx.strokeRect(sx + 1.25, sy + 1.25, sw - 2.5, sh - 2.5);
+
+            // 합 배지
+            const badgeText = String(sum);
+            const fontSize  = Math.round(cellSize * 0.38);
+            ctx.font      = `800 ${fontSize}px system-ui, sans-serif`;
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+
+            const padX = 4, padY = 3;
+            const tw   = ctx.measureText(badgeText).width + padX * 2;
+            const th   = fontSize + padY * 2;
+            const bx   = sx + sw - tw - 2;
+            const by   = sy + 2;
+
+            ctx.fillStyle = valid ? '#22c55e' : '#ef4444';
+            ctx.beginPath();
+            ctx.roundRect(bx, by, tw, th, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(badgeText, bx + tw - padX, by + padY);
+        }
+    }
+
+    // ── 제거 시도 ────────────────────────────────────────────────────
+    function tryRemove() {
+        const sel = selRect();
+        if (!sel || selSum(sel) !== 10) return;
+
+        let cleared = 0;
+        for (let r = sel.r1; r <= sel.r2; r++)
+            for (let c = sel.c1; c <= sel.c2; c++)
+                if (grid[r][c] !== 0) { grid[r][c] = 0; cleared++; }
+
+        score += cleared;
+        scoreEl.textContent = score;
+    }
+
+    // ── 타이머 ───────────────────────────────────────────────────────
+    function updateTimer() {
+        const m = Math.floor(timeLeft / 60);
+        const s = timeLeft % 60;
+        timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+        timerEl.classList.toggle('ag-timer-urgent', timeLeft <= 10);
+    }
+
+    // ── 게임 시작 / 종료 ─────────────────────────────────────────────
+    function startGame() {
+        initGrid();
+        score     = 0;
+        timeLeft  = DURATION;
+        isRunning = true;
+        isDragging = false;
+        dragStart  = dragEnd = null;
+        scoreEl.textContent = '0';
+        updateTimer();
+
+        startOv.classList.add('hidden');
+        overOv.classList.add('hidden');
+        resize();
+
+        clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            updateTimer();
+            if (timeLeft <= 0) endGame();
+        }, 1000);
+    }
+
+    function endGame() {
+        clearInterval(timerInterval);
+        isRunning  = false;
+        isDragging = false;
+        dragStart  = dragEnd = null;
+        finalEl.textContent = score;
+        overOv.classList.remove('hidden');
+        draw();
+        saveScore(score);
+    }
+
+    // ── 점수 저장 및 랭킹 갱신 ──────────────────────────────────────────
+    function saveScore(finalScore) {
+        const fd = new FormData();
+        fd.append('score', finalScore);
+        fd.append('csrfmiddlewaretoken', CSRF);
+        fetch('{% url "apple_game_score" %}', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(() => window._agLoadRanking())
+            .catch(() => window._agLoadRanking());
+    }
+
+    window._agLoadRanking = function _agLoadRanking() {
+        const list = document.getElementById('ag-ranking-list');
+        fetch('{% url "apple_game_ranking" %}', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ranking || data.ranking.length === 0) {
+                    list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
+                    return;
+                }
+                const MEDALS = ['🥇', '🥈', '🥉'];
+                list.innerHTML = data.ranking.map(row => {
+                    const badge = row.rank <= 3
+                        ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
+                        : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
+                    const cls = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
+                    const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
+                    const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
+                    return `
+                        <div class="flex items-center gap-3 px-5 py-3 ${cls}">
+                            <div class="w-8 text-center leading-none">${badge}</div>
+                            <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
+                            <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
+                            <span class="font-bold text-emerald-600 text-sm tabular-nums flex-shrink-0">${row.score}점</span>
+                        </div>`;
+                }).join('');
+            })
+            .catch(() => {
+                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
+            });
+    }
+
+    // ── 마우스 이벤트 ────────────────────────────────────────────────
+    canvas.addEventListener('mousedown', e => {
+        if (!isRunning) return;
+        e.preventDefault();
+        isDragging = true;
+        dragStart  = dragEnd = cellFromEvent(e);
+        draw();
+    });
+    canvas.addEventListener('mousemove', e => {
+        if (!isRunning || !isDragging) return;
+        dragEnd = cellFromEvent(e);
+        draw();
+    });
+    canvas.addEventListener('mouseup', e => {
+        if (!isRunning) return;
+        dragEnd = cellFromEvent(e);
+        tryRemove();
+        isDragging = false;
+        dragStart  = dragEnd = null;
+        draw();
+    });
+    canvas.addEventListener('mouseleave', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        dragStart  = dragEnd = null;
+        draw();
+    });
+
+    // ── 터치 이벤트 (모바일) ─────────────────────────────────────────
+    canvas.addEventListener('touchstart', e => {
+        if (!isRunning) return;
+        e.preventDefault();
+        isDragging = true;
+        dragStart  = dragEnd = cellFromEvent(e);
+        draw();
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+        if (!isRunning || !isDragging) return;
+        e.preventDefault();
+        dragEnd = cellFromEvent(e);
+        draw();
+    }, { passive: false });
+    canvas.addEventListener('touchend', e => {
+        if (!isRunning) return;
+        e.preventDefault();
+        tryRemove();
+        isDragging = false;
+        dragStart  = dragEnd = null;
+        draw();
+    }, { passive: false });
+
+    // ── 버튼 ─────────────────────────────────────────────────────────
+    document.getElementById('ag-start-btn').addEventListener('click', startGame);
+    document.getElementById('ag-restart-btn').addEventListener('click', startGame);
+
+    // ── 반응형 리사이즈 ──────────────────────────────────────────────
+    window.addEventListener('resize', () => { if (isRunning || !startOv.classList.contains('hidden')) resize(); });
+
+    // 초기 렌더 + 랭킹 로드
+    resize();
+    window._agLoadRanking();
+})();
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+    if (paneId === 'ag-tab-rank' && window._agLoadRanking) window._agLoadRanking();
+}
+</script>
+
+<script>
+// ─── 로비 채팅 WebSocket ─────────────────────────────────────────────────────
+(function () {
+    const box    = document.getElementById('ag-chat-messages');
+    const input  = document.getElementById('ag-chat-input');
+    const btn    = document.getElementById('ag-chat-send');
+    const badge  = document.getElementById('ag-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    let socket   = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold transition';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 실시간 채널';
+            input.disabled = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 끊김';
+            input.disabled = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function avatar(name, pic) {
+        return pic
+            ? `<img src="${esc(pic)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+            : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+    }
+
+    function append(name, message, time, isError, pic) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+        const d = document.createElement('div');
+        if (isError) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700 text-[10px]"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar(name, pic)}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen    = () => { setStatus(true);  box.scrollTop = box.scrollHeight; };
+        socket.onmessage = e  => {
+            const data = JSON.parse(e.data);
+            if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
+            else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+        };
+        socket.onclose   = () => { setStatus(false); setTimeout(connect, 5000); };
+        socket.onerror   = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+{% endblock %}

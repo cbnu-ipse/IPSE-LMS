@@ -5,23 +5,7 @@
 {% block title %}IPSE 놀이터 | 게임 로비{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-10">
-    <!-- 🎮 게임 로비 헤더 -->
-    <div class="bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl px-8 py-10 text-white shadow-lg overflow-hidden relative mb-8 flex flex-col justify-center">
-        <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
-            <i class="fa-solid fa-gamepad text-[180px]"></i>
-        </div>
-        <div class="relative z-10">
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
-                <i class="fa-solid fa-gamepad"></i> IPSE Playground
-            </span>
-            <h1 class="text-2xl lg:text-3xl font-extrabold mb-1">IPSE 놀이터 & 미니게임</h1>
-            <p class="text-amber-50 text-xs md:text-sm leading-relaxed max-w-xl">
-                낙엽을 소모해 슬롯머신을 돌리거나 다양한 미니게임을 즐기고, 동아리원들과 노닥거릴 수 있는 오락실 공간입니다.
-            </p>
-        </div>
-    </div>
-
+<section class="max-w-7xl mx-auto px-6 py-8">
     <!-- 🎰 메인 레이아웃 Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         
@@ -38,10 +22,9 @@
                         <p id="game-header-desc" class="text-[11px] text-slate-400 font-medium">로블록스 스타일로 즐기는 다양한 오락 거리</p>
                     </div>
                 </div>
-                <!-- 로비로 돌아가기 버튼 (게임 실행 중에만 표시) -->
-                <button id="back-to-catalog-btn" class="hidden inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition shadow-sm">
-                    <i class="fa-solid fa-house-chimney text-xs"></i> 로비 홈
-                </button>
+                <a href="{% url 'game_ranking' %}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition">
+                    <i class="fa-solid fa-trophy text-xs"></i> 게임 랭킹
+                </a>
             </div>
 
             <!-- 플레이/카탈로그 메인 영역 -->
@@ -49,8 +32,8 @@
                 <!-- 1) 게임 카탈로그 리스트 -->
                 <div id="catalog-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     
-                    <!-- 학점 캡슐 슬롯머신 (로비 내 플레이 지원) -->
-                    <button type="button" id="play-slot-machine-btn" class="game-card text-left focus:outline-none">
+                    <!-- 학점 캡슐 슬롯머신 -->
+                    <a href="{% url 'slot_machine' %}" class="game-card">
                         <!-- 썸네일 -->
                         <div class="game-thumbnail slot">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -78,9 +61,35 @@
                                 </span>
                             </div>
                         </div>
-                    </button>
+                    </a>
 
-                    <!-- 2. 잎새 미니 야구 (준비 중) -->
+                    <!-- 2. 사과게임 -->
+                    <a href="{% url 'apple_game' %}" class="game-card">
+                        <div class="game-thumbnail apple">
+                            <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                            <div class="thumbnail-decor"></div>
+                            <div class="thumbnail-content">
+                                <span class="text-4xl drop-shadow-md" style="animation: bounce 2s infinite 0.2s;">🍎</span>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-green-200">APPLE GAME</div>
+                            </div>
+                            <span class="game-badge playable">PLAYABLE</span>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm card-title">사과게임</h4>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                    드래그로 영역을 선택해 합이 10이 되면 사과가 사라져요. 2분 안에 최고 점수를 노려보세요!
+                                </p>
+                            </div>
+                            <div class="flex items-center justify-end border-t border-slate-100 pt-3 mt-3">
+                                <span class="w-7 h-7 rounded-full bg-red-50 card-play-btn flex items-center justify-center text-red-500 text-xs transition">
+                                    <i class="fa-solid fa-play"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+
+                    <!-- 3. 잎새 미니 야구 (준비 중) -->
                     <div class="game-card opacity-75 cursor-not-allowed">
                         <div class="game-thumbnail baseball">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -145,56 +154,59 @@
                     </div>
                 </div>
 
-                <!-- 2) 인라인 게임 플레이 뷰포트 (기본 hidden, iframe으로 slot_machine 연동) -->
-                <div id="game-play-container" class="hidden relative w-full border border-slate-200 rounded-2xl overflow-hidden bg-slate-900 shadow-md" style="height:600px;flex-shrink:0;">
-                    <iframe id="game-iframe" src="" class="w-full h-full border-0" allow="fullscreen"></iframe>
-                </div>
             </div>
         </div>
 
-        <!-- 💬 실시간 동아리 로비 채팅 (오른쪽 4) -->
-        <div id="lobby-chat-container" class="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 flex flex-col h-[550px] mobile-hidden">
-            <div class="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
-                        <i class="fa-solid fa-comments text-indigo-600 text-sm"></i>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-slate-800 text-sm">놀이터 로비 채팅</h3>
-                        <p class="text-[10px] text-slate-400 font-medium">동아리원들과 나누는 실시간 대화</p>
-                    </div>
-                </div>
-                <span id="chat-status-badge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
-                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
-                </span>
+        <!-- 💬 채팅 + 랭킹 탭 패널 (오른쪽 4) -->
+        <div id="lobby-chat-container" class="lg:col-span-4 game-side-panel mobile-hidden">
+            <!-- 탭 헤더 -->
+            <div class="gsp-tabs">
+                <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'lobby-tab-chat')">
+                    <i class="fa-solid fa-comments"></i> 채팅
+                </button>
+                <button class="gsp-tab" onclick="gspSwitch(this,'lobby-tab-rank')">
+                    <i class="fa-solid fa-trophy"></i> 랭킹
+                </button>
             </div>
 
-            <!-- 대화창 영역 -->
-            <div id="chat-messages" class="flex-grow overflow-y-auto space-y-2 pr-1 text-xs text-slate-600">
-                {% for msg in chat_messages %}
-                <div class="chat-msg flex gap-2 items-start">
-                    {% if msg.user.picture and msg.user.picture.name != "default.png" %}
-                    <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
-                    {% else %}
-                    <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
-                        {{ msg.user.display_chat_name|slice:":1" }}
+            <!-- 채팅 탭 -->
+            <div id="lobby-tab-chat" class="gsp-pane">
+                <div class="gsp-pane-head">
+                    <span id="chat-status-badge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
+                        <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
                     </span>
-                    {% endif %}
-                    <div>
-                        <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
-                        <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
-                        <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
-                    </div>
                 </div>
-                {% empty %}
-                <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
-                {% endfor %}
+                <div id="chat-messages" class="gsp-messages">
+                    {% for msg in chat_messages %}
+                    <div class="chat-msg flex gap-2 items-start">
+                        {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                        <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                        {% else %}
+                        <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">
+                            {{ msg.user.display_chat_name|slice:":1" }}
+                        </span>
+                        {% endif %}
+                        <div>
+                            <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                            <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                            <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
+                    {% endfor %}
+                </div>
+                <div class="gsp-input-row">
+                    <input type="text" id="chat-input" maxlength="300" placeholder="메시지를 입력하세요..." class="flex-1 px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                    <button id="chat-send-btn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold whitespace-nowrap shadow-sm hover:bg-indigo-700 transition">전송</button>
+                </div>
             </div>
 
-            <!-- 메시지 입력 영역 -->
-            <div class="flex gap-2 shrink-0">
-                <input type="text" id="chat-input" maxlength="300" placeholder="메시지를 입력하세요..." class="flex-1 px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
-                <button id="chat-send-btn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold whitespace-nowrap shadow-sm hover:bg-indigo-700 transition">전송</button>
+            <!-- 랭킹 탭 -->
+            <div id="lobby-tab-rank" class="gsp-pane" style="display:none">
+                <div id="lobby-ranking-list" class="gsp-ranking">
+                    <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                </div>
             </div>
         </div>
 
@@ -240,6 +252,9 @@
 }
 .game-thumbnail.ghostleg {
     background: linear-gradient(135deg, #10b981, #0d9488);
+}
+.game-thumbnail.apple {
+    background: linear-gradient(135deg, #dc2626, #16a34a);
 }
 .game-badge {
     position: absolute;
@@ -314,6 +329,70 @@
         display: none !important;
     }
 }
+/* ── 사이드 패널 공통 CSS (로비·슬롯·사과게임 동일) ────── */
+.game-side-panel {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; background: #fff; }
+.gsp-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    font-size: .72rem;
+    color: #475569;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking { flex: 1; overflow-y: auto; }
+.gsp-rank-section { padding: .5rem .75rem .25rem; }
+.gsp-rank-section-title { font-size: .68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .25rem; }
 </style>
 {% endblock %}
 
@@ -324,49 +403,6 @@
     const chatInput   = document.getElementById('chat-input');
     const sendBtn     = document.getElementById('chat-send-btn');
     const statusBadge = document.getElementById('chat-status-badge');
-
-    // ─── 인라인 게임 플레이 뷰 기능 ───
-    const playSlotBtn = document.getElementById('play-slot-machine-btn');
-    const backBtn = document.getElementById('back-to-catalog-btn');
-    const catalogContainer = document.getElementById('catalog-container');
-    const gamePlayContainer = document.getElementById('game-play-container');
-    const gameIframe = document.getElementById('game-iframe');
-
-    const gameHeaderIcon = document.getElementById('game-header-icon');
-    const gameHeaderTitle = document.getElementById('game-header-title');
-    const gameHeaderDesc = document.getElementById('game-header-desc');
-
-    if (playSlotBtn && backBtn) {
-        playSlotBtn.addEventListener('click', () => {
-            // 게임 플레이 모드로 화면 전환
-            catalogContainer.classList.add('hidden');
-            gamePlayContainer.classList.remove('hidden');
-            backBtn.classList.remove('hidden');
-
-            // 헤더 정보 변경
-            gameHeaderIcon.className = "fa-solid fa-dice text-amber-600 text-lg";
-            gameHeaderTitle.textContent = "IPSE 슬롯머신";
-            gameHeaderDesc.textContent = "낙엽 1개로 행운의 학점 캡슐을 뽑아보세요!";
-
-            // iframe에 슬롯머신 url 설정 (임베드 모드)
-            gameIframe.src = "{% url 'slot_machine' %}?embed=true";
-        });
-
-        backBtn.addEventListener('click', () => {
-            // 카탈로그 모드로 복원
-            catalogContainer.classList.remove('hidden');
-            gamePlayContainer.classList.add('hidden');
-            backBtn.classList.add('hidden');
-
-            // 헤더 원복
-            gameHeaderIcon.className = "fa-solid fa-shapes text-amber-600 text-lg";
-            gameHeaderTitle.textContent = "전체 게임 카탈로그";
-            gameHeaderDesc.textContent = "로블록스 스타일로 즐기는 다양한 오락 거리";
-
-            // iframe 리소스 비우기
-            gameIframe.src = "";
-        });
-    }
 
     // ─── 프로토콜 자동 분기 및 WebSocket 설정 ───
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -499,25 +535,69 @@
     }
 
     // ─── 뒤로가기(BFCache) 진입 시 화면 강제 리셋 ───
-    window.addEventListener('pageshow', function (event) {
-        if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
-            const catalog = document.getElementById('catalog-container');
-            const play = document.getElementById('game-play-container');
-            const back = document.getElementById('back-to-catalog-btn');
-            const iframe = document.getElementById('game-iframe');
-            const pokerSetup = document.getElementById('indian-poker-setup-container');
-
-            if (catalog) catalog.classList.remove('hidden');
-            if (play) play.classList.add('hidden');
-            if (back) back.classList.add('hidden');
-            if (iframe) iframe.src = "";
-            if (pokerSetup) pokerSetup.classList.add('hidden');
-        }
-    });
-
     // 페이지 로드 시 즉시 연결 시작 + 스크롤 맨 아래
     connect();
     messagesBox.scrollTop = messagesBox.scrollHeight;
 })();
+
+// ── 로비 탭 전환 ─────────────────────────────────────────────────
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+    if (paneId === 'lobby-tab-rank') loadLobbyRanking();
+}
+
+function loadLobbyRanking() {
+    const container = document.getElementById('lobby-ranking-list');
+    const MEDALS = ['🥇', '🥈', '🥉'];
+
+    function rowHtml(row, scoreHtml) {
+        const badge = row.rank <= 3
+            ? `<span class="text-base">${MEDALS[row.rank - 1]}</span>`
+            : `<span class="text-xs font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
+        const cls = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
+        const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
+        const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : '';
+        return `<div class="flex items-center gap-2 px-4 py-2.5 ${cls}">
+                    <div class="w-7 text-center leading-none flex-shrink-0">${badge}</div>
+                    <img src="${row.picture}" alt="${row.name}" class="w-7 h-7 rounded-full border border-slate-200 object-cover flex-shrink-0">
+                    <span class="flex-1 font-semibold text-xs ${nameCls} truncate">${row.name}${meTxt}</span>
+                    <span class="text-xs font-bold text-slate-500 flex-shrink-0 tabular-nums">${scoreHtml}</span>
+                </div>`;
+    }
+
+    function sectionTitle(icon, label) {
+        return `<div class="gsp-rank-section"><p class="gsp-rank-section-title"><i class="${icon}"></i> ${label}</p></div>`;
+    }
+
+    Promise.all([
+        fetch('{% url "slot_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
+        fetch('{% url "apple_game_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
+    ]).then(([slotData, appleData]) => {
+        let html = '';
+
+        html += sectionTitle('fa-solid fa-dice', '슬롯머신 랭킹');
+        if (slotData.ranking && slotData.ranking.length) {
+            html += slotData.ranking.map(r => rowHtml(r, `<span>${r.grade_display}</span>`)).join('');
+        } else {
+            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
+        }
+
+        html += '<div class="border-t border-slate-100 my-1"></div>';
+        html += sectionTitle('fa-solid fa-apple-whole', '사과게임 랭킹');
+        if (appleData.ranking && appleData.ranking.length) {
+            html += appleData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
+        } else {
+            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
+        }
+
+        container.innerHTML = html;
+    }).catch(() => {
+        container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-6">랭킹을 불러올 수 없습니다.</p>';
+    });
+}
 </script>
 {% endblock %}

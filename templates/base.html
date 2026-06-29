@@ -159,10 +159,14 @@
                             랭킹
                         </a>
                     {% elif request.host.name == 'game' %}
-                        <!-- 🎮 게임 서브도메인 메뉴 (로비 전용) -->
+                        <!-- 🎮 게임 서브도메인 메뉴 -->
                         <a href="{% host_url 'game_lobby' host 'game' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 border-emerald-600 text-emerald-700 font-bold">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'game_lobby' or request.resolver_match.url_name == 'slot_machine' or request.resolver_match.url_name == 'apple_game' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             IPSE 놀이터
+                        </a>
+                        <a href="{% host_url 'game_ranking' host 'game' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'game_ranking' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            랭킹
                         </a>
                     {% else %}
                         <!-- 📣 동아리 커뮤니티 메인 도메인 메뉴 (신규 커뮤니티 포함) -->
