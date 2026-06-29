@@ -2405,6 +2405,16 @@ def guestbook(request):
     })
 
 
+def _kst_day_utc_range():
+    """Return (kst_start, kst_end, kst_today) in UTC for the current KST calendar day."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    KST = _td(hours=9)
+    now_kst = _dt.now(tz=_tz.utc) + KST
+    today_kst = now_kst.date()
+    kst_start = _dt(today_kst.year, today_kst.month, today_kst.day, tzinfo=_tz.utc) - KST
+    return kst_start, kst_start + _td(days=1), today_kst
+
+
 @login_required
 @require_POST
 def guestbook_create_api(request):
