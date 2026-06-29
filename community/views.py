@@ -2396,17 +2396,19 @@ def guestbook(request):
         created_at__date=timezone.now().date()
     ).exists()
 
+    from django.conf import settings
     return render(request, 'community/guestbook.html', {
         'title': '방명록',
         'page_obj': page_obj,
         'has_written_today': has_written_today,
+        'is_debug': settings.DEBUG,
     })
 
 
 @login_required
 @require_POST
 def guestbook_create_api(request):
-    """방명록 한 줄 등록 + 하루 첫 번째 작성 시 낙엽 1개 지급"""
+    """방명록 한 줄 등록 + 하루 첫 번째 작성 시 낙엽 1개 지급 + 출석 처리"""
     try:
         data = json.loads(request.body)
         content = data.get('content', '').strip()
@@ -2415,18 +2417,44 @@ def guestbook_create_api(request):
         if len(content) > 100:
             return JsonResponse({'status': 'error', 'message': '100자 이내로 입력해 주세요.'}, status=400)
 
-        from django.utils import timezone
+        from django.conf import settings as dj_settings
+        from accounts.models import Attendance, get_attendance_streak
+        from datetime import datetime as dt_datetime, timezone as py_utc
+
+        # DEBUG 모드에서만 debug_date 파라미터로 날짜 오버라이드 가능
+        debug_date_str = data.get('debug_date') if dj_settings.DEBUG else None
+        if debug_date_str:
+            from datetime import date as dt_date, timedelta as _td
+            try:
+                override_date = dt_date.fromisoformat(debug_date_str)
+            except ValueError:
+                return JsonResponse({'status': 'error', 'message': '날짜 형식이 올바르지 않습니다.'}, status=400)
+            kst_start = dt_datetime(override_date.year, override_date.month, override_date.day, tzinfo=py_utc.utc) - _td(hours=9)
+            kst_end = kst_start + _td(days=1)
+            kst_today = override_date
+        else:
+            kst_start, kst_end, kst_today = _kst_day_utc_range()
 
         with transaction.atomic():
-            # 오늘(UTC) 이미 쓴 글이 있는지 확인 (낙엽 지급용)
+            # KST 기준 해당 날짜 첫 작성 여부 확인
             already_today = Guestbook.objects.filter(
                 author=request.user,
-                created_at__date=timezone.now().date()
+                created_at__gte=kst_start,
+                created_at__lt=kst_end,
             ).exists()
 
             entry = Guestbook.objects.create(author=request.user, content=content)
+            # DEBUG 날짜 지정 시 auto_now_add를 우회하여 created_at 덮어쓰기
+            if debug_date_str:
+                entry_created_at = kst_start + _td(hours=12)
+                Guestbook.objects.filter(pk=entry.pk).update(created_at=entry_created_at)
+                entry.created_at = entry_created_at
 
+            STREAK_BONUSES = {7: 2, 14: 3, 30: 5, 60: 8, 100: 15}
             leaf_given = False
+            attendance_recorded = False
+            streak_bonus = 0
+
             if not already_today:
                 request.user.adjust_leaves(
                     amount=1,
@@ -2435,18 +2463,39 @@ def guestbook_create_api(request):
                 )
                 leaf_given = True
 
+                if not Attendance.objects.filter(user=request.user, date=kst_today).exists():
+                    Attendance.objects.create(user=request.user, date=kst_today)
+                    attendance_recorded = True
+
+            streak = get_attendance_streak(request.user, kst_today)
+
+            # 연속 출석 마일스톤 보너스 (첫 출석 기록 시에만)
+            if attendance_recorded:
+                streak_bonus = STREAK_BONUSES.get(streak, 0)
+                if streak_bonus:
+                    request.user.adjust_leaves(
+                        amount=streak_bonus,
+                        transaction_type='streak_bonus',
+                        description=f'{streak}일 연속 출석 보너스',
+                    )
+
         request.user.refresh_from_db()
+        bonus_msg = f' 🎉 {streak}일 연속 출석 보너스 낙엽 {streak_bonus}개!' if streak_bonus else ''
         return JsonResponse({
             'status': 'success',
-            'message': '방명록에 글을 남겼습니다!' + (' 낙엽 1개가 적립되었습니다.' if leaf_given else ''),
+            'message': '방명록에 글을 남겼습니다!' + (' 낙엽 1개가 적립되었습니다.' if leaf_given else '') + bonus_msg,
             'leaf_given': leaf_given,
+            'attendance_recorded': attendance_recorded,
+            'streak': streak,
+            'streak_bonus': streak_bonus,
             'leaves': request.user.leaves,
             'entry': {
                 'id': entry.id,
                 'author': request.user.display_author,
+                'picture': request.user.get_picture(),
                 'content': entry.content,
                 'created_at': entry.created_at.strftime('%Y-%m-%d %H:%M'),
-            }
+            },
         })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

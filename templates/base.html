@@ -182,6 +182,10 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'schedule_list' or request.resolver_match.url_name == 'schedule_detail' or request.resolver_match.url_name == 'calendar_subscribe' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             동아리 일정
                         </a>
+                        <a href="{% url 'ranking:community' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'community' and request.resolver_match.app_name == 'ranking' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            랭킹
+                        </a>
                         {% if request.user.is_staff %}
                         <a href="{% url 'recruit_list' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'recruit_list' or request.resolver_match.url_name == 'recruit_edit' or request.resolver_match.url_name == 'recruit_manage' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
@@ -365,6 +369,7 @@
                     {% else %}
                         <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">커뮤니티</a>
                         <a href="{% url 'timetable' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">수업 시간표</a>
+                        <a href="{% url 'ranking:community' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
                         {% if request.user.is_staff %}
                         <a href="{% url 'recruit_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100/60 transition">
                             <span>모집 관리</span>

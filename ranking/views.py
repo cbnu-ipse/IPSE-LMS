@@ -1,10 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import render, redirect
 from django.utils import timezone
+from datetime import timedelta
 
+from accounts.models import Attendance, get_attendance_streak
 from contest.models import Contest, ContestParticipant, ContestSubmission
 from .utils import (
 	get_problem_points_map,
@@ -19,7 +21,7 @@ def ranking_home(request):
 	query = request.GET.get("q", "").strip()
 	season = request.GET.get("season", "").strip()
 
-	allowed_boards = {"problems", "contest"}
+	allowed_boards = {"problems", "contest", "leaves", "attendance", "streak"}
 	if board not in allowed_boards:
 		board = "problems"
 
@@ -34,7 +36,14 @@ def ranking_home(request):
 		messages.info(request, "현재 진행 중인 대회가 없어 대회 랭킹은 비활성화 상태입니다.")
 		return redirect("ranking:home")
 
-	board_label = "문제 랭킹" if board == "problems" else "대회 랭킹"
+	BOARD_LABELS = {
+		"problems": "문제 랭킹",
+		"contest": "대회 랭킹",
+		"leaves": "낙엽 랭킹",
+		"attendance": "출석 랭킹",
+		"streak": "연속 출석 랭킹",
+	}
+	board_label = BOARD_LABELS.get(board, "문제 랭킹")
 
 	if board == "problems":
 		users = User.objects.filter(is_active=True).select_related("student")
@@ -61,6 +70,70 @@ def ranking_home(request):
 
 		ranking_rows = [row for row in ranking_rows if row["solved_count"] > 0]
 		ranking_rows.sort(key=lambda row: (-row["score"], row["user"].username.lower()))
+
+		context = {
+			"board": board,
+			"board_label": board_label,
+			"query": query,
+			"contest_ranking_enabled": contest_ranking_enabled,
+			"ranking_rows": ranking_rows,
+			"top_rows": ranking_rows[:3],
+		}
+		return render(request, "ranking/ranking_home.html", context)
+
+	if board == "leaves":
+		users = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
+		if query:
+			users = users.filter(
+				Q(username__icontains=query) | Q(student__nickname__icontains=query)
+			)
+		ranking_rows = [{"user": u, "score": u.leaves} for u in users]
+		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+
+		context = {
+			"board": board,
+			"board_label": board_label,
+			"query": query,
+			"contest_ranking_enabled": contest_ranking_enabled,
+			"ranking_rows": ranking_rows,
+			"top_rows": ranking_rows[:3],
+		}
+		return render(request, "ranking/ranking_home.html", context)
+
+	if board == "attendance":
+		users_qs = User.objects.filter(is_active=True).select_related("student").annotate(
+			total_attendance=Count("attendances")
+		).filter(total_attendance__gt=0)
+		if query:
+			users_qs = users_qs.filter(
+				Q(username__icontains=query) | Q(student__nickname__icontains=query)
+			)
+		ranking_rows = [{"user": u, "score": u.total_attendance} for u in users_qs]
+		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+
+		context = {
+			"board": board,
+			"board_label": board_label,
+			"query": query,
+			"contest_ranking_enabled": contest_ranking_enabled,
+			"ranking_rows": ranking_rows,
+			"top_rows": ranking_rows[:3],
+		}
+		return render(request, "ranking/ranking_home.html", context)
+
+	if board == "streak":
+		kst_today = (timezone.now() + timedelta(hours=9)).date()
+		users_qs = User.objects.filter(is_active=True).select_related("student")
+		if query:
+			users_qs = users_qs.filter(
+				Q(username__icontains=query) | Q(student__nickname__icontains=query)
+			)
+		ranking_rows = []
+		for u in users_qs:
+			s = get_attendance_streak(u, kst_today)
+			if s > 0:
+				ranking_rows.append({"user": u, "score": s})
+		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
 		context = {
 			"board": board,
@@ -162,3 +235,68 @@ def ranking_home(request):
 		"top_rows": ranking_rows[:3],
 	}
 	return render(request, "ranking/ranking_home.html", context)
+
+
+@login_required
+def community_ranking(request):
+    """메인 도메인 전용 랭킹: 낙엽·출석·연속 출석 탭만 제공"""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q, Count
+    from django.utils import timezone
+    from datetime import timedelta
+    from accounts.models import Attendance, get_attendance_streak
+
+    User = get_user_model()
+    board = request.GET.get("board", "leaves").strip()
+    query = request.GET.get("q", "").strip()
+
+    allowed_boards = {"leaves", "attendance", "streak"}
+    if board not in allowed_boards:
+        board = "leaves"
+
+    BOARD_LABELS = {
+        "leaves":     "낙엽 랭킹",
+        "attendance": "출석 랭킹",
+        "streak":     "연속 출석 랭킹",
+    }
+    board_label = BOARD_LABELS[board]
+
+    ranking_rows = []
+
+    if board == "leaves":
+        qs = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
+        if query:
+            qs = qs.filter(Q(username__icontains=query) | Q(student__nickname__icontains=query))
+        ranking_rows = [{"user": u, "score": u.leaves} for u in qs]
+        ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+
+    elif board == "attendance":
+        qs = (
+            User.objects.filter(is_active=True)
+            .select_related("student")
+            .annotate(total_attendance=Count("attendances"))
+            .filter(total_attendance__gt=0)
+        )
+        if query:
+            qs = qs.filter(Q(username__icontains=query) | Q(student__nickname__icontains=query))
+        ranking_rows = [{"user": u, "score": u.total_attendance} for u in qs]
+        ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+
+    elif board == "streak":
+        kst_today = (timezone.now() + timedelta(hours=9)).date()
+        qs = User.objects.filter(is_active=True).select_related("student")
+        if query:
+            qs = qs.filter(Q(username__icontains=query) | Q(student__nickname__icontains=query))
+        for u in qs:
+            s = get_attendance_streak(u, kst_today)
+            if s > 0:
+                ranking_rows.append({"user": u, "score": s})
+        ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+
+    return render(request, "ranking/community_ranking.html", {
+        "board": board,
+        "board_label": board_label,
+        "query": query,
+        "ranking_rows": ranking_rows,
+        "top_rows": ranking_rows[:3],
+    })

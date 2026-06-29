@@ -441,3 +441,24 @@ class Attendance(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.date}"
 
+
+def get_attendance_streak(user, reference_date=None):
+    """KST 기준 연속 출석 일수를 반환합니다. reference_date 포함 역방향으로 계산합니다."""
+    from datetime import timedelta
+    from django.utils import timezone
+
+    if reference_date is None:
+        kst_now = timezone.now() + timedelta(hours=9)
+        reference_date = kst_now.date()
+
+    attended_dates = set(
+        Attendance.objects.filter(user=user).values_list('date', flat=True)
+    )
+
+    streak = 0
+    check_date = reference_date
+    while check_date in attended_dates:
+        streak += 1
+        check_date -= timedelta(days=1)
+    return streak
+

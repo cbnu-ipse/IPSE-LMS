@@ -47,6 +47,23 @@
     </div>
   </div>
   <p class="text-[11px] text-slate-400 mt-2 ml-12">하루에 여러 번 작성할 수 있지만 낙엽은 하루 1번만 지급됩니다.</p>
+  {% if is_debug %}
+  <div class="mt-3 ml-12 p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
+    <p class="text-[11px] font-bold text-red-500 uppercase tracking-wide">🛠 DEBUG 패널</p>
+    <div class="flex items-center gap-2 flex-wrap">
+      <label class="text-xs text-red-700 font-semibold shrink-0">날짜 지정:</label>
+      <input type="date" id="debug-date-input"
+             class="h-8 px-2 rounded-lg border border-red-300 text-xs text-red-800 bg-white focus:outline-none focus:ring-1 focus:ring-red-400">
+      <span class="text-[10px] text-red-400">(비우면 오늘 날짜)</span>
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <button type="button" onclick="debugResetToday()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-600 text-xs font-semibold hover:bg-red-100 transition">
+        <i class="fa-solid fa-rotate-right text-xs"></i>출석·방명록 초기화
+      </button>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <!-- 방명록 목록 -->
@@ -109,13 +126,18 @@ function submitGuestbook() {
   btn.disabled = true;
   btn.textContent = '전송 중…';
 
+  const debugDateEl = document.getElementById('debug-date-input');
+  const debugDate = debugDateEl ? debugDateEl.value : null;
+  const payload = { content };
+  if (debugDate) payload.debug_date = debugDate;
+
   fetch("{% url 'guestbook_create_api' %}", {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-CSRFToken': '{{ csrf_token }}',
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(payload),
   })
     .then(r => r.json())
     .then(data => {
@@ -123,7 +145,10 @@ function submitGuestbook() {
         showToast(data.message, 'success');
         input.value = '';
         prependEntry(data.entry);
-        if (data.leaf_given) updateLeafCount(data.leaves);
+        if (data.leaf_given) {
+          updateLeafCount(data.leaves);
+          spawnLeaves(data.streak_bonus > 0 ? 20 : 10);
+        }
       } else {
         showToast(data.message || '오류가 발생했습니다.', 'error');
       }
@@ -144,9 +169,8 @@ function prependEntry(entry) {
   const li = document.createElement('li');
   li.className = 'flex items-start gap-3 px-5 py-4 hover:bg-slate-50/60 transition bg-emerald-50/50 animate-fade-in';
   li.innerHTML = `
-    <div class="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-100 mt-0.5 bg-emerald-100 flex items-center justify-center">
-      <i class="fa-solid fa-user text-emerald-400 text-xs"></i>
-    </div>
+    <img src="${escapeHtml(entry.picture)}" alt=""
+         class="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-100 mt-0.5">
     <div class="flex-1 min-w-0">
       <div class="flex items-baseline gap-2 flex-wrap">
         <span class="text-xs font-bold text-slate-700">${escapeHtml(entry.author)}</span>
@@ -176,5 +200,151 @@ document.getElementById('guestbook-input').addEventListener('keydown', function(
     submitGuestbook();
   }
 });
+
+async function debugResetToday() {
+  const dateEl = document.getElementById('debug-date-input');
+  const dateVal = dateEl ? dateEl.value : '';
+  const label = dateVal || '오늘(KST)';
+  if (!confirm(`[DEBUG] ${label} 출석·방명록 기록을 초기화합니까?`)) return;
+  const url = '{% url "debug_reset_today" %}' + (dateVal ? '?date=' + dateVal : '');
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.success) {
+    alert(`[${data.target_date}] 초기화 완료 — 출석 ${data.deleted_attendance}건, 방명록 ${data.deleted_guestbook}건 삭제`);
+    location.reload();
+  } else {
+    alert(data.error || '오류 발생');
+  }
+}
+
+function getCookie(name) {
+  const m = document.cookie.match('(^|;)\s*' + name + '\s*=\s*([^;]+)');
+  return m ? m.pop() : '';
+}
+
+function spawnLeaves() {
+  const existingCanvas = document.getElementById('leaf-canvas');
+  if (existingCanvas) existingCanvas.remove();
+
+  const canvas = document.createElement('canvas');
+  canvas.id = 'leaf-canvas';
+  canvas.style.position = 'fixed';
+  canvas.style.top = '0';
+  canvas.style.left = '0';
+  canvas.style.width = '100vw';
+  canvas.style.height = '100vh';
+  canvas.style.pointerEvents = 'none';
+  canvas.style.zIndex = '999999';
+  document.body.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  let width = canvas.width = window.innerWidth;
+  let height = canvas.height = window.innerHeight;
+
+  window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  const leafColors = [
+    'rgba(245, 158, 11, 0.85)',
+    'rgba(249, 115, 22, 0.85)',
+    'rgba(239, 68, 68, 0.85)',
+    'rgba(16, 185, 129, 0.85)',
+    'rgba(132, 204, 22, 0.85)',
+    'rgba(202, 138, 4, 0.85)',
+    'rgba(120, 53, 4, 0.85)'
+  ];
+
+  const particles = [];
+  const particleCount = 75;
+
+  class LeafParticle {
+    constructor() { this.reset(true); }
+
+    reset(init = false) {
+      this.x = Math.random() * width;
+      this.y = init ? (Math.random() * -height) : -20;
+      this.size = Math.random() * 12 + 8;
+      this.speedY = Math.random() * 1.5 + 1.0;
+      this.speedX = Math.random() * 1.0 - 0.5;
+      this.density = Math.random() * 10 + 2;
+      this.color = leafColors[Math.floor(Math.random() * leafColors.length)];
+      this.angle = Math.random() * Math.PI * 2;
+      this.angleSpeed = (Math.random() * 0.02 + 0.01) * (Math.random() > 0.5 ? 1 : -1);
+      this.tilt = Math.random() * 0.8 + 0.2;
+      this.tiltSpeed = Math.random() * 0.02 + 0.01;
+      this.swayOffset = Math.random() * 100;
+      this.swaySpeed = Math.random() * 0.02 + 0.01;
+    }
+
+    update(tick) {
+      this.y += this.speedY;
+      this.x += this.speedX + Math.sin(tick * this.swaySpeed + this.swayOffset) * 0.8;
+      this.angle += this.angleSpeed;
+      this.tilt = Math.sin(tick * this.tiltSpeed + this.swayOffset) * 0.8 + 0.2;
+      if (this.y > height + 20) this.reset(false);
+    }
+
+    draw() {
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.angle);
+      ctx.scale(1, this.tilt);
+
+      ctx.beginPath();
+      ctx.moveTo(0, -this.size);
+      ctx.quadraticCurveTo(this.size * 0.6, -this.size * 0.4, 0, this.size);
+      ctx.quadraticCurveTo(-this.size * 0.6, -this.size * 0.4, 0, -this.size);
+      ctx.fillStyle = this.color;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(0, -this.size);
+      ctx.lineTo(0, this.size);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = this.size / 10;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+
+  for (let i = 0; i < particleCount; i++) particles.push(new LeafParticle());
+
+  let tick = 0;
+  let animationFrameId;
+  const startTime = Date.now();
+  const duration = 6500;
+
+  function animate() {
+    ctx.clearRect(0, 0, width, height);
+    tick++;
+
+    let hasVisibleParticles = false;
+    const elapsed = Date.now() - startTime;
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      p.update(tick);
+      p.draw();
+
+      if (elapsed > duration) {
+        if (p.y <= height) hasVisibleParticles = true;
+      } else {
+        hasVisibleParticles = true;
+      }
+    }
+
+    if (hasVisibleParticles) {
+      animationFrameId = requestAnimationFrame(animate);
+    } else {
+      cancelAnimationFrame(animationFrameId);
+      canvas.remove();
+    }
+  }
+
+  animate();
+}
 </script>
 {% endblock community_content %}
