@@ -5,22 +5,6 @@
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-10">
     <div class="space-y-8">
-        <!-- 📣 상단 프리미엄 헤더 배너 (번개 모임 전용: 앰버-오렌지 그라디언트) -->
-        <div class="relative bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl px-8 md:px-12 py-12 md:py-16 text-white shadow-md overflow-hidden min-h-[200px] md:min-h-[220px] flex flex-col justify-center">
-            <div class="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10 scale-150">
-                <i class="fa-solid fa-bolt text-[200px]"></i>
-            </div>
-            <div class="relative z-10 max-w-2xl">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-2.5 backdrop-blur-sm">
-                    <i class="fa-solid fa-bolt"></i> IPSE Meetup
-                </span>
-                <h1 class="text-2xl lg:text-3xl font-extrabold mb-2">IPSE 번개 모임</h1>
-                <p class="text-amber-50 text-xs md:text-sm leading-relaxed">
-                    부원들과 오프라인 스터디, 식사, 친목 도모 등 자유롭게 즉석 모임을 개설하고 참여해 보세요.
-                </p>
-            </div>
-        </div>
-
         <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
             {% if user.is_authenticated %}
             <div class="flex justify-end mb-6">
