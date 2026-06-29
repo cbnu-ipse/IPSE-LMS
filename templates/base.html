@@ -73,15 +73,15 @@
         pointer-events: none;
         position: relative;
         overflow: hidden;
-        opacity: 0.88;
-        transition: opacity 0.1s ease;
+        opacity: 0.72;
+        transition: opacity 0.12s ease;
     }
     main.sk-loading::after {
         content: '';
         position: absolute;
         inset: 0;
-        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 35%, rgba(255,255,255,0.75) 50%, rgba(255,255,255,0.5) 65%, transparent 100%);
-        animation: sk-page-sweep 1.5s ease-in-out infinite;
+        background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.82) 50%, transparent 70%);
+        animation: sk-page-sweep 1.1s ease-in-out infinite;
         z-index: 9999;
         pointer-events: none;
     }
@@ -483,6 +483,19 @@
         const mainEl = document.querySelector('main');
         window.isPageLoading = false;
 
+        // 서브도메인을 포함한 동일 사이트 여부 판별
+        function rootDomain(h) {
+          if (h === 'localhost' || h.endsWith('.localhost')) return 'localhost';
+          const p = h.split('.');
+          // .co.kr 같은 2단계 TLD를 쓰는 도메인: 4파트 이상이면 첫 파트가 서브도메인
+          return p.length > 3 ? p.slice(1).join('.') : h;
+        }
+        function isSameSite(href) {
+          if (!href.startsWith('http')) return true;
+          try { return rootDomain(new URL(href).hostname) === rootDomain(location.hostname); }
+          catch(e) { return false; }
+        }
+
         function showSkeleton(){
           window.isPageLoading = true;
           if (mainEl) mainEl.classList.add('sk-loading');
@@ -493,7 +506,9 @@
         }
 
         // 링크 클릭 시 skeleton 표시
+        // e.preventDefault() 후 rAF 안에서 navigate: repaint를 보장해야 skeleton이 실제로 그려짐
         document.addEventListener('click',function(e){
+          if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
           if (window.isPageLoading) {
             e.preventDefault();
             e.stopPropagation();
@@ -503,17 +518,18 @@
           if(!a) return;
           const href = a.getAttribute('href');
           if(!href||href.startsWith('#')||href.startsWith('javascript')||a.target==='_blank'||a.hasAttribute('download')) return;
-          if(href.startsWith('http')&&!href.includes(location.hostname)) return;
+          if(!isSameSite(href)) return;
 
           const isMobileSize = window.innerWidth < 768;
           const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
           try {
             const urlObj = new URL(href, window.location.origin);
-            const path = urlObj.pathname;
-            if (restrictedPaths.some(p => path.startsWith(p)) && isMobileSize) return;
-          } catch(err) {}
+            if (restrictedPaths.some(p => urlObj.pathname.startsWith(p)) && isMobileSize) return;
+          } catch(err) { return; }
 
+          e.preventDefault();
           showSkeleton();
+          requestAnimationFrame(() => { window.location.href = href; });
         }, { capture: true });
 
         // 폼 제출 시 skeleton 표시
@@ -537,11 +553,6 @@
           hideSkeleton();
         });
       })();
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
-      }
 
       // 로그아웃: CORS/cross-subdomain 문제를 완벽히 방지하기 위해 표준 HTML Form POST 전송 방식을 사용합니다.
       // 이렇게 하면 브라우저 수준에서 세션 쿠키 삭제(Set-Cookie)가 정상 처리됩니다.
