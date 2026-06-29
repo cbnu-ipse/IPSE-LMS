@@ -1,28 +1,18 @@
 {% extends 'base.html' %}
-{% block title %}커뮤니티 랭킹 | IPSE LMS{% endblock %}
+{% load static %}
+{% load hosts %}
+
+{% block title %}게임 랭킹 | IPSE 놀이터{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-8">
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
         <!-- 사이드바 -->
         <aside class="lg:col-span-2">
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sticky top-24">
-                <p class="text-xs font-bold text-slate-400 tracking-wider mb-3">RANKING MENU</p>
+                <p class="text-xs font-bold text-slate-400 tracking-wider mb-3">GAME RANKING</p>
                 <nav class="space-y-1">
-                    <a href="?board=leaves"
-                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'leaves' %}bg-amber-50 text-amber-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-leaf text-xs w-4 text-center text-amber-500"></i>낙엽 랭킹
-                    </a>
-                    <a href="?board=attendance"
-                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'attendance' %}bg-orange-50 text-orange-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-calendar-check text-xs w-4 text-center text-orange-500"></i>출석 랭킹
-                    </a>
-                    <a href="?board=streak"
-                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'streak' %}bg-rose-50 text-rose-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-fire text-xs w-4 text-center text-rose-500"></i>연속 출석 랭킹
-                    </a>
-                    <hr class="my-2 border-slate-100">
-                    <p class="text-[10px] font-bold text-slate-400 tracking-wider px-3 pt-1 pb-0.5">GAME</p>
                     <a href="?board=slot_game"
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'slot_game' %}bg-violet-50 text-violet-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                         <i class="fa-solid fa-dice text-xs w-4 text-center text-violet-500"></i>슬롯머신 랭킹
@@ -37,7 +27,8 @@
 
         <!-- 메인 콘텐츠 -->
         <div class="lg:col-span-10 space-y-6">
-            <!-- 검색 바 -->
+
+            <!-- 헤더 + 검색 -->
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                 <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div>
@@ -61,11 +52,11 @@
                 <div class="relative bg-white rounded-2xl border border-slate-200 shadow-sm p-6 pt-10 text-center overflow-hidden">
                     <div class="absolute top-0 left-6">
                         {% if forloop.counter == 1 %}
-                        <div class="relative w-14 h-16 bg-gradient-to-b from-emerald-500 to-emerald-700 clip-flag text-white flex items-center justify-center font-black text-xl">1</div>
+                        <div class="relative w-14 h-16 bg-gradient-to-b from-emerald-500 to-emerald-700 clip-flag text-white flex items-center justify-center font-black text-xl">{{ row.rank }}</div>
                         {% elif forloop.counter == 2 %}
-                        <div class="relative w-14 h-16 bg-gradient-to-b from-emerald-300 to-emerald-600 clip-flag text-white flex items-center justify-center font-black text-xl">2</div>
+                        <div class="relative w-14 h-16 bg-gradient-to-b from-emerald-300 to-emerald-600 clip-flag text-white flex items-center justify-center font-black text-xl">{{ row.rank }}</div>
                         {% else %}
-                        <div class="relative w-14 h-16 bg-gradient-to-b from-slate-400 to-slate-600 clip-flag text-white flex items-center justify-center font-black text-xl">3</div>
+                        <div class="relative w-14 h-16 bg-gradient-to-b from-slate-400 to-slate-600 clip-flag text-white flex items-center justify-center font-black text-xl">{{ row.rank }}</div>
                         {% endif %}
                     </div>
 
@@ -81,16 +72,7 @@
 
                     <div class="mt-4 grid grid-cols-2 gap-3">
                         <div class="rounded-lg bg-slate-50 py-3">
-                            {% if board == 'leaves' %}
-                            <p class="text-[11px] text-slate-400">보유 낙엽</p>
-                            <p class="text-2xl font-bold text-amber-600"><i class="fa-solid fa-leaf text-amber-500 text-sm"></i> {{ row.score }}</p>
-                            {% elif board == 'attendance' %}
-                            <p class="text-[11px] text-slate-400">총 출석일</p>
-                            <p class="text-2xl font-bold text-orange-600">{{ row.score }}일</p>
-                            {% elif board == 'streak' %}
-                            <p class="text-[11px] text-slate-400">연속 출석</p>
-                            <p class="text-2xl font-bold text-rose-600"><i class="fa-solid fa-fire text-rose-400 text-sm"></i> {{ row.score }}일</p>
-                            {% elif board == 'slot_game' %}
+                            {% if board == 'slot_game' %}
                             <p class="text-[11px] text-slate-400">최고 등급</p>
                             <p class="text-lg font-bold text-violet-600">{{ row.grade_display }}</p>
                             {% elif board == 'apple_game' %}
@@ -100,11 +82,7 @@
                         </div>
                         <div class="rounded-lg bg-slate-50 py-3">
                             <p class="text-[11px] text-slate-400">순위</p>
-                            {% if board == 'slot_game' or board == 'apple_game' %}
                             <p class="text-2xl font-bold text-slate-500">{{ row.rank }}위</p>
-                            {% else %}
-                            <p class="text-2xl font-bold text-slate-500">{{ forloop.counter }}위</p>
-                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -123,13 +101,7 @@
                             <tr>
                                 <th class="px-6 py-4">순위</th>
                                 <th class="px-6 py-4">유저 정보</th>
-                                {% if board == 'leaves' %}
-                                <th class="px-6 py-4 text-center">보유 낙엽</th>
-                                {% elif board == 'attendance' %}
-                                <th class="px-6 py-4 text-center">총 출석일</th>
-                                {% elif board == 'streak' %}
-                                <th class="px-6 py-4 text-center">연속 출석일</th>
-                                {% elif board == 'slot_game' %}
+                                {% if board == 'slot_game' %}
                                 <th class="px-6 py-4 text-center">최고 등급</th>
                                 {% elif board == 'apple_game' %}
                                 <th class="px-6 py-4 text-center">최고 점수</th>
@@ -139,11 +111,9 @@
                         <tbody class="divide-y divide-slate-100 text-[15px]">
                             {% for row in ranking_rows %}
                             <tr class="hover:bg-slate-50 transition">
-                                <td class="px-6 py-4 font-semibold text-slate-600">
-                                    {% if board == 'slot_game' or board == 'apple_game' %}{{ row.rank }}{% else %}{{ forloop.counter }}{% endif %}위
-                                </td>
+                                <td class="px-6 py-4 font-semibold text-slate-600">{{ row.rank }}위</td>
                                 <td class="px-6 py-4">
-                                    <a href="{% url 'profile_single' row.user.pk %}" class="flex items-center gap-3 hover:opacity-80 transition">
+                                    <a href="{% host_url 'profile_single' row.user.pk host 'community' %}" class="flex items-center gap-3 hover:opacity-80 transition">
                                         <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}"
                                              class="w-9 h-9 rounded-full border border-slate-200 object-cover">
                                         <div class="flex items-center gap-2">
@@ -155,19 +125,7 @@
                                         </div>
                                     </a>
                                 </td>
-                                {% if board == 'leaves' %}
-                                <td class="px-6 py-4 text-center font-bold text-amber-600">
-                                    <span class="flex items-center justify-center gap-1"><i class="fa-solid fa-leaf text-amber-500"></i>{{ row.score }}</span>
-                                </td>
-                                {% elif board == 'attendance' %}
-                                <td class="px-6 py-4 text-center font-bold text-orange-600">
-                                    <span class="flex items-center justify-center gap-1"><i class="fa-solid fa-calendar-check text-orange-400"></i>{{ row.score }}일</span>
-                                </td>
-                                {% elif board == 'streak' %}
-                                <td class="px-6 py-4 text-center font-bold text-rose-600">
-                                    <span class="flex items-center justify-center gap-1"><i class="fa-solid fa-fire text-rose-400"></i>{{ row.score }}일</span>
-                                </td>
-                                {% elif board == 'slot_game' %}
+                                {% if board == 'slot_game' %}
                                 <td class="px-6 py-4 text-center font-bold text-violet-600">{{ row.grade_display }}</td>
                                 {% elif board == 'apple_game' %}
                                 <td class="px-6 py-4 text-center font-bold text-emerald-600">{{ row.score }}점</td>
@@ -182,6 +140,7 @@
                     </table>
                 </div>
             </div>
+
         </div>
     </div>
 </section>
