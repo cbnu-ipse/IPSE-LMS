@@ -5,8 +5,8 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog, LobbyChatMessage
-from accounts.models import User, LeafTransaction
+from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore
+from accounts.models import User
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 실물 슬롯머신 릴 구성 (Virtual Reel / Strip)
@@ -16,12 +16,12 @@ from accounts.models import User, LeafTransaction
 # 희귀 심볼일수록 가상 릴에서 적은 슬롯을 차지 → 낮은 확률.
 #
 # 심볼 ID:
-#   0 = 🍒 체리     (매우 흔함)
-#   1 = 🍋 레몬     (흔함)
-#   2 = 🍊 오렌지   (보통)
-#   3 = 🔔 벨       (다소 드묾)
-#   4 = ⭐ 스타     (드묾)
-#   5 = 💎 다이아   (매우 드묾 - 잭팟)
+#   0 = 🌱 새싹     (매우 흔함)
+#   1 = 🍃 잎새     (흔함)
+#   2 = 💻 코딩     (보통)
+#   3 = ⚡ 번개     (다소 드묾)
+#   4 = 🎯 챌린지   (드묾)
+#   5 = 🚀 잭팟     (매우 드묾 - 잭팟)
 #
 # RTP(Return to Player) 목표: ~88% (실물 머신 평균 85~95%)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,7 +68,170 @@ def _evaluate(s1, s2, s3):
     return "F", 0
 
 
+# ── 랭킹 헬퍼 ────────────────────────────────────────────────────────────────
+
+GRADE_ORDER = {"S": 6, "A": 5, "B": 4, "C": 3, "D": 2, "E": 1, "F": 0}
+GRADE_DISPLAY = {
+    "S": "🚀 잭팟",
+    "A": "🎯 챌린지",
+    "B": "⚡ 번개",
+    "C": "💻 코딩",
+    "D": "🍃 잎새",
+    "E": "🌱 새싹",
+}
+
+
+def _assign_ranks(rows, key):
+    """공동 순위 부여 (1,1,3,4... 방식)"""
+    for i, row in enumerate(rows):
+        if i == 0 or row[key] != rows[i - 1][key]:
+            row["rank"] = i + 1
+        else:
+            row["rank"] = rows[i - 1]["rank"]
+    return rows
+
+
+def get_slot_ranking(top_n=10):
+    logs = (
+        SlotPlayLog.objects
+        .filter(result_grade__in=list(GRADE_ORDER.keys()))
+        .exclude(result_grade="F")
+        .select_related("user", "user__student")
+        .order_by("played_date")
+    )
+    user_best = {}
+    for log in logs:
+        uid = log.user_id
+        gv = GRADE_ORDER.get(log.result_grade, 0)
+        if uid not in user_best or gv > user_best[uid]["grade_val"]:
+            user_best[uid] = {
+                "user": log.user,
+                "grade": log.result_grade,
+                "grade_val": gv,
+                "grade_display": GRADE_DISPLAY.get(log.result_grade, log.result_grade),
+                "score": gv,  # community_ranking 템플릿 호환
+            }
+    rows = sorted(user_best.values(), key=lambda r: -r["grade_val"])
+    return _assign_ranks(rows[:top_n], "grade_val")
+
+
+def get_apple_ranking(top_n=10):
+    from django.db.models import Max
+    qs = (
+        AppleGameScore.objects
+        .values("user")
+        .annotate(best=Max("score"))
+        .filter(best__gt=0)
+        .order_by("-best")
+    )
+    user_ids = [entry["user"] for entry in qs]
+    score_map = {entry["user"]: entry["best"] for entry in qs}
+    users = User.objects.filter(pk__in=user_ids).select_related("student")
+    rows = [{"user": u, "score": score_map[u.pk]} for u in users]
+    rows.sort(key=lambda r: -r["score"])
+    return _assign_ranks(rows[:top_n], "score")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def apple_game_view(request):
+    """사과게임 (합 10 퍼즐)"""
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    chat_messages = list(latest)[::-1]
+    return render(request, "game/apple_game.html", {"title": "사과게임", "chat_messages": chat_messages})
+
+
+@login_required
+@require_POST
+def save_apple_score(request):
+    """사과게임 점수 저장"""
+    try:
+        score = int(request.POST.get("score", 0))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid score"}, status=400)
+    if score < 0:
+        return JsonResponse({"ok": False, "error": "invalid score"}, status=400)
+    AppleGameScore.objects.create(user=request.user, score=score)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+def apple_game_ranking(request):
+    """사과게임 TOP 10 랭킹 JSON"""
+    rows = get_apple_ranking(10)
+    data = [
+        {
+            "rank": r["rank"],
+            "name": r["user"].display_name,
+            "picture": r["user"].get_picture(),
+            "score": r["score"],
+            "is_me": r["user"].id == request.user.id,
+        }
+        for r in rows
+    ]
+    return JsonResponse({"ranking": data})
+
+
+@login_required
+def slot_ranking(request):
+    """슬롯머신 TOP 10 랭킹 JSON"""
+    rows = get_slot_ranking(10)
+    data = [
+        {
+            "rank": r["rank"],
+            "name": r["user"].display_name,
+            "picture": r["user"].get_picture(),
+            "grade": r["grade"],
+            "grade_display": r["grade_display"],
+            "is_me": r["user"].id == request.user.id,
+        }
+        for r in rows
+    ]
+    return JsonResponse({"ranking": data})
+
+
+@login_required
+def game_ranking_view(request):
+    """게임 서브도메인 전용 랭킹 페이지"""
+    board = request.GET.get("board", "slot_game").strip()
+    query = request.GET.get("q", "").strip()
+
+    if board not in {"slot_game", "apple_game"}:
+        board = "slot_game"
+
+    BOARD_LABELS = {
+        "slot_game": "슬롯머신 랭킹",
+        "apple_game": "사과게임 랭킹",
+    }
+    board_label = BOARD_LABELS[board]
+
+    if board == "slot_game":
+        ranking_rows = get_slot_ranking(top_n=None)
+    else:
+        ranking_rows = get_apple_ranking(top_n=None)
+
+    if query:
+        q_lower = query.lower()
+        ranking_rows = [
+            r for r in ranking_rows
+            if q_lower in r["user"].display_name.lower()
+            or (
+                hasattr(r["user"], "student")
+                and r["user"].student
+                and q_lower in (r["user"].student.nickname or "").lower()
+            )
+        ]
+
+    return render(request, "game/ranking.html", {
+        "title": "게임 랭킹",
+        "board": board,
+        "board_label": board_label,
+        "query": query,
+        "ranking_rows": ranking_rows,
+        "top_rows": ranking_rows[:3],
+    })
+
 
 @login_required
 def lobby_view(request):
@@ -88,12 +251,11 @@ def slot_machine_view(request):
     today = timezone.localdate()
     played_today_count = SlotPlayLog.objects.filter(user=request.user, played_date=today).count()
 
-    is_embedded = request.GET.get("embed", "false").lower() == "true"
-
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
     context = {
         "title": "낙엽 슬롯머신",
         "played_today_count": played_today_count,
-        "is_embedded": is_embedded,
+        "chat_messages": list(latest)[::-1],
     }
     return render(request, "game/slot_machine.html", context)
 
