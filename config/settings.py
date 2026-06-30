@@ -154,6 +154,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.active_recruitments",
                 "core.context_processors.vapid_settings",
+                "game.context_processors.pending_season_reward",
             ],
         },
     },
