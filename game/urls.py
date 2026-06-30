@@ -12,9 +12,11 @@ urlpatterns = [
     path("apple-game/ranking/", views.apple_game_ranking, name="apple_game_ranking"),
     path("slot/ranking/", views.slot_ranking, name="slot_ranking"),
     path("ranking/", views.game_ranking_view, name="game_ranking"),
+    path("season-reward/dismiss/", views.dismiss_season_reward, name="season_reward_dismiss"),
 ]
 
 if settings.DEBUG:
     urlpatterns += [
         path("slot/debug-spin/", views.slot_debug_spin, name="slot_debug_spin"),
+        path("season-reward/debug/", views.season_reward_debug, name="season_reward_debug"),
     ]

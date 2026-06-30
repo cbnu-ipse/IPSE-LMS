@@ -126,6 +126,88 @@
         <!-- 메인 콘텐츠 -->
         <div class="lg:col-span-10 space-y-6">
 
+            <!-- 시즌 배너 (사과게임 전용) -->
+            {% if board == 'apple_game' %}
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <!-- 시즌 정보 -->
+                    <div class="flex items-center gap-4">
+                        <div class="flex flex-col gap-0.5">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-widest
+                                    {% if selected_season.number == current_season.number %}text-emerald-500{% else %}text-slate-400{% endif %}">
+                                    {{ selected_season.label }}
+                                </span>
+                                {% if selected_season.number == current_season.number %}
+                                    {% if current_season.is_ended %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-bold">
+                                        종료됨
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-[11px] font-bold">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+                                        진행 중
+                                    </span>
+                                    {% endif %}
+                                {% else %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 text-[11px] font-bold">
+                                    종료됨
+                                </span>
+                                {% endif %}
+                            </div>
+                            <p class="text-sm text-slate-500">
+                                {{ selected_season.start_date|date:"Y.m.d" }} – {{ selected_season.end_date|date:"Y.m.d" }}
+                            </p>
+                        </div>
+
+                        {% if selected_season.number == current_season.number and not current_season.is_ended %}
+                        <div class="hidden md:flex flex-col items-center px-4 py-2 bg-emerald-50 rounded-xl border border-emerald-100">
+                            {% if current_season.days_remaining == 0 %}
+                            <span class="text-sm font-black text-emerald-700 leading-none">오늘 종료</span>
+                            {% else %}
+                            <span class="text-2xl font-black text-emerald-700 leading-none">{{ current_season.days_remaining }}</span>
+                            <span class="text-[11px] text-emerald-400 font-semibold mt-0.5">일 남음</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- 시즌 선택 + 보상 안내 -->
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <!-- 시즌 보상 안내 뱃지 -->
+                        <div class="flex items-center gap-1.5 text-[12px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5 font-semibold">
+                            <i class="fa-solid fa-leaf text-amber-500 text-xs"></i>
+                            시즌 보상: 1위 {{ season_rank_rewards.1 }} · 2위 {{ season_rank_rewards.2 }} · 3위 {{ season_rank_rewards.3 }} 낙엽
+                        </div>
+
+                        <!-- 시즌 선택 드롭다운 -->
+                        {% if all_seasons|length > 1 %}
+                        <form method="GET" id="season-form">
+                            <input type="hidden" name="board" value="{{ board }}">
+                            {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                            <select name="season" onchange="document.getElementById('season-form').submit()"
+                                    class="h-9 pl-3 pr-8 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 cursor-pointer">
+                                {% for s in all_seasons %}
+                                <option value="{{ s.number }}" {% if s.number == selected_season.number %}selected{% endif %}>
+                                    {{ s.label }}{% if s.number == current_season.number %} (현재){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <!-- 슬롯머신: 전체 기간 배지 -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4 flex items-center gap-3">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 text-violet-600 text-[12px] font-bold border border-violet-100">
+                    <i class="fa-solid fa-infinity text-xs"></i>
+                    전체 기간 누적 랭킹
+                </span>
+                <span class="text-sm text-slate-400">슬롯머신은 시즌 없이 전체 기간 최고 등급 기준으로 집계됩니다.</span>
+            </div>
+            {% endif %}
             <!-- 헤더 + 검색 -->
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                 <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
@@ -135,6 +217,9 @@
                     </div>
                     <form method="GET" class="flex gap-3 w-full xl:w-auto">
                         <input type="hidden" name="board" value="{{ board }}">
+                        {% if selected_season.number != current_season.number %}
+                        <input type="hidden" name="season" value="{{ selected_season.number }}">
+                        {% endif %}
                         <input type="text" name="q" value="{{ query }}" placeholder="유저 닉네임 검색"
                                class="h-11 w-full md:w-72 px-4 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500">
                         <button type="submit" class="h-11 px-5 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
