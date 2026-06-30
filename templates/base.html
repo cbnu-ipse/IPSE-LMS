@@ -87,7 +87,6 @@
     #sk-nav-ph {
         height: 65px; background: #f1f5f9;
         border-bottom: 1px solid #e2e8f0;
-        display: flex; align-items: center; gap: 14px; padding: 0 24px;
     }
     /* skeleton utility */
     .sk-b  { background: #e2e8f0; border-radius: 8px; }
@@ -125,11 +124,30 @@
     </script>
     <div id="page-loader" aria-hidden="true">
         <div id="sk-nav-ph">
-            <div class="sk-p" style="width:80px;height:22px;margin-right:auto"></div>
-            <div class="sk-p" style="width:52px;height:16px"></div>
-            <div class="sk-p" style="width:52px;height:16px"></div>
-            <div class="sk-p" style="width:52px;height:16px"></div>
-            <div class="sk-p" style="width:52px;height:16px"></div>
+          <div style="max-width:80rem;margin:0 auto;width:100%;padding:0 16px;height:65px;display:flex;align-items:center;gap:14px">
+            <!-- 좌측: 로고 + 네비 항목 -->
+            <div style="display:flex;align-items:center;gap:36px;flex:1;min-width:0">
+                <div class="sk-p" style="width:68px;height:22px;flex-shrink:0"></div>
+                <div style="display:flex;align-items:center;gap:22px">
+                    <div class="sk-p" style="width:52px;height:13px"></div>
+                    <div class="sk-p" style="width:52px;height:13px"></div>
+                    <div class="sk-p" style="width:68px;height:13px"></div>
+                    <div class="sk-p" style="width:60px;height:13px"></div>
+                    <div class="sk-p" style="width:36px;height:13px"></div>
+                </div>
+            </div>
+            <!-- 우측: 소개 | 아이콘3 | 유저pill | 낙엽pill | 로그아웃 -->
+            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+                <div class="sk-p" style="width:26px;height:12px"></div>
+                <div style="width:1px;height:16px;background:#e2e8f0;flex-shrink:0"></div>
+                <div class="sk-c" style="width:36px;height:36px"></div>
+                <div class="sk-c" style="width:36px;height:36px"></div>
+                <div class="sk-c" style="width:36px;height:36px"></div>
+                <div class="sk-b" style="height:34px;width:104px;border-radius:999px"></div>
+                <div class="sk-b" style="height:30px;width:60px;border-radius:999px"></div>
+                <div class="sk-c" style="width:34px;height:34px"></div>
+            </div>
+          </div>
         </div>
         {% block page_skeleton %}
         <div style="max-width:1280px;margin:0 auto;padding:32px 24px">
@@ -704,6 +722,10 @@
           } catch(err) { return; }
 
           window.isPageLoading = true;
+          if (loader) {
+            loader.style.display = 'block';
+            loader.style.opacity = '1';
+          }
         }, { capture: true });
 
         // 폼 제출 시 중복 제출 방지
@@ -714,7 +736,13 @@
             return;
           }
           setTimeout(function() {
-            if (!e.defaultPrevented) window.isPageLoading = true;
+            if (!e.defaultPrevented) {
+              window.isPageLoading = true;
+              if (loader) {
+                loader.style.display = 'block';
+                loader.style.opacity = '1';
+              }
+            }
           }, 0);
         }, { capture: true });
 
