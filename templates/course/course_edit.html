@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}강의 정보 수정 - IPSE AI Academy{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto px-6 py-12">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+        <div class="bg-gradient-to-r from-amber-50 via-white to-slate-50 border-b border-slate-200 px-8 py-6">
+            <h1 class="text-3xl font-semibold text-[#3F3F3F]">강의 정보 수정</h1>
+            <p class="text-slate-500 text-sm mt-2 font-medium">{{ course.title }} 강의의 정보를 수정합니다.</p>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data" class="p-8 space-y-6">
+            {% csrf_token %}
+
+            {% for field in form %}
+            <div>
+                <label for="{{ field.id_for_label }}" class="block text-sm font-semibold text-slate-700 mb-2">
+                    {{ field.label }}{% if field.field.required %} <span class="text-rose-500">*</span>{% endif %}
+                </label>
+                {{ field }}
+                {% if field.help_text %}
+                <p class="text-xs text-slate-400 mt-1">{{ field.help_text }}</p>
+                {% endif %}
+                {% for error in field.errors %}
+                <p class="text-xs text-rose-500 mt-1">{{ error }}</p>
+                {% endfor %}
+            </div>
+            {% endfor %}
+
+            <div class="flex items-center justify-end space-x-4 pt-4 border-t border-slate-100">
+                <a href="{% url 'course_detail' course.slug %}" class="px-6 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition">
+                    취소
+                </a>
+                <button type="submit" class="px-8 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
+                    저장하기
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

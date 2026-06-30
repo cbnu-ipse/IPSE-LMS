@@ -305,8 +305,13 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="text-rose-600 font-semibold">담당으로 배정된 강의 코스가 없습니다.</p>
+                <p class="text-slate-500 font-medium">담당 강의가 없습니다. 직접 강의를 개설해 보세요.</p>
                 {% endif %}
+                <div class="mt-5 pt-4 border-t border-slate-100">
+                    <a href="{% url 'course_create' %}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg transition">
+                        <i class="fa-solid fa-plus"></i> 새 강의 만들기
+                    </a>
+                </div>
             </div>
             {% endif %}
 

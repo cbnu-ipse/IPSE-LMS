@@ -178,7 +178,7 @@ def profile(request):
     courses = None
     if user.is_lecturer:
         from course.models import Course
-        courses = Course.objects.filter(allocated_course__lecturer=user)
+        courses = Course.objects.filter(instructor=user)
 
     student_obj = None
     if user.is_student:
@@ -286,7 +286,7 @@ def profile_single(request, user_id):
     courses = None
     if profile_user.is_lecturer:
         from course.models import Course
-        courses = Course.objects.filter(allocated_course__lecturer=profile_user)
+        courses = Course.objects.filter(instructor=profile_user)
 
     student_obj = None
     if profile_user.is_student:
