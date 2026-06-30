@@ -254,6 +254,7 @@ class Student(models.Model):
     notify_gathering_all = models.BooleanField(default=True, verbose_name="전체 번개 모임 알림 받기")
     notify_gathering_joined = models.BooleanField(default=True, verbose_name="참여 중인 번개 모임 알림 받기")
     notify_post_comment = models.BooleanField(default=True, verbose_name="내 게시글 댓글 및 답글 알림 받기")
+    notify_game_season_ending = models.BooleanField(default=True, verbose_name="게임 시즌 종료 알림 받기")
 
     class Meta:
         ordering = ("-student__date_joined",)
@@ -359,6 +360,8 @@ class Notification(models.Model):
         ('gathering_cancel', '모임 취소'),
         ('post_comment', '게시글 댓글 등록'),
         ('comment_reply', '댓글 답글 등록'),
+        ('game_season_ending', '게임 시즌 종료 예정'),
+        ('game_season_reward', '게임 시즌 보상 지급'),
     ]
 
     recipient = models.ForeignKey(

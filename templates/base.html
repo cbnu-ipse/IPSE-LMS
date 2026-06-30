@@ -507,6 +507,146 @@
     {% endif %}
     {% endif %}
 
+
+{% if pending_season_reward %}
+<!-- ─── 월말정산 모달 ─── -->
+<div id="season-reward-modal" class="fixed inset-0 z-[9999] flex items-center justify-center" aria-modal="true" role="dialog">
+    <!-- 배경 오버레이 -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+
+    <!-- 낙엽 캔버스 -->
+    <canvas id="leaf-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+
+    <!-- 모달 카드 -->
+    <div class="relative z-10 bg-white rounded-3xl shadow-2xl p-8 mx-4 max-w-sm w-full text-center animate-season-pop">
+        <!-- 월 표시 -->
+        <p class="text-xs font-bold text-emerald-500 tracking-widest uppercase mb-1">{{ pending_season_reward.season_label }}</p>
+        <h2 class="text-2xl font-black text-slate-800 mb-1">월말정산</h2>
+        <p class="text-sm text-slate-400 mb-6">이번 시즌 사과게임 결과</p>
+
+        <!-- 순위 배지 -->
+        <div class="flex justify-center mb-5">
+            {% if pending_season_reward.rank == 1 %}
+            <span class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-50 border-2 border-amber-400 text-amber-600 font-black text-xl shadow">
+                🥇 1위
+            </span>
+            {% elif pending_season_reward.rank == 2 %}
+            <span class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-50 border-2 border-slate-400 text-slate-600 font-black text-xl shadow">
+                🥈 2위
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-orange-50 border-2 border-orange-300 text-orange-600 font-black text-xl shadow">
+                🥉 3위
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- 보상 -->
+        <div class="bg-emerald-50 rounded-2xl py-5 px-6 mb-6 border border-emerald-100">
+            <p class="text-xs text-emerald-600 font-semibold mb-1">획득한 낙엽</p>
+            <p class="text-4xl font-black text-emerald-600">🍂 +{{ pending_season_reward.reward }}</p>
+            <p class="text-xs text-slate-400 mt-1">낙엽이 내 계정에 적립되었습니다</p>
+        </div>
+
+        <!-- 확인 버튼 -->
+        <button id="season-reward-dismiss-btn"
+            class="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-base transition-all duration-200 shadow-md">
+            확인했어요 🍂
+        </button>
+    </div>
+</div>
+
+<style>
+@keyframes season-pop {
+    0%   { opacity: 0; transform: scale(0.85) translateY(20px); }
+    60%  { transform: scale(1.03) translateY(-4px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-season-pop { animation: season-pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+</style>
+
+<script>
+(function () {
+    // 낙엽 낙하 애니메이션 (캔버스)
+    const canvas = document.getElementById('leaf-canvas');
+    const ctx = canvas.getContext('2d');
+    const LEAVES_EMOJI = ['🍂', '🍃', '🍁'];
+    let particles = [];
+    let raf;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function spawnLeaf() {
+        return {
+            x: Math.random() * canvas.width,
+            y: -20,
+            vy: 1.5 + Math.random() * 2.5,
+            vx: (Math.random() - 0.5) * 1.2,
+            rot: Math.random() * 360,
+            rotSpeed: (Math.random() - 0.5) * 3,
+            size: 18 + Math.random() * 16,
+            emoji: LEAVES_EMOJI[Math.floor(Math.random() * LEAVES_EMOJI.length)],
+            opacity: 0.7 + Math.random() * 0.3,
+        };
+    }
+
+    // 초기 입자 생성
+    for (let i = 0; i < 28; i++) {
+        const p = spawnLeaf();
+        p.y = Math.random() * canvas.height;
+        particles.push(p);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+            ctx.save();
+            ctx.globalAlpha = p.opacity;
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot * Math.PI / 180);
+            ctx.font = `${p.size}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.emoji, 0, 0);
+            ctx.restore();
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.rot += p.rotSpeed;
+            if (p.y > canvas.height + 40) {
+                Object.assign(p, spawnLeaf());
+            }
+        });
+        raf = requestAnimationFrame(draw);
+    }
+
+    const modal = document.getElementById('season-reward-modal');
+    if (modal) draw();
+
+    // 확인 버튼
+    document.getElementById('season-reward-dismiss-btn').addEventListener('click', function () {
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = '잠깐...';
+        fetch("{% url 'season_reward_dismiss' %}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+        }).finally(function () {
+            cancelAnimationFrame(raf);
+            modal.style.transition = 'opacity 0.3s';
+            modal.style.opacity = '0';
+            setTimeout(function () { modal.remove(); }, 300);
+        });
+    });
+})();
+</script>
+{% endif %}
+
     {% block extra_js %}{% endblock %}
     <script>
       // 페이지 전환 Skeleton 로딩

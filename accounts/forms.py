@@ -180,6 +180,9 @@ class ProfileUpdateForm(forms.ModelForm):
     notify_post_comment = forms.BooleanField(required=False, label="내 게시글 댓글 및 답글 알림 받기", widget=forms.CheckboxInput(attrs={
         "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
     }))
+    notify_game_season_ending = forms.BooleanField(required=False, label="게임 시즌 종료 알림 받기", widget=forms.CheckboxInput(attrs={
+        "class": "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+    }))
 
     verification_document = forms.FileField(
         required=False,
@@ -217,11 +220,12 @@ class ProfileUpdateForm(forms.ModelForm):
                 self.fields['notify_gathering_all'].initial = student.notify_gathering_all
                 self.fields['notify_gathering_joined'].initial = student.notify_gathering_joined
                 self.fields['notify_post_comment'].initial = student.notify_post_comment
+                self.fields['notify_game_season_ending'].initial = student.notify_game_season_ending
             except Student.DoesNotExist:
                 pass
         else:
             # 학생이 아닌 경우 커스텀 필드 제거
-            for f_name in ['nickname', 'bio', 'github_url', 'blog_url', 'notify_gathering_all', 'notify_gathering_joined', 'notify_post_comment', 'verification_document']:
+            for f_name in ['nickname', 'bio', 'github_url', 'blog_url', 'notify_gathering_all', 'notify_gathering_joined', 'notify_post_comment', 'notify_game_season_ending', 'verification_document']:
                 if f_name in self.fields:
                     del self.fields[f_name]
 
@@ -240,6 +244,7 @@ class ProfileUpdateForm(forms.ModelForm):
             student.notify_gathering_all = self.cleaned_data.get('notify_gathering_all', False)
             student.notify_gathering_joined = self.cleaned_data.get('notify_gathering_joined', False)
             student.notify_post_comment = self.cleaned_data.get('notify_post_comment', False)
+            student.notify_game_season_ending = self.cleaned_data.get('notify_game_season_ending', False)
             doc = self.cleaned_data.get('verification_document')
             if doc:
                 student.verification_document = doc
