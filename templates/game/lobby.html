@@ -4,6 +4,107 @@
 
 {% block title %}IPSE 놀이터 | 게임 로비{% endblock %}
 
+{% block page_skeleton %}
+<div style="max-width:1280px;margin:0 auto;padding:32px 24px">
+  <div style="display:grid;grid-template-columns:8fr 4fr;gap:32px;align-items:stretch">
+
+    <!-- 게임 카탈로그 (col-8) -->
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:20px">
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid #e2e8f0">
+        <div class="sk-b" style="width:36px;height:36px;border-radius:12px;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+          <div class="sk-p" style="height:13px;width:38%"></div>
+          <div class="sk-p" style="height:10px;width:60%"></div>
+        </div>
+        <div class="sk-b" style="height:30px;width:80px;border-radius:10px;flex-shrink:0"></div>
+      </div>
+      <!-- 게임 카드 3열 -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+          <div class="sk-b" style="aspect-ratio:16/9;border-radius:0;background:#c7d2dc"></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:7px">
+            <div class="sk-p" style="height:13px;width:65%"></div>
+            <div class="sk-p" style="height:10px;width:90%"></div>
+            <div class="sk-p" style="height:10px;width:75%"></div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+          <div class="sk-b" style="aspect-ratio:16/9;border-radius:0;background:#c7d2dc"></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:7px">
+            <div class="sk-p" style="height:13px;width:55%"></div>
+            <div class="sk-p" style="height:10px;width:85%"></div>
+            <div class="sk-p" style="height:10px;width:70%"></div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;opacity:0.6">
+          <div class="sk-b" style="aspect-ratio:16/9;border-radius:0;background:#c7d2dc"></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:7px">
+            <div class="sk-p" style="height:13px;width:70%"></div>
+            <div class="sk-p" style="height:10px;width:80%"></div>
+            <div class="sk-p" style="height:10px;width:60%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 채팅 패널 (col-4) -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:20px;display:flex;flex-direction:column;overflow:hidden;min-height:400px">
+      <!-- 탭 (채팅 | 랭킹) -->
+      <div style="display:flex;border-bottom:1px solid #e2e8f0">
+        <div style="flex:1;height:44px;background:#eff6ff;display:flex;align-items:center;justify-content:center">
+          <div class="sk-p" style="height:11px;width:36px"></div>
+        </div>
+        <div style="flex:1;height:44px;display:flex;align-items:center;justify-content:center">
+          <div class="sk-p" style="height:11px;width:36px"></div>
+        </div>
+      </div>
+      <!-- 상태 배지 -->
+      <div style="padding:10px 16px;border-bottom:1px solid #f8fafc">
+        <div class="sk-p" style="height:18px;width:60px;border-radius:999px"></div>
+      </div>
+      <!-- 채팅 메시지 -->
+      <div style="flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;overflow:hidden">
+        <div style="display:flex;gap:8px">
+          <div class="sk-c" style="width:24px;height:24px;flex-shrink:0"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+            <div class="sk-p" style="height:10px;width:36%"></div>
+            <div class="sk-p" style="height:11px;width:85%"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div class="sk-c" style="width:24px;height:24px;flex-shrink:0"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+            <div class="sk-p" style="height:10px;width:28%"></div>
+            <div class="sk-p" style="height:11px;width:70%"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div class="sk-c" style="width:24px;height:24px;flex-shrink:0"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+            <div class="sk-p" style="height:10px;width:32%"></div>
+            <div class="sk-p" style="height:11px;width:55%"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div class="sk-c" style="width:24px;height:24px;flex-shrink:0"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+            <div class="sk-p" style="height:10px;width:40%"></div>
+            <div class="sk-p" style="height:11px;width:90%"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 입력창 -->
+      <div style="display:flex;gap:8px;padding:12px;border-top:1px solid #e2e8f0">
+        <div class="sk-b" style="flex:1;height:36px;border-radius:10px"></div>
+        <div class="sk-b" style="width:56px;height:36px;border-radius:10px"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock page_skeleton %}
+
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-8">
     <!-- 🎰 메인 레이아웃 Grid -->

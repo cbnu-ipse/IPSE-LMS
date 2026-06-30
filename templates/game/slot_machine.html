@@ -4,6 +4,43 @@
 
 {% block title %}IPSE 놀이터 | 학점 캡슐 슬롯머신{% endblock %}
 
+{% block page_skeleton %}
+<div style="max-width:1280px;margin:0 auto;padding:32px 24px">
+  <div style="display:grid;grid-template-columns:8fr 4fr;gap:24px;align-items:start">
+    <!-- 게임 캔버스 (col-8) -->
+    <div class="sk-b" style="height:520px;border-radius:20px;background:#d1d5db"></div>
+    <!-- 사이드 패널 (col-4) -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:10px">
+        <div class="sk-p" style="height:13px;width:55%"></div>
+        <div class="sk-p" style="height:24px;width:40%"></div>
+        <div class="sk-b" style="height:40px;border-radius:10px;margin-top:4px"></div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:10px">
+        <div class="sk-p" style="height:13px;width:48%"></div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="sk-c" style="width:28px;height:28px;flex-shrink:0"></div>
+            <div class="sk-p" style="height:11px;width:50%"></div>
+            <div class="sk-p" style="height:11px;width:20%;margin-left:auto"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="sk-c" style="width:28px;height:28px;flex-shrink:0"></div>
+            <div class="sk-p" style="height:11px;width:44%"></div>
+            <div class="sk-p" style="height:11px;width:20%;margin-left:auto"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="sk-c" style="width:28px;height:28px;flex-shrink:0"></div>
+            <div class="sk-p" style="height:11px;width:55%"></div>
+            <div class="sk-p" style="height:11px;width:20%;margin-left:auto"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock page_skeleton %}
+
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-8">
     <div class="grid lg:grid-cols-12 gap-6 items-start">

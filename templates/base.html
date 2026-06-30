@@ -64,26 +64,35 @@
         transform: translateX(-100%);
         animation: sk-shimmer 1.6s ease-in-out infinite;
     }
-    /* ── 페이지 전환 skeleton: 신 페이지 로드 시 overlay 표시, window.load 후 fade-out ── */
-    @keyframes sk-page-sweep {
-        0%   { transform: translateX(-150%); }
-        100% { transform: translateX( 150%); }
+    /* ── 페이지 전환 skeleton ── */
+    @keyframes sk-sweep {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(200%); }
     }
     #page-loader {
-        position: fixed;
-        inset: 0;
-        background: #f8fafc;
-        z-index: 39; /* nav z-50 / mobile-nav z-40 아래 — content만 덮음 */
+        position: fixed; inset: 0;
+        background: #fff;
+        z-index: 10000;
         pointer-events: none;
-        transition: opacity 0.35s ease-out;
+        transition: opacity 0.3s ease-out;
+        overflow: hidden;
     }
     #page-loader::after {
         content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(105deg, transparent 25%, rgba(100,116,139,0.18) 50%, transparent 75%);
-        animation: sk-page-sweep 1.3s ease-in-out infinite;
+        position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.75) 50%, transparent 100%);
+        animation: sk-sweep 1.4s ease-in-out infinite;
+        z-index: 1;
     }
+    #sk-nav-ph {
+        height: 65px; background: #f1f5f9;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex; align-items: center; gap: 14px; padding: 0 24px;
+    }
+    /* skeleton utility */
+    .sk-b  { background: #e2e8f0; border-radius: 8px; }
+    .sk-c  { background: #e2e8f0; border-radius: 50%; flex-shrink: 0; }
+    .sk-p  { background: #e2e8f0; border-radius: 999px; }
     </style>
 </head>
 
@@ -114,6 +123,29 @@
             }
         });
     </script>
+    <div id="page-loader" aria-hidden="true">
+        <div id="sk-nav-ph">
+            <div class="sk-p" style="width:80px;height:22px;margin-right:auto"></div>
+            <div class="sk-p" style="width:52px;height:16px"></div>
+            <div class="sk-p" style="width:52px;height:16px"></div>
+            <div class="sk-p" style="width:52px;height:16px"></div>
+            <div class="sk-p" style="width:52px;height:16px"></div>
+        </div>
+        {% block page_skeleton %}
+        <div style="max-width:1280px;margin:0 auto;padding:32px 24px">
+            <div class="sk-b" style="width:38%;height:28px;margin-bottom:12px"></div>
+            <div class="sk-p" style="width:22%;height:16px;margin-bottom:28px"></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+                <div class="sk-b" style="height:180px;border-radius:14px"></div>
+                <div class="sk-b" style="height:180px;border-radius:14px"></div>
+                <div class="sk-b" style="height:180px;border-radius:14px"></div>
+            </div>
+            <div class="sk-p" style="width:80%;height:14px;margin-bottom:10px"></div>
+            <div class="sk-p" style="width:60%;height:14px;margin-bottom:10px"></div>
+            <div class="sk-p" style="width:45%;height:14px"></div>
+        </div>
+        {% endblock page_skeleton %}
+    </div>
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
 
     {% block navbar %}
@@ -405,7 +437,6 @@
     {% endif %}
     {% endblock %}
 
-    <div id="page-loader" aria-hidden="true"></div>
     <main class="flex-grow">
         {% block content %}{% endblock %}
     </main>
@@ -502,7 +533,7 @@
           setTimeout(function() {
             if (loader) loader.style.display = 'none';
             window.isPageLoading = false;
-          }, 380);
+          }, 320);
         }
 
         if (document.readyState === 'complete') {
