@@ -1,5 +1,247 @@
-from django.db import models
+import calendar
+import logging
+import threading
+from datetime import date
+
+from django.db import models, transaction
 from django.conf import settings
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+
+class GameSeason(models.Model):
+    number = models.PositiveIntegerField(unique=True, verbose_name="시즌 번호")
+    start_date = models.DateField(verbose_name="시작일")  # 매월 1일
+    end_date = models.DateField(verbose_name="종료일")    # 매월 마지막 날
+    is_active = models.BooleanField(default=False, db_index=True, verbose_name="활성 시즌")
+    rewards_distributed = models.BooleanField(default=False, verbose_name="보상 지급 완료")
+    warned_3d = models.BooleanField(default=False, verbose_name="3일 전 알림 전송")
+    warned_1d = models.BooleanField(default=False, verbose_name="1일 전 알림 전송")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-number"]
+        verbose_name = "게임 시즌"
+        verbose_name_plural = "게임 시즌 목록"
+
+    def __str__(self):
+        return f"시즌 {self.number} ({self.start_date.strftime('%Y년 %m월')})"
+
+    # ── 공개 API ─────────────────────────────────────────────────────────────
+
+    @classmethod
+    def get_or_create_current(cls):
+        """
+        활성 시즌을 반환한다.
+        - 시즌이 이미 종료됐으면 자동으로 마감·보상 지급 후 다음 시즌을 반환.
+        - 활성 시즌이 없으면 현재 월 기준으로 새 시즌을 생성해 반환.
+        - 종료 3일/1일 전이면 자동으로 경고 알림을 전송한다.
+        """
+        today = timezone.localdate()
+
+        active = cls.objects.filter(is_active=True).first()
+
+        if active and active.is_ended:
+            cls._auto_finalize(active)
+            active = None
+
+        if active:
+            cls._maybe_send_warning(active)
+            return active
+
+        covering = cls.objects.filter(start_date__lte=today, end_date__gte=today).first()
+        if covering:
+            covering.is_active = True
+            covering.save(update_fields=["is_active"])
+            cls._maybe_send_warning(covering)
+            return covering
+
+        last = cls.objects.order_by("-number").first()
+        number = last.number + 1 if last else 1
+        year, month = today.year, today.month
+        start = date(year, month, 1)
+        end = date(year, month, calendar.monthrange(year, month)[1])
+        return cls.objects.create(
+            number=number,
+            start_date=start,
+            end_date=end,
+            is_active=True,
+        )
+
+    @classmethod
+    def _maybe_send_warning(cls, season):
+        """종료 3일/1일 전이고 아직 보내지 않은 경고 알림을 백그라운드로 전송."""
+        days = season.days_remaining
+        if days == 3 and not season.warned_3d:
+            updated = cls.objects.filter(pk=season.pk, warned_3d=False).update(warned_3d=True)
+            if updated:
+                threading.Thread(
+                    target=cls._send_warning_notifications,
+                    args=(season, 3),
+                    daemon=True,
+                ).start()
+        elif days == 1 and not season.warned_1d:
+            updated = cls.objects.filter(pk=season.pk, warned_1d=False).update(warned_1d=True)
+            if updated:
+                threading.Thread(
+                    target=cls._send_warning_notifications,
+                    args=(season, 1),
+                    daemon=True,
+                ).start()
+
+    # ── 프로퍼티 ──────────────────────────────────────────────────────────────
+
+    @property
+    def days_remaining(self):
+        today = timezone.localdate()
+        if today >= self.end_date:
+            return 0
+        return (self.end_date - today).days
+
+    @property
+    def is_ended(self):
+        return timezone.localdate() > self.end_date
+
+    @property
+    def label(self):
+        return self.start_date.strftime("%Y년 %m월")
+
+    # ── 내부 로직 ─────────────────────────────────────────────────────────────
+
+    @classmethod
+    def _send_warning_notifications(cls, season, days_before):
+        """종료 N일 전 경고 알림을 이번 시즌 사과게임 참여자에게 전송."""
+        from game.models import AppleGameScore
+        from accounts.models import Notification, User
+        from accounts.utils import send_web_push
+
+        msg = (
+            f"{season.label} 사과게임 시즌이 {days_before}일 후 종료됩니다! "
+            "지금 바로 최고 점수에 도전해 보세요."
+        )
+        user_ids = (
+            AppleGameScore.objects
+            .filter(
+                played_at__date__gte=season.start_date,
+                played_at__date__lte=season.end_date,
+            )
+            .values_list("user_id", flat=True)
+            .distinct()
+        )
+        recipients = User.objects.filter(pk__in=user_ids)
+
+        for user in recipients:
+            # 시즌 종료 알림 수신 거부 설정 확인
+            try:
+                if not user.student.notify_game_season_ending:
+                    continue
+            except Exception:
+                pass
+            try:
+                notif = Notification.objects.create(
+                    recipient=user,
+                    sender=None,
+                    notification_type="game_season_ending",
+                    message=msg,
+                )
+                send_web_push(notif)
+            except Exception as e:
+                logger.error(f"[GameSeason] {user.username} 경고 알림 실패: {e}")
+
+        logger.info(f"[GameSeason] 시즌 {season.number} 종료 {days_before}일 전 알림 완료 ({recipients.count()}명).")
+
+    @classmethod
+    def _auto_finalize(cls, season):
+        """
+        종료된 시즌을 원자적으로 마감하고 보상·알림을 백그라운드 스레드로 처리.
+        동시 요청이 들어와도 DB update rowcount로 한 번만 실행됨.
+        """
+        with transaction.atomic():
+            # rewards_distributed=False 조건을 포함해 원자적으로 마감 처리.
+            # 동시에 두 요청이 들어오면 둘 중 하나만 updated=1을 얻는다.
+            updated = cls.objects.filter(
+                pk=season.pk,
+                rewards_distributed=False,
+            ).update(is_active=False, rewards_distributed=True)
+
+        if updated == 0:
+            return  # 이미 다른 요청이 처리 완료
+
+        thread = threading.Thread(
+            target=cls._distribute_rewards_and_notify,
+            args=(season,),
+            daemon=True,
+        )
+        thread.start()
+
+    @classmethod
+    def _distribute_rewards_and_notify(cls, season):
+        """사과게임 상위 3명에게 낙엽을 지급하고 월말정산 UI 클레임을 생성한다."""
+        from game.views import get_apple_ranking, SEASON_RANK_REWARDS
+
+        RANK_LABELS = {1: "1위", 2: "2위", 3: "3위"}
+
+        try:
+            rows = get_apple_ranking(top_n=3, season=season)
+        except Exception as e:
+            logger.error(f"[GameSeason] {season.label} 랭킹 조회 실패: {e}")
+            return
+
+        for row in rows:
+            rank = row["rank"]
+            reward = SEASON_RANK_REWARDS.get(rank)
+            if reward is None:
+                continue
+
+            user = row["user"]
+            label = RANK_LABELS.get(rank, f"{rank}위")
+            description = f"[시즌 {season.number}] 사과게임 {label} 보상"
+
+            try:
+                user.adjust_leaves(reward, "SEASON_APPLE_REWARD", description)
+            except Exception as e:
+                logger.error(f"[GameSeason] {user.username} 보상 지급 실패: {e}")
+                continue
+
+            # 다음 접속 시 월말정산 모달로 표시 (Notification 아님)
+            try:
+                SeasonRewardClaim.objects.create(
+                    user=user,
+                    season_label=season.label,
+                    rank=rank,
+                    reward=reward,
+                )
+            except Exception as e:
+                logger.error(f"[GameSeason] {user.username} 정산 클레임 생성 실패: {e}")
+
+        logger.info(f"[GameSeason] 시즌 {season.number} ({season.label}) 자동 마감 완료.")
+
+
+
+
+class SeasonRewardClaim(models.Model):
+    """시즌 보상 지급 후 사용자가 다음 접속 시 표시할 월말정산 UI 데이터."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="season_reward_claims",
+        verbose_name="사용자"
+    )
+    season_label = models.CharField(max_length=50, verbose_name="시즌 표시명")  # "2026년 07월"
+    rank = models.PositiveSmallIntegerField(verbose_name="최종 순위")
+    reward = models.PositiveIntegerField(verbose_name="지급 낙엽 수량")
+    shown = models.BooleanField(default=False, db_index=True, verbose_name="확인 여부")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "시즌 보상 정산"
+        verbose_name_plural = "시즌 보상 정산 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.season_label} {self.rank}위 +{self.reward}"
+
 
 class SlotPlayLog(models.Model):
     user = models.ForeignKey(
@@ -19,7 +261,7 @@ class SlotPlayLog(models.Model):
         verbose_name_plural = "슬롯머신 플레이 로그 목록"
 
     def __str__(self):
-        return f"{self.user.username} - {self.result_grade}(+{self.result_reward}) at {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.user.username} - {self.result_grade}(+{self.result_reward}) {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
 
 class AppleGameScore(models.Model):
@@ -38,11 +280,10 @@ class AppleGameScore(models.Model):
         verbose_name_plural = "사과게임 점수 목록"
 
     def __str__(self):
-        return f"{self.user.username} - {self.score}점 at {self.played_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.user.username} - {self.score}점"
 
 
 class LobbyChatMessage(models.Model):
-    """로비 채팅 메시지 — WebSocket으로 수신된 메시지를 영속화합니다."""
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -58,4 +299,4 @@ class LobbyChatMessage(models.Model):
         verbose_name_plural = "로비 채팅 메시지 목록"
 
     def __str__(self):
-        return f"[{self.created_at.strftime('%H:%M')}] {self.user.username}: {self.message[:30]}"
+        return f"{self.user.username}: {self.message[:30]}"
