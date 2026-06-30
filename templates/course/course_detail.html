@@ -48,18 +48,18 @@
             <section>
                 <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
                     <h2 class="text-2xl font-semibold text-[#3F3F3F]">강의 소개</h2>
-                    {% if user.is_staff %}
+                    {% if is_course_manager %}
                     <button type="button" id="toggle-summary-btn" class="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs rounded-md transition">
                         편집
                     </button>
                     {% endif %}
                 </div>
-                
+
                 <div id="summary-view" class="text-slate-600 leading-relaxed whitespace-pre-line font-medium text-left ml-0 pl-0">
                     {{ course.summary|default:"등록된 강의 설명이 없습니다." }}
                 </div>
 
-                {% if user.is_staff %}
+                {% if is_course_manager %}
                 <form id="summary-form" action="{% url 'course_update_summary' course.slug %}" method="POST" class="hidden">
                     {% csrf_token %}
                     <textarea name="summary" rows="5" class="w-full p-4 border border-slate-300 bg-slate-50 rounded-md focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500 outline-none transition text-slate-700 font-medium resize-none">{{ course.summary }}</textarea>
@@ -76,7 +76,7 @@
                 <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
                     <h2 class="text-2xl font-semibold text-[#3F3F3F]">커리큘럼 구성</h2>
                     
-                    {% if user.is_staff %}
+                    {% if is_course_manager %}
                     <button id="toggle-curriculum-btn" class="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-sm rounded-md transition">
                         편집
                     </button>
@@ -89,7 +89,7 @@
                         <li class="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition group">
                             
                             <div class="flex items-center">
-                                {% if user.is_staff %}
+                                {% if is_course_manager %}
                                 <form action="{% url 'lesson_delete' lesson.id %}" method="POST" class="delete-lesson-form hidden mr-3" onsubmit="return confirm('정말 이 수업을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.');">
                                     {% csrf_token %}
                                     <button type="submit" class="bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-lg w-7 h-7 flex items-center justify-center font-bold transition">
@@ -103,22 +103,29 @@
                                     <span>{{ lesson.title }}</span>
                                 </div>
                             </div>
-    
-                             {% if lesson.id in completed_lesson_ids %}
-                            <span class="text-sm font-bold text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full">
-                                <i class="fa-solid fa-check mr-1"></i>완료
-                            </span>
-                            {% else %}
-                            <a href="{{ lesson.get_absolute_url }}" class="text-sm font-semibold text-emerald-700 opacity-0 group-hover:opacity-100 transition">
-                                시작하기
-                            </a>
-                            {% endif %}
+
+                            <div class="flex items-center gap-2">
+                                {% if is_course_manager %}
+                                <a href="{% url 'lesson_edit' course.slug lesson.id %}" class="delete-lesson-form hidden text-xs font-semibold text-slate-500 hover:text-emerald-700 transition">
+                                    편집
+                                </a>
+                                {% endif %}
+                                {% if lesson.id in completed_lesson_ids %}
+                                <span class="text-sm font-bold text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full">
+                                    <i class="fa-solid fa-check mr-1"></i>완료
+                                </span>
+                                {% else %}
+                                <a href="{{ lesson.get_absolute_url }}" class="text-sm font-semibold text-emerald-700 opacity-0 group-hover:opacity-100 transition">
+                                    시작하기
+                                </a>
+                                {% endif %}
+                            </div>
                         </li>
                         {% empty %}
                         <li class="px-6 py-10 text-center text-sm text-slate-400 font-medium">아직 등록된 수업이 없습니다.</li>
                         {% endfor %}
 
-                        {% if user.is_staff %}
+                        {% if is_course_manager %}
                         <li id="add-lesson-row" class="hidden px-6 py-4 bg-slate-50/50">
                             <a href="{% url 'lesson_create' course.slug %}" class="flex items-center justify-center w-full py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 font-semibold hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 transition">
                                 <i class="fa-solid fa-plus mr-2"></i>새 수업 추가하기
@@ -154,7 +161,7 @@
                     </ul>
                 </div>
 
-                {% if user.is_staff %}
+                {% if is_course_manager %}
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <form method="POST" enctype="multipart/form-data" action="{% url 'course_detail' course.slug %}" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
                         {% csrf_token %}
@@ -257,7 +264,7 @@
                                 </div>
                             </div>
 
-                            {% if user == comment.author or user.is_staff and not comment.author.is_staff %}
+                            {% if user == comment.author or is_course_manager %}
                             <div class="flex items-center gap-2">
                                 {% if user == comment.author %}
                                 <button type="button" data-comment-toggle="{{ comment.id }}" class="text-xs font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 px-3 py-1 rounded-lg hover:bg-emerald-100 transition">수정</button>
@@ -343,6 +350,18 @@
                     </li>
                 </ul>
             </div>
+
+            {% if is_course_manager %}
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">강의 관리</p>
+                <a href="{% url 'course_edit' course.slug %}" class="flex items-center gap-2 w-full px-4 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-slate-700 hover:text-emerald-700 font-semibold text-sm rounded-lg transition">
+                    <i class="fa-solid fa-pen-to-square"></i> 강의 정보 수정
+                </a>
+                <a href="{% url 'course_delete' course.slug %}" class="flex items-center gap-2 w-full px-4 py-2.5 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-700 hover:text-rose-600 font-semibold text-sm rounded-lg transition">
+                    <i class="fa-solid fa-trash"></i> 강의 삭제
+                </a>
+            </div>
+            {% endif %}
         </aside>
 
     </div>

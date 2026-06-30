@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}강의 삭제 확인 - IPSE AI Academy{% endblock %}
+
+{% block content %}
+<section class="max-w-xl mx-auto px-6 py-16">
+    <div class="bg-white rounded-2xl border border-rose-200 shadow-sm overflow-hidden">
+
+        <div class="bg-rose-50 border-b border-rose-100 px-8 py-6">
+            <h1 class="text-2xl font-bold text-rose-700">강의 삭제</h1>
+            <p class="text-rose-500 text-sm mt-1 font-medium">이 작업은 되돌릴 수 없습니다.</p>
+        </div>
+
+        <div class="p-8 space-y-6">
+            <p class="text-slate-700 font-medium text-base">
+                <span class="font-bold text-slate-900">{{ course }}</span> 강의를 정말 삭제하시겠습니까?<br>
+                <span class="text-sm text-slate-500 mt-1 block">강의에 포함된 모든 수업, 파일, 진도율 데이터가 함께 삭제됩니다.</span>
+            </p>
+
+            <div class="flex items-center justify-end space-x-4 pt-4 border-t border-slate-100">
+                <a href="{% url 'course_detail' course.slug %}" class="px-6 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition">
+                    취소
+                </a>
+                <form method="POST">
+                    {% csrf_token %}
+                    <button type="submit" class="px-8 py-2.5 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700 transition">
+                        삭제하기
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
