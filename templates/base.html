@@ -729,9 +729,8 @@
       // 로그아웃: CORS/cross-subdomain 문제를 완벽히 방지하기 위해 표준 HTML Form POST 전송 방식을 사용합니다.
       // 이렇게 하면 브라우저 수준에서 세션 쿠키 삭제(Set-Cookie)가 정상 처리됩니다.
       window.doLogout = function() {
-        const csrfCookie = document.cookie.split(';').map(c => c.trim())
-          .find(c => c.startsWith('csrftoken='));
-        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '{{ csrf_token }}';
+        // 서브도메인 간 쿠키 충돌을 방지하기 위해 Django 템플릿이 렌더링한 값을 항상 사용
+        const csrfToken = '{{ csrf_token }}';
         const logoutUrl = "/accounts/logout/";
 
         const form = document.createElement('form');
