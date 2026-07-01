@@ -618,6 +618,111 @@
 </script>
 {% endif %}
 
+{% if user.is_authenticated %}
+<!-- ─── PWA 최초 실행 시 기기 알림 켜기 안내 오버레이 (하루/평생 최초 1회, 유일한 "켜기" 진입점) ─── -->
+<div id="push-prompt-overlay" class="fixed inset-0 z-[9999] hidden items-center justify-center" aria-modal="true" role="dialog">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div class="relative z-10 bg-white rounded-3xl shadow-2xl p-8 mx-4 max-w-sm w-full text-center">
+        <div class="text-5xl mb-4">🔔</div>
+        <h2 class="text-xl font-black text-slate-800 mb-2">기기 알림을 받아보시겠어요?</h2>
+        <p class="text-sm text-slate-500 mb-6 leading-relaxed">앱이 종료되어 있어도 번개 모임, 댓글, 게임 시즌 소식을 기기 자체 알림으로 받아볼 수 있어요.</p>
+        <div class="flex flex-col gap-2">
+            <button id="push-prompt-enable-btn" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all duration-200 shadow-md">
+                켜기
+            </button>
+            <button id="push-prompt-dismiss-btn" class="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-all duration-200">
+                나중에
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const STORAGE_KEY = 'ipse_push_prompt_shown_v1';
+    const overlay = document.getElementById('push-prompt-overlay');
+    const enableBtn = document.getElementById('push-prompt-enable-btn');
+    const dismissBtn = document.getElementById('push-prompt-dismiss-btn');
+    if (!overlay || !enableBtn || !dismissBtn) return;
+
+    // PWA(홈 화면 설치 후 실행)로 접속했는지 확인
+    function isRunningAsPwa() {
+        return window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true; // iOS Safari 레거시
+    }
+
+    function markShown() {
+        try { localStorage.setItem(STORAGE_KEY, '1'); } catch (e) { /* 무시 */ }
+    }
+
+    function closeOverlay() {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+    }
+
+    // 표시 조건: PWA 실행 + 최초 1회(로컬스토리지 플래그 없음) + 알림 미지원/이미 결정된 브라우저 제외
+    let alreadyShown = false;
+    try { alreadyShown = localStorage.getItem(STORAGE_KEY) === '1'; } catch (e) { /* 무시 */ }
+
+    const pushSupported = ('serviceWorker' in navigator) && ('PushManager' in window) && window.Notification;
+
+    if (isRunningAsPwa() && !alreadyShown && pushSupported && Notification.permission === 'default') {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+    }
+
+    // URL-safe Base64 → Uint8Array (VAPID 공개키 변환용)
+    function urlB64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+        return outputArray;
+    }
+
+    dismissBtn.addEventListener('click', function () {
+        markShown();
+        closeOverlay();
+    });
+
+    enableBtn.addEventListener('click', async function () {
+        markShown();
+        const vapidPublicKey = "{{ VAPID_PUBLIC_KEY }}";
+        const csrftoken = "{{ csrf_token }}";
+
+        try {
+            if (!vapidPublicKey) throw new Error('서버 VAPID 설정이 누락되었습니다.');
+
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                closeOverlay();
+                return;
+            }
+
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlB64ToUint8Array(vapidPublicKey)
+            });
+
+            await fetch('/accounts/notifications/push/subscribe/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify(subscription)
+            });
+
+            if (window.showToast) window.showToast("🔔 기기 자체 알림이 활성화되었습니다!", "success");
+        } catch (err) {
+            console.error('Push prompt subscribe error:', err);
+        } finally {
+            closeOverlay();
+        }
+    });
+})();
+</script>
+{% endif %}
+
     {% block extra_js %}{% endblock %}
     <script>
       // 페이지 전환 로딩
@@ -899,10 +1004,7 @@
 
         const processedNotificationIds = new Set();
 
-        // 알림 권한 요청 (최초 진입 시)
-        if (window.Notification && Notification.permission === 'default') {
-          Notification.requestPermission();
-        }
+        // 기기 알림 권한/구독은 아래 PWA 최초 진입 안내 오버레이(단 하나의 진입점)에서만 요청합니다.
 
         // 기기 자체(PWA) 네이티브 알림 표시
         function showNativeNotification(n) {
