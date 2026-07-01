@@ -65,26 +65,14 @@
         animation: sk-shimmer 1.6s ease-in-out infinite;
     }
     /* ── 페이지 전환 loader ── */
-    @keyframes leaf-fill {
-        0%   { clip-path: inset(100% 0 0 0); }
-        55%  { clip-path: inset(0% 0 0 0); }
-        85%  { clip-path: inset(0% 0 0 0); }
-        100% { clip-path: inset(100% 0 0 0); }
-    }
-    @keyframes loader-bar {
-        0%   { left: -45%; }
-        100% { left: 115%; }
-    }
     #page-loader {
         position: fixed; inset: 0;
         background: rgba(255,255,255,0.96);
         z-index: 10000;
         pointer-events: none;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 20px;
         transition: opacity 0.25s ease-out;
     }
     </style>
@@ -123,10 +111,7 @@
     <div id="page-loader" aria-hidden="true" style="display:none">
       <div style="position:relative;width:80px;height:80px">
         <i class="fa-solid fa-leaf" style="position:absolute;inset:0;font-size:80px;color:#e2e8f0;line-height:1"></i>
-        <i class="fa-solid fa-leaf" style="position:absolute;inset:0;font-size:80px;color:#10b981;line-height:1;animation:leaf-fill 2s ease-in-out infinite"></i>
-      </div>
-      <div style="width:120px;height:3px;background:#f1f5f9;border-radius:999px;overflow:hidden;position:relative">
-        <div style="position:absolute;top:0;height:100%;width:45%;background:linear-gradient(90deg,transparent,#10b981,transparent);border-radius:999px;animation:loader-bar 1.2s ease-in-out infinite"></div>
+        <i id="sk-leaf-fill" class="fa-solid fa-leaf" style="position:absolute;inset:0;font-size:80px;color:#10b981;line-height:1;clip-path:inset(100% 0 0 0)"></i>
       </div>
     </div>
     <!-- ── /loader ── -->
@@ -649,22 +634,38 @@
           catch(e) { return false; }
         }
 
+        const leafFill = document.getElementById('sk-leaf-fill');
+        let _fillInterval = null;
+
         function showLoader() {
           if (!loader) return;
           window.isPageLoading = true;
+          if (leafFill) leafFill.style.clipPath = 'inset(100% 0 0 0)';
+          loader.style.opacity = '';
           loader.style.display = 'flex';
+          clearInterval(_fillInterval);
+          let pct = 0;
+          _fillInterval = setInterval(function() {
+            pct += (91 - pct) * 0.055;
+            if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - pct).toFixed(2) + '% 0 0 0)';
+          }, 40);
         }
 
         function hideLoader() {
           window.isPageLoading = false;
+          clearInterval(_fillInterval);
           if (!loader) return;
-          loader.style.opacity = '0';
-          loader.style.transition = 'opacity 0.2s ease-out';
+          if (leafFill) leafFill.style.clipPath = 'inset(0% 0 0 0)';
           setTimeout(function() {
-            loader.style.display = 'none';
-            loader.style.opacity = '';
-            loader.style.transition = '';
-          }, 200);
+            loader.style.opacity = '0';
+            loader.style.transition = 'opacity 0.2s ease-out';
+            setTimeout(function() {
+              loader.style.display = 'none';
+              loader.style.opacity = '';
+              loader.style.transition = '';
+              if (leafFill) leafFill.style.clipPath = 'inset(100% 0 0 0)';
+            }, 200);
+          }, 60);
         }
 
         // 링크 클릭
