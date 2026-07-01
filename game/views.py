@@ -186,9 +186,11 @@ def game_ranking_view(request):
 
     BOARD_LABELS = {
         "slot_game": "슬롯머신 랭킹",
-        "apple_game": "사과게임 랭킹",
+        "apple_game": "마지막 잎새 랭킹",
     }
     board_label = BOARD_LABELS[board]
+
+    is_all_seasons = False
 
     # 슬롯머신은 전체 기간 / 시즌 없음
     if board == "slot_game":
@@ -199,7 +201,10 @@ def game_ranking_view(request):
     else:
         current_season = GameSeason.get_or_create_current()
 
-        if season_number and season_number.isdigit():
+        if season_number == "all":
+            selected_season = None
+            is_all_seasons = True
+        elif season_number.isdigit():
             try:
                 selected_season = GameSeason.objects.get(number=int(season_number))
             except GameSeason.DoesNotExist:
@@ -232,6 +237,7 @@ def game_ranking_view(request):
         "current_season": current_season,
         "selected_season": selected_season,
         "all_seasons": all_seasons,
+        "is_all_seasons": is_all_seasons,
         "season_rank_rewards": SEASON_RANK_REWARDS,
     })
 

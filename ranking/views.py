@@ -250,7 +250,7 @@ def community_ranking(request):
     board = request.GET.get("board", "leaves").strip()
     query = request.GET.get("q", "").strip()
 
-    allowed_boards = {"leaves", "attendance", "streak", "slot_game", "apple_game"}
+    allowed_boards = {"leaves", "attendance", "streak"}
     if board not in allowed_boards:
         board = "leaves"
 
@@ -258,8 +258,6 @@ def community_ranking(request):
         "leaves":     "낙엽 랭킹",
         "attendance": "출석 랭킹",
         "streak":     "연속 출석 랭킹",
-        "slot_game":  "슬롯머신 랭킹",
-        "apple_game": "사과게임 랭킹",
     }
     board_label = BOARD_LABELS[board]
 
@@ -294,14 +292,6 @@ def community_ranking(request):
             if s > 0:
                 ranking_rows.append({"user": u, "score": s})
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
-
-    elif board == "slot_game":
-        from game.views import get_slot_ranking
-        ranking_rows = get_slot_ranking(10)
-
-    elif board == "apple_game":
-        from game.views import get_apple_ranking
-        ranking_rows = get_apple_ranking(10)
 
     return render(request, "ranking/community_ranking.html", {
         "board": board,

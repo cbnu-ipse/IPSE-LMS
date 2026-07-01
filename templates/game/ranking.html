@@ -15,11 +15,11 @@
                 <nav class="space-y-1">
                     <a href="?board=slot_game"
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'slot_game' %}bg-violet-50 text-violet-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-dice text-xs w-4 text-center text-violet-500"></i>슬롯머신 랭킹
+                        <i class="fa-solid fa-dice text-xs w-4 text-center text-violet-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">슬롯머신 랭킹</span>
                     </a>
                     <a href="?board=apple_game"
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'apple_game' %}bg-emerald-50 text-emerald-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-leaf text-xs w-4 text-center text-emerald-500"></i>마지막 잎새 랭킹
+                        <i class="fa-solid fa-leaf text-xs w-4 text-center text-emerald-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">마지막 잎새 랭킹</span>
                     </a>
                 </nav>
             </div>
@@ -34,6 +34,14 @@
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <!-- 시즌 정보 -->
                     <div class="flex items-center gap-4">
+                        {% if is_all_seasons %}
+                        <div class="flex flex-col gap-0.5">
+                            <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-emerald-500">
+                                <i class="fa-solid fa-infinity text-xs"></i>전체 시즌 통합
+                            </span>
+                            <p class="text-sm text-slate-500">모든 시즌을 통틀어 가장 높은 점수 기준으로 집계됩니다.</p>
+                        </div>
+                        {% else %}
                         <div class="flex flex-col gap-0.5">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-bold uppercase tracking-widest
@@ -72,6 +80,7 @@
                             {% endif %}
                         </div>
                         {% endif %}
+                        {% endif %}
                     </div>
 
                     <!-- 시즌 선택 + 보상 안내 -->
@@ -89,8 +98,9 @@
                             {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
                             <select name="season" onchange="document.getElementById('season-form').submit()"
                                     class="h-9 pl-3 pr-8 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 cursor-pointer">
+                                <option value="all" {% if is_all_seasons %}selected{% endif %}>전체 시즌 (통합)</option>
                                 {% for s in all_seasons %}
-                                <option value="{{ s.number }}" {% if s.number == selected_season.number %}selected{% endif %}>
+                                <option value="{{ s.number }}" {% if not is_all_seasons and s.number == selected_season.number %}selected{% endif %}>
                                     {{ s.label }}{% if s.number == current_season.number %} (현재){% endif %}
                                 </option>
                                 {% endfor %}
@@ -119,7 +129,9 @@
                     </div>
                     <form method="GET" class="flex gap-3 w-full xl:w-auto">
                         <input type="hidden" name="board" value="{{ board }}">
-                        {% if selected_season.number != current_season.number %}
+                        {% if is_all_seasons %}
+                        <input type="hidden" name="season" value="all">
+                        {% elif selected_season and selected_season.number != current_season.number %}
                         <input type="hidden" name="season" value="{{ selected_season.number }}">
                         {% endif %}
                         <input type="text" name="q" value="{{ query }}" placeholder="유저 닉네임 검색"
