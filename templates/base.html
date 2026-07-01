@@ -64,34 +64,27 @@
         transform: translateX(-100%);
         animation: sk-shimmer 1.6s ease-in-out infinite;
     }
-    /* ── 페이지 전환 skeleton ── */
-    @keyframes sk-sweep {
-        0%   { transform: translateX(-100%); }
-        100% { transform: translateX(200%); }
+    /* ── 페이지 전환 shimmer: 현재 페이지 <main> 위에 직접 ── */
+    @keyframes sk-page-sweep {
+        0%   { transform: translateX(-150%); }
+        100% { transform: translateX( 150%); }
     }
-    #page-loader {
-        position: fixed; inset: 0;
-        background: #fff;
-        z-index: 10000;
+    main.sk-loading {
         pointer-events: none;
-        transition: opacity 0.3s ease-out;
+        position: relative;
         overflow: hidden;
+        opacity: 0.88;
+        transition: opacity 0.1s ease;
     }
-    #page-loader::after {
+    main.sk-loading::after {
         content: '';
-        position: absolute; inset: 0;
-        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.75) 50%, transparent 100%);
-        animation: sk-sweep 1.4s ease-in-out infinite;
-        z-index: 1;
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 35%, rgba(255,255,255,0.75) 50%, rgba(255,255,255,0.5) 65%, transparent 100%);
+        animation: sk-page-sweep 1.5s ease-in-out infinite;
+        z-index: 9999;
+        pointer-events: none;
     }
-    #sk-nav-ph {
-        height: 65px; background: #f1f5f9;
-        border-bottom: 1px solid #e2e8f0;
-    }
-    /* skeleton utility */
-    .sk-b  { background: #e2e8f0; border-radius: 8px; }
-    .sk-c  { background: #e2e8f0; border-radius: 50%; flex-shrink: 0; }
-    .sk-p  { background: #e2e8f0; border-radius: 999px; }
     </style>
 </head>
 
@@ -122,48 +115,6 @@
             }
         });
     </script>
-    <div id="page-loader" aria-hidden="true">
-        <div id="sk-nav-ph">
-          <div style="max-width:80rem;margin:0 auto;width:100%;padding:0 16px;height:65px;display:flex;align-items:center;gap:14px">
-            <!-- 좌측: 로고 + 네비 항목 -->
-            <div style="display:flex;align-items:center;gap:36px;flex:1;min-width:0">
-                <div class="sk-p" style="width:68px;height:22px;flex-shrink:0"></div>
-                <div style="display:flex;align-items:center;gap:22px">
-                    <div class="sk-p" style="width:52px;height:13px"></div>
-                    <div class="sk-p" style="width:52px;height:13px"></div>
-                    <div class="sk-p" style="width:68px;height:13px"></div>
-                    <div class="sk-p" style="width:60px;height:13px"></div>
-                    <div class="sk-p" style="width:36px;height:13px"></div>
-                </div>
-            </div>
-            <!-- 우측: 소개 | 아이콘3 | 유저pill | 낙엽pill | 로그아웃 -->
-            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                <div class="sk-p" style="width:26px;height:12px"></div>
-                <div style="width:1px;height:16px;background:#e2e8f0;flex-shrink:0"></div>
-                <div class="sk-c" style="width:36px;height:36px"></div>
-                <div class="sk-c" style="width:36px;height:36px"></div>
-                <div class="sk-c" style="width:36px;height:36px"></div>
-                <div class="sk-b" style="height:34px;width:104px;border-radius:999px"></div>
-                <div class="sk-b" style="height:30px;width:60px;border-radius:999px"></div>
-                <div class="sk-c" style="width:34px;height:34px"></div>
-            </div>
-          </div>
-        </div>
-        {% block page_skeleton %}
-        <div style="max-width:1280px;margin:0 auto;padding:32px 24px">
-            <div class="sk-b" style="width:38%;height:28px;margin-bottom:12px"></div>
-            <div class="sk-p" style="width:22%;height:16px;margin-bottom:28px"></div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
-                <div class="sk-b" style="height:180px;border-radius:14px"></div>
-                <div class="sk-b" style="height:180px;border-radius:14px"></div>
-                <div class="sk-b" style="height:180px;border-radius:14px"></div>
-            </div>
-            <div class="sk-p" style="width:80%;height:14px;margin-bottom:10px"></div>
-            <div class="sk-p" style="width:60%;height:14px;margin-bottom:10px"></div>
-            <div class="sk-p" style="width:45%;height:14px"></div>
-        </div>
-        {% endblock page_skeleton %}
-    </div>
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
 
     {% block navbar %}
@@ -669,7 +620,7 @@
     <script>
       // 페이지 전환 Skeleton 로딩
       (function(){
-        const loader = document.getElementById('page-loader');
+        const mainEl = document.querySelector('main');
         window.isPageLoading = false;
 
         // 서브도메인을 포함한 동일 사이트 여부 판별
@@ -684,20 +635,13 @@
           catch(e) { return false; }
         }
 
-        // 신 페이지 로드 완료 시 loader fade-out
-        function hideLoader() {
-          if (!loader) return;
-          loader.style.opacity = '0';
-          setTimeout(function() {
-            if (loader) loader.style.display = 'none';
-            window.isPageLoading = false;
-          }, 320);
+        function showSkeleton() {
+          window.isPageLoading = true;
+          if (mainEl) mainEl.classList.add('sk-loading');
         }
-
-        if (document.readyState === 'complete') {
-          hideLoader();
-        } else {
-          window.addEventListener('load', hideLoader);
+        function hideSkeleton() {
+          window.isPageLoading = false;
+          if (mainEl) mainEl.classList.remove('sk-loading');
         }
 
         // 링크 클릭 시 중복 클릭 방지 (native navigation 유지)
@@ -721,11 +665,7 @@
             if (restrictedPaths.some(p => urlObj.pathname.startsWith(p)) && isMobileSize) return;
           } catch(err) { return; }
 
-          window.isPageLoading = true;
-          if (loader) {
-            loader.style.display = 'block';
-            loader.style.opacity = '1';
-          }
+          showSkeleton();
         }, { capture: true });
 
         // 폼 제출 시 중복 제출 방지
@@ -736,21 +676,16 @@
             return;
           }
           setTimeout(function() {
-            if (!e.defaultPrevented) {
-              window.isPageLoading = true;
-              if (loader) {
-                loader.style.display = 'block';
-                loader.style.opacity = '1';
-              }
-            }
+            if (!e.defaultPrevented) showSkeleton();
           }, 0);
         }, { capture: true });
 
-        // BF Cache 무효화
+        // BF Cache 무효화 및 skeleton 해제
         window.addEventListener('pageshow', function(e) {
           if (e.persisted || (window.performance && window.performance.navigation && window.performance.navigation.type === 2)) {
             window.location.reload(true);
           }
+          hideSkeleton();
         });
       })();
 
