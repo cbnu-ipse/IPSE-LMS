@@ -19,6 +19,10 @@
             <span class="text-slate-600/40 mx-2">|</span>
             <i class="fa-solid fa-calendar-check text-slate-500 text-xs"></i>
             오늘 <span id="slot-remaining-badge" class="font-bold text-amber-400">{{ played_today_count }}</span>/1회
+            {% if not checked_in_today %}
+            <span class="text-slate-600/40 mx-2">|</span>
+            <span class="text-rose-400 text-[11px] font-semibold">방명록 작성 후 참여 가능</span>
+            {% endif %}
         </div>
 
         <!-- 슬롯머신 본체 -->
@@ -60,16 +64,18 @@
 
             <!-- 스핀 버튼 -->
             <div class="spin-area">
-                <button id="spin-btn" onclick="spinSlot()" class="spin-btn" {% if played_today_count >= 1 %}disabled{% endif %}>
+                <button id="spin-btn" onclick="spinSlot()" class="spin-btn" {% if not checked_in_today or played_today_count >= 1 %}disabled{% endif %}>
                     <span id="spin-btn-icon">
                         {% if played_today_count >= 1 %}
                         <i class="fa-solid fa-calendar-check"></i>
+                        {% elif not checked_in_today %}
+                        <i class="fa-solid fa-book-open"></i>
                         {% else %}
                         <i class="fa-solid fa-gift"></i>
                         {% endif %}
                     </span>
                     <span id="spin-btn-text">
-                        {% if played_today_count >= 1 %}오늘 참여 완료{% else %}오늘의 무료 뽑기 SPIN!{% endif %}
+                        {% if played_today_count >= 1 %}오늘 참여 완료{% elif not checked_in_today %}방명록 작성 후 참여 가능{% else %}오늘의 무료 뽑기 SPIN!{% endif %}
                     </span>
                 </button>
                 <div id="countdown-container" class="countdown {% if played_today_count < 1 %}hidden{% endif %}">
@@ -110,7 +116,7 @@
         </div><!-- lg:col-span-8 -->
 
         <!-- RIGHT: 채팅 + 랭킹 탭 -->
-        <div class="lg:col-span-4" style="position:sticky;top:6rem">
+        <div class="lg:col-span-4 mobile-hidden" id="slot-side-col" style="position:sticky;top:6rem">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'slot-tab-chat')">
@@ -163,6 +169,12 @@
         </div>
 
     </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="slot-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="toggleSlotChat()">
+    <i id="slot-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -496,6 +508,65 @@
     padding: 8px 20px 16px;
     font-weight: 600;
 }
+
+/* ── 모바일 최적화 ───────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .slot-machine-body { padding: 16px 10px 14px; gap: 12px; }
+    .reels-frame { padding: 8px 8px; }
+    .reel-window { width: 80px; height: 192px; }
+    .reel-window::before, .reel-window::after { height: 44px; }
+    .reel-separator { height: 192px; padding: 0 3px; }
+    .reel-sep-dot { width: 3px; height: 3px; }
+    .reel-item { height: 64px; font-size: 2.1rem; }
+    .spin-btn { font-size: 13px; padding: 11px 20px; max-width: 100%; }
+    .symbols-legend { gap: 3px; padding: 8px 10px 0; }
+    .legend-item { min-width: 38px; padding: 5px 6px; }
+    .legend-sym { font-size: 1.1rem; }
+    .legend-name { font-size: 8px; }
+    .slot-hint { font-size: 9px; padding: 6px 10px 12px; }
+    .result-banner { font-size: 12px; padding: 8px 12px; }
+    .slot-stat-bar { font-size: .65rem; }
+}
+
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #slot-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #slot-side-col .game-side-panel { height: 100% !important; }
+    #slot-side-col.mobile-hidden { display: none !important; }
+    .slot-outer { overscroll-behavior: none; }
+}
+
+/* ── 모바일 가로모드: 스크롤 없이 한 화면에 (JS가 body.slot-landscape 토글) ──
+   심볼 높이는 JS가 DOM에서 측정하므로 CSS만 바꾸면 스핀 계산도 따라옴 */
+body.slot-landscape section.max-w-7xl { padding: 36px 8px 4px !important; }
+body.slot-landscape .slot-outer { padding: 0 !important; }
+body.slot-landscape .slot-stat-bar { font-size: .6rem; padding: 3px 10px; margin-bottom: 4px; }
+body.slot-landscape .slot-machine-body { padding: 8px 14px 10px; gap: 6px; border-radius: 18px; }
+body.slot-landscape .neon-border { border-radius: 18px; }
+body.slot-landscape .reels-frame { padding: 6px 10px; border-radius: 12px; }
+body.slot-landscape .reel-window { width: 68px; height: 150px; }   /* 50 × 3 */
+body.slot-landscape .reel-window::before,
+body.slot-landscape .reel-window::after { height: 34px; }
+body.slot-landscape .reel-separator { height: 150px; padding: 0 3px; }
+body.slot-landscape .reel-item { height: 50px; font-size: 1.65rem; }
+body.slot-landscape .spin-area { gap: 2px; }
+body.slot-landscape .spin-btn { padding: 7px 20px; font-size: 12px; border-radius: 12px; }
+body.slot-landscape .countdown { font-size: 10px; }
+body.slot-landscape .result-banner { font-size: 11px; padding: 5px 12px; }
+body.slot-landscape .symbols-legend { display: none; }
+body.slot-landscape .slot-hint { display: none; }
 </style>
 
 <script>
@@ -505,7 +576,7 @@
    - 서버에서 받은 결과 심볼 위치로 부드럽게 감속 정지
    ═══════════════════════════════════════════════════════════════════ */
 
-const SYMBOL_HEIGHT = 88;   // px, reel-item height
+let SYMBOL_HEIGHT = window.innerWidth <= 640 ? 64 : 88; // px, reel-item height (CSS에서 측정해 갱신)
 const SYMBOLS = [
     { id: 0, char: '🌱' },   // 새싹 (매우 흔함)
     { id: 1, char: '🍃' },   // 잎새 (흔함)
@@ -520,6 +591,7 @@ const REEL_PATTERN_LENGTH = 24; // 릴 하나에 쌓을 심볼 수
 
 let isSpinning = false;
 let playedToday = {{ played_today_count }};
+let checkedInToday = {{ checked_in_today|yesno:"true,false" }};
 
 const reelEls = [
     document.getElementById('reel0'),
@@ -576,9 +648,38 @@ function getInitialTop(patternIdx) {
     return -(patternIdx * SYMBOL_HEIGHT) + SYMBOL_HEIGHT;
 }
 
-reelEls.forEach(el => {
-    el.style.transform = `translateY(${getInitialTop(1)}px)`;
-    el.style.transition = 'none';
+// ─── 모바일 가로모드: 스크롤 없이 한 화면에 배치 ─────────────────
+// CSS가 심볼 크기를 바꾸므로 실제 DOM 높이를 측정해 스핀 계산과 일치시킨다.
+function isSlotLandscape() {
+    return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+}
+function applySlotLandscape() {
+    document.body.classList.toggle('slot-landscape', isSlotLandscape());
+}
+function measureSymbolHeight() {
+    const h = reelEls[0]?.querySelector('.reel-item')?.offsetHeight;
+    if (h) SYMBOL_HEIGHT = h;
+}
+function resetReelPositions() {
+    reelEls.forEach(el => {
+        el.style.transition = 'none';
+        el.style.transform  = `translateY(${getInitialTop(1)}px)`;
+    });
+}
+
+applySlotLandscape();     // 클래스(=CSS 크기) 먼저 반영
+measureSymbolHeight();    // 그 다음 실제 심볼 높이 측정
+resetReelPositions();
+
+window.addEventListener('resize', () => {
+    applySlotLandscape();
+    if (!isSpinning) { measureSymbolHeight(); resetReelPositions(); }
+});
+window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+        applySlotLandscape();
+        if (!isSpinning) { measureSymbolHeight(); resetReelPositions(); }
+    }, 120);
 });
 
 // ─── 스핀 애니메이션 ───────────────────────────────────────────────
@@ -675,7 +776,12 @@ function updateButtonState() {
     const btnIcon = document.getElementById('spin-btn-icon');
     const countdownContainer = document.getElementById('countdown-container');
 
-    if (playedToday === 0) {
+    if (!checkedInToday) {
+        btn.disabled = true;
+        btnIcon.innerHTML = '<i class="fa-solid fa-book-open"></i>';
+        btnText.textContent = '방명록 작성 후 참여 가능';
+        countdownContainer.classList.add('hidden');
+    } else if (playedToday === 0) {
         btn.disabled = false;
         btnIcon.innerHTML = '<i class="fa-solid fa-gift"></i>';
         btnText.textContent = '오늘의 무료 뽑기 SPIN!';
@@ -836,6 +942,17 @@ function gspSwitch(btn, paneId) {
     document.getElementById(paneId).style.display = '';
 }
 
+function toggleSlotChat() {
+    const col  = document.getElementById('slot-side-col');
+    const icon = document.getElementById('slot-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('slot-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+
 // ─── 디버그 전용: 강제 등급 스핀 ─────────────────────────────────────────────
 {% if debug %}
 async function debugSpin(grade) {
@@ -964,6 +1081,143 @@ async function debugSpin(grade) {
 
     connect();
     box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* 게임 페이지에서는 사이트 푸터 숨김 */
+  footer { display: none !important; }
+  /* 수납된 nav 알약이 콘텐츠를 가리지 않도록 상단 여백 확보 */
+  section.max-w-7xl { padding-top: 48px !important; }
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  /* 닫기(X) 버튼이 프로필과 겹치지 않도록 내부 콘텐츠를 왼쪽으로 확보 */
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-nav-pill {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: opacity 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-pill.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;               /* 수납된 nav일 때만 표시 (데스크톱에선 숨김) */
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    // Close button inside expanded nav
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    // Floating pill
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    document.body.appendChild(pill);
+
+    // Backdrop
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      pill.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      pill.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    // 모바일(<1024px)에서만 수납. 데스크톱은 기본 sticky 네비게이션 유지
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        pill.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        pill.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
 })();
 </script>
 {% endblock %}

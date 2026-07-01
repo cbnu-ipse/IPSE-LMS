@@ -248,22 +248,28 @@ def lobby_view(request):
 
 @login_required
 def slot_machine_view(request):
+    from accounts.models import Attendance
     today = timezone.localdate()
     played_today_count = SlotPlayLog.objects.filter(user=request.user, played_date=today).count()
+    checked_in_today = Attendance.objects.filter(user=request.user, date=today).exists()
     latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
     return render(request, "game/slot_machine.html", {
         "title": "낙엽 슬롯머신",
         "played_today_count": played_today_count,
+        "checked_in_today": checked_in_today,
         "chat_messages": list(latest)[::-1],
     })
 
 
 @login_required
 def slot_status(request):
+    from accounts.models import Attendance
     today = timezone.localdate()
     played_today_count = SlotPlayLog.objects.filter(user=request.user, played_date=today).count()
+    checked_in_today = Attendance.objects.filter(user=request.user, date=today).exists()
     return JsonResponse({
         "played_today": played_today_count,
+        "checked_in_today": checked_in_today,
         "leaves": request.user.leaves,
     })
 
@@ -278,6 +284,14 @@ def slot_spin(request):
     with transaction.atomic():
         user_db = User.objects.select_for_update().get(id=user.id)
         played_today_count = SlotPlayLog.objects.filter(user=user_db, played_date=today).count()
+
+        from accounts.models import Attendance
+        checked_in_today = Attendance.objects.filter(user=user_db, date=today).exists()
+        if not checked_in_today:
+            return JsonResponse(
+                {"status": "error", "message": "오늘 방명록을 작성해야 슬롯머신에 참여할 수 있습니다!"},
+                status=403
+            )
 
         if played_today_count >= 1:
             return JsonResponse(
