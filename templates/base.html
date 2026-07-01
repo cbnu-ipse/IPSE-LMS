@@ -64,26 +64,28 @@
         transform: translateX(-100%);
         animation: sk-shimmer 1.6s ease-in-out infinite;
     }
-    /* ── 페이지 전환 shimmer: 현재 페이지 <main> 위에 직접 ── */
-    @keyframes sk-page-sweep {
-        0%   { transform: translateX(-150%); }
-        100% { transform: translateX( 150%); }
+    /* ── 페이지 전환 loader ── */
+    @keyframes leaf-fill {
+        0%   { clip-path: inset(100% 0 0 0); }
+        55%  { clip-path: inset(0% 0 0 0); }
+        85%  { clip-path: inset(0% 0 0 0); }
+        100% { clip-path: inset(100% 0 0 0); }
     }
-    main.sk-loading {
-        pointer-events: none;
-        position: relative;
-        overflow: hidden;
-        opacity: 0.88;
-        transition: opacity 0.1s ease;
+    @keyframes loader-bar {
+        0%   { left: -45%; }
+        100% { left: 115%; }
     }
-    main.sk-loading::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 35%, rgba(255,255,255,0.75) 50%, rgba(255,255,255,0.5) 65%, transparent 100%);
-        animation: sk-page-sweep 1.5s ease-in-out infinite;
-        z-index: 9999;
+    #page-loader {
+        position: fixed; inset: 0;
+        background: rgba(255,255,255,0.96);
+        z-index: 10000;
         pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        transition: opacity 0.25s ease-out;
     }
     </style>
 </head>
@@ -116,6 +118,19 @@
         });
     </script>
     <div id="toast-container" class="fixed right-4 top-20 z-[10000] flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none"></div>
+
+    <!-- ── 페이지 전환 loader ── -->
+    <div id="page-loader" aria-hidden="true" style="display:none">
+      <div style="position:relative;width:80px;height:80px">
+        <i class="fa-solid fa-leaf" style="position:absolute;inset:0;font-size:80px;color:#e2e8f0;line-height:1"></i>
+        <i class="fa-solid fa-leaf" style="position:absolute;inset:0;font-size:80px;color:#10b981;line-height:1;animation:leaf-fill 2s ease-in-out infinite"></i>
+      </div>
+      <div style="width:120px;height:3px;background:#f1f5f9;border-radius:999px;overflow:hidden;position:relative">
+        <div style="position:absolute;top:0;height:100%;width:45%;background:linear-gradient(90deg,transparent,#10b981,transparent);border-radius:999px;animation:loader-bar 1.2s ease-in-out infinite"></div>
+      </div>
+    </div>
+    <!-- ── /loader ── -->
+
 
     {% block navbar %}
     {% if not is_embedded %}
@@ -618,12 +633,11 @@
 
     {% block extra_js %}{% endblock %}
     <script>
-      // 페이지 전환 Skeleton 로딩
+      // 페이지 전환 로딩
       (function(){
-        const mainEl = document.querySelector('main');
+        const loader = document.getElementById('page-loader');
         window.isPageLoading = false;
 
-        // 서브도메인을 포함한 동일 사이트 여부 판별
         function rootDomain(h) {
           if (h === 'localhost' || h.endsWith('.localhost')) return 'localhost';
           const p = h.split('.');
@@ -635,23 +649,28 @@
           catch(e) { return false; }
         }
 
-        function showSkeleton() {
+        function showLoader() {
+          if (!loader) return;
           window.isPageLoading = true;
-          if (mainEl) mainEl.classList.add('sk-loading');
-        }
-        function hideSkeleton() {
-          window.isPageLoading = false;
-          if (mainEl) mainEl.classList.remove('sk-loading');
+          loader.style.display = 'flex';
         }
 
-        // 링크 클릭 시 중복 클릭 방지 (native navigation 유지)
+        function hideLoader() {
+          window.isPageLoading = false;
+          if (!loader) return;
+          loader.style.opacity = '0';
+          loader.style.transition = 'opacity 0.2s ease-out';
+          setTimeout(function() {
+            loader.style.display = 'none';
+            loader.style.opacity = '';
+            loader.style.transition = '';
+          }, 200);
+        }
+
+        // 링크 클릭
         document.addEventListener('click', function(e) {
           if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
-          if (window.isPageLoading) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
+          if (window.isPageLoading) { e.preventDefault(); e.stopPropagation(); return; }
           const a = e.target.closest('a[href]');
           if (!a) return;
           const href = a.getAttribute('href');
@@ -665,27 +684,21 @@
             if (restrictedPaths.some(p => urlObj.pathname.startsWith(p)) && isMobileSize) return;
           } catch(err) { return; }
 
-          showSkeleton();
+          showLoader();
         }, { capture: true });
 
-        // 폼 제출 시 중복 제출 방지
+        // 폼 제출
         document.addEventListener('submit', function(e) {
-          if (window.isPageLoading) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          setTimeout(function() {
-            if (!e.defaultPrevented) showSkeleton();
-          }, 0);
+          if (window.isPageLoading) { e.preventDefault(); e.stopPropagation(); return; }
+          setTimeout(function() { if (!e.defaultPrevented) showLoader(); }, 0);
         }, { capture: true });
 
-        // BF Cache 무효화 및 skeleton 해제
+        // BF Cache 무효화 및 loader 해제
         window.addEventListener('pageshow', function(e) {
           if (e.persisted || (window.performance && window.performance.navigation && window.performance.navigation.type === 2)) {
             window.location.reload(true);
           }
-          hideSkeleton();
+          hideLoader();
         });
       })();
 
