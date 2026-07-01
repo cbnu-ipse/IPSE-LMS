@@ -2,13 +2,13 @@
 {% load static %}
 {% load hosts %}
 
-{% block title %}IPSE 놀이터 | 사과게임{% endblock %}
+{% block title %}IPSE 놀이터 | 마지막 잎새{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-8">
     <div class="grid lg:grid-cols-12 gap-6 items-start">
 
-        <!-- LEFT: 사과게임 -->
+        <!-- LEFT: 마지막 잎새 -->
         <div class="lg:col-span-8">
             <div class="ag-outer">
         <!-- 컴팩트 상태 바 -->
@@ -22,14 +22,20 @@
         <div class="ag-canvas-wrap" id="ag-canvas-wrap">
             <canvas id="ag-canvas"></canvas>
 
+            <!-- 가로모드 전용 HUD (점수·시간) -->
+            <div class="ag-hud" id="ag-hud">
+                <span class="ag-hud-item">점수 <strong id="ag-score-hud">0</strong></span>
+                <span class="ag-hud-item">시간 <strong id="ag-timer-hud">2:00</strong></span>
+            </div>
+
             <!-- 시작 오버레이 -->
             <div id="ag-start-overlay" class="ag-overlay">
                 <div class="ag-overlay-content">
-                    <div class="text-6xl mb-4">🍎</div>
-                    <h3>사과게임</h3>
+                    <div class="text-6xl mb-4">🍃</div>
+                    <h3>마지막 잎새</h3>
                     <p>
-                        드래그로 사각형 영역을 선택하면 해당 사과들의 합이 나타납니다.<br>
-                        합이 <strong class="text-emerald-600 font-extrabold">10</strong>이 되면 사과가 사라지고 점수를 획득해요!<br>
+                        드래그로 영역을 선택하면 해당 잎새들의 합이 나타납니다.<br>
+                        합이 <strong class="text-emerald-600 font-extrabold">10</strong>이 되면 잎새가 사라지고 점수를 획득해요!<br>
                         <span class="text-slate-400 text-[11px]">2분 안에 최대한 많은 점수를 획득하세요.</span>
                     </p>
                     <button id="ag-start-btn" class="ag-btn">
@@ -41,12 +47,12 @@
             <!-- 게임 오버 오버레이 -->
             <div id="ag-over-overlay" class="ag-overlay hidden">
                 <div class="ag-overlay-content">
-                    <div class="text-5xl mb-3">🎉</div>
+                    <div class="text-5xl mb-3">🍂</div>
                     <h3>게임 종료!</h3>
                     <div class="ag-final-box">
                         <span class="ag-stat-label">최종 점수</span>
                         <span id="ag-final-val" class="ag-final-score-val">0</span>
-                        <span class="text-[11px] text-slate-400">개의 사과 제거</span>
+                        <span class="text-slate-400">개의 잎새 제거</span>
                     </div>
                     <button id="ag-restart-btn" class="ag-btn">
                         <i class="fa-solid fa-rotate-right"></i> 다시 하기
@@ -54,13 +60,12 @@
                 </div>
             </div>
         </div>
-
-        <p class="ag-hint">드래그로 사각형 영역을 선택 · 합 = 10이면 사과 제거 · 빈 칸은 0으로 합산</p>
-            </div><!-- /.ag-outer -->
+        <div class="ag-hint">드래그로 잎새를 선택해 합이 10이 되면 낙엽이 됩니다 🍂</div>
+        </div><!-- /.ag-outer -->
         </div><!-- lg:col-span-8 -->
 
-        <!-- RIGHT: 채팅 + 랭킹 탭 -->
-        <div class="lg:col-span-4" style="position:sticky;top:6rem">
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-4 mobile-hidden" id="ag-side-col">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'ag-tab-chat')">
@@ -74,15 +79,16 @@
                 <!-- 채팅 탭 -->
                 <div id="ag-tab-chat" class="gsp-pane">
                     <div class="gsp-pane-head">
-                        <span id="ag-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
-                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
+                        <span id="ag-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                            연결 중...
                         </span>
                     </div>
                     <div id="ag-chat-messages" class="gsp-messages">
                         {% for msg in chat_messages %}
                         <div class="flex gap-2 items-start">
                             {% if msg.user.picture and msg.user.picture.name != "default.png" %}
-                            <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            <img src="{{ msg.user.picture.url }}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
                             {% else %}
                             <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
                             {% endif %}
@@ -93,11 +99,11 @@
                             </div>
                         </div>
                         {% empty %}
-                        <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
+                        <p class="text-slate-400 text-center pt-4">아직 메시지가 없습니다.</p>
                         {% endfor %}
                     </div>
                     <div class="gsp-input-row">
-                        <input type="text" id="ag-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                        <input id="ag-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
                                class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
                         <button id="ag-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
                     </div>
@@ -111,8 +117,13 @@
                 </div>
             </div>
         </div>
-
     </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="ag-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="toggleAgChat()">
+    <i id="ag-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
 </section>
 
 <style>
@@ -150,8 +161,13 @@
     justify-content: center;
 }
 .gsp-tab:hover { background: #f1f5f9; color: #334155; }
-.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; background: #fff; }
-.gsp-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.gsp-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
 .gsp-pane-head {
     padding: .5rem 1rem;
     border-bottom: 1px solid #f1f5f9;
@@ -164,90 +180,69 @@
     flex: 1;
     overflow-y: auto;
     padding: .75rem 1rem;
-    font-size: .72rem;
-    color: #475569;
     display: flex;
     flex-direction: column;
-    gap: .4rem;
+    gap: .6rem;
+    font-size: .78rem;
+    color: #475569;
 }
 .gsp-input-row {
     display: flex;
-    gap: .5rem;
-    padding: .5rem .75rem;
+    gap: .4rem;
+    padding: .6rem .75rem;
     border-top: 1px solid #f1f5f9;
     flex-shrink: 0;
 }
-.gsp-ranking { flex: 1; overflow-y: auto; }
-/* ── 컴팩트 상태 바 ────────────────────────────── */
+.gsp-ranking {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── 상태 바 ─────────────────────────────────────────────────────── */
 .ag-stat-bar {
     display: flex;
     align-items: center;
-    gap: .75rem;
-    padding: .5rem 1rem;
-    background: #f8fafc;
+    padding: 8px 16px;
     border-bottom: 1px solid #e2e8f0;
-    font-size: .72rem;
-    color: #64748b;
+    font-size: .8rem;
+    background: #f8fafc;
     flex-shrink: 0;
+    gap: 12px;
 }
-.ag-stat-bar-sep { width: 1px; height: .9rem; background: #e2e8f0; }
-.ag-stat-bar-item strong { color: #0f172a; }
-/* ── 외부 컨테이너 (IPSE 라이트 카드) ───────────────────────────────── */
+.ag-stat-bar-sep {
+    width: 1px;
+    height: 14px;
+    background: #e2e8f0;
+}
+.ag-stat-bar-item { color: #64748b; }
+.ag-stat-bar-item strong { color: #1e293b; }
+
+/* ── 게임 외곽 ─────────────────────────────────────────────────────── */
 .ag-outer {
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 1.5rem;
+    border-radius: 1rem;
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
 }
 
-/* ── 에메랄드 그라디언트 헤더 띠 ────────────────────────────────────── */
-.ag-hero {
-    padding: 20px 24px 16px;
-    background: linear-gradient(to right, #065f46, #059669, #0d9488);
-    border-bottom: 1px solid #e2e8f0;
-}
-.ag-stat {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 12px;
-    padding: 6px 14px;
-    min-width: 68px;
-    backdrop-filter: blur(4px);
-}
-.ag-stat-label {
-    font-size: 9px;
-    font-weight: 700;
-    color: rgba(255,255,255,0.7);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-.ag-stat-value {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: #ffffff;
-    margin-top: 1px;
-    font-variant-numeric: tabular-nums;
-}
+/* ── 타이머 긴박감 ───────────────────────────────────────────────── */
 .ag-timer-urgent {
     color: #fcd34d !important;
     animation: ag-pulse 0.5s ease-in-out infinite;
 }
 @keyframes ag-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    50%       { opacity: 0.5; }
 }
 
-/* ── 캔버스 래퍼 ─────────────────────────────────────────────────────── */
+/* ── 캔버스 래퍼 ─────────────────────────────────────────────────── */
 .ag-canvas-wrap {
     position: relative;
     padding: 16px;
     display: flex;
     justify-content: center;
-    background: #0a0f1e;
+    background: #071a07;
 }
 #ag-canvas {
     display: block;
@@ -259,7 +254,29 @@
     border-radius: 8px;
 }
 
-/* ── 오버레이 (라이트 테마) ──────────────────────────────────────────── */
+/* ── 가로모드 HUD (기본 숨김) ────────────────────────────────────── */
+.ag-hud {
+    display: none;
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 9;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 12px;
+    background: rgba(7,26,7,0.72);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    font-size: 12px;
+    color: #cbd5e1;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+.ag-hud-item strong { color: #6ee7b7; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ag-hud .ag-timer-urgent { color: #fcd34d; }
+
+/* ── 오버레이 (라이트 테마) ──────────────────────────────────────── */
 .ag-overlay {
     position: absolute;
     inset: 0;
@@ -311,7 +328,7 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ── 버튼 (IPSE 에메랄드) ────────────────────────────────────────────── */
+/* ── 버튼 (IPSE 에메랄드) ────────────────────────────────────────── */
 .ag-btn {
     display: inline-flex;
     align-items: center;
@@ -333,7 +350,7 @@
 }
 .ag-btn:active { transform: scale(0.97); }
 
-/* ── 힌트 푸터 ───────────────────────────────────────────────────────── */
+/* ── 힌트 푸터 ───────────────────────────────────────────────────── */
 .ag-hint {
     text-align: center;
     color: #94a3b8;
@@ -343,205 +360,398 @@
     font-weight: 500;
     background: #f8fafc;
 }
+
+/* ── 모바일 최적화 ───────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .ag-canvas-wrap { padding: 6px; }
+    .ag-stat-bar { font-size: .72rem; padding: 6px 10px; }
+    .ag-hint { font-size: 9px; padding: 8px 10px; }
+    .ag-overlay-content h3 { font-size: 1.3rem; }
+    .ag-overlay-content p { font-size: 0.78rem; }
+    .ag-btn { font-size: 0.8rem; padding: 9px 20px; }
+}
+
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #ag-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #ag-side-col .game-side-panel { height: 100% !important; }
+    #ag-side-col.mobile-hidden { display: none !important; }
+}
+/* ── 모바일 가로 모드: 캔버스 풀스크린 ──────────────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.ag-landscape 클래스로 결정적으로 제어 */
+body.ag-landscape section.max-w-7xl { padding: 44px 2px 6px !important; }
+body.ag-landscape .ag-outer { border: none; border-radius: 0; box-shadow: none; }
+body.ag-landscape .ag-stat-bar { display: none; }
+body.ag-landscape .ag-hint { display: none; }
+body.ag-landscape .ag-canvas-wrap { padding: 2px; align-items: center; }
+body.ag-landscape .ag-hud { display: flex; }
+
+/* 게임 페이지에서는 사이트 푸터 숨김 (모든 방향) */
+footer { display: none !important; }
+/* ── 모바일 드래그 방지 ──────────────────────────────────── */
+@media (max-width: 1023px) {
+    .ag-outer { touch-action: none; overscroll-behavior: none; }
+}
 </style>
 
 <script>
 (function () {
-    const CSRF   = '{{ csrf_token }}';
+    const CSRF     = '{{ csrf_token }}';
     const COLS = 17, ROWS = 10, DURATION = 120;
 
-    let grid, score, timeLeft, timerInterval, isRunning;
-    let isDragging = false, dragStart = null, dragEnd = null;
+    let grid, leafRotations, score, timeLeft, timerInterval, isRunning;
+    let isDragging = false, dragStartPx = null, dragEndPx = null;
     let cellSize = 46;
+    let particles = [];
+    let rafId = null;
 
     const canvas  = document.getElementById('ag-canvas');
     const ctx     = canvas.getContext('2d');
     const wrap    = document.getElementById('ag-canvas-wrap');
     const scoreEl = document.getElementById('ag-score');
     const timerEl = document.getElementById('ag-timer');
+    const scoreHudEl = document.getElementById('ag-score-hud');
+    const timerHudEl = document.getElementById('ag-timer-hud');
     const startOv = document.getElementById('ag-start-overlay');
     const overOv  = document.getElementById('ag-over-overlay');
     const finalEl = document.getElementById('ag-final-val');
 
-    // ── 그리드 초기화 ─────────────────────────────────────────────────
+    // ── 그리드 초기화 ─────────────────────────────────────────────
     function initGrid() {
         grid = Array.from({ length: ROWS }, () =>
             Array.from({ length: COLS }, () => Math.floor(Math.random() * 9) + 1)
         );
+        leafRotations = Array.from({ length: ROWS }, () =>
+            Array.from({ length: COLS }, () => (Math.random() - 0.5) * 0.7)
+        );
     }
 
-    // ── 캔버스 크기 조정 ──────────────────────────────────────────────
+    // ── 캔버스 크기 조정 ──────────────────────────────────────────
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+
     function resize() {
-        const availW = wrap.clientWidth - 32;
-        cellSize = Math.max(26, Math.floor(availW / COLS));
+        const isMobile   = window.innerWidth < 1024;
+        const isLandscape = isLandscapeMode();
+        const wrapPad    = isMobile ? 12 : 32;
+        const minCell    = isMobile ? 18 : 26;
+        const availW     = wrap.clientWidth - wrapPad;
+        let cs = Math.max(minCell, Math.floor(availW / COLS));
+
+        if (isLandscape) {
+            // 풀스크린: 캔버스 실제 위치부터 화면 하단까지(footer 숨김)
+            wrap.style.minHeight = '';
+            const wrapTop = wrap.getBoundingClientRect().top;
+            const availH = window.innerHeight - wrapTop - 6;
+            if (availH > 0) cs = Math.min(cs, Math.max(minCell, Math.floor(availH / ROWS)));
+            // 래퍼를 화면 하단까지 채워 하단 흰 공백 제거(캔버스는 세로 중앙 정렬)
+            wrap.style.minHeight = availH + 'px';
+        } else {
+            wrap.style.minHeight = '';
+        }
+
+        cellSize = cs;
         canvas.width  = COLS * cellSize;
         canvas.height = ROWS * cellSize;
         draw();
     }
 
-    // ── 이벤트 → 셀 좌표 변환 ────────────────────────────────────────
-    function cellFromEvent(e) {
+    // ── 이벤트 → 픽셀 좌표 ───────────────────────────────────────
+    function pixelFromEvent(e) {
         const rect = canvas.getBoundingClientRect();
         const pt   = e.touches ? e.touches[0] : e;
         const sx   = canvas.width  / rect.width;
         const sy   = canvas.height / rect.height;
         return {
-            c: Math.max(0, Math.min(COLS - 1, Math.floor((pt.clientX - rect.left) * sx / cellSize))),
-            r: Math.max(0, Math.min(ROWS - 1, Math.floor((pt.clientY - rect.top)  * sy / cellSize))),
+            x: Math.max(0, Math.min(canvas.width,  (pt.clientX - rect.left) * sx)),
+            y: Math.max(0, Math.min(canvas.height, (pt.clientY - rect.top)  * sy)),
         };
     }
 
-    // ── 선택 영역 계산 ────────────────────────────────────────────────
-    function selRect() {
-        if (!dragStart || !dragEnd) return null;
+    // ── 드래그 픽셀 사각형 ────────────────────────────────────────
+    function selRectPx() {
+        if (!dragStartPx || !dragEndPx) return null;
         return {
-            r1: Math.min(dragStart.r, dragEnd.r),
-            r2: Math.max(dragStart.r, dragEnd.r),
-            c1: Math.min(dragStart.c, dragEnd.c),
-            c2: Math.max(dragStart.c, dragEnd.c),
+            x1: Math.min(dragStartPx.x, dragEndPx.x),
+            y1: Math.min(dragStartPx.y, dragEndPx.y),
+            x2: Math.max(dragStartPx.x, dragEndPx.x),
+            y2: Math.max(dragStartPx.y, dragEndPx.y),
         };
     }
 
-    // 선택 영역 내 빈 칸 제외 합산
-    function selSum(sel) {
-        if (!sel) return 0;
-        let s = 0;
-        for (let r = sel.r1; r <= sel.r2; r++)
-            for (let c = sel.c1; c <= sel.c2; c++)
-                s += grid[r][c]; // 0(빈 칸)은 자동으로 합산 무시
-        return s;
+    // ── 선택 영역 내 셀 목록 (셀 영역과 드래그 영역이 조금이라도 겹치면 포함) ──
+    function cellsInSel(sel) {
+        if (!sel) return [];
+        const result = [];
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const cellX1 = c * cellSize;
+                const cellY1 = r * cellSize;
+                const cellX2 = cellX1 + cellSize;
+                const cellY2 = cellY1 + cellSize;
+                if (sel.x2 > cellX1 && sel.x1 < cellX2 && sel.y2 > cellY1 && sel.y1 < cellY2) {
+                    result.push({ r, c });
+                }
+            }
+        }
+        return result;
     }
 
-    // ── 렌더링 ────────────────────────────────────────────────────────
+    // ── 합산 ──────────────────────────────────────────────────────
+    function sumCells(cells) {
+        return cells.reduce((s, { r, c }) => s + grid[r][c], 0);
+    }
+
+    // ── 잎새 모양 그리기 ───────────────────────────────────────────
+    function drawLeaf(cx, cy, radius, rotation, fillColor, glowing) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rotation);
+
+        if (glowing) {
+            ctx.shadowColor = fillColor;
+            ctx.shadowBlur  = radius * 0.7;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(0, -radius);
+        ctx.bezierCurveTo( radius * 0.85, -radius * 0.25,  radius * 0.85, radius * 0.25, 0, radius);
+        ctx.bezierCurveTo(-radius * 0.85,  radius * 0.25, -radius * 0.85, -radius * 0.25, 0, -radius);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+
+        // 잎맥
+        ctx.beginPath();
+        ctx.moveTo(0, -radius * 0.65);
+        ctx.lineTo(0,  radius * 0.65);
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth   = Math.max(0.7, radius * 0.06);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // ── 낙엽 파티클 ───────────────────────────────────────────────
+    const AUTUMN_COLORS = ['#92400e', '#78350f', '#b45309', '#a16207', '#854d0e', '#d97706', '#b91c1c', '#7f1d1d'];
+
+    function spawnParticles(r, c) {
+        const cx = c * cellSize + cellSize / 2;
+        const cy = r * cellSize + cellSize / 2;
+        const count = 3 + Math.floor(Math.random() * 3);
+
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i / count) + (Math.random() - 0.5) * 1.2;
+            const speed = 1.5 + Math.random() * 2.5;
+            particles.push({
+                x:     cx + (Math.random() - 0.5) * 8,
+                y:     cy + (Math.random() - 0.5) * 8,
+                vx:    Math.cos(angle) * speed,
+                vy:    Math.sin(angle) * speed - 1.8,
+                rot:   Math.random() * Math.PI * 2,
+                rotV:  (Math.random() - 0.5) * 0.22,
+                alpha: 1,
+                size:  (cellSize / 2 - 3) * (0.28 + Math.random() * 0.44),
+                color: AUTUMN_COLORS[Math.floor(Math.random() * AUTUMN_COLORS.length)],
+            });
+        }
+    }
+
+    function updateParticles() {
+        particles.forEach(p => {
+            p.vy   += 0.18;
+            p.x    += p.vx;
+            p.y    += p.vy;
+            p.rot  += p.rotV;
+            p.vx   *= 0.99;
+            p.alpha -= 0.022;
+        });
+        particles = particles.filter(p => p.alpha > 0.01);
+    }
+
+    function drawParticles() {
+        ctx.save();
+        particles.forEach(p => {
+            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            const s = p.size;
+            ctx.beginPath();
+            ctx.moveTo(0, -s);
+            ctx.bezierCurveTo( s * 0.85, -s * 0.25,  s * 0.85, s * 0.25, 0, s);
+            ctx.bezierCurveTo(-s * 0.85,  s * 0.25, -s * 0.85, -s * 0.25, 0, -s);
+            ctx.closePath();
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            ctx.restore();
+        });
+        ctx.globalAlpha = 1;
+        ctx.restore();
+    }
+
+    // ── 파티클 애니메이션 루프 ────────────────────────────────────
+    function animTick() {
+        updateParticles();
+        draw();
+        if (particles.length > 0) {
+            rafId = requestAnimationFrame(animTick);
+        } else {
+            rafId = null;
+        }
+    }
+
+    function ensureAnim() {
+        if (!rafId) rafId = requestAnimationFrame(animTick);
+    }
+
+    // ── 렌더링 ────────────────────────────────────────────────────
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 배경
-        ctx.fillStyle = '#0a0f1e';
+        // 배경 (어두운 숲 초록)
+        ctx.fillStyle = '#071a07';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const sel   = selRect();
-        const sum   = selSum(sel);
-        const valid = (sum === 10);
+        const sel      = selRectPx();
+        const selCells = cellsInSel(sel);
+        const sum      = sumCells(selCells);
+        const valid    = (sum === 10);
+        const inSelSet = new Set(selCells.map(({ r, c }) => `${r},${c}`));
 
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                const x  = c * cellSize;
-                const y  = r * cellSize;
                 const v  = grid[r][c];
-                const cx = x + cellSize / 2;
-                const cy = y + cellSize / 2;
+                const cx = c * cellSize + cellSize / 2;
+                const cy = r * cellSize + cellSize / 2;
                 const radius = cellSize / 2 - 3;
 
                 if (v === 0) {
-                    // 빈 칸
-                    ctx.fillStyle = '#0f172a';
                     ctx.beginPath();
-                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    ctx.arc(cx, cy, radius * 0.3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#0d2a0d';
                     ctx.fill();
                     continue;
                 }
 
-                const inSel = sel &&
-                    r >= sel.r1 && r <= sel.r2 &&
-                    c >= sel.c1 && c <= sel.c2;
-
-                // 사과 원
-                ctx.beginPath();
-                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                const inSel  = inSelSet.has(`${r},${c}`);
+                const rot    = leafRotations[r][c];
+                let fillColor;
                 if (inSel) {
-                    ctx.fillStyle = valid ? '#15803d' : '#991b1b';
+                    fillColor = valid ? '#4ade80' : '#fb923c';
                 } else {
-                    ctx.fillStyle = '#dc2626';
+                    fillColor = '#16a34a';
                 }
-                ctx.fill();
 
-                // 광택
-                ctx.beginPath();
-                ctx.arc(cx - radius * 0.28, cy - radius * 0.32, radius * 0.3, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(255,255,255,0.18)';
-                ctx.fill();
+                drawLeaf(cx, cy, radius, rot, fillColor, inSel && valid);
 
                 // 숫자
-                ctx.fillStyle = inSel ? (valid ? '#86efac' : '#fca5a5') : '#ffffff';
-                ctx.font      = `700 ${Math.round(cellSize * 0.4)}px system-ui, sans-serif`;
-                ctx.textAlign = 'center';
+                ctx.fillStyle    = '#ffffff';
+                ctx.font         = `700 ${Math.round(cellSize * 0.38)}px system-ui, sans-serif`;
+                ctx.textAlign    = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(v, cx, cy + 1);
             }
         }
 
-        // 선택 사각형 + 합 배지
+        // 선택 사각형 (픽셀 좌표 기준, 격자 미스냅)
         if (isDragging && sel) {
-            const sx = sel.c1 * cellSize;
-            const sy = sel.r1 * cellSize;
-            const sw = (sel.c2 - sel.c1 + 1) * cellSize;
-            const sh = (sel.r2 - sel.r1 + 1) * cellSize;
+            const sw = sel.x2 - sel.x1;
+            const sh = sel.y2 - sel.y1;
+            if (sw > 2 || sh > 2) {
+                ctx.fillStyle   = valid ? 'rgba(74,222,128,0.07)' : 'rgba(251,146,60,0.07)';
+                ctx.fillRect(sel.x1, sel.y1, sw, sh);
+                ctx.strokeStyle = valid ? '#4ade80' : '#fb923c';
+                ctx.lineWidth   = 2;
+                ctx.strokeRect(sel.x1 + 1, sel.y1 + 1, sw - 2, sh - 2);
 
-            ctx.strokeStyle = valid ? '#22c55e' : '#ef4444';
-            ctx.lineWidth   = 2.5;
-            ctx.strokeRect(sx + 1.25, sy + 1.25, sw - 2.5, sh - 2.5);
-
-            // 합 배지
-            const badgeText = String(sum);
-            const fontSize  = Math.round(cellSize * 0.38);
-            ctx.font      = `800 ${fontSize}px system-ui, sans-serif`;
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'top';
-
-            const padX = 4, padY = 3;
-            const tw   = ctx.measureText(badgeText).width + padX * 2;
-            const th   = fontSize + padY * 2;
-            const bx   = sx + sw - tw - 2;
-            const by   = sy + 2;
-
-            ctx.fillStyle = valid ? '#22c55e' : '#ef4444';
-            ctx.beginPath();
-            ctx.roundRect(bx, by, tw, th, 4);
-            ctx.fill();
-
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(badgeText, bx + tw - padX, by + padY);
+                // 합 배지
+                const badgeText = String(sum);
+                const fontSize  = Math.round(cellSize * 0.36);
+                ctx.font        = `800 ${fontSize}px system-ui, sans-serif`;
+                ctx.textAlign   = 'right';
+                ctx.textBaseline = 'top';
+                const padX = 4, padY = 3;
+                const tw   = ctx.measureText(badgeText).width + padX * 2;
+                const th   = fontSize + padY * 2;
+                const bx   = sel.x2 - tw - 2;
+                const by   = sel.y1 + 2;
+                ctx.fillStyle = valid ? '#22c55e' : '#f97316';
+                ctx.beginPath();
+                ctx.roundRect(bx, by, tw, th, 4);
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(badgeText, bx + tw - padX, by + padY);
+            }
         }
+
+        drawParticles();
     }
 
-    // ── 제거 시도 ────────────────────────────────────────────────────
+    // ── 제거 시도 ─────────────────────────────────────────────────
     function tryRemove() {
-        const sel = selRect();
-        if (!sel || selSum(sel) !== 10) return;
+        const sel      = selRectPx();
+        const selCells = cellsInSel(sel);
+        if (!sel || sumCells(selCells) !== 10) return;
 
         let cleared = 0;
-        for (let r = sel.r1; r <= sel.r2; r++)
-            for (let c = sel.c1; c <= sel.c2; c++)
-                if (grid[r][c] !== 0) { grid[r][c] = 0; cleared++; }
+        selCells.forEach(({ r, c }) => {
+            if (grid[r][c] !== 0) {
+                spawnParticles(r, c);
+                grid[r][c] = 0;
+                cleared++;
+            }
+        });
 
         score += cleared;
         scoreEl.textContent = score;
+        scoreHudEl.textContent = score;
+        if (cleared > 0) ensureAnim();
     }
 
-    // ── 타이머 ───────────────────────────────────────────────────────
+    // ── 타이머 ────────────────────────────────────────────────────
     function updateTimer() {
         const m = Math.floor(timeLeft / 60);
         const s = timeLeft % 60;
-        timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+        const txt = `${m}:${String(s).padStart(2, '0')}`;
+        timerEl.textContent = txt;
+        timerHudEl.textContent = txt;
         timerEl.classList.toggle('ag-timer-urgent', timeLeft <= 10);
+        timerHudEl.classList.toggle('ag-timer-urgent', timeLeft <= 10);
     }
 
-    // ── 게임 시작 / 종료 ─────────────────────────────────────────────
+    // ── 게임 시작 ─────────────────────────────────────────────────
     function startGame() {
         initGrid();
-        score     = 0;
-        timeLeft  = DURATION;
-        isRunning = true;
+        score      = 0;
+        timeLeft   = DURATION;
+        isRunning  = true;
         isDragging = false;
-        dragStart  = dragEnd = null;
+        dragStartPx = dragEndPx = null;
+        particles  = [];
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
         scoreEl.textContent = '0';
+        scoreHudEl.textContent = '0';
         updateTimer();
-
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
         resize();
-
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             timeLeft--;
@@ -552,16 +762,16 @@
 
     function endGame() {
         clearInterval(timerInterval);
-        isRunning  = false;
-        isDragging = false;
-        dragStart  = dragEnd = null;
+        isRunning   = false;
+        isDragging  = false;
+        dragStartPx = dragEndPx = null;
         finalEl.textContent = score;
         overOv.classList.remove('hidden');
         draw();
         saveScore(score);
     }
 
-    // ── 점수 저장 및 랭킹 갱신 ──────────────────────────────────────────
+    // ── 점수 저장 및 랭킹 갱신 ───────────────────────────────────
     function saveScore(finalScore) {
         const fd = new FormData();
         fd.append('score', finalScore);
@@ -582,11 +792,11 @@
                 }
                 const MEDALS = ['🥇', '🥈', '🥉'];
                 list.innerHTML = data.ranking.map(row => {
-                    const badge = row.rank <= 3
+                    const badge  = row.rank <= 3
                         ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
                         : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
-                    const cls = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
-                    const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
+                    const cls    = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
+                    const meTxt  = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
                     const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
                     return `
                         <div class="flex items-center gap-3 px-5 py-3 ${cls}">
@@ -600,67 +810,79 @@
             .catch(() => {
                 list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
             });
-    }
+    };
 
-    // ── 마우스 이벤트 ────────────────────────────────────────────────
+    // ── 마우스 이벤트 ────────────────────────────────────────────
     canvas.addEventListener('mousedown', e => {
         if (!isRunning) return;
         e.preventDefault();
-        isDragging = true;
-        dragStart  = dragEnd = cellFromEvent(e);
+        isDragging  = true;
+        dragStartPx = dragEndPx = pixelFromEvent(e);
         draw();
     });
     canvas.addEventListener('mousemove', e => {
         if (!isRunning || !isDragging) return;
-        dragEnd = cellFromEvent(e);
+        dragEndPx = pixelFromEvent(e);
         draw();
     });
     canvas.addEventListener('mouseup', e => {
         if (!isRunning) return;
-        dragEnd = cellFromEvent(e);
+        dragEndPx = pixelFromEvent(e);
         tryRemove();
-        isDragging = false;
-        dragStart  = dragEnd = null;
+        isDragging  = false;
+        dragStartPx = dragEndPx = null;
         draw();
     });
     canvas.addEventListener('mouseleave', () => {
         if (!isDragging) return;
-        isDragging = false;
-        dragStart  = dragEnd = null;
+        isDragging  = false;
+        dragStartPx = dragEndPx = null;
         draw();
     });
 
-    // ── 터치 이벤트 (모바일) ─────────────────────────────────────────
+    // ── 터치 이벤트 ──────────────────────────────────────────────
     canvas.addEventListener('touchstart', e => {
         if (!isRunning) return;
         e.preventDefault();
-        isDragging = true;
-        dragStart  = dragEnd = cellFromEvent(e);
+        isDragging  = true;
+        dragStartPx = dragEndPx = pixelFromEvent(e);
         draw();
     }, { passive: false });
     canvas.addEventListener('touchmove', e => {
         if (!isRunning || !isDragging) return;
         e.preventDefault();
-        dragEnd = cellFromEvent(e);
+        dragEndPx = pixelFromEvent(e);
         draw();
     }, { passive: false });
     canvas.addEventListener('touchend', e => {
         if (!isRunning) return;
         e.preventDefault();
         tryRemove();
-        isDragging = false;
-        dragStart  = dragEnd = null;
+        isDragging  = false;
+        dragStartPx = dragEndPx = null;
         draw();
     }, { passive: false });
 
-    // ── 버튼 ─────────────────────────────────────────────────────────
+    // ── 버튼 ─────────────────────────────────────────────────────
     document.getElementById('ag-start-btn').addEventListener('click', startGame);
     document.getElementById('ag-restart-btn').addEventListener('click', startGame);
 
-    // ── 반응형 리사이즈 ──────────────────────────────────────────────
-    window.addEventListener('resize', () => { if (isRunning || !startOv.classList.contains('hidden')) resize(); });
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 ────────────────
+    function applyLandscapeMode() {
+        document.body.classList.toggle('ag-landscape', isLandscapeMode());
+    }
+
+    // ── 반응형 리사이즈 ──────────────────────────────────────────
+    window.addEventListener('resize', () => {
+        applyLandscapeMode();   // 레이아웃 클래스 먼저 반영 후 측정
+        resize();
+    });
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => { applyLandscapeMode(); resize(); }, 120);
+    });
 
     // 초기 렌더 + 랭킹 로드
+    applyLandscapeMode();
     resize();
     window._agLoadRanking();
 })();
@@ -673,51 +895,62 @@ function gspSwitch(btn, paneId) {
     document.getElementById(paneId).style.display = '';
     if (paneId === 'ag-tab-rank' && window._agLoadRanking) window._agLoadRanking();
 }
+
+function toggleAgChat() {
+    const col  = document.getElementById('ag-side-col');
+    const icon = document.getElementById('ag-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('ag-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
 </script>
 
 <script>
-// ─── 로비 채팅 WebSocket ─────────────────────────────────────────────────────
+// ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
 (function () {
-    const box    = document.getElementById('ag-chat-messages');
-    const input  = document.getElementById('ag-chat-input');
-    const btn    = document.getElementById('ag-chat-send');
-    const badge  = document.getElementById('ag-chat-status');
+    const box   = document.getElementById('ag-chat-messages');
+    const input = document.getElementById('ag-chat-input');
+    const btn   = document.getElementById('ag-chat-send');
+    const badge = document.getElementById('ag-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/`;
-    let socket   = null;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    let socket = null;
 
     function setStatus(open) {
         if (open) {
-            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold transition';
-            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 실시간 채널';
-            input.disabled = false;
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 연결됨';
+            input.disabled  = false;
         } else {
-            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition';
-            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 끊김';
-            input.disabled = true;
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...';
+            input.disabled  = true;
         }
     }
 
     function esc(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    function avatar(name, pic) {
-        return pic
-            ? `<img src="${esc(pic)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
-            : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
-    }
-
-    function append(name, message, time, isError, pic) {
+    function append(name, message, time, isSystem, pictureUrl) {
         const empty = box.querySelector('p.text-slate-400');
         if (empty) empty.remove();
+
         const d = document.createElement('div');
-        if (isError) {
+        if (isSystem) {
             d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
-            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700 text-[10px]"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
         } else {
+            const avatar = pictureUrl
+                ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
             d.className = 'flex gap-2 items-start';
-            d.innerHTML = `${avatar(name, pic)}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+            d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
         }
         box.appendChild(d);
         box.scrollTop = box.scrollHeight;
@@ -725,14 +958,17 @@ function gspSwitch(btn, paneId) {
 
     function connect() {
         socket = new WebSocket(wsUrl);
-        socket.onopen    = () => { setStatus(true);  box.scrollTop = box.scrollHeight; };
-        socket.onmessage = e  => {
+        socket.onopen  = () => { setStatus(true); box.scrollTop = box.scrollHeight; };
+        socket.onmessage = e => {
             const data = JSON.parse(e.data);
-            if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
-            else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            if (data.error) {
+                append('SYSTEM', data.message, '', true, '');
+            } else {
+                append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            }
         };
-        socket.onclose   = () => { setStatus(false); setTimeout(connect, 5000); };
-        socket.onerror   = () => socket.close();
+        socket.onclose = () => { setStatus(false); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
     }
 
     function send() {
@@ -751,6 +987,139 @@ function gspSwitch(btn, paneId) {
 
     connect();
     box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  /* 닫기(X) 버튼이 프로필과 겹치지 않도록 내부 콘텐츠를 왼쪽으로 확보 */
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-nav-pill {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: opacity 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-pill.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;               /* 수납된 nav일 때만 표시 (데스크톱에선 숨김) */
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    // Close button inside expanded nav
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    // Floating pill
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    document.body.appendChild(pill);
+
+    // Backdrop
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      pill.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      pill.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    // 모바일(<1024px)에서만 수납. 데스크톱은 기본 sticky 네비게이션 유지
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        pill.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        pill.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
 })();
 </script>
 {% endblock %}
