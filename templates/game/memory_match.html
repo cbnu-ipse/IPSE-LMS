@@ -19,7 +19,7 @@
                 </div>
 
                 <!-- 카드 보드 -->
-                <div class="mm-board-wrap">
+                <div class="mm-board-wrap" id="mm-board-wrap">
                     <div class="mm-board" id="mm-board"></div>
 
                     <!-- 시작 오버레이 -->
@@ -400,9 +400,21 @@
     #mm-side-col .game-side-panel { height: 100% !important; }
     #mm-side-col.mobile-hidden { display: none !important; }
 }
+/* ── 모바일 가로 모드: 보드 풀스크린 + 스크롤 방지 ──────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.mm-landscape 클래스로 결정적으로 제어 */
+body.mm-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.mm-landscape .mm-outer { border: none; border-radius: 0; box-shadow: none; }
+body.mm-landscape .mm-hint { display: none; }
+body.mm-landscape .mm-stat-bar { padding: 4px 10px; font-size: .68rem; }
+body.mm-landscape .mm-board-wrap { padding: 4px; align-items: center; }
 
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
+/* ── 모바일 스크롤 방지 ──────────────────────────────────── */
+@media (max-width: 1023px) {
+    .mm-outer { overscroll-behavior: none; }
+}
 </style>
 
 <script>
@@ -576,8 +588,44 @@ footer { display: none !important; }
     document.getElementById('mm-start-btn').addEventListener('click', startGame);
     document.getElementById('mm-restart-btn').addEventListener('click', startGame);
 
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 + 보드 풀스크린 맞춤 ──
+    const boardWrap = document.getElementById('mm-board-wrap');
+
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+
+    function applyLandscapeMode() {
+        document.body.classList.toggle('mm-landscape', isLandscapeMode());
+    }
+
+    function resizeBoard() {
+        if (isLandscapeMode()) {
+            boardWrap.style.minHeight = '';
+            const wrapTop = boardWrap.getBoundingClientRect().top;
+            const availH  = window.innerHeight - wrapTop - 16;
+            const availW  = boardWrap.clientWidth - 8;
+            const size    = Math.max(160, Math.min(availW, availH));
+            boardEl.style.maxWidth = size + 'px';
+            boardWrap.style.minHeight = availH + 'px';
+        } else {
+            boardEl.style.maxWidth = '';
+            boardWrap.style.minHeight = '';
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        applyLandscapeMode();
+        resizeBoard();
+    });
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => { applyLandscapeMode(); resizeBoard(); }, 120);
+    });
+
     // 초기 랭킹 로드
     window._mmLoadRanking();
+    applyLandscapeMode();
+    resizeBoard();
 })();
 
 function gspSwitch(btn, paneId) {
