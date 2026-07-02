@@ -8,7 +8,7 @@ cron 설정 예시 (매월 말일 23:59 KST = 14:59 UTC):
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from game.models import GameSeason
-from game.views import get_apple_ranking, SEASON_RANK_REWARDS
+from game.views import get_apple_ranking, get_memory_match_ranking, SEASON_RANK_REWARDS
 
 
 class Command(BaseCommand):
@@ -60,13 +60,19 @@ class Command(BaseCommand):
             )
 
     def _distribute_and_notify(self, season, dry_run):
+        self._distribute_board(season, dry_run, board_label="사과게임", reward_reason="SEASON_APPLE_REWARD",
+                                ranking_fn=get_apple_ranking)
+        self._distribute_board(season, dry_run, board_label="카드 매칭", reward_reason="SEASON_MEMORY_MATCH_REWARD",
+                                ranking_fn=get_memory_match_ranking)
+
+    def _distribute_board(self, season, dry_run, board_label, reward_reason, ranking_fn):
         from accounts.models import Notification
         from accounts.utils import send_web_push
 
-        rows = get_apple_ranking(top_n=3, season=season)
+        rows = ranking_fn(top_n=3, season=season)
 
         if not rows:
-            self.stdout.write("  사과게임: 랭킹 데이터 없음, 보상 건너뜀.")
+            self.stdout.write(f"  {board_label}: 랭킹 데이터 없음, 보상 건너뜀.")
             return
 
         for row in rows:
@@ -76,13 +82,13 @@ class Command(BaseCommand):
                 continue
 
             user = row["user"]
-            description = f"[시즌 {season.number}] 사과게임 {rank}위 보상"
-            msg = f"{season.label} 사과게임 {rank}위! 낙엽 {reward}개가 지급되었습니다."
-            self.stdout.write(f"  사과게임 {rank}위 {user.display_name} → +{reward} 낙엽")
+            description = f"[시즌 {season.number}] {board_label} {rank}위 보상"
+            msg = f"{season.label} {board_label} {rank}위! 낙엽 {reward}개가 지급되었습니다."
+            self.stdout.write(f"  {board_label} {rank}위 {user.display_name} → +{reward} 낙엽")
 
             if not dry_run:
                 try:
-                    user.adjust_leaves(reward, "SEASON_APPLE_REWARD", description)
+                    user.adjust_leaves(reward, reward_reason, description)
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"    보상 지급 실패: {e}"))
                     continue

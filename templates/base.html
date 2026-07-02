@@ -493,7 +493,7 @@
         <!-- 월 표시 -->
         <p class="text-xs font-bold text-emerald-500 tracking-widest uppercase mb-1">{{ pending_season_reward.season_label }}</p>
         <h2 class="text-2xl font-black text-slate-800 mb-1">월말정산</h2>
-        <p class="text-sm text-slate-400 mb-6">이번 시즌 사과게임 결과</p>
+        <p class="text-sm text-slate-400 mb-6">이번 시즌 {% if pending_season_reward.board == 'memory_match' %}카드 매칭{% else %}사과게임{% endif %} 결과</p>
 
         <!-- 순위 배지 -->
         <div class="flex justify-center mb-5">

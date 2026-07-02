@@ -177,29 +177,52 @@ class GameSeason(models.Model):
 
     @classmethod
     def _distribute_rewards_and_notify(cls, season):
-        """사과게임 상위 3명에게 낙엽을 지급하고 월말정산 UI 클레임을 생성한다."""
-        from game.views import get_apple_ranking, SEASON_RANK_REWARDS
+        """사과게임/카드 매칭 상위 3명에게 낙엽을 지급하고 월말정산 UI 클레임을 생성한다."""
+        from game.views import get_apple_ranking, get_memory_match_ranking, SEASON_RANK_REWARDS
 
         RANK_LABELS = {1: "1위", 2: "2위", 3: "3위"}
 
+        cls._distribute_board_rewards(
+            season=season,
+            board="apple_game",
+            board_label="사과게임",
+            reward_reason="SEASON_APPLE_REWARD",
+            ranking_fn=get_apple_ranking,
+            rank_labels=RANK_LABELS,
+            reward_table=SEASON_RANK_REWARDS,
+        )
+        cls._distribute_board_rewards(
+            season=season,
+            board="memory_match",
+            board_label="카드 매칭",
+            reward_reason="SEASON_MEMORY_MATCH_REWARD",
+            ranking_fn=get_memory_match_ranking,
+            rank_labels=RANK_LABELS,
+            reward_table=SEASON_RANK_REWARDS,
+        )
+
+        logger.info(f"[GameSeason] 시즌 {season.number} ({season.label}) 자동 마감 완료.")
+
+    @classmethod
+    def _distribute_board_rewards(cls, season, board, board_label, reward_reason, ranking_fn, rank_labels, reward_table):
         try:
-            rows = get_apple_ranking(top_n=3, season=season)
+            rows = ranking_fn(top_n=3, season=season)
         except Exception as e:
-            logger.error(f"[GameSeason] {season.label} 랭킹 조회 실패: {e}")
+            logger.error(f"[GameSeason] {season.label} {board_label} 랭킹 조회 실패: {e}")
             return
 
         for row in rows:
             rank = row["rank"]
-            reward = SEASON_RANK_REWARDS.get(rank)
+            reward = reward_table.get(rank)
             if reward is None:
                 continue
 
             user = row["user"]
-            label = RANK_LABELS.get(rank, f"{rank}위")
-            description = f"[시즌 {season.number}] 사과게임 {label} 보상"
+            label = rank_labels.get(rank, f"{rank}위")
+            description = f"[시즌 {season.number}] {board_label} {label} 보상"
 
             try:
-                user.adjust_leaves(reward, "SEASON_APPLE_REWARD", description)
+                user.adjust_leaves(reward, reward_reason, description)
             except Exception as e:
                 logger.error(f"[GameSeason] {user.username} 보상 지급 실패: {e}")
                 continue
@@ -209,13 +232,12 @@ class GameSeason(models.Model):
                 SeasonRewardClaim.objects.create(
                     user=user,
                     season_label=season.label,
+                    board=board,
                     rank=rank,
                     reward=reward,
                 )
             except Exception as e:
                 logger.error(f"[GameSeason] {user.username} 정산 클레임 생성 실패: {e}")
-
-        logger.info(f"[GameSeason] 시즌 {season.number} ({season.label}) 자동 마감 완료.")
 
 
 
@@ -229,6 +251,12 @@ class SeasonRewardClaim(models.Model):
         verbose_name="사용자"
     )
     season_label = models.CharField(max_length=50, verbose_name="시즌 표시명")  # "2026년 07월"
+    board = models.CharField(
+        max_length=20,
+        default="apple_game",
+        choices=[("apple_game", "마지막 잎새"), ("memory_match", "카드 매칭")],
+        verbose_name="게임 종류",
+    )
     rank = models.PositiveSmallIntegerField(verbose_name="최종 순위")
     reward = models.PositiveIntegerField(verbose_name="지급 낙엽 수량")
     shown = models.BooleanField(default=False, db_index=True, verbose_name="확인 여부")
@@ -240,7 +268,7 @@ class SeasonRewardClaim(models.Model):
         verbose_name_plural = "시즌 보상 정산 목록"
 
     def __str__(self):
-        return f"{self.user.username} - {self.season_label} {self.rank}위 +{self.reward}"
+        return f"{self.user.username} - {self.season_label} {self.get_board_display()} {self.rank}위 +{self.reward}"
 
 
 class SlotPlayLog(models.Model):
