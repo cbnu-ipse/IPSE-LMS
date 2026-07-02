@@ -241,18 +241,19 @@ def game_ranking_view(request):
     query = request.GET.get("q", "").strip()
     season_number = request.GET.get("season", "").strip()
 
-    if board not in {"slot_game", "apple_game"}:
+    if board not in {"slot_game", "apple_game", "memory_match"}:
         board = "slot_game"
 
     BOARD_LABELS = {
         "slot_game": "슬롯머신 랭킹",
         "apple_game": "마지막 잎새 랭킹",
+        "memory_match": "카드 매칭 랭킹",
     }
     board_label = BOARD_LABELS[board]
 
     is_all_seasons = False
 
-    # 슬롯머신은 전체 기간 / 시즌 없음
+    # 슬롯머신은 전체 기간 / 시즌 없음. 그 외 게임은 사과게임과 동일한 시즌(GameSeason)을 공유.
     if board == "slot_game":
         ranking_rows = get_slot_ranking(top_n=None)
         current_season = None
@@ -272,7 +273,10 @@ def game_ranking_view(request):
         else:
             selected_season = current_season
 
-        ranking_rows = get_apple_ranking(top_n=None, season=selected_season)
+        if board == "memory_match":
+            ranking_rows = get_memory_match_ranking(top_n=None, season=selected_season)
+        else:
+            ranking_rows = get_apple_ranking(top_n=None, season=selected_season)
         all_seasons = list(GameSeason.objects.order_by("-number"))
 
     if query:
