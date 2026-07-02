@@ -28,10 +28,9 @@
         <div class="ag-canvas-wrap" id="ag-canvas-wrap">
             <canvas id="ag-canvas"></canvas>
 
-            <!-- 가로모드 전용 HUD (점수·시간) -->
-            <div class="ag-hud" id="ag-hud">
-                <span class="ag-hud-item">점수 <strong id="ag-score-hud">0</strong></span>
-                <span class="ag-hud-item">시간 <strong id="ag-timer-hud">2:00</strong></span>
+            <!-- 가로모드 전용 HUD: 우측 시간 게이지 바 -->
+            <div class="ag-timer-bar" id="ag-timer-bar">
+                <div class="ag-timer-bar-fill" id="ag-timer-bar-fill"></div>
             </div>
 
             <!-- 시작 오버레이 -->
@@ -260,27 +259,33 @@
     border-radius: 8px;
 }
 
-/* ── 가로모드 HUD (기본 숨김) ────────────────────────────────────── */
-.ag-hud {
+/* ── 가로모드 시간 게이지 바 (기본 숨김) ──────────────────────────── */
+.ag-timer-bar {
     display: none;
     position: absolute;
-    top: 6px;
+    top: 8px;
     right: 8px;
+    bottom: 8px;
+    width: 10px;
     z-index: 9;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 12px;
-    background: rgba(7,26,7,0.72);
+    background: rgba(7,26,7,0.55);
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 999px;
-    font-size: 12px;
-    color: #cbd5e1;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    overflow: hidden;
     pointer-events: none;
 }
-.ag-hud-item strong { color: #6ee7b7; font-weight: 800; font-variant-numeric: tabular-nums; }
-.ag-hud .ag-timer-urgent { color: #fcd34d; }
+.ag-timer-bar-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, #6ee7b7, #10b981);
+    border-radius: 999px;
+    transition: height 0.3s linear, background-color 0.3s;
+}
+.ag-timer-bar-fill.ag-timer-urgent { background: linear-gradient(180deg, #fde68a, #f59e0b); }
 
 /* ── 오버레이 (라이트 테마) ──────────────────────────────────────── */
 .ag-overlay {
@@ -405,7 +410,7 @@ body.ag-landscape .ag-outer { border: none; border-radius: 0; box-shadow: none; 
 body.ag-landscape .ag-stat-bar { display: none; }
 body.ag-landscape .ag-hint { display: none; }
 body.ag-landscape .ag-canvas-wrap { padding: 2px; align-items: center; }
-body.ag-landscape .ag-hud { display: flex; }
+body.ag-landscape .ag-timer-bar { display: block; }
 
 /* 게임 페이지에서는 사이트 푸터 숨김 (모든 방향) */
 footer { display: none !important; }
@@ -458,8 +463,7 @@ footer { display: none !important; }
     const wrap    = document.getElementById('ag-canvas-wrap');
     const scoreEl = document.getElementById('ag-score');
     const timerEl = document.getElementById('ag-timer');
-    const scoreHudEl = document.getElementById('ag-score-hud');
-    const timerHudEl = document.getElementById('ag-timer-hud');
+    const timerBarFill = document.getElementById('ag-timer-bar-fill');
     const startOv = document.getElementById('ag-start-overlay');
     const overOv  = document.getElementById('ag-over-overlay');
     const finalEl = document.getElementById('ag-final-val');
@@ -493,7 +497,9 @@ footer { display: none !important; }
             wrap.style.minHeight = '';
             const wrapTop = wrap.getBoundingClientRect().top;
             const availH = window.innerHeight - wrapTop - 16;
-            if (availH > 0) cs = Math.min(cs, Math.max(minCell, Math.floor(availH / ROWS)));
+            // 세로 공간이 빠듯한 기기에서는 minCell 제한을 풀어서라도 화면 안에 맞춰
+            // 위아래가 잘리지 않게 함(.ag-outer가 overflow:hidden이라 넘치면 그대로 잘림)
+            if (availH > 0) cs = Math.max(1, Math.min(cs, Math.floor(availH / ROWS)));
             // 래퍼를 화면 하단까지 채워 하단 흰 공백 제거(캔버스는 세로 중앙 정렬)
             wrap.style.minHeight = availH + 'px';
         } else {
@@ -501,8 +507,16 @@ footer { display: none !important; }
         }
 
         cellSize = cs;
-        canvas.width  = COLS * cellSize;
-        canvas.height = ROWS * cellSize;
+        // 고해상도(레티나) 화면에서 흐릿하지 않도록 devicePixelRatio만큼
+        // 실제 백킹 스토어 해상도를 올리고, 그리기 좌표는 기존처럼 논리 픽셀(cellSize 기준)로 유지
+        const dpr = window.devicePixelRatio || 1;
+        const logicalW = COLS * cellSize;
+        const logicalH = ROWS * cellSize;
+        canvas.style.width  = logicalW + 'px';
+        canvas.style.height = logicalH + 'px';
+        canvas.width  = Math.round(logicalW * dpr);
+        canvas.height = Math.round(logicalH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         draw();
     }
 
@@ -510,11 +524,13 @@ footer { display: none !important; }
     function pixelFromEvent(e) {
         const rect = canvas.getBoundingClientRect();
         const pt   = e.touches ? e.touches[0] : e;
-        const sx   = canvas.width  / rect.width;
-        const sy   = canvas.height / rect.height;
+        const logicalW = COLS * cellSize;
+        const logicalH = ROWS * cellSize;
+        const sx   = logicalW / rect.width;
+        const sy   = logicalH / rect.height;
         return {
-            x: Math.max(0, Math.min(canvas.width,  (pt.clientX - rect.left) * sx)),
-            y: Math.max(0, Math.min(canvas.height, (pt.clientY - rect.top)  * sy)),
+            x: Math.max(0, Math.min(logicalW,  (pt.clientX - rect.left) * sx)),
+            y: Math.max(0, Math.min(logicalH, (pt.clientY - rect.top)  * sy)),
         };
     }
 
@@ -659,11 +675,13 @@ footer { display: none !important; }
 
     // ── 렌더링 ────────────────────────────────────────────────────
     function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const logicalW = COLS * cellSize;
+        const logicalH = ROWS * cellSize;
+        ctx.clearRect(0, 0, logicalW, logicalH);
 
         // 배경 (어두운 숲 초록)
         ctx.fillStyle = '#071a07';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, logicalW, logicalH);
 
         const sel      = selRectPx();
         const selCells = cellsInSel(sel);
@@ -757,7 +775,6 @@ footer { display: none !important; }
 
         score += cleared;
         scoreEl.textContent = score;
-        scoreHudEl.textContent = score;
         if (cleared > 0) ensureAnim();
     }
 
@@ -767,9 +784,10 @@ footer { display: none !important; }
         const s = timeLeft % 60;
         const txt = `${m}:${String(s).padStart(2, '0')}`;
         timerEl.textContent = txt;
-        timerHudEl.textContent = txt;
         timerEl.classList.toggle('ag-timer-urgent', timeLeft <= 10);
-        timerHudEl.classList.toggle('ag-timer-urgent', timeLeft <= 10);
+        const pct = Math.max(0, Math.min(100, (timeLeft / DURATION) * 100));
+        timerBarFill.style.height = pct + '%';
+        timerBarFill.classList.toggle('ag-timer-urgent', timeLeft <= 10);
     }
 
     // ── 게임 시작 ─────────────────────────────────────────────────
@@ -783,7 +801,6 @@ footer { display: none !important; }
         particles  = [];
         if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
         scoreEl.textContent = '0';
-        scoreHudEl.textContent = '0';
         updateTimer();
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
