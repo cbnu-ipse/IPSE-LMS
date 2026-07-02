@@ -300,3 +300,24 @@ class LobbyChatMessage(models.Model):
 
     def __str__(self):
         return f"{self.user.username}: {self.message[:30]}"
+
+
+class MemoryMatchScore(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="memory_match_scores",
+        verbose_name="사용자"
+    )
+    score = models.PositiveIntegerField(default=0, verbose_name="점수")
+    moves = models.PositiveIntegerField(default=0, verbose_name="이동 횟수")
+    time_seconds = models.PositiveIntegerField(default=0, verbose_name="소요 시간(초)")
+    played_at = models.DateTimeField(auto_now_add=True, verbose_name="플레이 시각")
+
+    class Meta:
+        ordering = ["-score", "played_at"]
+        verbose_name = "카드 매칭 점수"
+        verbose_name_plural = "카드 매칭 점수 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.score}점"

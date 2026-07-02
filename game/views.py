@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason
+from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore
 from accounts.models import User
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -116,6 +116,26 @@ def get_apple_ranking(top_n=10, season=None):
     return _assign_ranks(result, "score")
 
 
+def get_memory_match_ranking(top_n=10, season=None):
+    """카드 매칭 최고 점수 랭킹. season 지정 시 해당 시즌 기간만 집계."""
+    from django.db.models import Max
+    qs = MemoryMatchScore.objects.values("user")
+    if season is not None:
+        qs = qs.filter(
+            played_at__date__gte=season.start_date,
+            played_at__date__lte=season.end_date,
+        )
+    qs = qs.annotate(best=Max("score")).filter(best__gt=0).order_by("-best")
+
+    user_ids = [entry["user"] for entry in qs]
+    score_map = {entry["user"]: entry["best"] for entry in qs}
+    users = User.objects.filter(pk__in=user_ids).select_related("student")
+    rows = [{"user": u, "score": score_map[u.pk]} for u in users]
+    rows.sort(key=lambda r: -r["score"])
+    result = rows if top_n is None else rows[:top_n]
+    return _assign_ranks(result, "score")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -143,6 +163,46 @@ def apple_game_ranking(request):
     """사과게임 TOP 10 랭킹 JSON (현재 시즌 기준)."""
     season = GameSeason.get_or_create_current()
     rows = get_apple_ranking(10, season=season)
+    data = [
+        {
+            "rank": r["rank"],
+            "name": r["user"].display_name,
+            "picture": r["user"].get_picture(),
+            "score": r["score"],
+            "is_me": r["user"].id == request.user.id,
+        }
+        for r in rows
+    ]
+    return JsonResponse({"ranking": data, "season": season.number})
+
+
+@login_required
+def memory_match_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    chat_messages = list(latest)[::-1]
+    return render(request, "game/memory_match.html", {"title": "카드 매칭", "chat_messages": chat_messages})
+
+
+@login_required
+@require_POST
+def save_memory_match_score(request):
+    try:
+        score = int(request.POST.get("score", 0))
+        moves = int(request.POST.get("moves", 0))
+        time_seconds = int(request.POST.get("time_seconds", 0))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+    if score < 0 or moves < 0 or time_seconds < 0:
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+    MemoryMatchScore.objects.create(user=request.user, score=score, moves=moves, time_seconds=time_seconds)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+def memory_match_ranking(request):
+    """카드 매칭 TOP 10 랭킹 JSON (현재 시즌 기준)."""
+    season = GameSeason.get_or_create_current()
+    rows = get_memory_match_ranking(10, season=season)
     data = [
         {
             "rank": r["rank"],
