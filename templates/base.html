@@ -1109,6 +1109,58 @@
         }, { capture: true });
       })();
     </script>
+    <script>
+      // 유저 프로필 정보 모달 (클릭 시 블러 배경과 함께 표시)
+      (function(){
+        const backdrop = document.createElement('div');
+        backdrop.id = 'user-profile-modal';
+        backdrop.className = 'hidden fixed inset-0 z-[999] items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4';
+        backdrop.innerHTML =
+          '<div class="relative bg-white rounded-2xl shadow-xl w-72 p-6 flex flex-col items-center text-center" data-modal-panel>' +
+            '<button type="button" class="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-modal-close aria-label="닫기">' +
+              '<i class="fa-solid fa-xmark"></i>' +
+            '</button>' +
+            '<img class="w-20 h-20 rounded-full border-2 border-slate-100 object-cover mb-3">' +
+            '<p class="font-bold text-slate-800 text-base"></p>' +
+            '<p class="text-sm text-slate-400 mt-0.5"></p>' +
+          '</div>';
+        document.body.appendChild(backdrop);
+
+        const img = backdrop.querySelector('img');
+        const nicknameEl = backdrop.querySelector('p:nth-of-type(1)');
+        const fullnameEl = backdrop.querySelector('p:nth-of-type(2)');
+
+        function openModal(trigger) {
+          img.src = trigger.dataset.picture || '';
+          nicknameEl.textContent = trigger.dataset.nickname || '';
+          fullnameEl.textContent = trigger.dataset.fullname || '';
+
+          backdrop.classList.remove('hidden');
+          backdrop.classList.add('flex');
+        }
+
+        function closeModal() {
+          backdrop.classList.add('hidden');
+          backdrop.classList.remove('flex');
+        }
+
+        document.addEventListener('click', function(e) {
+          const trigger = e.target.closest('[data-hover-card]');
+          if (trigger) {
+            e.preventDefault();
+            openModal(trigger);
+            return;
+          }
+          if (e.target.closest('[data-modal-close]') || e.target === backdrop) {
+            closeModal();
+          }
+        });
+
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') closeModal();
+        });
+      })();
+    </script>
 </body>
 
 </html>

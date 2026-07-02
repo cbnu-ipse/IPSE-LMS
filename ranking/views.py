@@ -18,7 +18,6 @@ def ranking_home(request):
 	User = get_user_model()
 
 	board = request.GET.get("board", "problems").strip()
-	query = request.GET.get("q", "").strip()
 	season = request.GET.get("season", "").strip()
 
 	allowed_boards = {"problems", "contest", "leaves", "attendance", "streak"}
@@ -46,14 +45,7 @@ def ranking_home(request):
 	board_label = BOARD_LABELS.get(board, "문제 랭킹")
 
 	if board == "problems":
-		users = User.objects.filter(is_active=True).select_related("student")
-
-		if query:
-			users = users.filter(
-				Q(username__icontains=query) | Q(student__nickname__icontains=query)
-			)
-
-		users = list(users)
+		users = list(User.objects.filter(is_active=True).select_related("student"))
 		user_ids = [user.id for user in users]
 		problem_points_map = get_problem_points_map(user_ids)
 
@@ -74,7 +66,6 @@ def ranking_home(request):
 		context = {
 			"board": board,
 			"board_label": board_label,
-			"query": query,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
 			"top_rows": ranking_rows[:3],
@@ -83,17 +74,12 @@ def ranking_home(request):
 
 	if board == "leaves":
 		users = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
-		if query:
-			users = users.filter(
-				Q(username__icontains=query) | Q(student__nickname__icontains=query)
-			)
 		ranking_rows = [{"user": u, "score": u.leaves} for u in users]
 		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
 		context = {
 			"board": board,
 			"board_label": board_label,
-			"query": query,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
 			"top_rows": ranking_rows[:3],
@@ -104,17 +90,12 @@ def ranking_home(request):
 		users_qs = User.objects.filter(is_active=True).select_related("student").annotate(
 			total_attendance=Count("attendances")
 		).filter(total_attendance__gt=0)
-		if query:
-			users_qs = users_qs.filter(
-				Q(username__icontains=query) | Q(student__nickname__icontains=query)
-			)
 		ranking_rows = [{"user": u, "score": u.total_attendance} for u in users_qs]
 		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
 		context = {
 			"board": board,
 			"board_label": board_label,
-			"query": query,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
 			"top_rows": ranking_rows[:3],
@@ -124,10 +105,6 @@ def ranking_home(request):
 	if board == "streak":
 		kst_today = (timezone.now() + timedelta(hours=9)).date()
 		users_qs = User.objects.filter(is_active=True).select_related("student")
-		if query:
-			users_qs = users_qs.filter(
-				Q(username__icontains=query) | Q(student__nickname__icontains=query)
-			)
 		ranking_rows = []
 		for u in users_qs:
 			s = get_attendance_streak(u, kst_today)
@@ -138,7 +115,6 @@ def ranking_home(request):
 		context = {
 			"board": board,
 			"board_label": board_label,
-			"query": query,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
 			"top_rows": ranking_rows[:3],
@@ -168,17 +144,6 @@ def ranking_home(request):
 		user_map[user.id] = user
 
 	users = list(user_map.values())
-
-	if query:
-		query_lower = query.lower()
-		filtered_users = []
-		for user in users:
-			nickname = ""
-			if hasattr(user, "student") and user.student and user.student.nickname:
-				nickname = user.student.nickname
-			if query_lower in user.username.lower() or query_lower in nickname.lower():
-				filtered_users.append(user)
-		users = filtered_users
 
 	contest_problems = selected_contest.contest_problems.select_related("problem").order_by("order", "id")
 	ranking_rows = []
@@ -226,7 +191,6 @@ def ranking_home(request):
 	context = {
 		"board": board,
 		"board_label": board_label,
-		"query": query,
 		"contest_ranking_enabled": contest_ranking_enabled,
 		"season_queryset": season_queryset,
 		"selected_season_id": selected_contest.id,
@@ -248,7 +212,6 @@ def community_ranking(request):
 
     User = get_user_model()
     board = request.GET.get("board", "leaves").strip()
-    query = request.GET.get("q", "").strip()
 
     allowed_boards = {"leaves", "attendance", "streak"}
     if board not in allowed_boards:
@@ -265,8 +228,6 @@ def community_ranking(request):
 
     if board == "leaves":
         qs = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
-        if query:
-            qs = qs.filter(Q(username__icontains=query) | Q(student__nickname__icontains=query))
         ranking_rows = [{"user": u, "score": u.leaves} for u in qs]
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
@@ -277,16 +238,12 @@ def community_ranking(request):
             .annotate(total_attendance=Count("attendances"))
             .filter(total_attendance__gt=0)
         )
-        if query:
-            qs = qs.filter(Q(username__icontains=query) | Q(student__nickname__icontains=query))
         ranking_rows = [{"user": u, "score": u.total_attendance} for u in qs]
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
     elif board == "streak":
         kst_today = (timezone.now() + timedelta(hours=9)).date()
         qs = User.objects.filter(is_active=True).select_related("student")
-        if query:
-            qs = qs.filter(Q(username__icontains=query) | Q(student__nickname__icontains=query))
         for u in qs:
             s = get_attendance_streak(u, kst_today)
             if s > 0:
@@ -296,7 +253,6 @@ def community_ranking(request):
     return render(request, "ranking/community_ranking.html", {
         "board": board,
         "board_label": board_label,
-        "query": query,
         "ranking_rows": ranking_rows,
         "top_rows": ranking_rows[:3],
     })
