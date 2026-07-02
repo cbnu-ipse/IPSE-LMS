@@ -5,11 +5,11 @@
 {% block title %}IPSE 놀이터 | 학점 캡슐 슬롯머신{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-8">
-    <div class="grid lg:grid-cols-12 gap-6 items-start">
+<section class="max-w-4xl mx-auto px-6 py-8">
+    <div>
 
-        <!-- LEFT: 슬롯머신 -->
-        <div class="lg:col-span-8">
+        <!-- 슬롯머신 -->
+        <div>
             <div class="slot-outer">
 
         <!-- 컴팩트 상태 바 -->
@@ -113,10 +113,10 @@
         </div>
         <p class="slot-hint">3개 동일 심볼 정렬 시 당첨 · 매일 자정 초기화</p>
             </div><!-- /.slot-outer -->
-        </div><!-- lg:col-span-8 -->
+        </div>
 
-        <!-- RIGHT: 채팅 + 랭킹 탭 -->
-        <div class="lg:col-span-4 mobile-hidden" id="slot-side-col" style="position:sticky;top:6rem">
+        <!-- 채팅/랭킹 패널 (원형 버튼으로 열고 닫음) -->
+        <div class="mobile-hidden" id="slot-side-col">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'slot-tab-chat')">
@@ -168,10 +168,10 @@
             </div>
         </div>
 
-    </div><!-- grid -->
-<!-- 모바일 전용 채팅 FAB -->
+    </div>
+<!-- 채팅/랭킹 토글 FAB -->
 <button type="button" id="slot-toggle-chat-fab"
-    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    class="fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
     title="채팅 열기/닫기" onclick="toggleSlotChat()">
     <i id="slot-fab-icon" class="fa-solid fa-comments text-xl"></i>
 </button>
@@ -529,22 +529,24 @@
     .slot-stat-bar { font-size: .65rem; }
 }
 
-/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+/* ── 채팅/랭킹 패널 (원형 버튼으로 열고 닫는 오버레이) ────────── */
+#slot-side-col {
+    position: fixed !important;
+    bottom: 88px !important;
+    right: 24px !important;
+    z-index: 9999 !important;
+    width: 360px !important;
+    max-width: calc(100vw - 48px) !important;
+    height: 500px !important;
+    height: min(500px, calc(100vh - 120px)) !important;
+    height: min(500px, calc(100dvh - 120px)) !important;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+    border-radius: 1rem !important;
+    overflow: hidden !important;
+}
+#slot-side-col .game-side-panel { height: 100% !important; }
+#slot-side-col.mobile-hidden { display: none !important; }
 @media (max-width: 1023px) {
-    #slot-side-col {
-        position: fixed !important;
-        bottom: 88px !important;
-        right: 24px !important;
-        z-index: 9999 !important;
-        width: 360px !important;
-        max-width: calc(100vw - 48px) !important;
-        height: 500px !important;
-        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
-        border-radius: 1rem !important;
-        overflow: hidden !important;
-    }
-    #slot-side-col .game-side-panel { height: 100% !important; }
-    #slot-side-col.mobile-hidden { display: none !important; }
     .slot-outer { overscroll-behavior: none; }
 }
 
@@ -1014,7 +1016,9 @@ async function debugSpin(grade) {
     const badge  = document.getElementById('slot-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
     let socket   = null;
+    let heartbeatTimer = null;
 
     function setStatus(open) {
         if (open) {
@@ -1055,13 +1059,22 @@ async function debugSpin(grade) {
 
     function connect() {
         socket = new WebSocket(wsUrl);
-        socket.onopen    = () => { setStatus(true);  box.scrollTop = box.scrollHeight; };
+        socket.onopen    = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
         socket.onmessage = e  => {
             const data = JSON.parse(e.data);
             if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
             else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
         };
-        socket.onclose   = () => { setStatus(false); setTimeout(connect, 5000); };
+        socket.onclose   = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror   = () => socket.close();
     }
 

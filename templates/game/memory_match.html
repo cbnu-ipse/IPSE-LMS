@@ -5,11 +5,11 @@
 {% block title %}IPSE 놀이터 | 카드 매칭{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-6 py-8">
-    <div class="grid lg:grid-cols-12 gap-6 items-start">
+<section class="max-w-4xl mx-auto px-6 py-8">
+    <div>
 
-        <!-- LEFT: 카드 매칭 -->
-        <div class="lg:col-span-8">
+        <!-- 카드 매칭 -->
+        <div>
             <div class="mm-outer">
                 <!-- 컴팩트 상태 바 -->
                 <div class="mm-stat-bar">
@@ -57,8 +57,8 @@
             </div>
         </div>
 
-        <!-- RIGHT: 사이드 패널 -->
-        <div class="lg:col-span-4 mobile-hidden" id="mm-side-col">
+        <!-- 채팅/랭킹 패널 (원형 버튼으로 열고 닫음) -->
+        <div class="mobile-hidden" id="mm-side-col">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'mm-tab-chat')">
@@ -110,10 +110,10 @@
                 </div>
             </div>
         </div>
-    </div><!-- grid -->
-<!-- 모바일 전용 채팅 FAB -->
+    </div>
+<!-- 채팅/랭킹 토글 FAB -->
 <button type="button" id="mm-toggle-chat-fab"
-    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    class="fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
     title="채팅 열기/닫기" onclick="toggleMmChat()">
     <i id="mm-fab-icon" class="fa-solid fa-comments text-xl"></i>
 </button>
@@ -381,23 +381,23 @@
     .mm-btn { font-size: 0.8rem; padding: 9px 20px; }
 }
 
-/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
-@media (max-width: 1023px) {
-    #mm-side-col {
-        position: fixed !important;
-        bottom: 88px !important;
-        right: 24px !important;
-        z-index: 9999 !important;
-        width: 360px !important;
-        max-width: calc(100vw - 48px) !important;
-        height: 500px !important;
-        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
-        border-radius: 1rem !important;
-        overflow: hidden !important;
-    }
-    #mm-side-col .game-side-panel { height: 100% !important; }
-    #mm-side-col.mobile-hidden { display: none !important; }
+/* ── 채팅/랭킹 패널 (원형 버튼으로 열고 닫는 오버레이) ────────── */
+#mm-side-col {
+    position: fixed !important;
+    bottom: 88px !important;
+    right: 24px !important;
+    z-index: 9999 !important;
+    width: 360px !important;
+    max-width: calc(100vw - 48px) !important;
+    height: 500px !important;
+    height: min(500px, calc(100vh - 120px)) !important;
+    height: min(500px, calc(100dvh - 120px)) !important;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+    border-radius: 1rem !important;
+    overflow: hidden !important;
 }
+#mm-side-col .game-side-panel { height: 100% !important; }
+#mm-side-col.mobile-hidden { display: none !important; }
 
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
@@ -608,7 +608,9 @@ function toggleMmChat() {
     const badge = document.getElementById('mm-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
+    let heartbeatTimer = null;
 
     function setStatus(open) {
         if (open) {
@@ -649,7 +651,16 @@ function toggleMmChat() {
 
     function connect() {
         socket = new WebSocket(wsUrl);
-        socket.onopen  = () => { setStatus(true); box.scrollTop = box.scrollHeight; };
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
         socket.onmessage = e => {
             const data = JSON.parse(e.data);
             if (data.error) {
@@ -658,7 +669,7 @@ function toggleMmChat() {
                 append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
             }
         };
-        socket.onclose = () => { setStatus(false); setTimeout(connect, 5000); };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror = () => socket.close();
     }
 
