@@ -100,5 +100,8 @@ CourseCategory
 ### Git Convention
 
 Branch prefixes: `Feat/`, `Fix/`, `Refactor/`, `Chore/`, `Docs/`  
-Commit prefixes: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`  
+Commit prefixes: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`. **keep it short and compact. do not exceed one line.**
 Direct pushes to `main` are forbidden. Sub-branches merge into their parent feature branch first.
+- **PR**:
+  - Title must start with a tag: `[FEAT]`, `[FIX]`, `[CHORE]`, `[DOCS]`, `[REFACTOR]`. e.g. `[FEAT] 학생 인증 서류 업로드 기능 추가`
+  - **Title and body must be written in Korean, clearly and concisely.**
