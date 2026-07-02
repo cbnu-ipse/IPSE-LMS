@@ -5,11 +5,11 @@
 {% block title %}IPSE 놀이터 | 마지막 잎새{% endblock %}
 
 {% block content %}
-<section class="max-w-4xl mx-auto px-6 py-8">
-    <div>
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
 
         <!-- 마지막 잎새 -->
-        <div>
+        <div class="lg:col-span-9">
             <div class="ag-outer">
         <!-- 컴팩트 상태 바 -->
         <div class="ag-stat-bar">
@@ -64,8 +64,8 @@
         </div><!-- /.ag-outer -->
         </div>
 
-        <!-- 채팅/랭킹 패널 (원형 버튼으로 열고 닫음) -->
-        <div class="mobile-hidden" id="ag-side-col">
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-3 mobile-hidden" id="ag-side-col">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'ag-tab-chat')">
@@ -117,10 +117,10 @@
                 </div>
             </div>
         </div>
-    </div>
-<!-- 채팅/랭킹 토글 FAB -->
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
 <button type="button" id="ag-toggle-chat-fab"
-    class="fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
     title="채팅 열기/닫기" onclick="toggleAgChat()">
     <i id="ag-fab-icon" class="fa-solid fa-comments text-xl"></i>
 </button>
@@ -372,27 +372,29 @@
     .ag-btn { font-size: 0.8rem; padding: 9px 20px; }
 }
 
-/* ── 채팅/랭킹 패널 (원형 버튼으로 열고 닫는 오버레이) ────────── */
-#ag-side-col {
-    position: fixed !important;
-    bottom: 88px !important;
-    right: 24px !important;
-    z-index: 9999 !important;
-    width: 360px !important;
-    max-width: calc(100vw - 48px) !important;
-    height: 500px !important;
-    height: min(500px, calc(100vh - 120px)) !important;
-    height: min(500px, calc(100dvh - 120px)) !important;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
-    border-radius: 1rem !important;
-    overflow: hidden !important;
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #ag-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #ag-side-col .game-side-panel { height: 100% !important; }
+    #ag-side-col.mobile-hidden { display: none !important; }
 }
-#ag-side-col .game-side-panel { height: 100% !important; }
-#ag-side-col.mobile-hidden { display: none !important; }
 /* ── 모바일 가로 모드: 캔버스 풀스크린 ──────────────────────
    CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
    불안정하므로, JS가 body.ag-landscape 클래스로 결정적으로 제어 */
-body.ag-landscape section.max-w-7xl { padding: 44px 2px 6px !important; }
+body.ag-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
 body.ag-landscape .ag-outer { border: none; border-radius: 0; box-shadow: none; }
 body.ag-landscape .ag-stat-bar { display: none; }
 body.ag-landscape .ag-hint { display: none; }
@@ -456,7 +458,7 @@ footer { display: none !important; }
             // 풀스크린: 캔버스 실제 위치부터 화면 하단까지(footer 숨김)
             wrap.style.minHeight = '';
             const wrapTop = wrap.getBoundingClientRect().top;
-            const availH = window.innerHeight - wrapTop - 6;
+            const availH = window.innerHeight - wrapTop - 16;
             if (availH > 0) cs = Math.min(cs, Math.max(minCell, Math.floor(availH / ROWS)));
             // 래퍼를 화면 하단까지 채워 하단 흰 공백 제거(캔버스는 세로 중앙 정렬)
             wrap.style.minHeight = availH + 'px';
