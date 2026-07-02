@@ -1,6 +1,5 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load hosts %}
 
 {% block navbar %}{% endblock %}
 
@@ -70,7 +69,7 @@
                 </div>
 
                 <div class="flex items-center justify-end">
-                    <a href="{% host_url 'password_reset' host 'community' %}" class="text-sm font-medium text-emerald-700 hover:text-emerald-600 transition">비밀번호를 잊으셨나요?</a>
+                    <a href="{% url 'password_reset' %}" class="text-sm font-medium text-emerald-700 hover:text-emerald-600 transition">비밀번호를 잊으셨나요?</a>
                 </div>
 
                 {% if form.non_field_errors %}
@@ -92,12 +91,12 @@
             </form>
 
             <div class="mt-8 text-center text-sm font-medium text-slate-600">
-                아직 IPSE 회원이 아니신가요? <a href="{% host_url 'register' host 'community' %}" class="text-emerald-700 hover:underline">회원가입하기</a>
+                아직 IPSE 회원이 아니신가요? <a href="{% url 'register' %}" class="text-emerald-700 hover:underline">회원가입하기</a>
             </div>
 
             {% if active_recruitment_form %}
             <div class="mt-6 border-t border-slate-100 pt-6">
-                <a href="{% host_url 'recruit_apply' active_recruitment_form.id host 'community' %}" 
+                <a href="{% url 'recruit_apply' active_recruitment_form.id %}" 
                    class="w-full inline-flex justify-center items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-4 rounded-2xl transition shadow-md text-lg">
                     <i class="fa-solid fa-file-signature text-sm"></i> IPSE 부원 신청 (모집 중)
                 </a>

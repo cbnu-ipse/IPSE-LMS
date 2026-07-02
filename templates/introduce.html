@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}IPSE 소개{% endblock %}
 {% load static %}
-{% load hosts %}
 
 {% block content %}
 <section class="relative overflow-hidden border-b border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-slate-100">
@@ -26,7 +25,7 @@
                         동아리 활동 보기
                     </a>
 
-                    <a href="{% host_url 'course_list' host 'judge' %}"
+                    <a href="{% url 'course_list' %}"
                        class="inline-flex items-center justify-center px-8 py-4 rounded-xl border border-emerald-300 bg-white text-emerald-700 text-base font-semibold hover:bg-emerald-50 transition">
                         학습 플랫폼 바로가기
                     </a>
@@ -194,7 +193,7 @@
         </div>
 
         <div class="mt-10 flex justify-center">
-            <a href="{% host_url 'course_list' host 'judge' %}" class="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 transition">
+            <a href="{% url 'course_list' %}" class="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 transition">
                 전체 커리큘럼 보기
             </a>
         </div>
@@ -224,7 +223,7 @@
                     또한 동아리 전용 강의 콘텐츠가 매주 업데이트되어 트렌디한 기술 스택을 빠르게 체득합니다.
                 </p>
                 <div class="flex flex-wrap gap-4">
-                    <a href="{% host_url 'course_list' host 'judge' %}" class="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
+                    <a href="{% url 'course_list' %}" class="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
                         학습 대시보드 바로가기
                     </a>
                 </div>
@@ -416,12 +415,12 @@
         </p>
 
         <div class="flex flex-wrap justify-center gap-4">
-            <a href="{% host_url 'course_list' host 'judge' %}"
+            <a href="{% url 'course_list' %}"
                class="inline-flex items-center justify-center px-8 py-4 bg-white text-emerald-700 text-base font-semibold rounded-xl hover:bg-slate-100 transition">
                 학습 시작하기
             </a>
 
-            <a href="{% host_url 'contest:list' host 'judge' %}"
+            <a href="{% url 'contest:list' %}"
                class="inline-flex items-center justify-center px-8 py-4 border border-white text-white text-base font-semibold rounded-xl hover:bg-white/10 transition">
                 대회 보러가기
             </a>
