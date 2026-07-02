@@ -10,7 +10,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         
         <!-- 🎮 게임 플레이 및 카탈로그 영역 (왼쪽 8) -->
-        <div class="lg:col-span-8 bg-slate-50/50 border border-slate-200/60 rounded-3xl p-6 shadow-sm flex flex-col">
+        <div class="lg:col-span-9 bg-slate-50/50 border border-slate-200/60 rounded-3xl p-6 shadow-sm flex flex-col">
             <!-- 게임 영역 헤더 -->
             <div class="flex items-center justify-between border-b border-slate-200/60 pb-4 mb-6 shrink-0">
                 <div class="flex items-center gap-2">
@@ -184,7 +184,7 @@
         </div>
 
         <!-- 💬 채팅 + 랭킹 탭 패널 (오른쪽 4) -->
-        <div id="lobby-chat-container" class="lg:col-span-4 game-side-panel mobile-hidden">
+        <div id="lobby-chat-container" class="lg:col-span-3 game-side-panel mobile-hidden">
             <!-- 탭 헤더 -->
             <div class="gsp-tabs">
                 <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'lobby-tab-chat')">
@@ -350,6 +350,8 @@
         width: 360px !important;
         max-width: calc(100vw - 48px) !important;
         height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
         box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
         background-color: white !important;
         border: 1px solid #e2e8f0 !important;
@@ -438,6 +440,8 @@
     const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/`;
 
     let socket = null;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let heartbeatTimer = null;
 
     function setStatus(state) {
         if (state === 'open') {
@@ -496,6 +500,12 @@
         socket.onopen = function () {
             setStatus('open');
             messagesBox.scrollTop = messagesBox.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
         };
 
         socket.onmessage = function (e) {
@@ -510,6 +520,7 @@
 
         socket.onclose = function () {
             setStatus('closed');
+            clearInterval(heartbeatTimer);
             // 5초 후 자동 재연결
             setTimeout(connect, 5000);
         };

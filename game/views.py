@@ -31,7 +31,7 @@ WIN_TABLE = {
 }
 
 # 사과게임 시즌 랭킹 보상 (순위 → 낙엽 수량)
-SEASON_RANK_REWARDS = {1: 100, 2: 50, 3: 5}
+SEASON_RANK_REWARDS = {1: 32, 2: 16, 3: 8}
 
 
 def _spin_reels():

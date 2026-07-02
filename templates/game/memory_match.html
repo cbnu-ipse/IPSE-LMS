@@ -5,11 +5,17 @@
 {% block title %}IPSE 놀이터 | 카드 매칭{% endblock %}
 
 {% block content %}
+<!-- 모바일 세로 모드 회전 유도 오버레이 -->
+<div id="rotate-overlay" class="rotate-overlay">
+    <i class="fa-solid fa-mobile-screen-button"></i>
+    <p>기기를 가로로 돌려주세요</p>
+    <span>이 게임은 가로 모드에서 즐길 수 있어요</span>
+</div>
 <section class="max-w-7xl mx-auto px-6 py-8">
     <div class="grid lg:grid-cols-12 gap-6 items-start">
 
-        <!-- LEFT: 카드 매칭 -->
-        <div class="lg:col-span-8">
+        <!-- 카드 매칭 -->
+        <div class="lg:col-span-9">
             <div class="mm-outer">
                 <!-- 컴팩트 상태 바 -->
                 <div class="mm-stat-bar">
@@ -19,8 +25,14 @@
                 </div>
 
                 <!-- 카드 보드 -->
-                <div class="mm-board-wrap">
+                <div class="mm-board-wrap" id="mm-board-wrap">
                     <div class="mm-board" id="mm-board"></div>
+
+                    <!-- 가로모드 전용 HUD (이동·시간) -->
+                    <div class="mm-hud" id="mm-hud">
+                        <span class="mm-hud-item">이동 <strong id="mm-moves-hud">0</strong>회</span>
+                        <span class="mm-hud-item">시간 <strong id="mm-timer-hud">0:00</strong></span>
+                    </div>
 
                     <!-- 시작 오버레이 -->
                     <div id="mm-start-overlay" class="mm-overlay">
@@ -58,7 +70,7 @@
         </div>
 
         <!-- RIGHT: 사이드 패널 -->
-        <div class="lg:col-span-4 mobile-hidden" id="mm-side-col">
+        <div class="lg:col-span-3 mobile-hidden" id="mm-side-col">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'mm-tab-chat')">
@@ -205,6 +217,25 @@
 .mm-stat-bar-sep { width: 1px; height: 14px; background: #e2e8f0; }
 .mm-stat-bar-item { color: #64748b; }
 .mm-stat-bar-item strong { color: #1e293b; }
+
+/* ── 가로모드 전용 HUD (이동·시간) ────────────────────────────────── */
+.mm-hud {
+    display: none;
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 9;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 12px;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    font-size: 12px;
+    color: #64748b;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.mm-hud-item strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
 
 /* ── 게임 외곽 ─────────────────────────────────────────────────────── */
 .mm-outer {
@@ -391,6 +422,8 @@
         width: 360px !important;
         max-width: calc(100vw - 48px) !important;
         height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
         box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
         border-radius: 1rem !important;
         overflow: hidden !important;
@@ -398,9 +431,49 @@
     #mm-side-col .game-side-panel { height: 100% !important; }
     #mm-side-col.mobile-hidden { display: none !important; }
 }
+/* ── 모바일 가로 모드: 보드 풀스크린 + 스크롤 방지 ──────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.mm-landscape 클래스로 결정적으로 제어 */
+body.mm-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.mm-landscape .mm-outer { border: none; border-radius: 0; box-shadow: none; }
+body.mm-landscape .mm-stat-bar { display: none; }
+body.mm-landscape .mm-hint { display: none; }
+body.mm-landscape .mm-board-wrap { padding: 4px; align-items: center; }
+body.mm-landscape .mm-hud { display: flex; }
 
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
+/* ── 모바일 스크롤 방지 ──────────────────────────────────── */
+@media (max-width: 1023px) {
+    .mm-outer { overscroll-behavior: none; }
+}
+/* ── 모바일 세로 모드: 회전 유도 오버레이 ────────────────────── */
+.rotate-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px;
+    background: #0f172a;
+    color: #e2e8f0;
+}
+.rotate-overlay.show { display: flex; }
+.rotate-overlay i {
+    font-size: 44px;
+    color: #6ee7b7;
+    margin-bottom: 18px;
+    animation: rotate-hint 1.6s ease-in-out infinite;
+}
+.rotate-overlay p { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.rotate-overlay span { font-size: 12.5px; color: #94a3b8; }
+@keyframes rotate-hint {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(90deg); }
+}
 </style>
 
 <script>
@@ -412,11 +485,14 @@ footer { display: none !important; }
     const boardEl   = document.getElementById('mm-board');
     const movesEl   = document.getElementById('mm-moves');
     const timerEl   = document.getElementById('mm-timer');
+    const movesHudEl = document.getElementById('mm-moves-hud');
+    const timerHudEl = document.getElementById('mm-timer-hud');
     const startOv   = document.getElementById('mm-start-overlay');
     const overOv    = document.getElementById('mm-over-overlay');
     const finalMovesEl = document.getElementById('mm-final-moves');
     const finalTimeEl  = document.getElementById('mm-final-time');
     const finalScoreEl = document.getElementById('mm-final-score');
+    const rotateOverlay = document.getElementById('rotate-overlay');
 
     let deck = [];
     let flipped = [];
@@ -474,6 +550,7 @@ footer { display: none !important; }
 
         moves += 1;
         movesEl.textContent = moves;
+        movesHudEl.textContent = moves;
         lock = true;
         const [a, b] = flipped;
         if (deck[a] === deck[b]) {
@@ -495,11 +572,14 @@ footer { display: none !important; }
     function startTimer() {
         seconds = 0;
         timerEl.textContent = '0:00';
+        timerHudEl.textContent = '0:00';
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             seconds += 1;
             const m = Math.floor(seconds / 60), s = seconds % 60;
-            timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+            const txt = `${m}:${String(s).padStart(2, '0')}`;
+            timerEl.textContent = txt;
+            timerHudEl.textContent = txt;
         }, 1000);
     }
 
@@ -509,6 +589,7 @@ footer { display: none !important; }
         matched = new Set();
         moves = 0;
         movesEl.textContent = '0';
+        movesHudEl.textContent = '0';
         lock = false;
         isRunning = true;
         startOv.classList.add('hidden');
@@ -574,8 +655,49 @@ footer { display: none !important; }
     document.getElementById('mm-start-btn').addEventListener('click', startGame);
     document.getElementById('mm-restart-btn').addEventListener('click', startGame);
 
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 + 보드 풀스크린 맞춤 ──
+    const boardWrap = document.getElementById('mm-board-wrap');
+
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+
+    function isPortraitMobile() {
+        return window.innerWidth < 1024 && window.innerWidth <= window.innerHeight;
+    }
+
+    function applyLandscapeMode() {
+        document.body.classList.toggle('mm-landscape', isLandscapeMode());
+        rotateOverlay.classList.toggle('show', isPortraitMobile());
+    }
+
+    function resizeBoard() {
+        if (isLandscapeMode()) {
+            boardWrap.style.minHeight = '';
+            const wrapTop = boardWrap.getBoundingClientRect().top;
+            const availH  = window.innerHeight - wrapTop - 16;
+            const availW  = boardWrap.clientWidth - 8;
+            const size    = Math.max(160, Math.min(availW, availH));
+            boardEl.style.maxWidth = size + 'px';
+            boardWrap.style.minHeight = availH + 'px';
+        } else {
+            boardEl.style.maxWidth = '';
+            boardWrap.style.minHeight = '';
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        applyLandscapeMode();
+        resizeBoard();
+    });
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => { applyLandscapeMode(); resizeBoard(); }, 120);
+    });
+
     // 초기 랭킹 로드
     window._mmLoadRanking();
+    applyLandscapeMode();
+    resizeBoard();
 })();
 
 function gspSwitch(btn, paneId) {
@@ -608,7 +730,9 @@ function toggleMmChat() {
     const badge = document.getElementById('mm-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
+    let heartbeatTimer = null;
 
     function setStatus(open) {
         if (open) {
@@ -649,7 +773,16 @@ function toggleMmChat() {
 
     function connect() {
         socket = new WebSocket(wsUrl);
-        socket.onopen  = () => { setStatus(true); box.scrollTop = box.scrollHeight; };
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
         socket.onmessage = e => {
             const data = JSON.parse(e.data);
             if (data.error) {
@@ -658,7 +791,7 @@ function toggleMmChat() {
                 append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
             }
         };
-        socket.onclose = () => { setStatus(false); setTimeout(connect, 5000); };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror = () => socket.close();
     }
 
