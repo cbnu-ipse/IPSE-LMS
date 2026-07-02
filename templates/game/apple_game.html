@@ -5,6 +5,12 @@
 {% block title %}IPSE 놀이터 | 마지막 잎새{% endblock %}
 
 {% block content %}
+<!-- 모바일 세로 모드 회전 유도 오버레이 -->
+<div id="rotate-overlay" class="rotate-overlay">
+    <i class="fa-solid fa-mobile-screen-button"></i>
+    <p>기기를 가로로 돌려주세요</p>
+    <span>이 게임은 가로 모드에서 즐길 수 있어요</span>
+</div>
 <section class="max-w-7xl mx-auto px-6 py-8">
     <div class="grid lg:grid-cols-12 gap-6 items-start">
 
@@ -407,6 +413,33 @@ footer { display: none !important; }
 @media (max-width: 1023px) {
     .ag-outer { touch-action: none; overscroll-behavior: none; }
 }
+/* ── 모바일 세로 모드: 회전 유도 오버레이 ────────────────────── */
+.rotate-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px;
+    background: #0f172a;
+    color: #e2e8f0;
+}
+.rotate-overlay.show { display: flex; }
+.rotate-overlay i {
+    font-size: 44px;
+    color: #6ee7b7;
+    margin-bottom: 18px;
+    animation: rotate-hint 1.6s ease-in-out infinite;
+}
+.rotate-overlay p { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.rotate-overlay span { font-size: 12.5px; color: #94a3b8; }
+@keyframes rotate-hint {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(90deg); }
+}
 </style>
 
 <script>
@@ -430,6 +463,7 @@ footer { display: none !important; }
     const startOv = document.getElementById('ag-start-overlay');
     const overOv  = document.getElementById('ag-over-overlay');
     const finalEl = document.getElementById('ag-final-val');
+    const rotateOverlay = document.getElementById('rotate-overlay');
 
     // ── 그리드 초기화 ─────────────────────────────────────────────
     function initGrid() {
@@ -870,8 +904,13 @@ footer { display: none !important; }
     document.getElementById('ag-restart-btn').addEventListener('click', startGame);
 
     // ── 모바일 가로모드 여부를 body 클래스로 반영 ────────────────
+    function isPortraitMobile() {
+        return window.innerWidth < 1024 && window.innerWidth <= window.innerHeight;
+    }
+
     function applyLandscapeMode() {
         document.body.classList.toggle('ag-landscape', isLandscapeMode());
+        rotateOverlay.classList.toggle('show', isPortraitMobile());
     }
 
     // ── 반응형 리사이즈 ──────────────────────────────────────────
