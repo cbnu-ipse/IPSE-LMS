@@ -237,12 +237,12 @@ def slot_ranking(request):
 @login_required
 def game_ranking_view(request):
     """게임 서브도메인 전용 랭킹 페이지."""
-    board = request.GET.get("board", "apple_game").strip()
+    board = request.GET.get("board", "slot_game").strip()
     query = request.GET.get("q", "").strip()
     season_number = request.GET.get("season", "").strip()
 
     if board not in {"slot_game", "apple_game"}:
-        board = "apple_game"
+        board = "slot_game"
 
     BOARD_LABELS = {
         "slot_game": "슬롯머신 랭킹",
