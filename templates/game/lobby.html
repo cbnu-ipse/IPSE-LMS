@@ -89,7 +89,33 @@
                         </div>
                     </a>
 
-                    <!-- 3. 잎새 미니 야구 (준비 중) -->
+                    <!-- 3. 카드 매칭 -->
+                    <a href="{% url 'memory_match' %}" class="game-card">
+                        <div class="game-thumbnail memory">
+                            <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                            <div class="thumbnail-decor"></div>
+                            <div class="thumbnail-content">
+                                <i class="fa-solid fa-clone text-4xl drop-shadow-md" style="animation: bounce 2s infinite 0.4s;"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-indigo-200">CARD MATCH</div>
+                            </div>
+                            <span class="game-badge playable">PLAYABLE</span>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm card-title">카드 매칭</h4>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                    카드를 뒤집어 같은 그림 두 장을 찾는 짝 맞추기 게임. 적은 이동·짧은 시간이 고득점!
+                                </p>
+                            </div>
+                            <div class="flex items-center justify-end border-t border-slate-100 pt-3 mt-3">
+                                <span class="w-7 h-7 rounded-full bg-indigo-50 card-play-btn flex items-center justify-center text-indigo-600 text-xs transition">
+                                    <i class="fa-solid fa-play"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+
+                    <!-- 4. 잎새 미니 야구 (준비 중) -->
                     <div class="game-card opacity-75 cursor-not-allowed">
                         <div class="game-thumbnail baseball">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -121,7 +147,7 @@
                         </div>
                     </div>
 
-                    <!-- 3. 잎새 사다리 타기 (준비 중) -->
+                    <!-- 5. 잎새 사다리 타기 (준비 중) -->
                     <div class="game-card opacity-75 cursor-not-allowed">
                         <div class="game-thumbnail ghostleg">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -255,6 +281,9 @@
 }
 .game-thumbnail.apple {
     background: linear-gradient(135deg, #dc2626, #16a34a);
+}
+.game-thumbnail.memory {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed, #db2777);
 }
 .game-badge {
     position: absolute;
@@ -576,7 +605,8 @@ function loadLobbyRanking() {
     Promise.all([
         fetch('{% url "slot_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
         fetch('{% url "apple_game_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-    ]).then(([slotData, appleData]) => {
+        fetch('{% url "memory_match_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
+    ]).then(([slotData, appleData, memoryData]) => {
         let html = '';
 
         html += sectionTitle('fa-solid fa-dice', '슬롯머신 랭킹');
@@ -590,6 +620,14 @@ function loadLobbyRanking() {
         html += sectionTitle('fa-solid fa-leaf', '마지막 잎새 랭킹');
         if (appleData.ranking && appleData.ranking.length) {
             html += appleData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
+        } else {
+            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
+        }
+
+        html += '<div class="border-t border-slate-100 my-1"></div>';
+        html += sectionTitle('fa-solid fa-clone', '카드 매칭 랭킹');
+        if (memoryData.ranking && memoryData.ranking.length) {
+            html += memoryData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
         } else {
             html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
         }

@@ -1065,21 +1065,30 @@ def notification_list_api(request):
 
 @login_required
 def read_and_redirect(request, notification_id):
-    """특정 알림 읽음 처리 완료 후 관련 번개 모임 또는 게시글 상세화면으로 redirect"""
+    """특정 알림 읽음 처리 완료 후 관련 번개 모임 또는 게시글 상세화면으로 redirect
+
+    accounts.urls 는 community/judge/game 세 호스트에 모두 포함되므로 이 뷰는
+    어느 서브도메인에서도 호출될 수 있다. 반면 리다이렉트 대상(gathering_list 등)은
+    community 서브도메인에만, game_lobby 는 game 서브도메인에만 등록되어 있으므로
+    django_hosts 의 reverse 로 호스트를 명시해 절대 URL을 만들어야 한다.
+    """
     from .models import Notification
+    from django_hosts.resolvers import reverse as host_reverse
     n = get_object_or_404(Notification, id=notification_id, recipient=request.user)
     if not n.is_read:
         n.is_read = True
         n.save(update_fields=['is_read'])
-    
+
     if n.gathering:
         if n.gathering.is_canceled:
             messages.warning(request, "취소된 모임입니다.")
-            return redirect('gathering_list')
-        return redirect('gathering_detail', gathering_id=n.gathering.id)
+            return redirect(host_reverse('gathering_list', host='community'))
+        return redirect(host_reverse('gathering_detail', host='community', kwargs={'gathering_id': n.gathering.id}))
     elif n.post:
-        return redirect('post_detail', post_id=n.post.id)
-    return redirect('gathering_list')
+        return redirect(host_reverse('post_detail', host='community', kwargs={'post_id': n.post.id}))
+    elif n.notification_type in ('game_season_ending', 'game_season_reward'):
+        return redirect(host_reverse('game_lobby', host='game'))
+    return redirect(host_reverse('gathering_list', host='community'))
 
 
 @login_required

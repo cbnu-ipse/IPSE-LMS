@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views import defaults as default_views
 import community.views
+from game.views import dismiss_season_reward
 
 urlpatterns = [
     path("", include("core.urls")),
@@ -16,6 +17,7 @@ urlpatterns = [
     path("course/", include("course.urls")),
     path("accounts/api/", include("accounts.api.urls", namespace="accounts-api")),
     path("recruit/<int:form_id>/", community.views.recruit_apply, name="recruit_apply"),
+    path("season-reward/dismiss/", dismiss_season_reward, name="season_reward_dismiss"),
 ]
 
 if settings.DEBUG:

@@ -3,6 +3,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views import defaults as default_views
+from game.views import dismiss_season_reward
 
 urlpatterns = [
     path("", include("core.urls")),
@@ -16,6 +17,7 @@ urlpatterns = [
     path("ranking/", include("ranking.urls")),
     path("accounts/api/", include("accounts.api.urls", namespace="accounts-api")),
     path("compiler/", include("compiler.urls")),
+    path("season-reward/dismiss/", dismiss_season_reward, name="season_reward_dismiss"),
 ]
 
 if settings.DEBUG:

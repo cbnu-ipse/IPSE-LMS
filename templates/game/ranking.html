@@ -21,6 +21,10 @@
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'apple_game' %}bg-emerald-50 text-emerald-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                         <i class="fa-solid fa-leaf text-xs w-4 text-center text-emerald-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">마지막 잎새 랭킹</span>
                     </a>
+                    <a href="?board=memory_match"
+                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'memory_match' %}bg-indigo-50 text-indigo-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                        <i class="fa-solid fa-clone text-xs w-4 text-center text-indigo-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">카드 매칭 랭킹</span>
+                    </a>
                 </nav>
             </div>
         </aside>
@@ -28,8 +32,8 @@
         <!-- 메인 콘텐츠 -->
         <div class="lg:col-span-10 space-y-6">
 
-            <!-- 시즌 배너 (사과게임 전용) -->
-            {% if board == 'apple_game' %}
+            <!-- 시즌 배너 (슬롯머신 제외 전 게임 공통) -->
+            {% if board != 'slot_game' %}
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <!-- 시즌 정보 -->
@@ -175,6 +179,9 @@
                             {% elif board == 'apple_game' %}
                             <p class="text-[11px] text-slate-400">최고 점수</p>
                             <p class="text-2xl font-bold text-emerald-600">{{ row.score }}점</p>
+                            {% elif board == 'memory_match' %}
+                            <p class="text-[11px] text-slate-400">최고 점수</p>
+                            <p class="text-2xl font-bold text-indigo-600">{{ row.score }}점</p>
                             {% endif %}
                         </div>
                         <div class="rounded-lg bg-slate-50 py-3">
@@ -200,7 +207,7 @@
                                 <th class="px-6 py-4">유저 정보</th>
                                 {% if board == 'slot_game' %}
                                 <th class="px-6 py-4 text-center">최고 등급</th>
-                                {% elif board == 'apple_game' %}
+                                {% elif board == 'apple_game' or board == 'memory_match' %}
                                 <th class="px-6 py-4 text-center">최고 점수</th>
                                 {% endif %}
                             </tr>
@@ -226,6 +233,8 @@
                                 <td class="px-6 py-4 text-center font-bold text-violet-600">{{ row.grade_display }}</td>
                                 {% elif board == 'apple_game' %}
                                 <td class="px-6 py-4 text-center font-bold text-emerald-600">{{ row.score }}점</td>
+                                {% elif board == 'memory_match' %}
+                                <td class="px-6 py-4 text-center font-bold text-indigo-600">{{ row.score }}점</td>
                                 {% endif %}
                             </tr>
                             {% empty %}
