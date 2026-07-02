@@ -22,3 +22,18 @@ def vapid_settings(request):
         'VAPID_PUBLIC_KEY': getattr(settings, 'VAPID_PUBLIC_KEY', ''),
     }
 
+
+_JUDGE_PATH_PREFIXES = ('/course/', '/quiz/', '/contest/', '/problems/', '/compiler/')
+
+
+def site_section(request):
+    """구 judge/game 서브도메인이 담당하던 영역을 현재 경로 기준으로 구분해 템플릿에 전달"""
+    path = request.path
+    if path.startswith(_JUDGE_PATH_PREFIXES):
+        section = 'judge'
+    elif path.startswith('/game/'):
+        section = 'game'
+    else:
+        section = 'community'
+    return {'site_section': section}
+

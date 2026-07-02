@@ -1,6 +1,5 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load hosts %}
 {% block title %}IPSE 대시보드{% endblock %}
 
 {% block content %}
@@ -84,7 +83,7 @@
                     </div>
                 </div>
 
-                <a href="{% host_url 'schedule_list' host 'community' %}" class="block bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md hover:border-emerald-200 transition group">
+                <a href="{% url 'schedule_list' %}" class="block bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md hover:border-emerald-200 transition group">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-xl font-semibold text-[#3F3F3F] group-hover:text-emerald-700 transition">동아리 일정</h3>
                         <div class="flex space-x-3 text-xs font-semibold">
@@ -147,7 +146,7 @@
                                 <i class="fa-solid fa-circle-check"></i> 작성 완료!
                             </button>
                             {% else %}
-                            <a href="{% host_url 'guestbook' host 'community' %}" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition shadow-sm">
+                            <a href="{% url 'guestbook' %}" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition shadow-sm">
                                 <i class="fa-solid fa-feather-pointed"></i> 방명록 남기기
                                 <span class="ml-0.5 text-emerald-200 text-[10px]">+🍂1</span>
                             </a>
@@ -185,7 +184,7 @@
                                 <!-- ⚡ 번개 모임 목록 -->
                                 {% for meetup in active_gatherings %}
                                 <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
-                                    <a href="{% host_url 'gathering_detail' meetup.id host 'community' %}" class="font-medium text-slate-700 hover:text-amber-600 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                    <a href="{% url 'gathering_detail' meetup.id %}" class="font-medium text-slate-700 hover:text-amber-600 transition flex-1 min-w-0 truncate pr-4 text-sm">
                                         <span class="text-amber-500 text-sm mr-1.5"><i class="fa-solid fa-bolt"></i></span>
                                         <span class="font-bold text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded mr-1">번개</span>{{ meetup.title }}
                                     </a>
@@ -198,7 +197,7 @@
                                 <!-- 📢 공지사항 목록 -->
                                 {% for notice in notices %}
                                 <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
-                                    <a href="{% host_url 'post_detail' notice.id host 'community' %}" class="font-medium text-slate-700 hover:text-emerald-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                    <a href="{% url 'post_detail' notice.id %}" class="font-medium text-slate-700 hover:text-emerald-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
                                         <span class="text-emerald-500 text-sm mr-1.5"><i class="fa-solid fa-bullhorn"></i></span>
                                         <span class="font-bold text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded mr-1">공지</span>{{ notice.title }}
                                     </a>
@@ -207,7 +206,7 @@
                                         <span class="text-xs text-slate-400">{{ notice.created_at|date:"m.d" }}</span>
                                         
                                         {% if user.is_staff %}
-                                        <form action="{% host_url 'post_delete' notice.id host 'community' %}" method="POST" class="inline-flex items-center m-0 p-0" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');">
+                                        <form action="{% url 'post_delete' notice.id %}" method="POST" class="inline-flex items-center m-0 p-0" onsubmit="return confirm('이 공지사항을 정말 삭제하시겠습니까?');">
                                             {% csrf_token %}
                                             <button type="submit" class="text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 p-0.5 flex items-center justify-center">
                                                 <i class="fa-solid fa-trash-can text-[11px]"></i>
@@ -221,7 +220,7 @@
                                 <!-- 🔥 주간 인기글 (HOT) 목록 -->
                                 {% for post in hot_posts %}
                                 <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
-                                    <a href="{% host_url 'post_detail' post.id host 'community' %}" class="font-medium text-slate-700 hover:text-rose-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                    <a href="{% url 'post_detail' post.id %}" class="font-medium text-slate-700 hover:text-rose-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
                                         <span class="text-rose-500 text-sm mr-1.5"><i class="fa-solid fa-fire text-rose-500"></i></span>
                                         <span class="font-bold text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded mr-1">인기</span>{{ post.title }}
                                     </a>
@@ -232,7 +231,7 @@
                                 <!-- 📅 학사 일정 목록 -->
                                 {% for academic in recent_academics %}
                                 <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
-                                    <a href="{% host_url 'post_detail' academic.id host 'community' %}" class="font-medium text-slate-700 hover:text-indigo-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                    <a href="{% url 'post_detail' academic.id %}" class="font-medium text-slate-700 hover:text-indigo-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
                                         <span class="text-indigo-500 text-sm mr-1.5"><i class="fa-solid fa-calendar-days"></i></span>
                                         <span class="font-bold text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded mr-1">학사</span>{{ academic.title }}
                                     </a>
@@ -387,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 1. 동아리 일정 위젯
     // ==========================================
     (function() {
-        const SCHEDULE_URL = "{% host_url 'schedule_list' host 'community' %}";
+        const SCHEDULE_URL = "{% url 'schedule_list' %}";
         const WEEKDAYS = ['일','월','화','수','목','금','토'];
 
         function getTodayStr() {
@@ -641,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     {% if trigger_notice_sync %}
     // 하루 1회 백그라운드에서 학사공지 동기화를 실행합니다.
-    fetch('{% host_url "sync_notices_api" host "community" %}', {
+    fetch('{% url "sync_notices_api" %}', {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}',

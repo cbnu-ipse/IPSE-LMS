@@ -1,6 +1,5 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load hosts %}
 
 {% block title %}게임 랭킹 | IPSE 놀이터{% endblock %}
 
@@ -168,7 +167,7 @@
                         <div class="podium-person" style="animation-delay:.55s">
                             <div class="podium-empty-av"><i class="fa-solid fa-user-plus"></i></div>
                             <span class="text-[17px] font-bold text-slate-400 mt-1">도전하세요</span>
-                            <a href="{% host_url 'game_lobby' host 'game' %}" class="text-xs font-semibold text-emerald-600 hover:underline">게임 하러 가기 →</a>
+                            <a href="{% url 'game_lobby' %}" class="text-xs font-semibold text-emerald-600 hover:underline">게임 하러 가기 →</a>
                         </div>
                         <div class="podium-block podium-block-empty" style="height:148px;animation-delay:.25s">
                             <div class="podium-rank text-slate-300"><span>2</span><span class="text-sm font-bold">위</span></div>
@@ -207,7 +206,7 @@
                         <div class="podium-person" style="animation-delay:.75s">
                             <div class="podium-empty-av"><i class="fa-solid fa-user-plus"></i></div>
                             <span class="text-[17px] font-bold text-slate-400 mt-1">도전하세요</span>
-                            <a href="{% host_url 'game_lobby' host 'game' %}" class="text-xs font-semibold text-emerald-600 hover:underline">게임 하러 가기 →</a>
+                            <a href="{% url 'game_lobby' %}" class="text-xs font-semibold text-emerald-600 hover:underline">게임 하러 가기 →</a>
                         </div>
                         <div class="podium-block podium-block-empty" style="height:200px;animation-delay:.45s">
                             <div class="podium-rank text-slate-300"><span>1</span><span class="text-sm font-bold">위</span></div>
@@ -245,7 +244,7 @@
                         <div class="podium-person" style="animation-delay:.4s">
                             <div class="podium-empty-av"><i class="fa-solid fa-user-plus"></i></div>
                             <span class="text-[17px] font-bold text-slate-400 mt-1">도전하세요</span>
-                            <a href="{% host_url 'game_lobby' host 'game' %}" class="text-xs font-semibold text-emerald-600 hover:underline">게임 하러 가기 →</a>
+                            <a href="{% url 'game_lobby' %}" class="text-xs font-semibold text-emerald-600 hover:underline">게임 하러 가기 →</a>
                         </div>
                         <div class="podium-block podium-block-empty" style="height:108px;animation-delay:.1s">
                             <div class="podium-rank text-slate-300"><span>3</span><span class="text-sm font-bold">위</span></div>

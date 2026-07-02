@@ -1,5 +1,4 @@
 {% load static %}
-{% load hosts %}
 <!DOCTYPE html>
 <html lang="ko">
 
@@ -20,17 +19,17 @@
 </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %} | {% block title %}{% endblock %}</title>
+    <title>{% if site_section == 'judge' %}IPSE Judge{% else %}IPSE{% endif %} | {% block title %}{% endblock %}</title>
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
-    <meta property="og:title" content="{% block og_title %}{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}{% if site_section == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}{% endblock %}">
     <meta property="og:description" content="{% block og_description %}충북대학교 컴퓨터공학과 학술동아리 IPSE 플랫폼{% endblock %}">
     <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'img/IPSE-LOGO.png' %}{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
-    <meta property="og:site_name" content="{% if request.host.name == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}">
+    <meta property="og:site_name" content="{% if site_section == 'judge' %}IPSE Judge{% else %}IPSE{% endif %}">
 
-    {% if request.host.name == 'judge' %}
+    {% if site_section == 'judge' %}
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse-judge.svg' %}">
     {% else %}
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse.svg' %}">
@@ -38,7 +37,7 @@
     <link rel="alternate icon" type="image/png" href="{% static 'img/IPSE-LOGO.png' %}">
     <link rel="apple-touch-icon" href="{% static 'img/icons/apple-touch-icon.png' %}">
     <link rel="manifest" href="{% url 'manifest_json' %}">
-    <meta name="theme-color" content="{% if request.host.name == 'judge' %}#0284c7{% else %}#059669{% endif %}">
+    <meta name="theme-color" content="{% if site_section == 'judge' %}#0284c7{% else %}#059669{% endif %}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -78,7 +77,7 @@
     </style>
 </head>
 
-<body class="{% if request.host.name == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
+<body class="{% if site_section == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
     <!-- 카카오톡 인앱 브라우저 아웃 배너 -->
     <div id="kakaotalk-out-banner" class="hidden w-full bg-[#fee500] text-[#191919] px-4 py-3 items-center justify-between text-xs font-bold sticky top-0 z-[99999] shadow-md gap-3">
         <div class="flex items-center gap-2">
@@ -123,7 +122,7 @@
         <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-stretch">
 
             <div class="flex items-center gap-10">
-                {% if request.host.name == 'judge' %}
+                {% if site_section == 'judge' %}
                 <a href="/" class="flex items-center gap-2 group">
                     <i class="fa-solid fa-square-terminal text-emerald-600 text-[1.7rem] group-hover:scale-110 transition"></i>
                     <span class="text-[2.15rem] font-semibold text-[#2f2f2f] tracking-[-0.04em] leading-none transition">
@@ -140,7 +139,7 @@
                 {% endif %}
 
                 <div class="hidden md:flex h-full items-end gap-6 text-sm font-medium text-slate-700">
-                    {% if request.host.name == 'judge' %}
+                    {% if site_section == 'judge' %}
                         <!-- ⚖️ 대회/문제풀이/학습 서브도메인 메뉴 -->
                         <a href="{% url 'course_list' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'course_list' or request.resolver_match.url_name == 'course_detail' or request.resolver_match.url_name == 'lesson_detail' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
@@ -158,13 +157,13 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if 'ranking' in request.resolver_match.app_name or 'ranking' in request.resolver_match.url_name %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             랭킹
                         </a>
-                    {% elif request.host.name == 'game' %}
+                    {% elif site_section == 'game' %}
                         <!-- 🎮 게임 서브도메인 메뉴 -->
-                        <a href="{% host_url 'game_lobby' host 'game' %}"
+                        <a href="{% url 'game_lobby' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'game_lobby' or request.resolver_match.url_name == 'slot_machine' or request.resolver_match.url_name == 'apple_game' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             IPSE 놀이터
                         </a>
-                        <a href="{% host_url 'game_ranking' host 'game' %}"
+                        <a href="{% url 'game_ranking' %}"
                            class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'game_ranking' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             랭킹
                         </a>
@@ -202,39 +201,39 @@
 
             <div class="flex items-center gap-3">
                 <div class="hidden lg:flex h-full items-end gap-4 text-base font-medium text-slate-700">
-                    <a href="{% host_url 'introduce' host 'community' %}"
+                    <a href="{% url 'introduce' %}"
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
                         소개
                     </a>
                     <span class="self-center text-slate-300 text-[22px] leading-none -translate-y-[1px]">|</span>
                 </div>
                 
-                {% if request.host.name == 'judge' %}
+                {% if site_section == 'judge' %}
                 <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
-                    <a href="{% host_url 'game_lobby' host 'game' %}"
+                    <a href="{% url 'game_lobby' %}"
                        class="w-10 h-10 rounded-full flex items-center justify-center bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 hover:text-amber-700 hover:scale-105 transition-all duration-200 shadow-sm">
                         <i class="fa-solid fa-gamepad text-sm"></i>
                     </a>
                 </div>
                 <!-- 📣 잎새 커뮤니티 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center" title="잎새 커뮤니티 바로가기">
-                    <a href="{% host_url 'community_main' host 'community' %}"
+                    <a href="{% url 'community_main' %}"
                        class="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 border border-green-200 text-green-600 hover:bg-green-100 hover:text-green-700 hover:scale-105 transition-all duration-200 shadow-sm">
                         <i class="fa-solid fa-leaf text-sm"></i>
                     </a>
                 </div>
-                {% elif request.host.name == 'game' %}
+                {% elif site_section == 'game' %}
                 <!-- 📣 잎새 커뮤니티 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="잎새 커뮤니티 바로가기">
-                    <a href="{% host_url 'community_main' host 'community' %}"
+                    <a href="{% url 'community_main' %}"
                        class="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 border border-green-200 text-green-600 hover:bg-green-100 hover:text-green-700 hover:scale-105 transition-all duration-200 shadow-sm">
                         <i class="fa-solid fa-leaf text-sm"></i>
                     </a>
                 </div>
                 <!-- ⚖️ 대회 및 채점 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center" title="대회 및 채점 사이트 바로가기">
-                    <a href="{% host_url 'course_list' host 'judge' %}"
+                    <a href="{% url 'course_list' %}"
                        class="w-10 h-10 rounded-full flex items-center justify-center bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 hover:text-sky-700 hover:scale-105 transition-all duration-200 shadow-sm">
                         <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
                     </a>
@@ -242,14 +241,14 @@
                 {% else %}
                 <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
-                    <a href="{% host_url 'game_lobby' host 'game' %}"
+                    <a href="{% url 'game_lobby' %}"
                        class="w-10 h-10 rounded-full flex items-center justify-center bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 hover:text-amber-700 hover:scale-105 transition-all duration-200 shadow-sm">
                         <i class="fa-solid fa-gamepad text-sm"></i>
                     </a>
                 </div>
                 <!-- ⚖️ 대회 및 채점 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center" title="대회 및 채점 사이트 바로가기">
-                    <a href="{% host_url 'course_list' host 'judge' %}"
+                    <a href="{% url 'course_list' %}"
                        class="w-10 h-10 rounded-full flex items-center justify-center bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 hover:text-sky-700 hover:scale-105 transition-all duration-200 shadow-sm">
                         <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
                     </a>
@@ -277,7 +276,7 @@
                         </div>
                     </div>
 
-                    <a href="{% host_url 'profile' host 'community' %}" class="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
+                    <a href="{% url 'profile' %}" class="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
                         <span class="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-[10px] text-white font-medium shadow-sm">
                             LV.{{ user.student.level|default:"1" }}
                         </span>
@@ -295,7 +294,7 @@
                         </button>
                 </div>
                 {% else %}
-                <a href="{% host_url 'login' host 'community' %}"
+                <a href="{% url 'login' %}"
                          class="hidden md:inline bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition">로그인</a>
                 {% endif %}
 
@@ -326,7 +325,7 @@
                 {% if user.is_authenticated %}
                 <!-- 세련된 프로필 카드 -->
                 <div class="bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-2xl p-4 border border-emerald-100/50 flex items-center justify-between shadow-sm">
-                    <a href="{% host_url 'profile' host 'community' %}" class="flex items-center gap-3 group">
+                    <a href="{% url 'profile' %}" class="flex items-center gap-3 group">
                         <div class="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
                             <img src="{{ request.user.get_picture }}" alt="Profile" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
                         </div>
@@ -346,14 +345,14 @@
                 <!-- 로그인 유도 박스 -->
                 <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-center">
                     <p class="text-xs text-slate-500 mb-3 font-medium">로그인하시면 더 많은 서비스를 이용할 수 있습니다.</p>
-                    <a href="{% host_url 'login' host 'community' %}" class="block bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-[0_2px_4px_rgba(16,185,129,0.2)]">로그인</a>
+                    <a href="{% url 'login' %}" class="block bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-[0_2px_4px_rgba(16,185,129,0.2)]">로그인</a>
                 </div>
                 {% endif %}
 
                 <!-- 메뉴 링크 리스트 (하단바와 중복 제외) -->
                 <div class="space-y-1">
-                    {% if request.host.name == 'judge' %}
-                        <a href="{% host_url 'community_main' host 'community' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
+                    {% if site_section == 'judge' %}
+                        <a href="{% url 'community_main' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
                             <span>← 잎새로 돌아가기</span>
                             <i class="fa-solid fa-arrow-left text-[10px]"></i>
                         </a>
@@ -361,12 +360,12 @@
                         <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">문제</a>
                         <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">대회</a>
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
-                    {% elif request.host.name == 'game' %}
-                        <a href="{% host_url 'community_main' host 'community' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
+                    {% elif site_section == 'game' %}
+                        <a href="{% url 'community_main' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
                             <span>← 잎새로 돌아가기</span>
                             <i class="fa-solid fa-arrow-left text-[10px]"></i>
                         </a>
-                        <a href="{% host_url 'course_list' host 'judge' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
+                        <a href="{% url 'course_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
                             <span>대회 및 채점 사이트 바로가기</span>
                             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
                         </a>
@@ -381,17 +380,17 @@
                         </a>
                         {% endif %}
                         <div class="border-t border-slate-100 my-2"></div>
-                        <a href="{% host_url 'game_lobby' host 'game' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100/70 transition">
+                        <a href="{% url 'game_lobby' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100/70 transition">
                             <span>IPSE 놀이터 바로가기</span>
                             <i class="fa-solid fa-gamepad text-[10px]"></i>
                         </a>
-                        <a href="{% host_url 'course_list' host 'judge' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
+                        <a href="{% url 'course_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
                             <span>대회 및 채점 사이트 바로가기</span>
                             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
                         </a>
                     {% endif %}
                     <div class="border-t border-slate-100 my-2"></div>
-                    <a href="{% host_url 'introduce' host 'community' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">소개</a>
+                    <a href="{% url 'introduce' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">소개</a>
                     {% if user.is_authenticated %}
                     <a href="{% url 'notification_center' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">
                         <span>알림</span>
@@ -439,7 +438,7 @@
     </footer>
 
     <!-- 모바일 Bottom Navigation Bar -->
-    {% if request.host.name != 'judge' and request.host.name != 'game' and request.resolver_match.url_name != 'login' %}
+    {% if site_section != 'judge' and site_section != 'game' and request.resolver_match.url_name != 'login' %}
     <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]" style="padding-bottom: calc(16px + env(safe-area-inset-bottom));">
         <div class="flex justify-around items-stretch h-16">
         <!-- 1. 번개 모임 -->
@@ -831,7 +830,7 @@
         const nextInput = document.createElement('input');
         nextInput.type = 'hidden';
         nextInput.name = 'next';
-        nextInput.value = "{% host_url 'login' host 'community' %}";
+        nextInput.value = "{% url 'login' %}";
         form.appendChild(nextInput);
 
         document.body.appendChild(form);

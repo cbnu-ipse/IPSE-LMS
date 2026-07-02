@@ -88,7 +88,6 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
-    "django_hosts",
     "rest_framework",
     "django_filters",
     "dbbackup",
@@ -114,7 +113,6 @@ PROJECT_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 
 MIDDLEWARE = [
-    "django_hosts.middleware.HostsRequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -123,12 +121,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "django_hosts.middleware.HostsResponseMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
-ROOT_HOSTCONF = "config.hosts"
-DEFAULT_HOST = "community"
 PARENT_HOST = config("PARENT_HOST", default="lvh.me:8000" if DEBUG else "cbnu-ipse.co.kr")
 
 # 서브도메인(judge, game 등)에서도 세션/CSRF 쿠키를 공유하기 위해 쿠키 도메인을 루트 도메인으로 설정
@@ -154,6 +149,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.active_recruitments",
                 "core.context_processors.vapid_settings",
+                "core.context_processors.site_section",
                 "game.context_processors.pending_season_reward",
             ],
         },
