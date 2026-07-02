@@ -27,7 +27,11 @@
                 {% if student %}
                 <p class="text-slate-500 mb-5">
                     Update
-                    <a href="{% url 'profile_single' student.student.id %}" class="font-semibold text-emerald-700 hover:text-emerald-800 transition">{{ student.student.get_full_name }}</a>'s level and profile information.
+                    <span class="font-semibold text-emerald-700 cursor-pointer"
+                          data-hover-card
+                          data-picture="{{ student.student.get_picture }}"
+                          data-nickname="{{ student.student.display_name }}"
+                          data-fullname="{{ student.student.get_full_name }}">{{ student.student.get_full_name }}</span>'s level and profile information.
                 </p>
                 {% endif %}
                 <div class="space-y-4">

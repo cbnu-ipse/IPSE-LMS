@@ -54,7 +54,11 @@
                     <td class="px-6 py-4">{{ forloop.counter }}.</td>
                     <td class="px-6 py-4 font-semibold text-[#3F3F3F]">{{ student.student.username }}</td>
                     <td class="px-6 py-4">
-                        <a href="{% url 'profile_single' student.student.id %}" class="font-semibold text-emerald-700 hover:text-emerald-800 transition">{{ student.student.get_full_name }}</a>
+                        <span class="font-semibold text-emerald-700 cursor-pointer"
+                              data-hover-card
+                              data-picture="{{ student.student.get_picture }}"
+                              data-nickname="{{ student.student.display_name }}"
+                              data-fullname="{{ student.student.get_full_name }}">{{ student.student.get_full_name }}</span>
                     </td>
                     <td class="px-6 py-4">{{ student.student.email }}</td>
                     <td class="px-6 py-4">{{ student.level }}</td>
