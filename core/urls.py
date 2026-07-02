@@ -11,5 +11,4 @@ urlpatterns = [
     path('api/schedules/add/', views.add_schedule_api, name='add_schedule_api'),
     path('api/schedules/<int:sch_id>/update/', views.update_schedule_api, name='update_schedule_api'),
     path('api/schedules/<int:sch_id>/delete/', views.delete_schedule_api, name='delete_schedule_api'),
-    path('.well-known/web-app-origin-association', views.web_app_origin_association, name='web_app_origin_association'),
 ]

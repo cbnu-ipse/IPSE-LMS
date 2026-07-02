@@ -459,18 +459,3 @@ def service_worker(request):
 def offline_view(request):
     return render(request, 'offline.html')
 
-
-def web_app_origin_association(request):
-    from django.conf import settings
-    protocol = "https" if request.is_secure() or request.headers.get("x-forwarded-proto") == "https" else "http"
-    parent_host = settings.PARENT_HOST
-    manifest_url = f"{protocol}://{parent_host}/manifest.json"
-    data = {
-        "web_apps": [
-            {
-                "manifest": manifest_url
-            }
-        ]
-    }
-    return JsonResponse(data, content_type="application/assets+json")
-
