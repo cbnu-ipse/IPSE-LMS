@@ -238,7 +238,6 @@ def slot_ranking(request):
 def game_ranking_view(request):
     """게임 서브도메인 전용 랭킹 페이지."""
     board = request.GET.get("board", "slot_game").strip()
-    query = request.GET.get("q", "").strip()
     season_number = request.GET.get("season", "").strip()
 
     if board not in {"slot_game", "apple_game", "memory_match"}:
@@ -279,23 +278,10 @@ def game_ranking_view(request):
             ranking_rows = get_apple_ranking(top_n=None, season=selected_season)
         all_seasons = list(GameSeason.objects.order_by("-number"))
 
-    if query:
-        q_lower = query.lower()
-        ranking_rows = [
-            r for r in ranking_rows
-            if q_lower in r["user"].display_name.lower()
-            or (
-                hasattr(r["user"], "student")
-                and r["user"].student
-                and q_lower in (r["user"].student.nickname or "").lower()
-            )
-        ]
-
     return render(request, "game/ranking.html", {
         "title": "게임 랭킹",
         "board": board,
         "board_label": board_label,
-        "query": query,
         "ranking_rows": ranking_rows,
         "top_rows": ranking_rows[:3],
         "current_season": current_season,
