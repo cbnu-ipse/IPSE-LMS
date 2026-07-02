@@ -279,7 +279,7 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-[15px]">
                             {% for row in ranking_rows %}
-                            {% if row.rank > 3 %}
+                            {% if forloop.counter > 3 %}
                             <tr class="hover:bg-slate-50 transition">
                                 <td class="px-6 py-4 font-semibold text-slate-600">{{ row.rank }}위</td>
                                 <td class="px-6 py-4">
