@@ -11,7 +11,6 @@ Pillow>=10.2.0  # 이미지 업로드 처리
 Django>=5.0,<6.0  # 장고 5.x 최신 버전으로 업그레이드!
 django-model-utils>=4.3.1
 django-filter>=24.1
-django-hosts>=6.0  # 서브도메인 라우팅 (judge/community 분리)
 
 # ==========================================
 # Real-time (Django Channels + WebSocket)
