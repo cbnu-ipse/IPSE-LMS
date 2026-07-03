@@ -1065,6 +1065,8 @@ function toggleAgChat() {
     top: 0; left: 0; right: 0;
     z-index: 9998 !important;
     transform: translateY(-100%);
+    -webkit-transform: translateY(-100%);
+    will-change: transform;
     transition: transform 0.22s cubic-bezier(.4,0,.2,1);
     box-shadow: none;
   }
@@ -1179,6 +1181,8 @@ function toggleAgChat() {
       if (window.innerWidth < 1024) {
         nav.setAttribute('data-game-collapsed', '');
         pill.style.display = '';
+        // iOS Safari: JS로 뒤늦게 적용된 position:fixed가 스크롤 전까지 리페인트되지 않는 문제 방지
+        void nav.offsetHeight;
       } else {
         closeNav();
         nav.removeAttribute('data-game-collapsed');
