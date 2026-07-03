@@ -7,6 +7,10 @@ python manage.py migrate --noinput
 echo ">>> [entrypoint] Collecting static files..."
 python manage.py collectstatic --noinput --clear
 
+echo ">>> [entrypoint] Starting cron (game season jobs)..."
+printenv > /etc/environment
+cron
+
 echo ">>> [entrypoint] Starting Daphne (ASGI)..."
 exec daphne \
     -b 0.0.0.0 \
