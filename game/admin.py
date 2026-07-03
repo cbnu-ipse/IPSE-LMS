@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore
+from .models import SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore
 
 
 @admin.register(GameSeason)
@@ -48,6 +48,14 @@ class MemoryMatchScoreAdmin(admin.ModelAdmin):
 @admin.register(NumberSpeedScore)
 class NumberSpeedScoreAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "score", "mistakes", "time_ms", "played_at")
+    list_filter = ("played_at",)
+    search_fields = ("user__username",)
+    ordering = ("-score",)
+
+
+@admin.register(PatternRecallScore)
+class PatternRecallScoreAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "score", "level", "played_at")
     list_filter = ("played_at",)
     search_fields = ("user__username",)
     ordering = ("-score",)

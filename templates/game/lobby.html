@@ -140,7 +140,33 @@
                         </div>
                     </a>
 
-                    <!-- 5. 컬러 리액션 (준비 중) -->
+                    <!-- 5. 패턴 리콜 -->
+                    <a href="{% url 'pattern_recall' %}" class="game-card">
+                        <div class="game-thumbnail patternrecall">
+                            <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                            <div class="thumbnail-decor"></div>
+                            <div class="thumbnail-content">
+                                <i class="fa-solid fa-brain text-4xl drop-shadow-md" style="animation: bounce 2s infinite 0.8s;"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-teal-200">PATTERN RECALL</div>
+                            </div>
+                            <span class="game-badge playable">PLAYABLE</span>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm card-title">패턴 리콜</h4>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                    점점 길어지는 패턴을 보고 그대로 따라 클릭하는 기억력 게임.
+                                </p>
+                            </div>
+                            <div class="flex items-center justify-end border-t border-slate-100 pt-3 mt-3">
+                                <span class="w-7 h-7 rounded-full bg-emerald-50 card-play-btn flex items-center justify-center text-emerald-600 text-xs transition">
+                                    <i class="fa-solid fa-play"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+
+                    <!-- 6. 컬러 리액션 (준비 중) — COMING SOON 카드는 항상 목록 맨 뒤에 배치 -->
                     <div class="game-card opacity-75 cursor-not-allowed">
                         <div class="game-thumbnail colorreaction">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -157,38 +183,6 @@
                                 <h4 class="font-bold text-slate-500 text-sm">컬러 리액션</h4>
                                 <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
                                     글자의 색과 뜻이 일치하는지 순간적으로 판단하는 반응속도 게임.
-                                </p>
-                            </div>
-                            <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
-                                <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                                    <span class="flex items-center gap-0.5">
-                                        <i class="fa-solid fa-thumbs-up"></i> --%
-                                    </span>
-                                </div>
-                                <span class="w-7 h-7 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
-                                    <i class="fa-solid fa-lock"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 6. 패턴 리콜 (준비 중) -->
-                    <div class="game-card opacity-75 cursor-not-allowed">
-                        <div class="game-thumbnail patternrecall">
-                            <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
-                            <div class="thumbnail-content" style="opacity: 0.6;">
-                                <i class="fa-solid fa-brain text-4xl"></i>
-                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2">PATTERN RECALL</div>
-                            </div>
-                            <span class="game-badge coming-soon">
-                                COMING SOON
-                            </span>
-                        </div>
-                        <div class="p-4 flex-grow flex flex-col justify-between">
-                            <div>
-                                <h4 class="font-bold text-slate-500 text-sm">패턴 리콜</h4>
-                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                                    점점 길어지는 패턴을 보고 그대로 따라 클릭하는 기억력 게임.
                                 </p>
                             </div>
                             <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
@@ -647,7 +641,8 @@ function loadLobbyRanking() {
         fetch('{% url "apple_game_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
         fetch('{% url "memory_match_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
         fetch('{% url "number_speed_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-    ]).then(([slotData, appleData, memoryData, numberSpeedData]) => {
+        fetch('{% url "pattern_recall_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
+    ]).then(([slotData, appleData, memoryData, numberSpeedData, patternRecallData]) => {
         let html = '';
 
         html += sectionTitle('fa-solid fa-dice', '슬롯머신 랭킹');
@@ -677,6 +672,14 @@ function loadLobbyRanking() {
         html += sectionTitle('fa-solid fa-stopwatch', '넘버 스피드 랭킹');
         if (numberSpeedData.ranking && numberSpeedData.ranking.length) {
             html += numberSpeedData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
+        } else {
+            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
+        }
+
+        html += '<div class="border-t border-slate-100 my-1"></div>';
+        html += sectionTitle('fa-solid fa-brain', '패턴 리콜 랭킹');
+        if (patternRecallData.ranking && patternRecallData.ranking.length) {
+            html += patternRecallData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
         } else {
             html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
         }
