@@ -6,7 +6,7 @@
     <style>
     html { font-size: 90%; }
     /* FOUC 방지: tailwind.css 로드 전에도 흰 배경 유지 */
-    html, body { background-color: #f8fafc; overscroll-behavior: none; }
+    html, body { background-color: #f8fafc; overscroll-behavior-y: contain; }
     /* 모바일 기기 화면 확대 및 더블탭 줌 방지 */
     html, body, button, a, input, select, textarea {
         touch-action: manipulation;
@@ -800,11 +800,8 @@
           setTimeout(function() { if (!e.defaultPrevented) showLoader(); }, 0);
         }, { capture: true });
 
-        // BF Cache 무효화 및 loader 해제
+        // BF Cache 복원 시 loader가 켜진 채로 얼어붙는 것 방지
         window.addEventListener('pageshow', function(e) {
-          if (e.persisted || (window.performance && window.performance.navigation && window.performance.navigation.type === 2)) {
-            window.location.reload(true);
-          }
           hideLoader();
         });
       })();
@@ -837,12 +834,6 @@
         form.submit();
       };
 
-      // 뒤로가기 시 브라우저 캐시로 인해 로그인 세션 상태가 잘못 보이는 현상 방지
-      window.addEventListener('pageshow', function(event) {
-        if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
-          window.location.reload();
-        }
-      });
       // 모바일 햄버거 메뉴
       const mobileMenuBtn = document.getElementById('mobile-menu-btn');
       const mobileMenu = document.getElementById('mobile-menu');
