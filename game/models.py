@@ -178,7 +178,7 @@ class GameSeason(models.Model):
     @classmethod
     def _distribute_rewards_and_notify(cls, season):
         """사과게임/카드 매칭 상위 3명에게 낙엽을 지급하고 월말정산 UI 클레임을 생성한다."""
-        from game.views import get_apple_ranking, get_memory_match_ranking, SEASON_RANK_REWARDS
+        from game.views import get_apple_ranking, get_memory_match_ranking, get_number_speed_ranking, SEASON_RANK_REWARDS
 
         RANK_LABELS = {1: "1위", 2: "2위", 3: "3위"}
 
@@ -197,6 +197,15 @@ class GameSeason(models.Model):
             board_label="카드 매칭",
             reward_reason="SEASON_MEMORY_MATCH_REWARD",
             ranking_fn=get_memory_match_ranking,
+            rank_labels=RANK_LABELS,
+            reward_table=SEASON_RANK_REWARDS,
+        )
+        cls._distribute_board_rewards(
+            season=season,
+            board="number_speed",
+            board_label="넘버 스피드",
+            reward_reason="SEASON_NUMBER_SPEED_REWARD",
+            ranking_fn=get_number_speed_ranking,
             rank_labels=RANK_LABELS,
             reward_table=SEASON_RANK_REWARDS,
         )
@@ -254,7 +263,7 @@ class SeasonRewardClaim(models.Model):
     board = models.CharField(
         max_length=20,
         default="apple_game",
-        choices=[("apple_game", "마지막 잎새"), ("memory_match", "카드 매칭")],
+        choices=[("apple_game", "마지막 잎새"), ("memory_match", "카드 매칭"), ("number_speed", "넘버 스피드")],
         verbose_name="게임 종류",
     )
     rank = models.PositiveSmallIntegerField(verbose_name="최종 순위")
@@ -346,6 +355,27 @@ class MemoryMatchScore(models.Model):
         ordering = ["-score", "played_at"]
         verbose_name = "카드 매칭 점수"
         verbose_name_plural = "카드 매칭 점수 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.score}점"
+
+
+class NumberSpeedScore(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="number_speed_scores",
+        verbose_name="사용자"
+    )
+    score = models.PositiveIntegerField(default=0, verbose_name="점수")
+    mistakes = models.PositiveIntegerField(default=0, verbose_name="실수 횟수")
+    time_ms = models.PositiveIntegerField(default=0, verbose_name="소요 시간(ms)")
+    played_at = models.DateTimeField(auto_now_add=True, verbose_name="플레이 시각")
+
+    class Meta:
+        ordering = ["-score", "played_at"]
+        verbose_name = "넘버 스피드 점수"
+        verbose_name_plural = "넘버 스피드 점수 목록"
 
     def __str__(self):
         return f"{self.user.username} - {self.score}점"

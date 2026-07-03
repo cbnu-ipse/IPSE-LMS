@@ -114,13 +114,39 @@
                         </div>
                     </a>
 
-                    <!-- 4. 잎새 미니 야구 (준비 중) -->
+                    <!-- 4. 넘버 스피드 -->
+                    <a href="{% url 'number_speed' %}" class="game-card">
+                        <div class="game-thumbnail numberspeed">
+                            <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                            <div class="thumbnail-decor"></div>
+                            <div class="thumbnail-content">
+                                <i class="fa-solid fa-stopwatch text-4xl drop-shadow-md" style="animation: bounce 2s infinite 0.6s;"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-sky-200">NUMBER SPEED</div>
+                            </div>
+                            <span class="game-badge playable">PLAYABLE</span>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm card-title">넘버 스피드</h4>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                    무작위로 흩어진 1~25 숫자를 순서대로 최대한 빨리 클릭해보세요!
+                                </p>
+                            </div>
+                            <div class="flex items-center justify-end border-t border-slate-100 pt-3 mt-3">
+                                <span class="w-7 h-7 rounded-full bg-sky-50 card-play-btn flex items-center justify-center text-sky-600 text-xs transition">
+                                    <i class="fa-solid fa-play"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+
+                    <!-- 5. 컬러 리액션 (준비 중) -->
                     <div class="game-card opacity-75 cursor-not-allowed">
-                        <div class="game-thumbnail baseball">
+                        <div class="game-thumbnail colorreaction">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
                             <div class="thumbnail-content" style="opacity: 0.6;">
-                                <i class="fa-solid fa-baseball-bat-ball text-4xl"></i>
-                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2">BASEBALL</div>
+                                <i class="fa-solid fa-bolt text-4xl"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2">COLOR REACTION</div>
                             </div>
                             <span class="game-badge coming-soon">
                                 COMING SOON
@@ -128,9 +154,9 @@
                         </div>
                         <div class="p-4 flex-grow flex flex-col justify-between">
                             <div>
-                                <h4 class="font-bold text-slate-500 text-sm">잎새 미니 야구</h4>
+                                <h4 class="font-bold text-slate-500 text-sm">컬러 리액션</h4>
                                 <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                                    투수가 던지는 학점 볼을 타이밍에 맞춰 홈런으로 날리세요!
+                                    글자의 색과 뜻이 일치하는지 순간적으로 판단하는 반응속도 게임.
                                 </p>
                             </div>
                             <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
@@ -146,13 +172,13 @@
                         </div>
                     </div>
 
-                    <!-- 5. 잎새 사다리 타기 (준비 중) -->
+                    <!-- 6. 패턴 리콜 (준비 중) -->
                     <div class="game-card opacity-75 cursor-not-allowed">
-                        <div class="game-thumbnail ghostleg">
+                        <div class="game-thumbnail patternrecall">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
                             <div class="thumbnail-content" style="opacity: 0.6;">
-                                <i class="fa-solid fa-route text-4xl"></i>
-                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2">GHOST LEG</div>
+                                <i class="fa-solid fa-brain text-4xl"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2">PATTERN RECALL</div>
                             </div>
                             <span class="game-badge coming-soon">
                                 COMING SOON
@@ -160,9 +186,9 @@
                         </div>
                         <div class="p-4 flex-grow flex flex-col justify-between">
                             <div>
-                                <h4 class="font-bold text-slate-500 text-sm">잎새 사다리 타기</h4>
+                                <h4 class="font-bold text-slate-500 text-sm">패턴 리콜</h4>
                                 <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                                    간식 내기를 위한 클래식 사다리 타기. 랜덤 확률로 결과를 확인하세요.
+                                    점점 길어지는 패턴을 보고 그대로 따라 클릭하는 기억력 게임.
                                 </p>
                             </div>
                             <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
@@ -177,6 +203,7 @@
                             </div>
                         </div>
                     </div>
+
                 </div>
 
             </div>
@@ -272,10 +299,13 @@
 .game-thumbnail.slot {
     background: linear-gradient(135deg, #f59e0b, #ea580c, #f43f5e);
 }
-.game-thumbnail.baseball {
+.game-thumbnail.numberspeed {
     background: linear-gradient(135deg, #0ea5e9, #4f46e5);
 }
-.game-thumbnail.ghostleg {
+.game-thumbnail.colorreaction {
+    background: linear-gradient(135deg, #f43f5e, #7c3aed);
+}
+.game-thumbnail.patternrecall {
     background: linear-gradient(135deg, #10b981, #0d9488);
 }
 .game-thumbnail.apple {
@@ -616,7 +646,8 @@ function loadLobbyRanking() {
         fetch('{% url "slot_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
         fetch('{% url "apple_game_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
         fetch('{% url "memory_match_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-    ]).then(([slotData, appleData, memoryData]) => {
+        fetch('{% url "number_speed_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
+    ]).then(([slotData, appleData, memoryData, numberSpeedData]) => {
         let html = '';
 
         html += sectionTitle('fa-solid fa-dice', '슬롯머신 랭킹');
@@ -638,6 +669,14 @@ function loadLobbyRanking() {
         html += sectionTitle('fa-solid fa-clone', '카드 매칭 랭킹');
         if (memoryData.ranking && memoryData.ranking.length) {
             html += memoryData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
+        } else {
+            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
+        }
+
+        html += '<div class="border-t border-slate-100 my-1"></div>';
+        html += sectionTitle('fa-solid fa-stopwatch', '넘버 스피드 랭킹');
+        if (numberSpeedData.ranking && numberSpeedData.ranking.length) {
+            html += numberSpeedData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
         } else {
             html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
         }
