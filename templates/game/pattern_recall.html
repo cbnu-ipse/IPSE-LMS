@@ -1,0 +1,883 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 패턴 리콜{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- 패턴 리콜 -->
+        <div class="lg:col-span-9">
+            <div class="pr-outer">
+                <!-- 컴팩트 상태 바 -->
+                <div class="pr-stat-bar">
+                    <span class="pr-stat-chip"><i class="fa-solid fa-brain"></i> 라운드 <strong id="pr-round">0</strong></span>
+                    <button type="button" id="pr-sound-toggle" class="pr-sound-toggle" title="사운드 켜기/끄기">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                </div>
+
+                <!-- 타일 보드 -->
+                <div class="pr-board-wrap" id="pr-board-wrap">
+                    <div class="pr-board" id="pr-board">
+                        <button type="button" class="pr-tile pr-tile-red" data-index="0"></button>
+                        <button type="button" class="pr-tile pr-tile-blue" data-index="1"></button>
+                        <button type="button" class="pr-tile pr-tile-green" data-index="2"></button>
+                        <button type="button" class="pr-tile pr-tile-yellow" data-index="3"></button>
+                    </div>
+
+                    <!-- 시작 오버레이 -->
+                    <div id="pr-start-overlay" class="pr-overlay">
+                        <div class="pr-overlay-content">
+                            <div class="text-6xl mb-4">🧠</div>
+                            <h3>패턴 리콜</h3>
+                            <p>
+                                타일이 순서대로 반짝이면 그대로 따라 클릭하세요.<br>
+                                라운드마다 패턴이 <strong class="text-emerald-600 font-extrabold">한 칸씩 길어지고</strong> 재생 속도도 점점 빨라져요!
+                            </p>
+                            <button id="pr-start-btn" class="pr-btn">
+                                <i class="fa-solid fa-play"></i> 게임 시작
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 게임 종료 오버레이 -->
+                    <div id="pr-over-overlay" class="pr-overlay hidden">
+                        <div class="pr-overlay-content">
+                            <div class="text-5xl mb-3">💥</div>
+                            <h3>게임 종료!</h3>
+                            <div class="pr-final-box">
+                                <span class="pr-final-sub">최종 점수</span>
+                                <span id="pr-final-score" class="pr-final-score-val">0</span>
+                                <span class="pr-final-sub">도달 라운드 <span id="pr-final-round">0</span></span>
+                            </div>
+                            <button id="pr-restart-btn" class="pr-btn">
+                                <i class="fa-solid fa-rotate-right"></i> 다시 하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="pr-hint">타일 순서를 틀리면 게임이 종료됩니다. 라운드가 오를수록 빨라지니 집중하세요 🧠</div>
+            </div>
+        </div>
+
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-3 mobile-hidden" id="pr-side-col">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'pr-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'pr-tab-rank')">
+                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="pr-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="pr-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                            연결 중...
+                        </span>
+                    </div>
+                    <div id="pr-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-center pt-4">아직 메시지가 없습니다.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input id="pr-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="pr-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 랭킹 탭 -->
+                <div id="pr-tab-rank" class="gsp-pane" style="display:none">
+                    <div id="pr-ranking-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="pr-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="togglePrChat()">
+    <i id="pr-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
+</section>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.gsp-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    font-size: .78rem;
+    color: #475569;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .4rem;
+    padding: .6rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── 상태 바 ─────────────────────────────────────────────────────── */
+.pr-stat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    flex-shrink: 0;
+    gap: 10px;
+}
+.pr-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.pr-sound-toggle:hover { color: #475569; }
+.pr-sound-toggle.muted { color: #cbd5e1; }
+.pr-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #64748b;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.pr-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pr-stat-chip i { color: #0d9488; font-size: .68rem; }
+
+/* ── 게임 외곽 ─────────────────────────────────────────────────────── */
+.pr-outer {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── 타일 보드 ───────────────────────────────────────────────────── */
+.pr-board-wrap {
+    position: relative;
+    padding: 24px 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at 50% 0%, #f0fdfa 0%, #f1f5f9 65%);
+    min-height: 460px;
+}
+.pr-board {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 14px;
+    width: 100%;
+    max-width: 340px;
+    aspect-ratio: 1 / 1;
+}
+.pr-board.locked .pr-tile { cursor: default; pointer-events: none; }
+.pr-tile {
+    position: relative;
+    border: none;
+    border-radius: 22px;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 0 3px 10px rgba(15,23,42,.12), inset 0 -6px 12px rgba(0,0,0,.08);
+    transition: transform .1s ease, filter .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.pr-tile:active { transform: scale(0.95); }
+/* 평상시(꺼짐) 색상 — 점등 시 배경을 직접 밝은 색으로 교체하는 방식이라
+   filter:brightness()만으로는 red/blue처럼 채널이 이미 최대치에 가까운
+   색상에서 밝기 차이가 거의 보이지 않는 문제를 해결함 */
+.pr-tile-red    { background: linear-gradient(160deg, #f87171, #b91c1c); }
+.pr-tile-blue   { background: linear-gradient(160deg, #60a5fa, #1d4ed8); }
+.pr-tile-green  { background: linear-gradient(160deg, #4ade80, #15803d); }
+.pr-tile-yellow { background: linear-gradient(160deg, #facc15, #a16207); }
+.pr-tile.lit {
+    transform: scale(1.05);
+}
+.pr-tile-red.lit {
+    background: linear-gradient(160deg, #fecaca, #ef4444);
+    box-shadow: 0 0 0 4px rgba(255,255,255,.7), 0 0 32px 8px rgba(239,68,68,.65);
+}
+.pr-tile-blue.lit {
+    background: linear-gradient(160deg, #bfdbfe, #3b82f6);
+    box-shadow: 0 0 0 4px rgba(255,255,255,.7), 0 0 32px 8px rgba(59,130,246,.65);
+}
+.pr-tile-green.lit {
+    background: linear-gradient(160deg, #bbf7d0, #22c55e);
+    box-shadow: 0 0 0 4px rgba(255,255,255,.7), 0 0 32px 8px rgba(34,197,94,.65);
+}
+.pr-tile-yellow.lit {
+    background: linear-gradient(160deg, #fef08a, #eab308);
+    box-shadow: 0 0 0 4px rgba(255,255,255,.7), 0 0 32px 8px rgba(234,179,8,.65);
+}
+.pr-tile.correct { animation: pr-pulse .18s ease; }
+.pr-tile.wrong { animation: pr-shake .3s ease; filter: brightness(.65) saturate(.6); }
+@keyframes pr-pulse {
+    0% { transform: scale(0.94); }
+    60% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+@keyframes pr-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+}
+
+/* ── 오버레이 (라이트 테마) ──────────────────────────────────────── */
+.pr-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248, 250, 252, 0.96);
+    display: flex;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 10;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.pr-overlay.hidden { display: none; }
+.pr-overlay-content {
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 380px;
+    width: 100%;
+    margin: auto;
+}
+.pr-overlay-content h3 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 10px;
+}
+.pr-overlay-content p {
+    font-size: 0.85rem;
+    color: #64748b;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+.pr-final-box {
+    background: linear-gradient(160deg, #f0fdfa, #ecfdf5);
+    border: 1px solid #99f6e4;
+    border-radius: 18px;
+    padding: 18px 28px;
+    margin: 0 auto 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 240px;
+    box-shadow: 0 4px 16px rgba(13,148,136,.08);
+}
+.pr-final-score-val {
+    font-size: 3.4rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.pr-final-sub { font-size: .75rem; color: #94a3b8; }
+
+/* ── 버튼 (IPSE 에메랄드) ────────────────────────────────────────── */
+.pr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 28px;
+    background: linear-gradient(135deg, #065f46, #059669, #0d9488);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 20px rgba(5,150,105,0.4);
+}
+.pr-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(5,150,105,0.5); }
+.pr-btn:active { transform: scale(0.97); }
+
+/* ── 힌트 푸터 ───────────────────────────────────────────────────── */
+.pr-hint {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 10px;
+    padding: 10px 20px;
+    border-top: 1px solid #f1f5f9;
+    font-weight: 500;
+    background: #f8fafc;
+}
+
+/* ── 모바일 최적화 ───────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .pr-board-wrap { padding: 16px 20px; min-height: 380px; }
+    .pr-board { gap: 8px; max-width: 280px; }
+    .pr-tile { border-radius: 16px; }
+    .pr-stat-bar { font-size: .72rem; padding: 6px 10px; }
+    .pr-hint { font-size: 9px; padding: 8px 10px; }
+    .pr-overlay-content { padding: 20px 16px; }
+    .pr-overlay-content .text-6xl { font-size: 2.75rem; margin-bottom: 8px !important; }
+    .pr-overlay-content h3 { font-size: 1.2rem; margin-bottom: 6px; }
+    .pr-overlay-content p { font-size: 0.76rem; line-height: 1.5; margin-bottom: 16px; }
+    .pr-btn { font-size: 0.8rem; padding: 9px 20px; }
+}
+
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #pr-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #pr-side-col .game-side-panel { height: 100% !important; }
+    #pr-side-col.mobile-hidden { display: none !important; }
+}
+/* ── 모바일 가로 모드: 보드 풀스크린 + 스크롤 방지 ──────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.pr-landscape 클래스로 결정적으로 제어 */
+body.pr-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.pr-landscape .pr-outer { border: none; border-radius: 0; box-shadow: none; }
+body.pr-landscape .pr-stat-bar { display: none; }
+body.pr-landscape .pr-hint { display: none; }
+body.pr-landscape .pr-board-wrap { padding: 4px; align-items: center; }
+
+/* 게임 페이지에서는 사이트 푸터 숨김 */
+footer { display: none !important; }
+/* ── 모바일 스크롤 방지 ──────────────────────────────────── */
+@media (max-width: 1023px) {
+    .pr-outer { overscroll-behavior: none; }
+}
+</style>
+
+<script src="{% static 'js/game-sound.js' %}"></script>
+<script>
+(function () {
+    const CSRF = '{{ csrf_token }}';
+    const TILE_NOTES = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+    const BASE_INTERVAL_MS = 700;
+    const MIN_INTERVAL_MS = 300;
+    const INTERVAL_STEP_MS = 20;
+    const ROUND_ADVANCE_DELAY_MS = 550;
+
+    const boardEl = document.getElementById('pr-board');
+    const roundEl = document.getElementById('pr-round');
+    const startOv = document.getElementById('pr-start-overlay');
+    const overOv = document.getElementById('pr-over-overlay');
+    const finalRoundEl = document.getElementById('pr-final-round');
+    const finalScoreEl = document.getElementById('pr-final-score');
+    const tiles = Array.from(boardEl.querySelectorAll('.pr-tile'));
+
+    let sequence = [];
+    let awaitingIndex = 0;
+    let isRunning = false;
+    let isListening = false;
+
+    function speedForRound(round) {
+        return Math.max(MIN_INTERVAL_MS, BASE_INTERVAL_MS - (round - 1) * INTERVAL_STEP_MS);
+    }
+
+    function lightTile(idx, litMs) {
+        const tile = tiles[idx];
+        tile.classList.add('lit');
+        if (window.GameSound) window.GameSound.play('reelStop', TILE_NOTES[idx]);
+        setTimeout(() => tile.classList.remove('lit'), litMs * 0.7);
+    }
+
+    function playSequence() {
+        isListening = false;
+        awaitingIndex = 0;
+        boardEl.classList.add('locked');
+        const litMs = speedForRound(sequence.length);
+        let i = 0;
+        function step() {
+            if (i >= sequence.length) {
+                boardEl.classList.remove('locked');
+                isListening = true;
+                return;
+            }
+            lightTile(sequence[i], litMs);
+            i += 1;
+            setTimeout(step, litMs + litMs * 0.35);
+        }
+        setTimeout(step, 400);
+    }
+
+    function nextRound() {
+        sequence.push(Math.floor(Math.random() * tiles.length));
+        roundEl.textContent = sequence.length;
+        playSequence();
+    }
+
+    function onTileClick(idx, tileEl) {
+        if (!isRunning || !isListening) return;
+        if (idx === sequence[awaitingIndex]) {
+            if (window.GameSound) window.GameSound.play('reelStop', TILE_NOTES[idx]);
+            tileEl.classList.remove('correct');
+            void tileEl.offsetWidth;
+            tileEl.classList.add('correct');
+            awaitingIndex += 1;
+            if (awaitingIndex >= sequence.length) {
+                isListening = false;
+                if (window.GameSound) window.GameSound.play('success');
+                setTimeout(nextRound, ROUND_ADVANCE_DELAY_MS);
+            }
+        } else {
+            if (window.GameSound) window.GameSound.play('error');
+            tileEl.classList.remove('wrong');
+            void tileEl.offsetWidth;
+            tileEl.classList.add('wrong');
+            endGame();
+        }
+    }
+
+    tiles.forEach((tile, idx) => tile.addEventListener('click', () => onTileClick(idx, tile)));
+
+    function startGame() {
+        sequence = [];
+        awaitingIndex = 0;
+        isRunning = true;
+        isListening = false;
+        roundEl.textContent = '0';
+        startOv.classList.add('hidden');
+        overOv.classList.add('hidden');
+        boardEl.classList.remove('locked');
+        setTimeout(nextRound, 300);
+    }
+
+    function endGame() {
+        isRunning = false;
+        isListening = false;
+        boardEl.classList.add('locked');
+        const clearedRounds = Math.max(0, sequence.length - 1);
+        const score = clearedRounds * 100;
+        finalRoundEl.textContent = clearedRounds;
+        finalScoreEl.textContent = score;
+        if (window.GameSound) window.GameSound.play('lose');
+        setTimeout(() => overOv.classList.remove('hidden'), 350);
+        saveScore(score, clearedRounds);
+    }
+
+    // ── 점수 저장 및 랭킹 갱신 ───
+    function saveScore(score, level) {
+        const fd = new FormData();
+        fd.append('score', score);
+        fd.append('level', level);
+        fd.append('csrfmiddlewaretoken', CSRF);
+        fetch('{% url "pattern_recall_score" %}', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(() => window._prLoadRanking())
+            .catch(() => window._prLoadRanking());
+    }
+
+    window._prLoadRanking = function _prLoadRanking() {
+        const list = document.getElementById('pr-ranking-list');
+        fetch('{% url "pattern_recall_ranking" %}', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ranking || data.ranking.length === 0) {
+                    list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
+                    return;
+                }
+                const MEDALS = ['🥇', '🥈', '🥉'];
+                list.innerHTML = data.ranking.map(row => {
+                    const badge  = row.rank <= 3
+                        ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
+                        : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
+                    const cls    = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
+                    const meTxt  = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
+                    const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
+                    return `
+                        <div class="flex items-center gap-3 px-5 py-3 ${cls}">
+                            <div class="w-8 text-center leading-none">${badge}</div>
+                            <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
+                            <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
+                            <span class="font-bold text-emerald-600 text-sm tabular-nums flex-shrink-0">${row.score}점</span>
+                        </div>`;
+                }).join('');
+            })
+            .catch(() => {
+                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
+            });
+    };
+
+    document.getElementById('pr-start-btn').addEventListener('click', startGame);
+    document.getElementById('pr-restart-btn').addEventListener('click', startGame);
+
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 ──
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+
+    function applyLandscapeMode() {
+        document.body.classList.toggle('pr-landscape', isLandscapeMode());
+    }
+
+    window.addEventListener('resize', applyLandscapeMode);
+    window.addEventListener('orientationchange', () => setTimeout(applyLandscapeMode, 120));
+
+    // ── 사운드 음소거 토글 ────────────────────────────────────────
+    (function () {
+        const btn = document.getElementById('pr-sound-toggle');
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        function render() {
+            const isMuted = window.GameSound && window.GameSound.isMuted();
+            btn.classList.toggle('muted', !!isMuted);
+            icon.className = isMuted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+        }
+        btn.addEventListener('click', () => {
+            if (window.GameSound) window.GameSound.toggleMute();
+            render();
+        });
+        render();
+    })();
+
+    // 초기 랭킹 로드
+    window._prLoadRanking();
+    applyLandscapeMode();
+})();
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+    if (paneId === 'pr-tab-rank' && window._prLoadRanking) window._prLoadRanking();
+}
+
+function togglePrChat() {
+    const col  = document.getElementById('pr-side-col');
+    const icon = document.getElementById('pr-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('pr-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+</script>
+
+<script>
+// ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
+(function () {
+    const box   = document.getElementById('pr-chat-messages');
+    const input = document.getElementById('pr-chat-input');
+    const btn   = document.getElementById('pr-chat-send');
+    const badge = document.getElementById('pr-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let socket = null;
+    let heartbeatTimer = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 연결됨';
+            input.disabled  = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...';
+            input.disabled  = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function append(name, message, time, isSystem, pictureUrl) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+
+        const d = document.createElement('div');
+        if (isSystem) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            const avatar = pictureUrl
+                ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if (data.error) {
+                append('SYSTEM', data.message, '', true, '');
+            } else {
+                append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            }
+        };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-nav-pill {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: opacity 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-pill.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    document.body.appendChild(pill);
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      pill.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      pill.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        pill.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        pill.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
+})();
+</script>
+{% endblock %}
