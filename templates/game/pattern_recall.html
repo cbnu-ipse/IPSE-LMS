@@ -442,7 +442,7 @@ body.pr-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
 body.pr-landscape .pr-outer { border: none; border-radius: 0; box-shadow: none; overflow: visible; }
 body.pr-landscape .pr-stat-bar { display: none; }
 body.pr-landscape .pr-hint { display: none; }
-body.pr-landscape .pr-board-wrap { padding: 10px 4px; align-items: center; min-height: 0; }
+body.pr-landscape .pr-board-wrap { padding: 4px; align-items: center; min-height: 0; }
 body.pr-landscape .pr-board { max-width: min(300px, 68vh, 80vw); gap: 8px; }
 
 /* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ────────
@@ -629,6 +629,7 @@ footer { display: none !important; }
         document.body.classList.toggle('pr-landscape', isLandscapeMode());
     }
 
+    applyLandscapeMode();
     window.addEventListener('resize', applyLandscapeMode);
     window.addEventListener('orientationchange', () => setTimeout(applyLandscapeMode, 120));
 
