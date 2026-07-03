@@ -937,15 +937,36 @@ footer { display: none !important; }
         applyLandscapeMode();   // 레이아웃 클래스 먼저 반영 후 측정
         resize();
     });
-    window.addEventListener('orientationchange', () => {
-        setTimeout(() => { applyLandscapeMode(); resize(); }, 120);
-    });
-    // 회전 후 주소창이 늦게 사라지며 visualViewport 크기만 바뀌는 경우 보정
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
+    // 회전 직후 iOS/모바일 브라우저의 주소창(툴바) 숨김 애니메이션이
+    // 끝나기 전까지는 visualViewport 높이가 계속 바뀐다. 몇 ms 후에
+    // 딱 한 번 재측정하는 방식은 애니메이션이 더 길면 실패하므로,
+    // 값이 더 이상 바뀌지 않을 때(안정될 때)까지 rAF로 계속 관찰한다.
+    function settleResize() {
+        let lastH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        let stableFrames = 0;
+        const maxFrames = 90; // 최대 약 1.5초(rAF 기준)까지만 관찰
+        let frame = 0;
+        function tick() {
             applyLandscapeMode();
             resize();
-        });
+            const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            if (Math.abs(h - lastH) < 0.5) {
+                stableFrames++;
+            } else {
+                stableFrames = 0;
+                lastH = h;
+            }
+            frame++;
+            // 연속 6프레임(~100ms) 동안 값이 그대로면 안정된 것으로 간주
+            if (stableFrames < 6 && frame < maxFrames) {
+                requestAnimationFrame(tick);
+            }
+        }
+        requestAnimationFrame(tick);
+    }
+    window.addEventListener('orientationchange', settleResize);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', settleResize);
     }
 
     // 초기 렌더 + 랭킹 로드
