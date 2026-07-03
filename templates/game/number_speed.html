@@ -1,0 +1,954 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 넘버 스피드{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- 넘버 스피드 -->
+        <div class="lg:col-span-9">
+            <div class="ns-outer">
+                <!-- 컴팩트 상태 바 -->
+                <div class="ns-stat-bar">
+                    <span class="ns-stat-chip ns-stat-chip--mistake"><i class="fa-solid fa-xmark"></i> 실수 <strong id="ns-mistakes">0</strong>회</span>
+                    <span class="ns-stat-chip ns-stat-chip--timer"><i class="fa-solid fa-stopwatch"></i> 시간 <strong id="ns-timer">0.0</strong>초</span>
+                </div>
+
+                <!-- 숫자 보드 -->
+                <div class="ns-board-wrap" id="ns-board-wrap">
+                    <div class="ns-board" id="ns-board"></div>
+
+                    <!-- 우측 남은 시간 게이지 바 -->
+                    <div class="ns-timer-bar" id="ns-timer-bar">
+                        <div class="ns-timer-bar-fill" id="ns-timer-bar-fill"></div>
+                    </div>
+
+                    <!-- 가로모드 전용 HUD (실수·시간) -->
+                    <div class="ns-hud" id="ns-hud">
+                        <span class="ns-hud-item"><i class="fa-solid fa-xmark" style="color:#f43f5e"></i> <strong id="ns-mistakes-hud">0</strong></span>
+                        <span class="ns-hud-item"><i class="fa-solid fa-stopwatch" style="color:#0ea5e9"></i> <strong id="ns-timer-hud">0.0</strong>초</span>
+                    </div>
+
+                    <!-- 시작 오버레이 -->
+                    <div id="ns-start-overlay" class="ns-overlay">
+                        <div class="ns-overlay-content">
+                            <div class="text-6xl mb-4">🔢</div>
+                            <h3>넘버 스피드</h3>
+                            <p>
+                                1부터 25까지 무작위로 흩어진 숫자를 순서대로 최대한 빨리 클릭하세요.<br>
+                                <strong class="text-rose-500 font-extrabold">25초</strong> 안에 끝내지 못하면 0점 처리돼요.
+                                실수가 적고 빠를수록 <strong class="text-sky-600 font-extrabold">높은 점수</strong>를 획득해요!
+                            </p>
+                            <button id="ns-start-btn" class="ns-btn">
+                                <i class="fa-solid fa-play"></i> 게임 시작
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 게임 종료 오버레이 -->
+                    <div id="ns-over-overlay" class="ns-overlay hidden">
+                        <div class="ns-overlay-content">
+                            <div id="ns-over-emoji" class="text-5xl mb-3">🎉</div>
+                            <h3 id="ns-over-title">완료!</h3>
+                            <div class="ns-final-box">
+                                <span class="ns-final-sub">최종 점수</span>
+                                <span id="ns-final-score" class="ns-final-score-val">0</span>
+                                <span class="ns-final-sub">실수 <span id="ns-final-mistakes">0</span>회 · <span id="ns-final-time">0.0초</span></span>
+                            </div>
+                            <button id="ns-restart-btn" class="ns-btn">
+                                <i class="fa-solid fa-rotate-right"></i> 다시 하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="ns-hint">1부터 25까지 순서대로 모두 클릭하면 게임이 종료됩니다. 25초를 넘기면 자동으로 종료돼요 🔢</div>
+            </div>
+        </div>
+
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-3 mobile-hidden" id="ns-side-col">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'ns-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'ns-tab-rank')">
+                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="ns-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="ns-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                            연결 중...
+                        </span>
+                    </div>
+                    <div id="ns-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-sky-100 text-sky-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-center pt-4">아직 메시지가 없습니다.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input id="ns-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-sky-500 focus:bg-white transition">
+                        <button id="ns-chat-send" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 랭킹 탭 -->
+                <div id="ns-tab-rank" class="gsp-pane" style="display:none">
+                    <div id="ns-ranking-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="ns-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-sky-600 hover:bg-sky-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-sky-500"
+    title="채팅 열기/닫기" onclick="toggleNsChat()">
+    <i id="ns-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
+</section>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #0284c7; border-bottom-color: #0284c7; }
+.gsp-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    font-size: .78rem;
+    color: #475569;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .4rem;
+    padding: .6rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── 상태 바 ─────────────────────────────────────────────────────── */
+.ns-stat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    flex-shrink: 0;
+    gap: 10px;
+}
+.ns-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #64748b;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.ns-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ns-stat-chip--mistake i { color: #f43f5e; font-size: .68rem; }
+.ns-stat-chip--timer i { color: #0ea5e9; font-size: .68rem; }
+
+/* ── 우측 남은 시간 게이지 바 ──────────────────────────────────────── */
+.ns-timer-bar {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: 10px;
+    z-index: 5;
+    background: rgba(15,23,42,.08);
+    border: 1px solid rgba(15,23,42,.08);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.ns-timer-bar-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, #38bdf8, #4f46e5);
+    border-radius: 999px;
+    transition: height .1s linear, background .2s;
+}
+.ns-timer-bar-fill.ns-timer-urgent { background: linear-gradient(180deg, #fca5a5, #dc2626); }
+
+/* ── 가로모드 전용 HUD (실수·시간) ────────────────────────────────── */
+.ns-hud {
+    display: none;
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 9;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 12px;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    font-size: 12px;
+    color: #64748b;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.ns-hud-item strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ── 게임 외곽 ─────────────────────────────────────────────────────── */
+.ns-outer {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── 숫자 보드 ───────────────────────────────────────────────────── */
+.ns-board-wrap {
+    position: relative;
+    padding: 24px 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at 50% 0%, #eff6ff 0%, #f1f5f9 65%);
+    min-height: 460px;
+}
+.ns-board {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 10px;
+    width: 100%;
+    max-width: 420px;
+}
+.ns-cell {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border: 1.5px solid #e2e8f0;
+    background: linear-gradient(160deg, #ffffff, #f8fafc);
+    border-radius: 14px;
+    padding: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-size: 1.3rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #334155;
+    box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 3px 8px rgba(15,23,42,.04);
+    transition: transform .12s ease, background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.ns-cell:active { transform: scale(0.94); }
+.ns-cell.done {
+    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(79,70,229,.35);
+    cursor: default;
+    pointer-events: none;
+    animation: ns-pop .22s ease;
+}
+.ns-cell.wrong {
+    background: linear-gradient(160deg, #fef2f2, #fee2e2);
+    border-color: #fca5a5;
+    color: #dc2626;
+    animation: ns-shake .3s ease;
+}
+@keyframes ns-pop {
+    0% { transform: scale(0.85); }
+    60% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+@keyframes ns-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+}
+
+/* ── 오버레이 (라이트 테마) ──────────────────────────────────────── */
+.ns-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248, 250, 252, 0.96);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 10;
+}
+.ns-overlay.hidden { display: none; }
+.ns-overlay-content {
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 380px;
+    width: 100%;
+}
+.ns-overlay-content h3 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 10px;
+}
+.ns-overlay-content p {
+    font-size: 0.85rem;
+    color: #64748b;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+.ns-final-box {
+    background: linear-gradient(160deg, #f0f9ff, #eef2ff);
+    border: 1px solid #bae6fd;
+    border-radius: 18px;
+    padding: 18px 28px;
+    margin: 0 auto 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 240px;
+    box-shadow: 0 4px 16px rgba(79,70,229,.08);
+}
+.ns-final-score-val {
+    font-size: 3.4rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.ns-final-sub { font-size: .75rem; color: #94a3b8; }
+
+/* ── 버튼 (스카이 → 인디고) ────────────────────────────────────────── */
+.ns-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 28px;
+    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 20px rgba(14,165,233,0.4);
+}
+.ns-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(14,165,233,0.5); }
+.ns-btn:active { transform: scale(0.97); }
+
+/* ── 힌트 푸터 ───────────────────────────────────────────────────── */
+.ns-hint {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 10px;
+    padding: 10px 20px;
+    border-top: 1px solid #f1f5f9;
+    font-weight: 500;
+    background: #f8fafc;
+}
+
+/* ── 모바일 최적화 ───────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .ns-board-wrap { padding: 10px; min-height: 380px; }
+    .ns-board { gap: 6px; }
+    .ns-cell { font-size: 1.05rem; border-radius: 9px; }
+    .ns-timer-bar { top: 8px; right: 8px; bottom: 8px; width: 7px; }
+    .ns-stat-bar { font-size: .72rem; padding: 6px 10px; }
+    .ns-hint { font-size: 9px; padding: 8px 10px; }
+    .ns-overlay-content h3 { font-size: 1.3rem; }
+    .ns-overlay-content p { font-size: 0.78rem; }
+    .ns-btn { font-size: 0.8rem; padding: 9px 20px; }
+}
+
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #ns-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #ns-side-col .game-side-panel { height: 100% !important; }
+    #ns-side-col.mobile-hidden { display: none !important; }
+}
+/* ── 모바일 가로 모드: 보드 풀스크린 + 스크롤 방지 ──────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.ns-landscape 클래스로 결정적으로 제어 */
+body.ns-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.ns-landscape .ns-outer { border: none; border-radius: 0; box-shadow: none; }
+body.ns-landscape .ns-stat-bar { display: none; }
+body.ns-landscape .ns-hint { display: none; }
+body.ns-landscape .ns-board-wrap { padding: 4px; align-items: center; }
+body.ns-landscape .ns-hud { display: flex; }
+body.ns-landscape .ns-timer-bar { display: none; }
+
+/* 게임 페이지에서는 사이트 푸터 숨김 */
+footer { display: none !important; }
+/* ── 모바일 스크롤 방지 ──────────────────────────────────── */
+@media (max-width: 1023px) {
+    .ns-outer { overscroll-behavior: none; }
+}
+</style>
+
+<script>
+(function () {
+    const CSRF = '{{ csrf_token }}';
+    const TOTAL = 25;
+    const TIME_LIMIT_MS = 25000;
+    const MISTAKE_PENALTY_MS = 500;
+    const SCORE_MAX = 1000;
+
+    const boardEl = document.getElementById('ns-board');
+    const mistakesEl = document.getElementById('ns-mistakes');
+    const timerEl = document.getElementById('ns-timer');
+    const mistakesHudEl = document.getElementById('ns-mistakes-hud');
+    const timerHudEl = document.getElementById('ns-timer-hud');
+    const timerBarFillEl = document.getElementById('ns-timer-bar-fill');
+    const startOv = document.getElementById('ns-start-overlay');
+    const overOv = document.getElementById('ns-over-overlay');
+    const overEmojiEl = document.getElementById('ns-over-emoji');
+    const overTitleEl = document.getElementById('ns-over-title');
+    const finalMistakesEl = document.getElementById('ns-final-mistakes');
+    const finalTimeEl = document.getElementById('ns-final-time');
+    const finalScoreEl = document.getElementById('ns-final-score');
+
+    let order = [];
+    let nextExpected = 1;
+    let mistakes = 0;
+    let startTime = 0;
+    let timerInterval = null;
+    let isRunning = false;
+
+    // ── 보드 생성 (1~25 셔플) ────────────────────────────────────────
+    function buildBoard() {
+        const nums = [];
+        for (let i = 1; i <= TOTAL; i++) nums.push(i);
+        for (let i = nums.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [nums[i], nums[j]] = [nums[j], nums[i]];
+        }
+        return nums;
+    }
+
+    function renderBoard() {
+        boardEl.innerHTML = '';
+        order.forEach((value) => {
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = 'ns-cell';
+            cell.dataset.value = value;
+            cell.textContent = value;
+            cell.addEventListener('click', () => onCellClick(value, cell));
+            boardEl.appendChild(cell);
+        });
+    }
+
+    function onCellClick(value, cellEl) {
+        if (!isRunning || cellEl.classList.contains('done')) return;
+        if (value === nextExpected) {
+            cellEl.classList.add('done');
+            nextExpected += 1;
+            if (nextExpected > TOTAL) endGame();
+        } else {
+            mistakes += 1;
+            mistakesEl.textContent = mistakes;
+            mistakesHudEl.textContent = mistakes;
+            cellEl.classList.remove('wrong');
+            void cellEl.offsetWidth;
+            cellEl.classList.add('wrong');
+            setTimeout(() => cellEl.classList.remove('wrong'), 300);
+            tick();
+        }
+    }
+
+    function updateTimerBar(remainingMs) {
+        const pct = Math.max(0, Math.min(100, (remainingMs / TIME_LIMIT_MS) * 100));
+        timerBarFillEl.style.height = pct + '%';
+        timerBarFillEl.classList.toggle('ns-timer-urgent', remainingMs <= 5000);
+    }
+
+    function tick() {
+        if (!isRunning) return;
+        const rawElapsedMs = performance.now() - startTime;
+        const effectiveElapsedMs = rawElapsedMs + mistakes * MISTAKE_PENALTY_MS;
+        if (effectiveElapsedMs >= TIME_LIMIT_MS) {
+            const txt = (TIME_LIMIT_MS / 1000).toFixed(1);
+            timerEl.textContent = txt;
+            timerHudEl.textContent = txt;
+            updateTimerBar(0);
+            endGame(true);
+            return;
+        }
+        const txt = (effectiveElapsedMs / 1000).toFixed(1);
+        timerEl.textContent = txt;
+        timerHudEl.textContent = txt;
+        updateTimerBar(TIME_LIMIT_MS - effectiveElapsedMs);
+    }
+
+    function startTimer() {
+        startTime = performance.now();
+        timerEl.textContent = '0.0';
+        timerHudEl.textContent = '0.0';
+        updateTimerBar(TIME_LIMIT_MS);
+        clearInterval(timerInterval);
+        timerInterval = setInterval(tick, 100);
+    }
+
+    function startGame() {
+        order = buildBoard();
+        nextExpected = 1;
+        mistakes = 0;
+        mistakesEl.textContent = '0';
+        mistakesHudEl.textContent = '0';
+        isRunning = true;
+        startOv.classList.add('hidden');
+        overOv.classList.add('hidden');
+        renderBoard();
+        startTimer();
+    }
+
+    function computeEstimateScore(rawElapsedMs, mistakesCount) {
+        const effectiveMs = rawElapsedMs + mistakesCount * MISTAKE_PENALTY_MS;
+        if (effectiveMs >= TIME_LIMIT_MS) return 0;
+        const remainingMs = TIME_LIMIT_MS - effectiveMs;
+        return Math.round(SCORE_MAX * remainingMs / TIME_LIMIT_MS);
+    }
+
+    function endGame(isTimeout) {
+        isRunning = false;
+        clearInterval(timerInterval);
+        const rawElapsedMs = Math.max(1, Math.round(performance.now() - startTime));
+        const estimateScore = computeEstimateScore(rawElapsedMs, mistakes);
+        finalMistakesEl.textContent = mistakes;
+        finalTimeEl.textContent = (rawElapsedMs / 1000).toFixed(2) + '초';
+        finalScoreEl.textContent = estimateScore;
+        overEmojiEl.textContent = isTimeout ? '⏰' : '🎉';
+        overTitleEl.textContent = isTimeout ? '시간 초과!' : '완료!';
+        overOv.classList.remove('hidden');
+        saveScore(mistakes, rawElapsedMs);
+    }
+
+    // ── 점수 저장(서버가 time_ms/mistakes로 재계산) 및 랭킹 갱신 ───
+    function saveScore(mistakesCount, elapsedMs) {
+        const fd = new FormData();
+        fd.append('mistakes', mistakesCount);
+        fd.append('time_ms', elapsedMs);
+        fd.append('csrfmiddlewaretoken', CSRF);
+        fetch('{% url "number_speed_score" %}', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (data && typeof data.score === 'number') finalScoreEl.textContent = data.score;
+                window._nsLoadRanking();
+            })
+            .catch(() => window._nsLoadRanking());
+    }
+
+    window._nsLoadRanking = function _nsLoadRanking() {
+        const list = document.getElementById('ns-ranking-list');
+        fetch('{% url "number_speed_ranking" %}', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ranking || data.ranking.length === 0) {
+                    list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
+                    return;
+                }
+                const MEDALS = ['🥇', '🥈', '🥉'];
+                list.innerHTML = data.ranking.map(row => {
+                    const badge  = row.rank <= 3
+                        ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
+                        : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
+                    const cls    = row.is_me ? 'bg-sky-50 border-l-2 border-sky-400' : '';
+                    const meTxt  = row.is_me ? ' <span class="text-[10px] text-sky-500 font-normal">(나)</span>' : '';
+                    const nameCls = row.is_me ? 'text-sky-700' : 'text-slate-700';
+                    return `
+                        <div class="flex items-center gap-3 px-5 py-3 ${cls}">
+                            <div class="w-8 text-center leading-none">${badge}</div>
+                            <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
+                            <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
+                            <span class="font-bold text-sky-600 text-sm tabular-nums flex-shrink-0">${row.score}점</span>
+                        </div>`;
+                }).join('');
+            })
+            .catch(() => {
+                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
+            });
+    };
+
+    document.getElementById('ns-start-btn').addEventListener('click', startGame);
+    document.getElementById('ns-restart-btn').addEventListener('click', startGame);
+
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 + 보드 풀스크린 맞춤 ──
+    const boardWrap = document.getElementById('ns-board-wrap');
+
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+
+    function applyLandscapeMode() {
+        document.body.classList.toggle('ns-landscape', isLandscapeMode());
+    }
+
+    function resizeBoard() {
+        if (isLandscapeMode()) {
+            boardWrap.style.minHeight = '';
+            const wrapTop = boardWrap.getBoundingClientRect().top;
+            const availH  = window.innerHeight - wrapTop - 16;
+            const availW  = boardWrap.clientWidth - 8;
+            const size    = Math.max(200, Math.min(availW, availH));
+            boardEl.style.maxWidth = size + 'px';
+            boardWrap.style.minHeight = availH + 'px';
+        } else {
+            boardEl.style.maxWidth = '';
+            boardWrap.style.minHeight = '';
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        applyLandscapeMode();
+        resizeBoard();
+    });
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => { applyLandscapeMode(); resizeBoard(); }, 120);
+    });
+
+    // 초기 랭킹 로드
+    window._nsLoadRanking();
+    applyLandscapeMode();
+    resizeBoard();
+})();
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+    if (paneId === 'ns-tab-rank' && window._nsLoadRanking) window._nsLoadRanking();
+}
+
+function toggleNsChat() {
+    const col  = document.getElementById('ns-side-col');
+    const icon = document.getElementById('ns-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('ns-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+</script>
+
+<script>
+// ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
+(function () {
+    const box   = document.getElementById('ns-chat-messages');
+    const input = document.getElementById('ns-chat-input');
+    const btn   = document.getElementById('ns-chat-send');
+    const badge = document.getElementById('ns-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let socket = null;
+    let heartbeatTimer = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-sky-500 inline-block animate-pulse"></span> 연결됨';
+            input.disabled  = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...';
+            input.disabled  = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function append(name, message, time, isSystem, pictureUrl) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+
+        const d = document.createElement('div');
+        if (isSystem) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            const avatar = pictureUrl
+                ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-sky-100 text-sky-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if (data.error) {
+                append('SYSTEM', data.message, '', true, '');
+            } else {
+                append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            }
+        };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-nav-pill {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: opacity 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-pill.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    document.body.appendChild(pill);
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      pill.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      pill.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        pill.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        pill.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
+})();
+</script>
+{% endblock %}

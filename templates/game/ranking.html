@@ -24,6 +24,10 @@
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'memory_match' %}bg-indigo-50 text-indigo-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                         <i class="fa-solid fa-clone text-xs w-4 text-center text-indigo-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">카드 매칭 랭킹</span>
                     </a>
+                    <a href="?board=number_speed"
+                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'number_speed' %}bg-sky-50 text-sky-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                        <i class="fa-solid fa-stopwatch text-xs w-4 text-center text-sky-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">넘버 스피드 랭킹</span>
+                    </a>
                 </nav>
             </div>
         </aside>
@@ -156,7 +160,7 @@
                             {% if row.user.role_badge_label %}
                             <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
                             {% endif %}
-                            <span class="podium-chip mt-0.5 {% if board == 'slot_game' %}bg-violet-50 text-violet-700 border-violet-100{% elif board == 'apple_game' %}bg-emerald-50 text-emerald-700 border-emerald-100{% else %}bg-indigo-50 text-indigo-700 border-indigo-100{% endif %}">
+                            <span class="podium-chip mt-0.5 {% if board == 'slot_game' %}bg-violet-50 text-violet-700 border-violet-100{% elif board == 'apple_game' %}bg-emerald-50 text-emerald-700 border-emerald-100{% elif board == 'number_speed' %}bg-sky-50 text-sky-700 border-sky-100{% else %}bg-indigo-50 text-indigo-700 border-indigo-100{% endif %}">
                                 {% if board == 'slot_game' %}{{ row.grade_display }}{% else %}{{ row.score }}점{% endif %}
                             </span>
                         </div>
@@ -195,7 +199,7 @@
                             {% if row.user.role_badge_label %}
                             <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
                             {% endif %}
-                            <span class="podium-chip mt-0.5 {% if board == 'slot_game' %}bg-violet-50 text-violet-700 border-violet-100{% elif board == 'apple_game' %}bg-emerald-50 text-emerald-700 border-emerald-100{% else %}bg-indigo-50 text-indigo-700 border-indigo-100{% endif %}">
+                            <span class="podium-chip mt-0.5 {% if board == 'slot_game' %}bg-violet-50 text-violet-700 border-violet-100{% elif board == 'apple_game' %}bg-emerald-50 text-emerald-700 border-emerald-100{% elif board == 'number_speed' %}bg-sky-50 text-sky-700 border-sky-100{% else %}bg-indigo-50 text-indigo-700 border-indigo-100{% endif %}">
                                 {% if board == 'slot_game' %}{{ row.grade_display }}{% else %}{{ row.score }}점{% endif %}
                             </span>
                         </div>
@@ -233,7 +237,7 @@
                             {% if row.user.role_badge_label %}
                             <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
                             {% endif %}
-                            <span class="podium-chip mt-0.5 {% if board == 'slot_game' %}bg-violet-50 text-violet-700 border-violet-100{% elif board == 'apple_game' %}bg-emerald-50 text-emerald-700 border-emerald-100{% else %}bg-indigo-50 text-indigo-700 border-indigo-100{% endif %}">
+                            <span class="podium-chip mt-0.5 {% if board == 'slot_game' %}bg-violet-50 text-violet-700 border-violet-100{% elif board == 'apple_game' %}bg-emerald-50 text-emerald-700 border-emerald-100{% elif board == 'number_speed' %}bg-sky-50 text-sky-700 border-sky-100{% else %}bg-indigo-50 text-indigo-700 border-indigo-100{% endif %}">
                                 {% if board == 'slot_game' %}{{ row.grade_display }}{% else %}{{ row.score }}점{% endif %}
                             </span>
                         </div>
@@ -271,7 +275,7 @@
                                 <th class="px-6 py-4">유저 정보</th>
                                 {% if board == 'slot_game' %}
                                 <th class="px-6 py-4 text-center">최고 등급</th>
-                                {% elif board == 'apple_game' or board == 'memory_match' %}
+                                {% elif board == 'apple_game' or board == 'memory_match' or board == 'number_speed' %}
                                 <th class="px-6 py-4 text-center">최고 점수</th>
                                 {% endif %}
                             </tr>
@@ -304,6 +308,8 @@
                                 <td class="px-6 py-4 text-center font-bold text-emerald-600">{{ row.score }}점</td>
                                 {% elif board == 'memory_match' %}
                                 <td class="px-6 py-4 text-center font-bold text-indigo-600">{{ row.score }}점</td>
+                                {% elif board == 'number_speed' %}
+                                <td class="px-6 py-4 text-center font-bold text-sky-600">{{ row.score }}점</td>
                                 {% endif %}
                             </tr>
                             {% endif %}
