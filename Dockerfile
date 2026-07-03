@@ -39,6 +39,7 @@ WORKDIR /app
 # 런타임 시스템 의존성
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    cron \
     && rm -rf /var/lib/apt/lists/*
 
 # builder에서 설치된 패키지 복사
@@ -53,6 +54,11 @@ COPY --from=builder /app/static/css/tailwind.css static/css/tailwind.css
 
 # entrypoint 실행 권한 부여 및 Windows CRLF 개행문자 제거
 RUN sed -i 's/\r$//' docker/entrypoint.sh && chmod +x docker/entrypoint.sh
+
+# 게임 시즌 cron 작업 등록 (finalize_game_season, notify_season_ending)
+RUN sed -i 's/\r$//' docker/crontab \
+    && cp docker/crontab /etc/cron.d/game-season \
+    && chmod 0644 /etc/cron.d/game-season
 
 # media 볼륨 마운트 포인트
 RUN mkdir -p /app/media /app/staticfiles

@@ -449,6 +449,20 @@ body.mm-landscape .mm-hint { display: none; }
 body.mm-landscape .mm-board-wrap { padding: 4px; align-items: center; }
 body.mm-landscape .mm-hud { display: flex; }
 
+/* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ────────
+   상단 플로팅 알약(#game-top-pills)에 가리지 않도록 여백을 확보하고,
+   게임 카드가 뷰포트 안에서 수직 중앙에 오도록 정렬한다. */
+@media (max-width: 1023px) {
+    body:not(.mm-landscape) section.max-w-7xl {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-sizing: border-box;
+        min-height: 100dvh;
+        padding-top: 56px !important;
+    }
+}
+
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
 /* ── 모바일 스크롤 방지 ──────────────────────────────────── */

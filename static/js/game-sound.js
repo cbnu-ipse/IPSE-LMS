@@ -18,10 +18,48 @@
         return ctx;
     }
 
+    // iOS Safari는 무음 스위치가 켜져 있으면 Web Audio API 출력을
+    // 벨소리 채널로 취급해 차단한다(<audio> 태그 재생은 예외). 무음 오디오
+    // 태그를 함께 재생해 미디어 채널로 강제 전환시키는 것이 알려진 우회법.
+    // 0.5초 분량의 무음 PCM(8kHz/8bit/mono) — data 청크 길이가 0이면
+    // loop=true일 때 브라우저가 즉시 재시작을 반복해 메인 스레드를 계속
+    // 점유하므로(회전 시 리사이즈 처리와 겹치면 랙/멈춤 유발), 실제 길이가
+    // 있는 무음 버퍼를 사용해야 한다.
+    const SILENT_WAV = 'data:audio/wav;base64,' + (function () {
+        const sampleRate = 8000, seconds = 0.5, n = sampleRate * seconds;
+        const buf = new Uint8Array(44 + n);
+        const view = new DataView(buf.buffer);
+        const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + n, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate, true);
+        view.setUint16(32, 1, true);
+        view.setUint16(34, 8, true);
+        writeStr(36, 'data');
+        view.setUint32(40, n, true);
+        buf.fill(128, 44);
+        let binary = '';
+        for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
+        return btoa(binary);
+    })();
+    function unlockIOSMuteSwitch() {
+        const audio = new Audio(SILENT_WAV);
+        audio.loop = true;
+        audio.volume = 0.001;
+        audio.play().catch(function () {});
+    }
+
     // iOS/모바일은 사용자 제스처 없이는 오디오가 재생되지 않으므로
     // 첫 클릭/터치 시점에 미리 컨텍스트를 열어둔다.
     function unlock() {
         getCtx();
+        unlockIOSMuteSwitch();
         window.removeEventListener('pointerdown', unlock);
         window.removeEventListener('keydown', unlock);
     }

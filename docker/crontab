@@ -1,0 +1,5 @@
+# 매일 00:00 UTC(09:00 KST) — 시즌 종료 3일/1일 전 알림
+0 0 * * * root cd /app && python manage.py notify_season_ending >> /proc/1/fd/1 2>&1
+
+# 매주 일요일 14:59 UTC(23:59 KST) — 시즌 마감, 보상 지급, 다음 시즌 시작
+59 14 * * 0 root cd /app && python manage.py finalize_game_season >> /proc/1/fd/1 2>&1

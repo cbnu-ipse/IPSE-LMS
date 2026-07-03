@@ -464,6 +464,20 @@ body.ns-landscape .ns-hint { display: none; }
 body.ns-landscape .ns-board-wrap { padding: 4px; align-items: center; }
 body.ns-landscape .ns-timer-bar { display: block; }
 
+/* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ────────
+   상단 플로팅 알약(#game-top-pills)에 가리지 않도록 여백을 확보하고,
+   게임 카드가 뷰포트 안에서 수직 중앙에 오도록 정렬한다. */
+@media (max-width: 1023px) {
+    body:not(.ns-landscape) section.max-w-7xl {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-sizing: border-box;
+        min-height: 100dvh;
+        padding-top: 56px !important;
+    }
+}
+
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
 /* ── 모바일 스크롤 방지 ──────────────────────────────────── */
@@ -499,6 +513,7 @@ footer { display: none !important; }
     let startTime = 0;
     let timerInterval = null;
     let isRunning = false;
+    let timerStarted = false;
 
     // ── 보드 생성 (1~25 셔플) ────────────────────────────────────────
     function buildBoard() {
@@ -526,6 +541,10 @@ footer { display: none !important; }
 
     function onCellClick(value, cellEl) {
         if (!isRunning || cellEl.classList.contains('done')) return;
+        if (!timerStarted) {
+            timerStarted = true;
+            startTimer();
+        }
         if (value === nextExpected) {
             if (window.GameSound) window.GameSound.play('tap');
             cellEl.classList.add('done');
@@ -579,10 +598,12 @@ footer { display: none !important; }
         mistakes = 0;
         mistakesEl.textContent = '0';
         isRunning = true;
+        timerStarted = false;
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
         renderBoard();
-        startTimer();
+        timerEl.textContent = '0.0';
+        updateTimerBar(TIME_LIMIT_MS);
     }
 
     function computeEstimateScore(rawElapsedMs, mistakesCount) {
