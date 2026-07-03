@@ -298,6 +298,16 @@
                          class="hidden md:inline bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition">로그인</a>
                 {% endif %}
 
+                {% if user.is_authenticated and site_section == 'community' %}
+                <!-- 모바일 게임/저지 바로가기 버튼 (메인 도메인 전용) -->
+                <a href="{% url 'game_lobby' %}" class="md:hidden w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition duration-200 shadow-sm mr-1" title="게임 놀이터" aria-label="게임 놀이터">
+                    <i class="fa-solid fa-gamepad text-sm"></i>
+                </a>
+                <a href="{% url 'contest:list' %}" class="md:hidden w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition duration-200 shadow-sm mr-1" title="저지" aria-label="저지">
+                    <i class="fa-solid fa-code text-sm"></i>
+                </a>
+                {% endif %}
+
                 {% if user.is_authenticated %}
                 <!-- 모바일 알림 종 단축 버튼 (모바일) -->
                 <a href="{% url 'notification_center' %}" class="md:hidden w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition duration-200 shadow-sm relative mr-1">
