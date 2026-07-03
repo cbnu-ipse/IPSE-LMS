@@ -495,7 +495,10 @@ footer { display: none !important; }
             // 풀스크린: 캔버스 실제 위치부터 화면 하단까지(footer 숨김)
             wrap.style.minHeight = '';
             const wrapTop = wrap.getBoundingClientRect().top;
-            const availH = window.innerHeight - wrapTop - 24;
+            // iOS 등에서 회전 직후 주소창이 사라지기 전 innerHeight가 작게 보고되는 문제가 있어
+            // 실시간으로 갱신되는 visualViewport.height를 우선 사용
+            const viewportH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const availH = viewportH - wrapTop - 24;
             // 세로 공간이 빠듯한 기기에서는 minCell 제한을 풀어서라도 화면 안에 맞춰
             // 위아래가 잘리지 않게 함(.ag-outer가 overflow:hidden이라 넘치면 그대로 잘림)
             if (availH > 0) cs = Math.max(1, Math.min(cs, Math.floor(availH / ROWS)));
@@ -937,6 +940,13 @@ footer { display: none !important; }
     window.addEventListener('orientationchange', () => {
         setTimeout(() => { applyLandscapeMode(); resize(); }, 120);
     });
+    // 회전 후 주소창이 늦게 사라지며 visualViewport 크기만 바뀌는 경우 보정
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            applyLandscapeMode();
+            resize();
+        });
+    }
 
     // 초기 렌더 + 랭킹 로드
     applyLandscapeMode();
