@@ -1208,12 +1208,24 @@ function toggleAgChat() {
     closeBtn.addEventListener('click', closeNav);
 
     // 모바일(<1024px)에서만 수납. 데스크톱은 기본 sticky 네비게이션 유지
+    // iOS Safari: JS로 뒤늦게 적용된 position:fixed가 실제 스크롤 전까지는
+    // nav 자신의 리페인트뿐 아니라, 다른 요소(getBoundingClientRect 등)가 보는
+    // "문서 흐름상 nav 공간"까지 그대로 남아있는 경우가 있다. 이 잔여 공간 때문에
+    // 캔버스 높이 계산(availH)이 실제보다 작게 나와 세로→가로 회전 시 여백이
+    // 생기는 원인이 되므로, 사용자가 스크롤한 것과 동일한 효과를 내는
+    // 미세한 강제 스크롤로 레이아웃을 확정시킨다.
+    function forceLayoutSettle() {
+      const y = window.scrollY;
+      window.scrollTo(0, y + 1);
+      window.scrollTo(0, y);
+    }
+
     function applyNavMode() {
       if (window.innerWidth < 1024) {
         nav.setAttribute('data-game-collapsed', '');
         pill.style.display = '';
-        // iOS Safari: JS로 뒤늦게 적용된 position:fixed가 스크롤 전까지 리페인트되지 않는 문제 방지
         void nav.offsetHeight;
+        forceLayoutSettle();
       } else {
         closeNav();
         nav.removeAttribute('data-game-collapsed');
@@ -1221,6 +1233,7 @@ function toggleAgChat() {
       }
     }
     window.addEventListener('resize', applyNavMode);
+    window.addEventListener('orientationchange', applyNavMode);
     applyNavMode();
   });
 })();
