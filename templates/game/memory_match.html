@@ -15,6 +15,9 @@
                     <span class="mm-stat-bar-item">이동 <strong id="mm-moves">0</strong>회</span>
                     <span class="mm-stat-bar-sep"></span>
                     <span class="mm-stat-bar-item">시간 <strong id="mm-timer">0:00</strong></span>
+                    <button type="button" id="mm-sound-toggle" class="mm-sound-toggle" title="사운드 켜기/끄기">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
                 </div>
 
                 <!-- 카드 보드 -->
@@ -208,6 +211,18 @@
     gap: 12px;
 }
 .mm-stat-bar-sep { width: 1px; height: 14px; background: #e2e8f0; }
+.mm-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.mm-sound-toggle:hover { color: #475569; }
+.mm-sound-toggle.muted { color: #cbd5e1; }
 .mm-stat-bar-item { color: #64748b; }
 .mm-stat-bar-item strong { color: #1e293b; }
 
@@ -442,6 +457,7 @@ footer { display: none !important; }
 }
 </style>
 
+<script src="{% static 'js/game-sound.js' %}"></script>
 <script>
 (function () {
     const CSRF = '{{ csrf_token }}';
@@ -509,6 +525,7 @@ footer { display: none !important; }
         if (!isRunning || lock) return;
         if (flipped.includes(pos) || matched.has(pos)) return;
 
+        if (window.GameSound) window.GameSound.play('tap');
         flipCard(pos, true);
         flipped.push(pos);
         if (flipped.length < 2) return;
@@ -523,8 +540,10 @@ footer { display: none !important; }
             markMatched(a); markMatched(b);
             flipped = [];
             lock = false;
+            if (window.GameSound) window.GameSound.play('success');
             if (matched.size === deck.length) endGame();
         } else {
+            if (window.GameSound) window.GameSound.play('error');
             setTimeout(() => {
                 flipCard(a, false);
                 flipCard(b, false);
@@ -571,6 +590,7 @@ footer { display: none !important; }
         finalTimeEl.textContent = timerEl.textContent;
         finalScoreEl.textContent = score;
         overOv.classList.remove('hidden');
+        if (window.GameSound) window.GameSound.play('winSmall');
         saveScore(score, moves, seconds);
     }
 
@@ -653,6 +673,23 @@ footer { display: none !important; }
     window.addEventListener('orientationchange', () => {
         setTimeout(() => { applyLandscapeMode(); resizeBoard(); }, 120);
     });
+
+    // ── 사운드 음소거 토글 ────────────────────────────────────────
+    (function () {
+        const btn = document.getElementById('mm-sound-toggle');
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        function render() {
+            const isMuted = window.GameSound && window.GameSound.isMuted();
+            btn.classList.toggle('muted', !!isMuted);
+            icon.className = isMuted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+        }
+        btn.addEventListener('click', () => {
+            if (window.GameSound) window.GameSound.toggleMute();
+            render();
+        });
+        render();
+    })();
 
     // 초기 랭킹 로드
     window._mmLoadRanking();

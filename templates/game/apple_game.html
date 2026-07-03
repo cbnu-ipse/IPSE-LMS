@@ -21,6 +21,9 @@
             <span class="ag-stat-bar-item">점수 <strong id="ag-score">0</strong></span>
             <span class="ag-stat-bar-sep"></span>
             <span class="ag-stat-bar-item">남은 시간 <strong id="ag-timer" style="color:#10b981">2:00</strong></span>
+            <button type="button" id="ag-sound-toggle" class="ag-sound-toggle" title="사운드 켜기/끄기">
+                <i class="fa-solid fa-volume-high"></i>
+            </button>
         </div>
 
         <!-- 캔버스 영역 -->
@@ -220,6 +223,18 @@
 }
 .ag-stat-bar-item { color: #64748b; }
 .ag-stat-bar-item strong { color: #1e293b; }
+.ag-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.ag-sound-toggle:hover { color: #475569; }
+.ag-sound-toggle.muted { color: #cbd5e1; }
 
 /* ── 게임 외곽 ─────────────────────────────────────────────────────── */
 .ag-outer {
@@ -446,6 +461,7 @@ footer { display: none !important; }
 }
 </style>
 
+<script src="{% static 'js/game-sound.js' %}"></script>
 <script>
 (function () {
     const CSRF     = '{{ csrf_token }}';
@@ -777,7 +793,10 @@ footer { display: none !important; }
 
         score += cleared;
         scoreEl.textContent = score;
-        if (cleared > 0) ensureAnim();
+        if (cleared > 0) {
+            ensureAnim();
+            if (window.GameSound) window.GameSound.play('pop');
+        }
     }
 
     // ── 타이머 ────────────────────────────────────────────────────
@@ -823,6 +842,7 @@ footer { display: none !important; }
         finalEl.textContent = score;
         overOv.classList.remove('hidden');
         draw();
+        if (window.GameSound) window.GameSound.play('winSmall');
         saveScore(score);
     }
 
@@ -968,6 +988,23 @@ footer { display: none !important; }
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', settleResize);
     }
+
+    // ── 사운드 음소거 토글 ────────────────────────────────────────
+    (function () {
+        const btn = document.getElementById('ag-sound-toggle');
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        function render() {
+            const isMuted = window.GameSound && window.GameSound.isMuted();
+            btn.classList.toggle('muted', !!isMuted);
+            icon.className = isMuted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+        }
+        btn.addEventListener('click', () => {
+            if (window.GameSound) window.GameSound.toggleMute();
+            render();
+        });
+        render();
+    })();
 
     // 초기 렌더 + 랭킹 로드
     applyLandscapeMode();

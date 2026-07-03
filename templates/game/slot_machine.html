@@ -22,6 +22,9 @@
             <span class="text-slate-600/40 mx-2">|</span>
             <span class="text-rose-400 text-[11px] font-semibold">방명록 작성 후 참여 가능</span>
             {% endif %}
+            <button type="button" id="slot-sound-toggle" class="slot-sound-toggle" title="사운드 켜기/끄기">
+                <i class="fa-solid fa-volume-high"></i>
+            </button>
         </div>
 
         <!-- 슬롯머신 본체 -->
@@ -252,6 +255,18 @@
     font-size: .7rem;
     color: #94a3b8;
 }
+.slot-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.slot-sound-toggle:hover { color: #e2e8f0; }
+.slot-sound-toggle.muted { color: #64748b; }
 /* ── 전체 컨테이너 고정 ─────────────────────────── */
 .slot-outer {
     width: 100%;
@@ -570,6 +585,7 @@ body.slot-landscape .symbols-legend { display: none; }
 body.slot-landscape .slot-hint { display: none; }
 </style>
 
+<script src="{% static 'js/game-sound.js' %}"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════
    실물 슬롯머신 릴 렌더링
@@ -686,7 +702,7 @@ window.addEventListener('orientationchange', () => {
 // ─── 스핀 애니메이션 ───────────────────────────────────────────────
 // stopAfterMs: 이 시각(ms)에 릴이 딱 멈춤. 3릴 동시 스핀 → 왼쪽부터 순차 정지.
 // buildReelStrip이 REEL_COPIES개 패턴을 쌓아두므로 스핀 전 구간 빈 공간 없음.
-function spinReel(reelEl, pattern, targetSymId, stopAfterMs) {
+function spinReel(reelEl, pattern, targetSymId, stopAfterMs, stopNote) {
     return new Promise(resolve => {
         const patLen     = pattern.length;
         const oneCopyLen = patLen * SYMBOL_HEIGHT;
@@ -731,6 +747,7 @@ function spinReel(reelEl, pattern, targetSymId, stopAfterMs) {
         setTimeout(() => {
             reelEl.style.transition = 'none';
             reelEl.style.transform  = `translateY(${targetY}px)`;
+            if (window.GameSound) window.GameSound.play('reelStop', stopNote);
             setTimeout(() => resolve(landingGlobalIdx), 30);
         }, stopAfterMs);
     });
@@ -862,12 +879,21 @@ async function spinSlot() {
 
     // 3릴 동시 스핀 → 왼쪽부터 순차 정지 (딱딱딱)
     const STOP_TIMES = [2200, 2700, 3200]; // 각 릴 정지 시각 (ms)
+    const STOP_NOTES = [440, 550, 660]; // 정지 시 음높이 (왼쪽부터 순차 상승)
+
+    let reelSpinLoop = null;
+    if (window.GameSound) {
+        window.GameSound.play('spinStart');
+        reelSpinLoop = window.GameSound.startLoop('reelSpin');
+    }
 
     const results = await Promise.all([
-        spinReel(reelEls[0], reelPatterns[0], s0, STOP_TIMES[0]),
-        spinReel(reelEls[1], reelPatterns[1], s1, STOP_TIMES[1]),
-        spinReel(reelEls[2], reelPatterns[2], s2, STOP_TIMES[2]),
+        spinReel(reelEls[0], reelPatterns[0], s0, STOP_TIMES[0], STOP_NOTES[0]),
+        spinReel(reelEls[1], reelPatterns[1], s1, STOP_TIMES[1], STOP_NOTES[1]),
+        spinReel(reelEls[2], reelPatterns[2], s2, STOP_TIMES[2], STOP_NOTES[2]),
     ]);
+
+    if (window.GameSound) window.GameSound.stopLoop(reelSpinLoop);
 
     const isWin = data.grade !== 'F';
 
@@ -876,6 +902,9 @@ async function spinSlot() {
 
     // 결과 배너
     showResult(data.grade, data.reward);
+    if (window.GameSound) {
+        window.GameSound.play(data.grade === 'S' ? 'jackpot' : (isWin ? 'winSmall' : 'lose'));
+    }
 
     // 상태 업데이트
     playedToday = data.played_today;
@@ -935,6 +964,23 @@ function loadSlotRanking() {
 
 document.addEventListener('DOMContentLoaded', loadSlotRanking);
 
+// ─── 사운드 음소거 토글 ────────────────────────────────────────────
+(function () {
+    const btn = document.getElementById('slot-sound-toggle');
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    function render() {
+        const muted = window.GameSound && window.GameSound.isMuted();
+        btn.classList.toggle('muted', !!muted);
+        icon.className = muted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+    }
+    btn.addEventListener('click', () => {
+        if (window.GameSound) window.GameSound.toggleMute();
+        render();
+    });
+    render();
+})();
+
 function gspSwitch(btn, paneId) {
     const panel = btn.closest('.game-side-panel');
     panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
@@ -978,15 +1024,27 @@ async function debugSpin(grade) {
     const s0 = data.reels[0], s1 = data.reels[1], s2 = data.reels[2];
 
     isSpinning = true;
+
+    let debugReelSpinLoop = null;
+    if (window.GameSound) {
+        window.GameSound.play('spinStart');
+        debugReelSpinLoop = window.GameSound.startLoop('reelSpin');
+    }
+
     const results = await Promise.all([
-        spinReel(reelEls[0], reelPatterns[0], s0, 2200),
-        spinReel(reelEls[1], reelPatterns[1], s1, 2700),
-        spinReel(reelEls[2], reelPatterns[2], s2, 3200),
+        spinReel(reelEls[0], reelPatterns[0], s0, 2200, 440),
+        spinReel(reelEls[1], reelPatterns[1], s1, 2700, 550),
+        spinReel(reelEls[2], reelPatterns[2], s2, 3200, 660),
     ]);
+
+    if (window.GameSound) window.GameSound.stopLoop(debugReelSpinLoop);
 
     const isWin = data.grade !== 'F';
     highlightWinners(results, isWin);
     showResult(data.grade, data.reward);
+    if (window.GameSound) {
+        window.GameSound.play(data.grade === 'S' ? 'jackpot' : (isWin ? 'winSmall' : 'lose'));
+    }
 
     document.getElementById('slot-leaves-badge').textContent = data.leaves;
     const navLeaf = document.querySelector('[title="낙엽 잔액"] span');
