@@ -1,9 +1,9 @@
 """
 사과게임 시즌을 종료하고 상위 3명에게 낙엽 보상과 기기 알림을 전송한 뒤
-다음 월 시즌을 자동으로 시작하는 관리 커맨드.
+다음 주 시즌을 자동으로 시작하는 관리 커맨드.
 
-cron 설정 예시 (매월 말일 23:59 KST = 14:59 UTC):
-  59 14 28-31 * * /path/.venv/bin/python manage.py finalize_game_season
+cron 설정 예시 (매주 일요일 23:59 KST = 14:59 UTC):
+  59 14 * * 0 /path/.venv/bin/python manage.py finalize_game_season
 """
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -25,7 +25,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         today = timezone.localdate()
 
-        # 오늘이 종료일인 시즌 (말일 23:59 KST cron 기준)
+        # 오늘이 종료일인 시즌 (일요일 23:59 KST cron 기준)
         expired_seasons = GameSeason.objects.filter(
             end_date__lte=today,
             is_active=True,

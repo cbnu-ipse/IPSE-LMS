@@ -1174,12 +1174,19 @@ async function debugSpin(grade) {
   }
   /* 닫기(X) 버튼이 프로필과 겹치지 않도록 내부 콘텐츠를 왼쪽으로 확보 */
   nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
-  #game-nav-pill {
+  #game-top-pills {
     position: fixed;
     top: 8px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.15s;
+  }
+  #game-top-pills.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-pill {
     background: rgba(255,255,255,0.88);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -1195,13 +1202,31 @@ async function debugSpin(grade) {
     font-weight: 600;
     color: #374151;
     user-select: none;
-    transition: opacity 0.15s, box-shadow 0.15s;
+    transition: box-shadow 0.15s;
     font-family: inherit;
     line-height: 1;
     border: none;
   }
   #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
-  #game-nav-pill.pill-hidden { opacity: 0; pointer-events: none; }
+  .game-quick-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    color: #374151;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.15s;
+  }
+  .game-quick-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
   #game-nav-backdrop {
     display: none;
     position: fixed;
@@ -1244,7 +1269,11 @@ async function debugSpin(grade) {
     closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     nav.appendChild(closeBtn);
 
-    // Floating pill
+    // Floating pills (menu / lobby / restart)
+    var topPills = document.createElement('div');
+    topPills.id = 'game-top-pills';
+    document.body.appendChild(topPills);
+
     var pill = document.createElement('button');
     pill.id = 'game-nav-pill';
     pill.title = 'IPSE 메뉴';
@@ -1252,7 +1281,22 @@ async function debugSpin(grade) {
       '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
       '<span>IPSE</span>' +
       '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
-    document.body.appendChild(pill);
+    topPills.appendChild(pill);
+
+    var lobbyBtn = document.createElement('a');
+    lobbyBtn.href = "{% url 'game_lobby' %}";
+    lobbyBtn.className = 'game-quick-pill';
+    lobbyBtn.title = '게임 로비로 이동';
+    lobbyBtn.innerHTML = '<i class="fa-solid fa-house"></i>';
+    topPills.appendChild(lobbyBtn);
+
+    var restartBtn = document.createElement('button');
+    restartBtn.type = 'button';
+    restartBtn.className = 'game-quick-pill';
+    restartBtn.title = '다시 시작';
+    restartBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i>';
+    restartBtn.addEventListener('click', function () { location.reload(); });
+    topPills.appendChild(restartBtn);
 
     // Backdrop
     var backdrop = document.createElement('div');
@@ -1262,12 +1306,12 @@ async function debugSpin(grade) {
     function openNav() {
       nav.classList.add('game-nav-open');
       backdrop.classList.add('open');
-      pill.classList.add('pill-hidden');
+      topPills.classList.add('pill-hidden');
     }
     function closeNav() {
       nav.classList.remove('game-nav-open');
       backdrop.classList.remove('open');
-      pill.classList.remove('pill-hidden');
+      topPills.classList.remove('pill-hidden');
     }
 
     pill.addEventListener('click', openNav);
@@ -1278,11 +1322,11 @@ async function debugSpin(grade) {
     function applyNavMode() {
       if (window.innerWidth < 1024) {
         nav.setAttribute('data-game-collapsed', '');
-        pill.style.display = '';
+        topPills.style.display = '';
       } else {
         closeNav();
         nav.removeAttribute('data-game-collapsed');
-        pill.style.display = 'none';
+        topPills.style.display = 'none';
       }
     }
     window.addEventListener('resize', applyNavMode);

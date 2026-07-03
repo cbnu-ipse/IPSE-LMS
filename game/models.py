@@ -1,7 +1,6 @@
-import calendar
 import logging
 import threading
-from datetime import date
+from datetime import timedelta
 
 from django.db import models, transaction
 from django.conf import settings
@@ -12,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 class GameSeason(models.Model):
     number = models.PositiveIntegerField(unique=True, verbose_name="시즌 번호")
-    start_date = models.DateField(verbose_name="시작일")  # 매월 1일
-    end_date = models.DateField(verbose_name="종료일")    # 매월 마지막 날
+    start_date = models.DateField(verbose_name="시작일")  # 매주 월요일
+    end_date = models.DateField(verbose_name="종료일")    # 매주 일요일
     is_active = models.BooleanField(default=False, db_index=True, verbose_name="활성 시즌")
     rewards_distributed = models.BooleanField(default=False, verbose_name="보상 지급 완료")
     warned_3d = models.BooleanField(default=False, verbose_name="3일 전 알림 전송")
@@ -26,7 +25,7 @@ class GameSeason(models.Model):
         verbose_name_plural = "게임 시즌 목록"
 
     def __str__(self):
-        return f"시즌 {self.number} ({self.start_date.strftime('%Y년 %m월')})"
+        return f"시즌 {self.number} ({self.label})"
 
     # ── 공개 API ─────────────────────────────────────────────────────────────
 
@@ -59,9 +58,8 @@ class GameSeason(models.Model):
 
         last = cls.objects.order_by("-number").first()
         number = last.number + 1 if last else 1
-        year, month = today.year, today.month
-        start = date(year, month, 1)
-        end = date(year, month, calendar.monthrange(year, month)[1])
+        start = today - timedelta(days=today.weekday())  # 이번 주 월요일
+        end = start + timedelta(days=6)                  # 이번 주 일요일
         return cls.objects.create(
             number=number,
             start_date=start,
@@ -105,7 +103,7 @@ class GameSeason(models.Model):
 
     @property
     def label(self):
-        return self.start_date.strftime("%Y년 %m월")
+        return f"{self.start_date.strftime('%Y.%m.%d')} ~ {self.end_date.strftime('%m.%d')}"
 
     # ── 내부 로직 ─────────────────────────────────────────────────────────────
 

@@ -2,26 +2,25 @@
 Management command to bootstrap game seasons for first deployment.
 
 Usage:
-    python manage.py init_season              # close current, create next month's season
-    python manage.py init_season --month 2026-07   # close current, create July 2026
-    python manage.py init_season --dry-run    # preview only
+    python manage.py init_season                    # close current, create next week's season
+    python manage.py init_season --week 2026-07-06   # close current, create the week of 2026-07-06 (Mon~Sun)
+    python manage.py init_season --dry-run           # preview only
 """
-import calendar
-from datetime import date
+from datetime import datetime, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 
 class Command(BaseCommand):
-    help = "시즌 초기화: 현재 활성 시즌을 보상 없이 종료하고 지정 월의 새 시즌을 생성합니다."
+    help = "시즌 초기화: 현재 활성 시즌을 보상 없이 종료하고 지정 주(월~일)의 새 시즌을 생성합니다."
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--month",
+            "--week",
             type=str,
             default=None,
-            help="시작할 시즌 월 (YYYY-MM). 생략 시 다음 달 시즌 생성.",
+            help="시작할 시즌 주에 포함되는 날짜 (YYYY-MM-DD). 생략 시 다음 주 시즌 생성.",
         )
         parser.add_argument(
             "--dry-run",
@@ -33,25 +32,22 @@ class Command(BaseCommand):
         from game.models import GameSeason
 
         dry_run = options["dry_run"]
-        month_str = options["month"]
+        week_str = options["week"]
 
-        # 대상 월 결정
+        # 대상 주(월요일 기준) 결정
         today = timezone.localdate()
-        if month_str:
+        if week_str:
             try:
-                year, month = [int(x) for x in month_str.split("-")]
-            except (ValueError, AttributeError):
-                raise CommandError("--month 형식이 올바르지 않습니다. 예: 2026-07")
+                anchor = datetime.strptime(week_str, "%Y-%m-%d").date()
+            except ValueError:
+                raise CommandError("--week 형식이 올바르지 않습니다. 예: 2026-07-06")
         else:
-            # 기본: 다음 달
-            if today.month == 12:
-                year, month = today.year + 1, 1
-            else:
-                year, month = today.year, today.month + 1
+            # 기본: 다음 주
+            anchor = today + timedelta(days=7)
 
-        start = date(year, month, 1)
-        end = date(year, month, calendar.monthrange(year, month)[1])
-        new_label = start.strftime("%Y년 %m월")
+        start = anchor - timedelta(days=anchor.weekday())
+        end = start + timedelta(days=6)
+        new_label = f"{start.strftime('%Y.%m.%d')} ~ {end.strftime('%m.%d')}"
 
         self.stdout.write(f"대상 시즌: {new_label} ({start} ~ {end})")
 
@@ -67,7 +63,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write("  활성 시즌 없음.")
 
-        # 이미 해당 월 시즌이 존재하는지 확인
+        # 이미 해당 주 시즌이 존재하는지 확인
         existing = GameSeason.objects.filter(start_date=start).first()
         if existing:
             self.stdout.write(
