@@ -25,12 +25,6 @@
                         <div class="ns-timer-bar-fill" id="ns-timer-bar-fill"></div>
                     </div>
 
-                    <!-- 가로모드 전용 HUD (실수·시간) -->
-                    <div class="ns-hud" id="ns-hud">
-                        <span class="ns-hud-item"><i class="fa-solid fa-xmark" style="color:#f43f5e"></i> <strong id="ns-mistakes-hud">0</strong></span>
-                        <span class="ns-hud-item"><i class="fa-solid fa-stopwatch" style="color:#0ea5e9"></i> <strong id="ns-timer-hud">0.0</strong>초</span>
-                    </div>
-
                     <!-- 시작 오버레이 -->
                     <div id="ns-start-overlay" class="ns-overlay">
                         <div class="ns-overlay-content">
@@ -39,7 +33,7 @@
                             <p>
                                 1부터 25까지 무작위로 흩어진 숫자를 순서대로 최대한 빨리 클릭하세요.<br>
                                 <strong class="text-rose-500 font-extrabold">25초</strong> 안에 끝내지 못하면 0점 처리돼요.
-                                실수가 적고 빠를수록 <strong class="text-sky-600 font-extrabold">높은 점수</strong>를 획득해요!
+                                실수가 적고 빠를수록 <strong class="text-emerald-600 font-extrabold">높은 점수</strong>를 획득해요!
                             </p>
                             <button id="ns-start-btn" class="ns-btn">
                                 <i class="fa-solid fa-play"></i> 게임 시작
@@ -93,7 +87,7 @@
                             {% if msg.user.picture and msg.user.picture.name != "default.png" %}
                             <img src="{{ msg.user.picture.url }}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
                             {% else %}
-                            <span class="shrink-0 w-6 h-6 rounded-full bg-sky-100 text-sky-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
                             {% endif %}
                             <div>
                                 <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
@@ -107,8 +101,8 @@
                     </div>
                     <div class="gsp-input-row">
                         <input id="ns-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
-                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-sky-500 focus:bg-white transition">
-                        <button id="ns-chat-send" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition">전송</button>
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="ns-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
                     </div>
                 </div>
 
@@ -123,7 +117,7 @@
     </div><!-- grid -->
 <!-- 모바일 전용 채팅 FAB -->
 <button type="button" id="ns-toggle-chat-fab"
-    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-sky-600 hover:bg-sky-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-sky-500"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
     title="채팅 열기/닫기" onclick="toggleNsChat()">
     <i id="ns-fab-icon" class="fa-solid fa-comments text-xl"></i>
 </button>
@@ -164,7 +158,7 @@
     justify-content: center;
 }
 .gsp-tab:hover { background: #f1f5f9; color: #334155; }
-.gsp-tab--active { color: #0284c7; border-bottom-color: #0284c7; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
 .gsp-pane {
     flex: 1;
     display: flex;
@@ -227,7 +221,7 @@
 }
 .ns-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
 .ns-stat-chip--mistake i { color: #f43f5e; font-size: .68rem; }
-.ns-stat-chip--timer i { color: #0ea5e9; font-size: .68rem; }
+.ns-stat-chip--timer i { color: #10b981; font-size: .68rem; }
 
 /* ── 우측 남은 시간 게이지 바 ──────────────────────────────────────── */
 .ns-timer-bar {
@@ -249,30 +243,11 @@
     bottom: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(180deg, #38bdf8, #4f46e5);
+    background: linear-gradient(180deg, #6ee7b7, #10b981);
     border-radius: 999px;
     transition: height .1s linear, background .2s;
 }
 .ns-timer-bar-fill.ns-timer-urgent { background: linear-gradient(180deg, #fca5a5, #dc2626); }
-
-/* ── 가로모드 전용 HUD (실수·시간) ────────────────────────────────── */
-.ns-hud {
-    display: none;
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    z-index: 9;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 12px;
-    background: rgba(255,255,255,0.92);
-    border: 1px solid #e2e8f0;
-    border-radius: 999px;
-    font-size: 12px;
-    color: #64748b;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-.ns-hud-item strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
 
 /* ── 게임 외곽 ─────────────────────────────────────────────────────── */
 .ns-outer {
@@ -320,10 +295,10 @@
 }
 .ns-cell:active { transform: scale(0.94); }
 .ns-cell.done {
-    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    background: linear-gradient(135deg, #34d399, #059669);
     border-color: transparent;
     color: #fff;
-    box-shadow: 0 4px 12px rgba(79,70,229,.35);
+    box-shadow: 0 4px 12px rgba(5,150,105,.35);
     cursor: default;
     pointer-events: none;
     animation: ns-pop .22s ease;
@@ -377,8 +352,8 @@
     margin-bottom: 24px;
 }
 .ns-final-box {
-    background: linear-gradient(160deg, #f0f9ff, #eef2ff);
-    border: 1px solid #bae6fd;
+    background: linear-gradient(160deg, #ecfdf5, #f0fdfa);
+    border: 1px solid #a7f3d0;
     border-radius: 18px;
     padding: 18px 28px;
     margin: 0 auto 24px;
@@ -387,12 +362,12 @@
     align-items: center;
     gap: 4px;
     max-width: 240px;
-    box-shadow: 0 4px 16px rgba(79,70,229,.08);
+    box-shadow: 0 4px 16px rgba(5,150,105,.08);
 }
 .ns-final-score-val {
     font-size: 3.4rem;
     font-weight: 900;
-    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    background: linear-gradient(135deg, #059669, #0d9488);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -401,13 +376,13 @@
 }
 .ns-final-sub { font-size: .75rem; color: #94a3b8; }
 
-/* ── 버튼 (스카이 → 인디고) ────────────────────────────────────────── */
+/* ── 버튼 (IPSE 에메랄드) ────────────────────────────────────────── */
 .ns-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 11px 28px;
-    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    background: linear-gradient(135deg, #065f46, #059669, #0d9488);
     color: white;
     border: none;
     border-radius: 14px;
@@ -415,9 +390,9 @@
     font-weight: 700;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 6px 20px rgba(14,165,233,0.4);
+    box-shadow: 0 6px 20px rgba(5,150,105,0.4);
 }
-.ns-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(14,165,233,0.5); }
+.ns-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(5,150,105,0.5); }
 .ns-btn:active { transform: scale(0.97); }
 
 /* ── 힌트 푸터 ───────────────────────────────────────────────────── */
@@ -434,7 +409,7 @@
 /* ── 모바일 최적화 ───────────────────────────────────────────────── */
 @media (max-width: 640px) {
     section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    .ns-board-wrap { padding: 10px; min-height: 380px; }
+    .ns-board-wrap { padding: 10px 20px; min-height: 380px; }
     .ns-board { gap: 6px; }
     .ns-cell { font-size: 1.05rem; border-radius: 9px; }
     .ns-timer-bar { top: 8px; right: 8px; bottom: 8px; width: 7px; }
@@ -472,8 +447,7 @@ body.ns-landscape .ns-outer { border: none; border-radius: 0; box-shadow: none; 
 body.ns-landscape .ns-stat-bar { display: none; }
 body.ns-landscape .ns-hint { display: none; }
 body.ns-landscape .ns-board-wrap { padding: 4px; align-items: center; }
-body.ns-landscape .ns-hud { display: flex; }
-body.ns-landscape .ns-timer-bar { display: none; }
+body.ns-landscape .ns-timer-bar { display: block; }
 
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
@@ -494,8 +468,6 @@ footer { display: none !important; }
     const boardEl = document.getElementById('ns-board');
     const mistakesEl = document.getElementById('ns-mistakes');
     const timerEl = document.getElementById('ns-timer');
-    const mistakesHudEl = document.getElementById('ns-mistakes-hud');
-    const timerHudEl = document.getElementById('ns-timer-hud');
     const timerBarFillEl = document.getElementById('ns-timer-bar-fill');
     const startOv = document.getElementById('ns-start-overlay');
     const overOv = document.getElementById('ns-over-overlay');
@@ -545,7 +517,6 @@ footer { display: none !important; }
         } else {
             mistakes += 1;
             mistakesEl.textContent = mistakes;
-            mistakesHudEl.textContent = mistakes;
             cellEl.classList.remove('wrong');
             void cellEl.offsetWidth;
             cellEl.classList.add('wrong');
@@ -567,21 +538,18 @@ footer { display: none !important; }
         if (effectiveElapsedMs >= TIME_LIMIT_MS) {
             const txt = (TIME_LIMIT_MS / 1000).toFixed(1);
             timerEl.textContent = txt;
-            timerHudEl.textContent = txt;
             updateTimerBar(0);
             endGame(true);
             return;
         }
         const txt = (effectiveElapsedMs / 1000).toFixed(1);
         timerEl.textContent = txt;
-        timerHudEl.textContent = txt;
         updateTimerBar(TIME_LIMIT_MS - effectiveElapsedMs);
     }
 
     function startTimer() {
         startTime = performance.now();
         timerEl.textContent = '0.0';
-        timerHudEl.textContent = '0.0';
         updateTimerBar(TIME_LIMIT_MS);
         clearInterval(timerInterval);
         timerInterval = setInterval(tick, 100);
@@ -592,7 +560,6 @@ footer { display: none !important; }
         nextExpected = 1;
         mistakes = 0;
         mistakesEl.textContent = '0';
-        mistakesHudEl.textContent = '0';
         isRunning = true;
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
@@ -650,15 +617,15 @@ footer { display: none !important; }
                     const badge  = row.rank <= 3
                         ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
                         : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
-                    const cls    = row.is_me ? 'bg-sky-50 border-l-2 border-sky-400' : '';
-                    const meTxt  = row.is_me ? ' <span class="text-[10px] text-sky-500 font-normal">(나)</span>' : '';
-                    const nameCls = row.is_me ? 'text-sky-700' : 'text-slate-700';
+                    const cls    = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
+                    const meTxt  = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
+                    const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
                     return `
                         <div class="flex items-center gap-3 px-5 py-3 ${cls}">
                             <div class="w-8 text-center leading-none">${badge}</div>
                             <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
                             <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
-                            <span class="font-bold text-sky-600 text-sm tabular-nums flex-shrink-0">${row.score}점</span>
+                            <span class="font-bold text-emerald-600 text-sm tabular-nums flex-shrink-0">${row.score}점</span>
                         </div>`;
                 }).join('');
             })
@@ -746,8 +713,8 @@ function toggleNsChat() {
 
     function setStatus(open) {
         if (open) {
-            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold';
-            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-sky-500 inline-block animate-pulse"></span> 연결됨';
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 연결됨';
             input.disabled  = false;
         } else {
             badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
@@ -773,7 +740,7 @@ function toggleNsChat() {
         } else {
             const avatar = pictureUrl
                 ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
-                : `<span class="shrink-0 w-6 h-6 rounded-full bg-sky-100 text-sky-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
             d.className = 'flex gap-2 items-start';
             d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
         }

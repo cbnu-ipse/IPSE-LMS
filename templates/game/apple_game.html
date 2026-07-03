@@ -495,7 +495,7 @@ footer { display: none !important; }
             // 풀스크린: 캔버스 실제 위치부터 화면 하단까지(footer 숨김)
             wrap.style.minHeight = '';
             const wrapTop = wrap.getBoundingClientRect().top;
-            const availH = window.innerHeight - wrapTop - 16;
+            const availH = window.innerHeight - wrapTop - 24;
             // 세로 공간이 빠듯한 기기에서는 minCell 제한을 풀어서라도 화면 안에 맞춰
             // 위아래가 잘리지 않게 함(.ag-outer가 overflow:hidden이라 넘치면 그대로 잘림)
             if (availH > 0) cs = Math.max(1, Math.min(cs, Math.floor(availH / ROWS)));
