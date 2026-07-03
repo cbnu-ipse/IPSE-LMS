@@ -474,7 +474,7 @@ footer { display: none !important; }
     const TILE_NOTES = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
     const BASE_INTERVAL_MS = 700;
     const MIN_INTERVAL_MS = 300;
-    const INTERVAL_STEP_MS = 20;
+    const INTERVAL_STEP_MS = 25;
     const ROUND_ADVANCE_DELAY_MS = 550;
 
     const boardEl = document.getElementById('pr-board');
@@ -505,7 +505,7 @@ footer { display: none !important; }
         isListening = false;
         awaitingIndex = 0;
         boardEl.classList.add('locked');
-        const litMs = speedForRound(sequence.length);
+        const litMs = speedForRound(sequence.length - 2);
         let i = 0;
         function step() {
             if (i >= sequence.length) {
@@ -522,7 +522,7 @@ footer { display: none !important; }
 
     function nextRound() {
         sequence.push(Math.floor(Math.random() * tiles.length));
-        roundEl.textContent = sequence.length;
+        roundEl.textContent = sequence.length - 2;
         playSequence();
     }
 
@@ -551,7 +551,7 @@ footer { display: none !important; }
     tiles.forEach((tile, idx) => tile.addEventListener('click', () => onTileClick(idx, tile)));
 
     function startGame() {
-        sequence = [];
+        sequence = [Math.floor(Math.random() * tiles.length), Math.floor(Math.random() * tiles.length)];
         awaitingIndex = 0;
         isRunning = true;
         isListening = false;
@@ -566,7 +566,7 @@ footer { display: none !important; }
         isRunning = false;
         isListening = false;
         boardEl.classList.add('locked');
-        const clearedRounds = Math.max(0, sequence.length - 1);
+        const clearedRounds = Math.max(0, sequence.length - 3);
         const score = clearedRounds * 100;
         finalRoundEl.textContent = clearedRounds;
         finalScoreEl.textContent = score;

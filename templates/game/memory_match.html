@@ -497,6 +497,7 @@ footer { display: none !important; }
     let timerInterval = null;
     let lock = false;
     let isRunning = false;
+    let timerStarted = false;
 
     // ── 덱 생성 (8쌍, 16장) ────────────────────────────────────────
     function buildDeck() {
@@ -538,6 +539,11 @@ footer { display: none !important; }
     function onCardClick(pos) {
         if (!isRunning || lock) return;
         if (flipped.includes(pos) || matched.has(pos)) return;
+
+        if (!timerStarted) {
+            timerStarted = true;
+            startTimer();
+        }
 
         if (window.GameSound) window.GameSound.play('tap');
         flipCard(pos, true);
@@ -590,10 +596,12 @@ footer { display: none !important; }
         movesHudEl.textContent = '0';
         lock = false;
         isRunning = true;
+        timerStarted = false;
+        timerEl.textContent = '0:00';
+        clearInterval(timerInterval);
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
         renderBoard();
-        startTimer();
     }
 
     function endGame() {
