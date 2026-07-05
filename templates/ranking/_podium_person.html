@@ -1,0 +1,71 @@
+{# 포디움 한 자리(1/2/3위) 렌더링. 공동 순위면 아바타를 최대 3개까지 겹쳐 표시. #}
+{# 필요한 컨텍스트: group, rank_num, avatar_size, avatar_border, block_height, block_gradient, delay_person, delay_block, is_first, board #}
+<div class="podium-col">
+    {% if group %}
+    {% with rows=group.rows %}
+    {% if rows|length == 1 %}
+    {% with row=rows.0 %}
+    <div class="podium-person cursor-pointer" style="animation-delay:{{ delay_person }}"
+         data-hover-card
+         data-user-id="{{ row.user.id }}"
+         data-hover-stats="1"
+         data-picture="{{ row.user.get_picture }}"
+         data-nickname="{{ row.user.display_name }}"
+         data-fullname="{{ row.user.get_full_name }}">
+        {% if is_first %}<i class="fa-solid fa-crown text-amber-400 podium-crown" style="font-size:24px"></i>{% endif %}
+        <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}"
+             class="rounded-full object-cover {% if is_first %}shadow-lg{% else %}shadow-md{% endif %}"
+             style="width:{{ avatar_size }}px;height:{{ avatar_size }}px;border:4px solid {{ avatar_border }}">
+        <div class="flex items-center gap-1.5 mt-1">
+            <span class="text-[19px] font-bold text-slate-800">{{ row.user.display_name }}</span>
+            {{ row.user.badge_html }}
+        </div>
+        {% if row.user.role_badge_label %}
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
+        {% endif %}
+        <span class="podium-chip mt-0.5 {% if board == 'leaves' %}bg-amber-50 text-amber-700 border-amber-100{% elif board == 'attendance' %}bg-orange-50 text-orange-700 border-orange-100{% elif board == 'streak' %}bg-rose-50 text-rose-700 border-rose-100{% else %}bg-emerald-50 text-emerald-700 border-emerald-100{% endif %}">
+            {% if board == 'problems' %}{{ row.score }}점{% elif board == 'contest' %}SOLVED {{ row.score }}{% elif board == 'leaves' %}<i class="fa-solid fa-leaf text-amber-500 text-xs"></i> {{ row.score }}{% elif board == 'attendance' %}{{ row.score }}일{% else %}<i class="fa-solid fa-fire text-rose-400 text-xs"></i> {{ row.score }}일{% endif %}
+        </span>
+        {% if board == 'problems' %}
+        <span class="text-[11px] text-slate-400">해결 {{ row.solved_count }}문제</span>
+        {% elif board == 'contest' %}
+        <span class="text-[11px] text-slate-400">PENALTY {{ row.penalty }}</span>
+        {% endif %}
+    </div>
+    {% endwith %}
+    {% else %}
+    <div class="podium-person cursor-pointer" style="animation-delay:{{ delay_person }}"
+         data-hover-card
+         data-hover-stats="1"
+         data-hover-group='{{ group.members_json }}'>
+        <div class="flex items-center justify-center">
+            {% for row in rows|slice:":3" %}
+            <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}"
+                 class="rounded-full object-cover shadow-md"
+                 style="width:{{ avatar_size }}px;height:{{ avatar_size }}px;border:4px solid {{ avatar_border }};{% if not forloop.first %}margin-left:-22px;{% endif %}z-index:{{ forloop.revcounter }}">
+            {% endfor %}
+        </div>
+        <div class="flex items-center gap-1.5 mt-1">
+            <span class="text-[15px] font-bold text-slate-800">
+                {% if rows|length > 3 %}{{ rows.0.user.display_name }} 외 {{ rows|length|add:"-1" }}인{% else %}{% for row in rows %}{{ row.user.display_name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+            </span>
+        </div>
+        <span class="podium-chip mt-0.5 {% if board == 'leaves' %}bg-amber-50 text-amber-700 border-amber-100{% elif board == 'attendance' %}bg-orange-50 text-orange-700 border-orange-100{% elif board == 'streak' %}bg-rose-50 text-rose-700 border-rose-100{% else %}bg-emerald-50 text-emerald-700 border-emerald-100{% endif %}">
+            {% if board == 'problems' %}{{ rows.0.score }}점{% elif board == 'contest' %}SOLVED {{ rows.0.score }}{% elif board == 'leaves' %}<i class="fa-solid fa-leaf text-amber-500 text-xs"></i> {{ rows.0.score }}{% elif board == 'attendance' %}{{ rows.0.score }}일{% else %}<i class="fa-solid fa-fire text-rose-400 text-xs"></i> {{ rows.0.score }}일{% endif %}
+        </span>
+    </div>
+    {% endif %}
+    {% endwith %}
+    <div class="podium-block" style="height:{{ block_height }}px;background:{{ block_gradient }};animation-delay:{{ delay_block }}">
+        <div class="podium-rank"><span>{{ group.rank }}</span><span class="text-sm font-bold">위</span></div>
+    </div>
+    {% else %}
+    <div class="podium-person" style="animation-delay:{{ delay_person }}">
+        <div class="podium-empty-av"><i class="fa-solid fa-user"></i></div>
+        <span class="text-[17px] font-bold text-slate-400 mt-1">-</span>
+    </div>
+    <div class="podium-block podium-block-empty" style="height:{{ block_height }}px;animation-delay:{{ delay_block }}">
+        <div class="podium-rank text-slate-300"><span>{{ rank_num }}</span><span class="text-sm font-bold">위</span></div>
+    </div>
+    {% endif %}
+</div>

@@ -83,131 +83,13 @@
                 <div class="flex items-end justify-center gap-4 sm:gap-6 pt-5" style="min-height:380px">
 
                     <!-- ▮ 2위 -->
-                    {% with row=top_rows.1 %}
-                    <div class="podium-col">
-                        {% if row %}
-                        <div class="podium-person cursor-pointer" style="animation-delay:.55s"
-                             data-hover-card
-                             data-picture="{{ row.user.get_picture }}"
-                             data-nickname="{{ row.user.display_name }}"
-                             data-fullname="{{ row.user.get_full_name }}">
-                            <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}"
-                                 class="rounded-full object-cover shadow-md" style="width:78px;height:78px;border:4px solid #e2e8f0">
-                            <div class="flex items-center gap-1.5 mt-1">
-                                <span class="text-[19px] font-bold text-slate-800">{{ row.user.display_name }}</span>
-                                {{ row.user.badge_html }}
-                            </div>
-                            {% if row.user.role_badge_label %}
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
-                            {% endif %}
-                            <span class="podium-chip mt-0.5 {% if board == 'leaves' %}bg-amber-50 text-amber-700 border-amber-100{% elif board == 'attendance' %}bg-orange-50 text-orange-700 border-orange-100{% elif board == 'streak' %}bg-rose-50 text-rose-700 border-rose-100{% else %}bg-emerald-50 text-emerald-700 border-emerald-100{% endif %}">
-                                {% if board == 'problems' %}{{ row.score }}점{% elif board == 'contest' %}SOLVED {{ row.score }}{% elif board == 'leaves' %}<i class="fa-solid fa-leaf text-amber-500 text-xs"></i> {{ row.score }}{% elif board == 'attendance' %}{{ row.score }}일{% else %}<i class="fa-solid fa-fire text-rose-400 text-xs"></i> {{ row.score }}일{% endif %}
-                            </span>
-                            {% if board == 'problems' %}
-                            <span class="text-[11px] text-slate-400">해결 {{ row.solved_count }}문제</span>
-                            {% elif board == 'contest' %}
-                            <span class="text-[11px] text-slate-400">PENALTY {{ row.penalty }}</span>
-                            {% endif %}
-                        </div>
-                        <div class="podium-block" style="height:148px;background:linear-gradient(180deg,#cbd5e1,#94a3b8);animation-delay:.25s">
-                            <div class="podium-rank"><span>2</span><span class="text-sm font-bold">위</span></div>
-                        </div>
-                        {% else %}
-                        <div class="podium-person" style="animation-delay:.55s">
-                            <div class="podium-empty-av"><i class="fa-solid fa-user"></i></div>
-                            <span class="text-[17px] font-bold text-slate-400 mt-1">-</span>
-                        </div>
-                        <div class="podium-block podium-block-empty" style="height:148px;animation-delay:.25s">
-                            <div class="podium-rank text-slate-300"><span>2</span><span class="text-sm font-bold">위</span></div>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endwith %}
+                    {% include "ranking/_podium_person.html" with group=top_rows.1 rank_num=2 avatar_size=78 avatar_border="#e2e8f0" block_height=148 block_gradient="linear-gradient(180deg,#cbd5e1,#94a3b8)" delay_person=".55s" delay_block=".25s" is_first=False %}
 
                     <!-- ▮ 1위 -->
-                    {% with row=top_rows.0 %}
-                    <div class="podium-col">
-                        {% if row %}
-                        <div class="podium-person cursor-pointer" style="animation-delay:.75s"
-                             data-hover-card
-                             data-picture="{{ row.user.get_picture }}"
-                             data-nickname="{{ row.user.display_name }}"
-                             data-fullname="{{ row.user.get_full_name }}">
-                            <i class="fa-solid fa-crown text-amber-400 podium-crown" style="font-size:24px"></i>
-                            <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}"
-                                 class="rounded-full object-cover shadow-lg" style="width:96px;height:96px;border:4px solid #fde68a">
-                            <div class="flex items-center gap-1.5 mt-1">
-                                <span class="text-[19px] font-bold text-slate-800">{{ row.user.display_name }}</span>
-                                {{ row.user.badge_html }}
-                            </div>
-                            {% if row.user.role_badge_label %}
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
-                            {% endif %}
-                            <span class="podium-chip mt-0.5 {% if board == 'leaves' %}bg-amber-50 text-amber-700 border-amber-100{% elif board == 'attendance' %}bg-orange-50 text-orange-700 border-orange-100{% elif board == 'streak' %}bg-rose-50 text-rose-700 border-rose-100{% else %}bg-emerald-50 text-emerald-700 border-emerald-100{% endif %}">
-                                {% if board == 'problems' %}{{ row.score }}점{% elif board == 'contest' %}SOLVED {{ row.score }}{% elif board == 'leaves' %}<i class="fa-solid fa-leaf text-amber-500 text-xs"></i> {{ row.score }}{% elif board == 'attendance' %}{{ row.score }}일{% else %}<i class="fa-solid fa-fire text-rose-400 text-xs"></i> {{ row.score }}일{% endif %}
-                            </span>
-                            {% if board == 'problems' %}
-                            <span class="text-[11px] text-slate-400">해결 {{ row.solved_count }}문제</span>
-                            {% elif board == 'contest' %}
-                            <span class="text-[11px] text-slate-400">PENALTY {{ row.penalty }}</span>
-                            {% endif %}
-                        </div>
-                        <div class="podium-block" style="height:200px;background:linear-gradient(180deg,#fbbf24,#d97706);animation-delay:.45s">
-                            <div class="podium-rank"><span>1</span><span class="text-sm font-bold">위</span></div>
-                        </div>
-                        {% else %}
-                        <div class="podium-person" style="animation-delay:.75s">
-                            <div class="podium-empty-av"><i class="fa-solid fa-user"></i></div>
-                            <span class="text-[17px] font-bold text-slate-400 mt-1">-</span>
-                        </div>
-                        <div class="podium-block podium-block-empty" style="height:200px;animation-delay:.45s">
-                            <div class="podium-rank text-slate-300"><span>1</span><span class="text-sm font-bold">위</span></div>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endwith %}
+                    {% include "ranking/_podium_person.html" with group=top_rows.0 rank_num=1 avatar_size=96 avatar_border="#fde68a" block_height=200 block_gradient="linear-gradient(180deg,#fbbf24,#d97706)" delay_person=".75s" delay_block=".45s" is_first=True %}
 
                     <!-- ▮ 3위 -->
-                    {% with row=top_rows.2 %}
-                    <div class="podium-col">
-                        {% if row %}
-                        <div class="podium-person cursor-pointer" style="animation-delay:.4s"
-                             data-hover-card
-                             data-picture="{{ row.user.get_picture }}"
-                             data-nickname="{{ row.user.display_name }}"
-                             data-fullname="{{ row.user.get_full_name }}">
-                            <img src="{{ row.user.get_picture }}" alt="{{ row.user.display_name }}"
-                                 class="rounded-full object-cover shadow-md" style="width:78px;height:78px;border:4px solid #fed7aa">
-                            <div class="flex items-center gap-1.5 mt-1">
-                                <span class="text-[19px] font-bold text-slate-800">{{ row.user.display_name }}</span>
-                                {{ row.user.badge_html }}
-                            </div>
-                            {% if row.user.role_badge_label %}
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold {{ row.user.role_badge_class }}">{{ row.user.role_badge_label }}</span>
-                            {% endif %}
-                            <span class="podium-chip mt-0.5 {% if board == 'leaves' %}bg-amber-50 text-amber-700 border-amber-100{% elif board == 'attendance' %}bg-orange-50 text-orange-700 border-orange-100{% elif board == 'streak' %}bg-rose-50 text-rose-700 border-rose-100{% else %}bg-emerald-50 text-emerald-700 border-emerald-100{% endif %}">
-                                {% if board == 'problems' %}{{ row.score }}점{% elif board == 'contest' %}SOLVED {{ row.score }}{% elif board == 'leaves' %}<i class="fa-solid fa-leaf text-amber-500 text-xs"></i> {{ row.score }}{% elif board == 'attendance' %}{{ row.score }}일{% else %}<i class="fa-solid fa-fire text-rose-400 text-xs"></i> {{ row.score }}일{% endif %}
-                            </span>
-                            {% if board == 'problems' %}
-                            <span class="text-[11px] text-slate-400">해결 {{ row.solved_count }}문제</span>
-                            {% elif board == 'contest' %}
-                            <span class="text-[11px] text-slate-400">PENALTY {{ row.penalty }}</span>
-                            {% endif %}
-                        </div>
-                        <div class="podium-block" style="height:108px;background:linear-gradient(180deg,#e3a869,#b4713d);animation-delay:.1s">
-                            <div class="podium-rank"><span>3</span><span class="text-sm font-bold">위</span></div>
-                        </div>
-                        {% else %}
-                        <div class="podium-person" style="animation-delay:.4s">
-                            <div class="podium-empty-av"><i class="fa-solid fa-user"></i></div>
-                            <span class="text-[17px] font-bold text-slate-400 mt-1">-</span>
-                        </div>
-                        <div class="podium-block podium-block-empty" style="height:108px;animation-delay:.1s">
-                            <div class="podium-rank text-slate-300"><span>3</span><span class="text-sm font-bold">위</span></div>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endwith %}
+                    {% include "ranking/_podium_person.html" with group=top_rows.2 rank_num=3 avatar_size=78 avatar_border="#fed7aa" block_height=108 block_gradient="linear-gradient(180deg,#e3a869,#b4713d)" delay_person=".4s" delay_block=".1s" is_first=False %}
 
                 </div>
                 <div class="h-2.5 rounded-full max-w-[740px] mx-auto" style="background:linear-gradient(to bottom,#f1f5f9,#e2e8f0)"></div>
@@ -243,10 +125,12 @@
                             {% for row in ranking_rows %}
                             {% if forloop.counter > 3 %}
                             <tr class="hover:bg-slate-50 transition">
-                                <td class="px-6 py-4 font-semibold text-slate-600">{{ forloop.counter }}위</td>
+                                <td class="px-6 py-4 font-semibold text-slate-600">{{ row.rank }}위</td>
                                 <td class="px-6 py-4">
                                     <span class="flex items-center gap-3 cursor-pointer"
                                           data-hover-card
+                                          data-user-id="{{ row.user.id }}"
+                                          data-hover-stats="1"
                                           data-picture="{{ row.user.get_picture }}"
                                           data-nickname="{{ row.user.display_name }}"
                                           data-fullname="{{ row.user.get_full_name }}">
