@@ -32,6 +32,10 @@
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'pattern_recall' %}bg-teal-50 text-teal-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                         <i class="fa-solid fa-brain text-xs w-4 text-center text-teal-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">패턴 리콜 랭킹</span>
                     </a>
+                    <a href="?board=balance_game"
+                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'balance_game' %}bg-slate-100 text-slate-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                        <i class="fa-solid fa-person-walking text-xs w-4 text-center text-slate-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">중심잡기 랭킹</span>
+                    </a>
                 </nav>
             </div>
         </aside>
@@ -173,7 +177,7 @@
                                 <th class="px-6 py-4">유저 정보</th>
                                 {% if board == 'slot_game' %}
                                 <th class="px-6 py-4 text-center">최고 등급</th>
-                                {% elif board == 'apple_game' or board == 'memory_match' or board == 'number_speed' or board == 'pattern_recall' %}
+                                {% elif board == 'apple_game' or board == 'memory_match' or board == 'number_speed' or board == 'pattern_recall' or board == 'balance_game' %}
                                 <th class="px-6 py-4 text-center">최고 점수</th>
                                 {% endif %}
                             </tr>
@@ -212,6 +216,8 @@
                                 <td class="px-6 py-4 text-center font-bold text-sky-600">{{ row.score }}점</td>
                                 {% elif board == 'pattern_recall' %}
                                 <td class="px-6 py-4 text-center font-bold text-teal-600">{{ row.score }}점</td>
+                                {% elif board == 'balance_game' %}
+                                <td class="px-6 py-4 text-center font-bold text-slate-600">{{ row.score }}점</td>
                                 {% endif %}
                             </tr>
                             {% endif %}

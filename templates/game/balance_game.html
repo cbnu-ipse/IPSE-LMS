@@ -1,0 +1,1095 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 중심잡기{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- 중심잡기 -->
+        <div class="lg:col-span-9">
+            <div class="bal-outer">
+                <!-- 컴팩트 상태 바 -->
+                <div class="bal-stat-bar">
+                    <span class="bal-stat-chip"><i class="fa-solid fa-stopwatch"></i> 생존 <strong id="bal-time">0.0</strong>초</span>
+                    <span class="bal-stat-chip"><i class="fa-solid fa-layer-group"></i> 단계 <strong id="bal-stage">1</strong></span>
+                    <button type="button" id="bal-sound-toggle" class="bal-sound-toggle" title="사운드 켜기/끄기">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                </div>
+
+                <!-- 게임 보드 -->
+                <div class="bal-board-wrap" id="bal-board-wrap">
+                    <div class="bal-board" id="bal-board">
+                        <div class="bal-wind-indicator wind-right" id="bal-wind-indicator">
+                            <i class="fa-solid fa-wind"></i>
+                        </div>
+                        <div class="bal-stage-track">
+                            <div class="bal-character" id="bal-character">
+                                <i class="fa-solid fa-person-walking"></i>
+                            </div>
+                        </div>
+                        <div class="bal-gauge-wrap">
+                            <div class="bal-gauge">
+                                <div class="bal-gauge-zone bal-zone-danger-left"></div>
+                                <div class="bal-gauge-zone bal-zone-warn-left"></div>
+                                <div class="bal-gauge-zone bal-zone-safe"></div>
+                                <div class="bal-gauge-zone bal-zone-warn-right"></div>
+                                <div class="bal-gauge-zone bal-zone-danger-right"></div>
+                                <div class="bal-gauge-center-line"></div>
+                                <div class="bal-gauge-marker" id="bal-gauge-marker"></div>
+                            </div>
+                        </div>
+
+                        <!-- 터치/클릭 컨트롤 -->
+                        <div class="bal-controls">
+                            <button type="button" class="bal-ctrl-btn" id="bal-btn-left" aria-label="왼쪽으로 힘주기">
+                                <i class="fa-solid fa-arrow-left"></i>
+                            </button>
+                            <button type="button" class="bal-ctrl-btn" id="bal-btn-right" aria-label="오른쪽으로 힘주기">
+                                <i class="fa-solid fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 시작 오버레이 -->
+                    <div id="bal-start-overlay" class="bal-overlay">
+                        <div class="bal-overlay-content">
+                            <div class="text-6xl mb-4">🚶</div>
+                            <h3>중심잡기</h3>
+                            <p>
+                                좌우로 부는 바람에 맞서 캐릭터의 중심을 지키세요.<br>
+                                <strong class="text-slate-600 font-extrabold">←/→ 방향키</strong>(모바일은 화면의 버튼)를 눌러 바람의 반대 방향으로 버티면 됩니다.<br>
+                                시간이 지날수록 바람이 거세지고 방향도 자주 바뀌어요!
+                            </p>
+                            <button id="bal-start-btn" class="bal-btn">
+                                <i class="fa-solid fa-play"></i> 게임 시작
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 카운트다운 오버레이 -->
+                    <div id="bal-countdown-overlay" class="bal-overlay hidden">
+                        <div class="bal-countdown-num" id="bal-countdown-num">3</div>
+                    </div>
+
+                    <!-- 게임 종료 오버레이 -->
+                    <div id="bal-over-overlay" class="bal-overlay hidden">
+                        <div class="bal-overlay-content">
+                            <div class="text-5xl mb-3">💥</div>
+                            <h3>쓰러졌습니다!</h3>
+                            <div class="bal-final-box">
+                                <span class="bal-final-sub">최종 점수</span>
+                                <span id="bal-final-score" class="bal-final-score-val">0</span>
+                                <span class="bal-final-sub">생존 시간 <span id="bal-final-time">0.0</span>초 · 도달 단계 <span id="bal-final-stage">1</span></span>
+                            </div>
+                            <button id="bal-restart-btn" class="bal-btn">
+                                <i class="fa-solid fa-rotate-right"></i> 다시 하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bal-hint">균형이 한쪽 끝까지 기울면 쓰러집니다. 바람과 반대인 버튼을 꾹 눌러 버티세요 🌬️</div>
+            </div>
+        </div>
+
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-3 mobile-hidden" id="bal-side-col">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'bal-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'bal-tab-rank')">
+                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="bal-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="bal-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                            연결 중...
+                        </span>
+                    </div>
+                    <div id="bal-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-center pt-4">아직 메시지가 없습니다.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input id="bal-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="bal-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 랭킹 탭 -->
+                <div id="bal-tab-rank" class="gsp-pane" style="display:none">
+                    <div id="bal-ranking-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="bal-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="toggleBalChat()">
+    <i id="bal-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
+</section>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.gsp-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    font-size: .78rem;
+    color: #475569;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .4rem;
+    padding: .6rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── 상태 바 ─────────────────────────────────────────────────────── */
+.bal-stat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    flex-shrink: 0;
+    gap: 10px;
+}
+.bal-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.bal-sound-toggle:hover { color: #475569; }
+.bal-sound-toggle.muted { color: #cbd5e1; }
+.bal-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #64748b;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.bal-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+.bal-stat-chip i { color: #475569; font-size: .68rem; }
+
+/* ── 게임 외곽 ─────────────────────────────────────────────────────── */
+.bal-outer {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── 게임 보드 ───────────────────────────────────────────────────── */
+.bal-board-wrap {
+    position: relative;
+    padding: 28px 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at 50% 0%, #f8fafc 0%, #e2e8f0 65%);
+    min-height: 460px;
+}
+.bal-board {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+}
+.bal-wind-indicator {
+    font-size: 1.3rem;
+    color: #0ea5e9;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: font-size .2s ease, opacity .2s ease, transform .2s ease;
+}
+.bal-wind-indicator.wind-left { transform: scaleX(-1); }
+.bal-stage-track {
+    position: relative;
+    width: 100%;
+    height: 150px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+.bal-character {
+    font-size: 4.5rem;
+    color: #334155;
+    filter: drop-shadow(0 8px 10px rgba(15,23,42,.18));
+    transition: color .15s ease;
+    will-change: transform;
+}
+.bal-character.fallen { color: #dc2626; }
+.bal-gauge-wrap { width: 100%; padding: 0 4px; }
+.bal-gauge {
+    position: relative;
+    width: 100%;
+    height: 22px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.06);
+}
+.bal-gauge-zone { position: absolute; top: 0; bottom: 0; }
+.bal-zone-safe { left: 37.5%; width: 25%; background: #6ee7b7; }
+.bal-zone-warn-left { left: 15%; width: 22.5%; background: #fde68a; }
+.bal-zone-warn-right { left: 62.5%; width: 22.5%; background: #fde68a; }
+.bal-zone-danger-left { left: 0; width: 15%; background: #fca5a5; }
+.bal-zone-danger-right { left: 85%; width: 15%; background: #fca5a5; }
+.bal-gauge-center-line {
+    position: absolute;
+    top: 0; bottom: 0; left: 50%;
+    width: 2px;
+    background: rgba(15,23,42,.3);
+    transform: translateX(-50%);
+}
+.bal-gauge-marker {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #0f172a;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    transform: translate(-50%, -50%);
+    will-change: left;
+}
+.bal-controls {
+    display: flex;
+    gap: 18px;
+    width: 100%;
+    justify-content: center;
+}
+.bal-ctrl-btn {
+    width: 84px; height: 84px;
+    border-radius: 20px;
+    border: none;
+    background: linear-gradient(160deg, #475569, #1e293b);
+    color: #fff;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(15,23,42,.25);
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    transition: transform .08s ease, filter .1s ease;
+}
+.bal-ctrl-btn.pressed { transform: scale(0.92); filter: brightness(1.2); }
+
+/* ── 오버레이 (라이트 테마) ──────────────────────────────────────── */
+.bal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248, 250, 252, 0.96);
+    display: flex;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 10;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.bal-overlay.hidden { display: none; }
+.bal-countdown-num {
+    margin: auto;
+    font-size: 5.5rem;
+    font-weight: 900;
+    color: #334155;
+    text-shadow: 0 4px 16px rgba(51, 65, 85, 0.25);
+    animation: bal-countdown-pop 1s ease-out;
+}
+@keyframes bal-countdown-pop {
+    0% { transform: scale(0.4); opacity: 0; }
+    30% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.bal-overlay-content {
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 380px;
+    width: 100%;
+    margin: auto;
+}
+.bal-overlay-content h3 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 10px;
+}
+.bal-overlay-content p {
+    font-size: 0.85rem;
+    color: #64748b;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+.bal-final-box {
+    background: linear-gradient(160deg, #f1f5f9, #e2e8f0);
+    border: 1px solid #cbd5e1;
+    border-radius: 18px;
+    padding: 18px 28px;
+    margin: 0 auto 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 260px;
+    box-shadow: 0 4px 16px rgba(15,23,42,.08);
+}
+.bal-final-score-val {
+    font-size: 3.4rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #334155, #0f172a);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.bal-final-sub { font-size: .75rem; color: #94a3b8; }
+
+/* ── 버튼 ────────────────────────────────────────────────────────── */
+.bal-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 28px;
+    background: linear-gradient(135deg, #1e293b, #334155, #475569);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 20px rgba(15,23,42,0.35);
+}
+.bal-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(15,23,42,0.45); }
+.bal-btn:active { transform: scale(0.97); }
+
+/* ── 힌트 푸터 ───────────────────────────────────────────────────── */
+.bal-hint {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 10px;
+    padding: 10px 20px;
+    border-top: 1px solid #f1f5f9;
+    font-weight: 500;
+    background: #f8fafc;
+}
+
+/* ── 모바일 최적화 ───────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .bal-board-wrap { padding: 20px 16px; min-height: 440px; }
+    .bal-board { gap: 16px; max-width: 300px; }
+    .bal-character { font-size: 3.6rem; }
+    .bal-ctrl-btn { width: 72px; height: 72px; font-size: 1.4rem; }
+    .bal-stat-bar { font-size: .72rem; padding: 6px 10px; }
+    .bal-hint { font-size: 9px; padding: 8px 10px; }
+    .bal-overlay-content { padding: 20px 16px; }
+    .bal-overlay-content .text-6xl { font-size: 2.75rem; margin-bottom: 8px !important; }
+    .bal-overlay-content h3 { font-size: 1.2rem; margin-bottom: 6px; }
+    .bal-overlay-content p { font-size: 0.76rem; line-height: 1.5; margin-bottom: 16px; }
+    .bal-btn { font-size: 0.8rem; padding: 9px 20px; }
+}
+
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #bal-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #bal-side-col .game-side-panel { height: 100% !important; }
+    #bal-side-col.mobile-hidden { display: none !important; }
+}
+/* ── 모바일 가로 모드: 보드 풀스크린 + 스크롤 방지 ──────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.bal-landscape 클래스로 결정적으로 제어 */
+body.bal-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.bal-landscape .bal-outer { border: none; border-radius: 0; box-shadow: none; overflow: visible; }
+body.bal-landscape .bal-stat-bar { display: none; }
+body.bal-landscape .bal-hint { display: none; }
+body.bal-landscape .bal-board-wrap { padding: 4px; align-items: center; min-height: 0; }
+body.bal-landscape .bal-board { max-width: min(340px, 68vh, 80vw); gap: 12px; }
+body.bal-landscape .bal-stage-track { height: 110px; }
+body.bal-landscape .bal-character { font-size: 3.2rem; }
+body.bal-landscape .bal-ctrl-btn { width: 64px; height: 64px; font-size: 1.3rem; }
+
+/* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ────────
+   상단 플로팅 알약(#game-top-pills)에 가리지 않도록 여백을 확보하고,
+   게임 카드가 뷰포트 안에서 수직 중앙에 오도록 정렬한다. */
+@media (max-width: 1023px) {
+    body:not(.bal-landscape) section.max-w-7xl {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-sizing: border-box;
+        min-height: 100dvh;
+        padding-top: 56px !important;
+    }
+}
+
+/* 게임 페이지에서는 사이트 푸터 숨김 */
+footer { display: none !important; }
+/* ── 모바일 스크롤 방지 ──────────────────────────────────── */
+@media (max-width: 1023px) {
+    .bal-outer { overscroll-behavior: none; }
+}
+</style>
+
+<script src="{% static 'js/game-sound.js' %}"></script>
+<script>
+(function () {
+    const CSRF = '{{ csrf_token }}';
+
+    const STAGE_INTERVAL_MS = 15000;
+    const WIND_MIN_MS_BASE = 2200;
+    const WIND_MAX_MS_BASE = 3400;
+    const WIND_INTERVAL_FLOOR_MS = 900;
+    const WIND_INTERVAL_STAGE_STEP = 150;
+    const BASE_WIND_FORCE = 16;        // 균형 단위/초 (1단계)
+    const WIND_FORCE_STAGE_STEP = 6;   // 단계당 추가 균형 단위/초
+    const COUNTER_FORCE = 55;          // 버튼을 누르고 있을 때 균형 단위/초
+    const FALL_THRESHOLD = 100;
+
+    const characterEl = document.getElementById('bal-character');
+    const markerEl = document.getElementById('bal-gauge-marker');
+    const windIndicatorEl = document.getElementById('bal-wind-indicator');
+    const timeEl = document.getElementById('bal-time');
+    const stageEl = document.getElementById('bal-stage');
+    const startOv = document.getElementById('bal-start-overlay');
+    const overOv = document.getElementById('bal-over-overlay');
+    const countdownOv = document.getElementById('bal-countdown-overlay');
+    const countdownNumEl = document.getElementById('bal-countdown-num');
+    const finalScoreEl = document.getElementById('bal-final-score');
+    const finalTimeEl = document.getElementById('bal-final-time');
+    const finalStageEl = document.getElementById('bal-final-stage');
+    const btnLeft = document.getElementById('bal-btn-left');
+    const btnRight = document.getElementById('bal-btn-right');
+
+    let isRunning = false;
+    let heldDirection = 0; // -1 왼쪽, 0 없음, 1 오른쪽
+    let balance = 0;
+    let stage = 1;
+    let windDirection = 1;
+    let windForce = BASE_WIND_FORCE;
+    let survivedMs = 0;
+    let nextFlipAt = 0;
+    let lastMilestone = 0;
+    let lastFrameTime = 0;
+    let rafId = null;
+
+    function randomWindInterval(stg) {
+        const shrink = (stg - 1) * WIND_INTERVAL_STAGE_STEP;
+        const min = Math.max(WIND_INTERVAL_FLOOR_MS, WIND_MIN_MS_BASE - shrink);
+        const max = Math.max(min + 300, WIND_MAX_MS_BASE - shrink);
+        return min + Math.random() * (max - min);
+    }
+
+    function updateWindVisual() {
+        windIndicatorEl.classList.toggle('wind-left', windDirection < 0);
+        const intensity = Math.min(1.6, windForce / COUNTER_FORCE);
+        windIndicatorEl.style.opacity = String(0.5 + intensity * 0.5);
+        windIndicatorEl.style.fontSize = (1.1 + intensity * 0.6) + 'rem';
+    }
+
+    function renderFrame() {
+        markerEl.style.left = (50 + balance * 0.5) + '%';
+        characterEl.style.transform = 'translateX(' + (balance * 0.9).toFixed(1) + 'px) rotate(' + (balance * 0.35).toFixed(1) + 'deg)';
+        timeEl.textContent = (survivedMs / 1000).toFixed(1);
+        stageEl.textContent = String(stage);
+    }
+
+    function resetState() {
+        balance = 0;
+        stage = 1;
+        windDirection = Math.random() < 0.5 ? -1 : 1;
+        windForce = BASE_WIND_FORCE;
+        survivedMs = 0;
+        nextFlipAt = randomWindInterval(stage);
+        lastMilestone = 0;
+        heldDirection = 0;
+        characterEl.classList.remove('fallen');
+        renderFrame();
+        updateWindVisual();
+    }
+
+    function tick(now) {
+        if (!isRunning) return;
+        const dt = Math.min(50, now - lastFrameTime);
+        lastFrameTime = now;
+        survivedMs += dt;
+
+        const newStage = 1 + Math.floor(survivedMs / STAGE_INTERVAL_MS);
+        if (newStage !== stage) {
+            stage = newStage;
+            windForce = BASE_WIND_FORCE + (stage - 1) * WIND_FORCE_STAGE_STEP;
+        }
+
+        if (survivedMs >= nextFlipAt) {
+            windDirection *= -1;
+            nextFlipAt = survivedMs + randomWindInterval(stage);
+            updateWindVisual();
+        }
+
+        balance += windDirection * windForce * (dt / 1000);
+        if (heldDirection !== 0) balance += heldDirection * COUNTER_FORCE * (dt / 1000);
+        balance = Math.max(-100, Math.min(100, balance));
+
+        const milestone = Math.floor(survivedMs / 10000);
+        if (milestone > lastMilestone) {
+            lastMilestone = milestone;
+            if (window.GameSound) window.GameSound.play('success');
+        }
+
+        renderFrame();
+
+        if (Math.abs(balance) >= FALL_THRESHOLD) {
+            endGame();
+            return;
+        }
+        rafId = requestAnimationFrame(tick);
+    }
+
+    function computeScore() {
+        return Math.floor(survivedMs / 100) * 10 + Math.floor(survivedMs / 10000) * 50;
+    }
+
+    function startGame() {
+        resetState();
+        startOv.classList.add('hidden');
+        overOv.classList.add('hidden');
+        runCountdown(3);
+    }
+
+    function runCountdown(n) {
+        countdownOv.classList.remove('hidden');
+        countdownNumEl.textContent = String(n);
+        if (n <= 0) {
+            countdownOv.classList.add('hidden');
+            isRunning = true;
+            lastFrameTime = performance.now();
+            rafId = requestAnimationFrame(tick);
+            return;
+        }
+        setTimeout(() => runCountdown(n - 1), 700);
+    }
+
+    function endGame() {
+        isRunning = false;
+        if (rafId) cancelAnimationFrame(rafId);
+        characterEl.classList.add('fallen');
+        if (window.GameSound) window.GameSound.play('lose');
+        const score = computeScore();
+        finalScoreEl.textContent = String(score);
+        finalTimeEl.textContent = (survivedMs / 1000).toFixed(1);
+        finalStageEl.textContent = String(stage);
+        overOv.classList.remove('hidden');
+        saveScore(score, survivedMs, stage);
+    }
+
+    // ── 점수 저장 및 랭킹 갱신 ───
+    function saveScore(score, survived, stg) {
+        const fd = new FormData();
+        fd.append('score', score);
+        fd.append('survived_ms', Math.round(survived));
+        fd.append('stage', stg);
+        fd.append('csrfmiddlewaretoken', CSRF);
+        fetch('{% url "balance_game_score" %}', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(() => window._balLoadRanking())
+            .catch(() => window._balLoadRanking());
+    }
+
+    window._balLoadRanking = function _balLoadRanking() {
+        const list = document.getElementById('bal-ranking-list');
+        fetch('{% url "balance_game_ranking" %}', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ranking || data.ranking.length === 0) {
+                    list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
+                    return;
+                }
+                const MEDALS = ['🥇', '🥈', '🥉'];
+                list.innerHTML = data.ranking.map(row => {
+                    const badge  = row.rank <= 3
+                        ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
+                        : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
+                    const cls    = row.is_me ? 'bg-slate-50 border-l-2 border-slate-400' : '';
+                    const meTxt  = row.is_me ? ' <span class="text-[10px] text-slate-500 font-normal">(나)</span>' : '';
+                    const nameCls = row.is_me ? 'text-slate-700' : 'text-slate-700';
+                    return `
+                        <div class="flex items-center gap-3 px-5 py-3 ${cls}">
+                            <div class="w-8 text-center leading-none">${badge}</div>
+                            <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
+                            <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
+                            <span class="font-bold text-slate-600 text-sm tabular-nums flex-shrink-0">${row.score}점</span>
+                        </div>`;
+                }).join('');
+            })
+            .catch(() => {
+                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
+            });
+    };
+
+    // ── 입력 처리: 키보드 ──
+    document.addEventListener('keydown', function (e) {
+        if (!isRunning) return;
+        if (e.key === 'ArrowLeft') { heldDirection = -1; btnLeft.classList.add('pressed'); e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { heldDirection = 1; btnRight.classList.add('pressed'); e.preventDefault(); }
+    });
+    document.addEventListener('keyup', function (e) {
+        if (e.key === 'ArrowLeft') { if (heldDirection === -1) heldDirection = 0; btnLeft.classList.remove('pressed'); }
+        else if (e.key === 'ArrowRight') { if (heldDirection === 1) heldDirection = 0; btnRight.classList.remove('pressed'); }
+    });
+
+    // ── 입력 처리: 터치/마우스 버튼 ──
+    function bindHold(el, dir) {
+        const press = (e) => { e.preventDefault(); if (!isRunning) return; heldDirection = dir; el.classList.add('pressed'); };
+        const release = () => { if (heldDirection === dir) heldDirection = 0; el.classList.remove('pressed'); };
+        el.addEventListener('touchstart', press, { passive: false });
+        el.addEventListener('touchend', release);
+        el.addEventListener('touchcancel', release);
+        el.addEventListener('mousedown', press);
+        el.addEventListener('mouseup', release);
+        el.addEventListener('mouseleave', release);
+    }
+    bindHold(btnLeft, -1);
+    bindHold(btnRight, 1);
+
+    document.getElementById('bal-start-btn').addEventListener('click', startGame);
+    document.getElementById('bal-restart-btn').addEventListener('click', startGame);
+
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 ──
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+
+    function applyLandscapeMode() {
+        document.body.classList.toggle('bal-landscape', isLandscapeMode());
+    }
+
+    applyLandscapeMode();
+    window.addEventListener('resize', applyLandscapeMode);
+    window.addEventListener('orientationchange', () => setTimeout(applyLandscapeMode, 120));
+
+    // ── 사운드 음소거 토글 ────────────────────────────────────────
+    (function () {
+        const btn = document.getElementById('bal-sound-toggle');
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        function render() {
+            const isMuted = window.GameSound && window.GameSound.isMuted();
+            btn.classList.toggle('muted', !!isMuted);
+            icon.className = isMuted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+        }
+        btn.addEventListener('click', () => {
+            if (window.GameSound) window.GameSound.toggleMute();
+            render();
+        });
+        render();
+    })();
+
+    resetState();
+    window._balLoadRanking();
+})();
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+    if (paneId === 'bal-tab-rank' && window._balLoadRanking) window._balLoadRanking();
+}
+
+function toggleBalChat() {
+    const col  = document.getElementById('bal-side-col');
+    const icon = document.getElementById('bal-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('bal-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+</script>
+
+<script>
+// ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
+(function () {
+    const box   = document.getElementById('bal-chat-messages');
+    const input = document.getElementById('bal-chat-input');
+    const btn   = document.getElementById('bal-chat-send');
+    const badge = document.getElementById('bal-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let socket = null;
+    let heartbeatTimer = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 연결됨';
+            input.disabled  = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...';
+            input.disabled  = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function append(name, message, time, isSystem, pictureUrl) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+
+        const d = document.createElement('div');
+        if (isSystem) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            const avatar = pictureUrl
+                ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if (data.error) {
+                append('SYSTEM', data.message, '', true, '');
+            } else {
+                append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            }
+        };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-top-pills {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.15s;
+  }
+  #game-top-pills.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-pill {
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  .game-quick-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    color: #374151;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.15s;
+  }
+  .game-quick-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    var topPills = document.createElement('div');
+    topPills.id = 'game-top-pills';
+    document.body.appendChild(topPills);
+
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    topPills.appendChild(pill);
+
+    var lobbyBtn = document.createElement('a');
+    lobbyBtn.href = "{% url 'game_lobby' %}";
+    lobbyBtn.className = 'game-quick-pill';
+    lobbyBtn.title = '게임 로비로 이동';
+    lobbyBtn.innerHTML = '<i class="fa-solid fa-house"></i>';
+    topPills.appendChild(lobbyBtn);
+
+    var restartBtn = document.createElement('button');
+    restartBtn.type = 'button';
+    restartBtn.className = 'game-quick-pill';
+    restartBtn.title = '다시 시작';
+    restartBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i>';
+    restartBtn.addEventListener('click', function () { location.reload(); });
+    topPills.appendChild(restartBtn);
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      topPills.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      topPills.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        topPills.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        topPills.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
+})();
+</script>
+{% endblock %}

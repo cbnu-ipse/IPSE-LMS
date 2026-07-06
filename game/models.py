@@ -176,7 +176,7 @@ class GameSeason(models.Model):
     @classmethod
     def _distribute_rewards_and_notify(cls, season):
         """사과게임/카드 매칭 상위 3명에게 낙엽을 지급하고 월말정산 UI 클레임을 생성한다."""
-        from game.views import get_apple_ranking, get_memory_match_ranking, get_number_speed_ranking, get_pattern_recall_ranking, SEASON_RANK_REWARDS
+        from game.views import get_apple_ranking, get_memory_match_ranking, get_number_speed_ranking, get_pattern_recall_ranking, get_balance_ranking, SEASON_RANK_REWARDS
 
         RANK_LABELS = {1: "1위", 2: "2위", 3: "3위"}
 
@@ -213,6 +213,15 @@ class GameSeason(models.Model):
             board_label="패턴 리콜",
             reward_reason="SEASON_PATTERN_RECALL_REWARD",
             ranking_fn=get_pattern_recall_ranking,
+            rank_labels=RANK_LABELS,
+            reward_table=SEASON_RANK_REWARDS,
+        )
+        cls._distribute_board_rewards(
+            season=season,
+            board="balance_game",
+            board_label="중심잡기",
+            reward_reason="SEASON_BALANCE_REWARD",
+            ranking_fn=get_balance_ranking,
             rank_labels=RANK_LABELS,
             reward_table=SEASON_RANK_REWARDS,
         )
@@ -270,7 +279,7 @@ class SeasonRewardClaim(models.Model):
     board = models.CharField(
         max_length=20,
         default="apple_game",
-        choices=[("apple_game", "마지막 잎새"), ("memory_match", "카드 매칭"), ("number_speed", "넘버 스피드"), ("pattern_recall", "패턴 리콜")],
+        choices=[("apple_game", "마지막 잎새"), ("memory_match", "카드 매칭"), ("number_speed", "넘버 스피드"), ("pattern_recall", "패턴 리콜"), ("balance_game", "중심잡기")],
         verbose_name="게임 종류",
     )
     rank = models.PositiveSmallIntegerField(verbose_name="최종 순위")
@@ -406,3 +415,24 @@ class PatternRecallScore(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.score}점 (Lv.{self.level})"
+
+
+class BalanceGameScore(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="balance_game_scores",
+        verbose_name="사용자"
+    )
+    score = models.PositiveIntegerField(default=0, verbose_name="점수")
+    survived_ms = models.PositiveIntegerField(default=0, verbose_name="생존 시간(ms)")
+    stage = models.PositiveIntegerField(default=0, verbose_name="도달 난이도 단계")
+    played_at = models.DateTimeField(auto_now_add=True, verbose_name="플레이 시각")
+
+    class Meta:
+        ordering = ["-score", "played_at"]
+        verbose_name = "중심잡기 점수"
+        verbose_name_plural = "중심잡기 점수 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.score}점"

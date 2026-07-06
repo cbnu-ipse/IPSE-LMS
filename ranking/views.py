@@ -17,6 +17,7 @@ from game.views import (
 	get_memory_match_ranking,
 	get_number_speed_ranking,
 	get_pattern_recall_ranking,
+	get_balance_ranking,
 )
 from .utils import (
 	get_problem_points_map,
@@ -28,6 +29,7 @@ GAME_BOARD_LABELS = {
 	"memory_match": "카드 매칭 랭킹",
 	"number_speed": "넘버 스피드 랭킹",
 	"pattern_recall": "패턴 리콜 랭킹",
+	"balance_game": "중심잡기 랭킹",
 }
 
 
@@ -296,6 +298,7 @@ def profile_ranking_stats(request, user_id):
 		"memory_match": lambda: get_memory_match_ranking(top_n=3, season=current_season),
 		"number_speed": lambda: get_number_speed_ranking(top_n=3, season=current_season),
 		"pattern_recall": lambda: get_pattern_recall_ranking(top_n=3, season=current_season),
+		"balance_game": lambda: get_balance_ranking(top_n=3, season=current_season),
 	}
 
 	top_games = []

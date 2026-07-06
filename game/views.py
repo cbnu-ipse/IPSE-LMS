@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore
+from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore, BalanceGameScore
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -161,6 +161,26 @@ def get_pattern_recall_ranking(top_n=10, season=None):
     """패턴 리콜 최고 점수 랭킹. season 지정 시 해당 시즌 기간만 집계."""
     from django.db.models import Max
     qs = PatternRecallScore.objects.values("user")
+    if season is not None:
+        qs = qs.filter(
+            played_at__date__gte=season.start_date,
+            played_at__date__lte=season.end_date,
+        )
+    qs = qs.annotate(best=Max("score")).filter(best__gt=0).order_by("-best")
+
+    user_ids = [entry["user"] for entry in qs]
+    score_map = {entry["user"]: entry["best"] for entry in qs}
+    users = User.objects.filter(pk__in=user_ids).select_related("student")
+    rows = [{"user": u, "score": score_map[u.pk]} for u in users]
+    rows.sort(key=lambda r: -r["score"])
+    result = rows if top_n is None else rows[:top_n]
+    return _assign_ranks(result, "score")
+
+
+def get_balance_ranking(top_n=10, season=None):
+    """중심잡기 최고 점수 랭킹. season 지정 시 해당 시즌 기간만 집계."""
+    from django.db.models import Max
+    qs = BalanceGameScore.objects.values("user")
     if season is not None:
         qs = qs.filter(
             played_at__date__gte=season.start_date,
@@ -350,6 +370,46 @@ def pattern_recall_ranking(request):
 
 
 @login_required
+def balance_game_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    chat_messages = list(latest)[::-1]
+    return render(request, "game/balance_game.html", {"title": "중심잡기", "chat_messages": chat_messages})
+
+
+@login_required
+@require_POST
+def save_balance_score(request):
+    try:
+        score = int(request.POST.get("score", 0))
+        survived_ms = int(request.POST.get("survived_ms", 0))
+        stage = int(request.POST.get("stage", 0))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+    if score < 0 or survived_ms < 0 or stage < 0:
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+    BalanceGameScore.objects.create(user=request.user, score=score, survived_ms=survived_ms, stage=stage)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+def balance_game_ranking(request):
+    """중심잡기 TOP 10 랭킹 JSON (현재 시즌 기준)."""
+    season = GameSeason.get_or_create_current()
+    rows = get_balance_ranking(10, season=season)
+    data = [
+        {
+            "rank": r["rank"],
+            "name": r["user"].display_name,
+            "picture": r["user"].get_picture(),
+            "score": r["score"],
+            "is_me": r["user"].id == request.user.id,
+        }
+        for r in rows
+    ]
+    return JsonResponse({"ranking": data, "season": season.number})
+
+
+@login_required
 def slot_ranking(request):
     """슬롯머신 TOP 10 랭킹 JSON (전체 기간)."""
     rows = get_slot_ranking(10)
@@ -373,7 +433,7 @@ def game_ranking_view(request):
     board = request.GET.get("board", "slot_game").strip()
     season_number = request.GET.get("season", "").strip()
 
-    if board not in {"slot_game", "apple_game", "memory_match", "number_speed", "pattern_recall"}:
+    if board not in {"slot_game", "apple_game", "memory_match", "number_speed", "pattern_recall", "balance_game"}:
         board = "slot_game"
 
     BOARD_LABELS = {
@@ -382,6 +442,7 @@ def game_ranking_view(request):
         "memory_match": "카드 매칭 랭킹",
         "number_speed": "넘버 스피드 랭킹",
         "pattern_recall": "패턴 리콜 랭킹",
+        "balance_game": "중심잡기 랭킹",
     }
     board_label = BOARD_LABELS[board]
 
@@ -413,6 +474,8 @@ def game_ranking_view(request):
             ranking_rows = get_number_speed_ranking(top_n=None, season=selected_season)
         elif board == "pattern_recall":
             ranking_rows = get_pattern_recall_ranking(top_n=None, season=selected_season)
+        elif board == "balance_game":
+            ranking_rows = get_balance_ranking(top_n=None, season=selected_season)
         else:
             ranking_rows = get_apple_ranking(top_n=None, season=selected_season)
         all_seasons = list(GameSeason.objects.order_by("-number"))

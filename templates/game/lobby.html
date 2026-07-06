@@ -198,37 +198,31 @@
                         </div>
                     </div>
 
-                    <!-- 7. 중심잡기 (준비 중) — COMING SOON 카드는 항상 목록 맨 뒤에 배치 -->
-                    <div class="game-card opacity-75 cursor-not-allowed">
+                    <!-- 7. 중심잡기 -->
+                    <a href="{% url 'balance_game' %}" class="game-card">
                         <div class="game-thumbnail balance">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
-                            <div class="thumbnail-content" style="opacity: 0.6;">
-                                <i class="fa-solid fa-person-walking text-4xl"></i>
-                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2">BALANCE</div>
+                            <div class="thumbnail-decor"></div>
+                            <div class="thumbnail-content">
+                                <i class="fa-solid fa-person-walking text-4xl drop-shadow-md" style="animation: bounce 2s infinite 1s;"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-slate-200">BALANCE</div>
                             </div>
-                            <span class="game-badge coming-soon">
-                                COMING SOON
-                            </span>
+                            <span class="game-badge playable">PLAYABLE</span>
                         </div>
                         <div class="p-4 flex-grow flex flex-col justify-between">
                             <div>
-                                <h4 class="font-bold text-slate-500 text-sm">중심잡기</h4>
+                                <h4 class="font-bold text-slate-800 text-sm card-title">중심잡기</h4>
                                 <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
                                     좌우로 흔들리며 걷는 캐릭터의 중심을 얼마나 오래 유지하는지 겨루는 밸런스 게임.
                                 </p>
                             </div>
-                            <div class="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
-                                <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                                    <span class="flex items-center gap-0.5">
-                                        <i class="fa-solid fa-thumbs-up"></i> --%
-                                    </span>
-                                </div>
-                                <span class="w-7 h-7 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
-                                    <i class="fa-solid fa-lock"></i>
+                            <div class="flex items-center justify-end border-t border-slate-100 pt-3 mt-3">
+                                <span class="w-7 h-7 rounded-full bg-slate-100 card-play-btn flex items-center justify-center text-slate-600 text-xs transition">
+                                    <i class="fa-solid fa-play"></i>
                                 </span>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
                 </div>
 
