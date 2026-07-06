@@ -513,6 +513,7 @@ footer { display: none !important; }
     let startTime = 0;
     let timerInterval = null;
     let isRunning = false;
+    let timerStarted = false;
 
     // ── 보드 생성 (1~25 셔플) ────────────────────────────────────────
     function buildBoard() {
@@ -540,6 +541,7 @@ footer { display: none !important; }
 
     function onCellClick(value, cellEl) {
         if (!isRunning || cellEl.classList.contains('done')) return;
+        if (!timerStarted) { timerStarted = true; startTimer(); }
         if (value === nextExpected) {
             if (window.GameSound) window.GameSound.play('tap');
             cellEl.classList.add('done');
@@ -593,10 +595,13 @@ footer { display: none !important; }
         mistakes = 0;
         mistakesEl.textContent = '0';
         isRunning = true;
+        timerStarted = false;
+        clearInterval(timerInterval);
+        timerEl.textContent = '0.0';
+        updateTimerBar(TIME_LIMIT_MS);
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
         renderBoard();
-        startTimer();
     }
 
     function computeEstimateScore(rawElapsedMs, mistakesCount) {

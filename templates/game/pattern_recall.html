@@ -42,6 +42,11 @@
                         </div>
                     </div>
 
+                    <!-- 카운트다운 오버레이 -->
+                    <div id="pr-countdown-overlay" class="pr-overlay hidden">
+                        <div class="pr-countdown-num" id="pr-countdown-num">3</div>
+                    </div>
+
                     <!-- 게임 종료 오버레이 -->
                     <div id="pr-over-overlay" class="pr-overlay hidden">
                         <div class="pr-overlay-content">
@@ -327,6 +332,19 @@
     -webkit-overflow-scrolling: touch;
 }
 .pr-overlay.hidden { display: none; }
+.pr-countdown-num {
+    margin: auto;
+    font-size: 5.5rem;
+    font-weight: 900;
+    color: #10b981;
+    text-shadow: 0 4px 16px rgba(16, 185, 129, 0.25);
+    animation: pr-countdown-pop 1s ease-out;
+}
+@keyframes pr-countdown-pop {
+    0% { transform: scale(0.4); opacity: 0; }
+    30% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
 .pr-overlay-content {
     text-align: center;
     padding: 32px 24px;
@@ -481,6 +499,8 @@ footer { display: none !important; }
     const roundEl = document.getElementById('pr-round');
     const startOv = document.getElementById('pr-start-overlay');
     const overOv = document.getElementById('pr-over-overlay');
+    const countdownOv = document.getElementById('pr-countdown-overlay');
+    const countdownNumEl = document.getElementById('pr-countdown-num');
     const finalRoundEl = document.getElementById('pr-final-round');
     const finalScoreEl = document.getElementById('pr-final-score');
     const tiles = Array.from(boardEl.querySelectorAll('.pr-tile'));
@@ -550,16 +570,33 @@ footer { display: none !important; }
 
     tiles.forEach((tile, idx) => tile.addEventListener('click', () => onTileClick(idx, tile)));
 
+    function runCountdown(n) {
+        if (n <= 0) {
+            countdownOv.classList.add('hidden');
+            isRunning = true;
+            boardEl.classList.remove('locked');
+            setTimeout(nextRound, 300);
+            return;
+        }
+        countdownNumEl.textContent = String(n);
+        countdownOv.classList.remove('hidden');
+        countdownNumEl.style.animation = 'none';
+        void countdownNumEl.offsetWidth;
+        countdownNumEl.style.animation = '';
+        if (window.GameSound) window.GameSound.play('reelStop', TILE_NOTES[n - 1] || TILE_NOTES[0]);
+        setTimeout(() => runCountdown(n - 1), 700);
+    }
+
     function startGame() {
         sequence = [Math.floor(Math.random() * tiles.length), Math.floor(Math.random() * tiles.length)];
         awaitingIndex = 0;
-        isRunning = true;
+        isRunning = false;
         isListening = false;
         roundEl.textContent = '0';
         startOv.classList.add('hidden');
         overOv.classList.add('hidden');
-        boardEl.classList.remove('locked');
-        setTimeout(nextRound, 300);
+        boardEl.classList.add('locked');
+        runCountdown(3);
     }
 
     function endGame() {
