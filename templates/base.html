@@ -765,7 +765,10 @@
         function showLoader() {
           if (!loader) return;
           window.isPageLoading = true;
-          if (leafFill) leafFill.style.clipPath = 'inset(100% 0 0 0)';
+          if (leafFill) {
+            leafFill.style.transition = '';
+            leafFill.style.clipPath = 'inset(100% 0 0 0)';
+          }
           loader.style.opacity = '';
           loader.style.display = 'flex';
           clearInterval(_fillInterval);
@@ -780,7 +783,12 @@
           window.isPageLoading = false;
           clearInterval(_fillInterval);
           if (!loader) return;
-          if (leafFill) leafFill.style.clipPath = 'inset(0% 0 0 0)';
+          // 낙엽을 100%까지 눈에 보이게 채운 뒤에 fadeout을 시작합니다.
+          if (leafFill) {
+            leafFill.style.transition = 'clip-path 0.3s ease-out';
+            void leafFill.offsetWidth;
+            leafFill.style.clipPath = 'inset(0% 0 0 0)';
+          }
           setTimeout(function() {
             loader.style.opacity = '0';
             loader.style.transition = 'opacity 0.2s ease-out';
@@ -788,9 +796,12 @@
               loader.style.display = 'none';
               loader.style.opacity = '';
               loader.style.transition = '';
-              if (leafFill) leafFill.style.clipPath = 'inset(100% 0 0 0)';
+              if (leafFill) {
+                leafFill.style.transition = '';
+                leafFill.style.clipPath = 'inset(100% 0 0 0)';
+              }
             }, 200);
-          }, 60);
+          }, 300);
         }
 
         // 링크 클릭
