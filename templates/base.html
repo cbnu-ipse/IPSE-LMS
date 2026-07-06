@@ -124,18 +124,35 @@
     </div>
     <script>
       // 페이지 이동 중이었다면(showLoader에서 세팅) 새 문서가 그려지기 전에 로더를 이어서 표시한다.
-      // (일반 <a> 이동은 문서를 통째로 새로 그리므로, 이전 페이지의 로더 상태는 여기서 이어받아야 함)
+      // (일반 <a> 이동은 문서를 통째로 새로 그리므로, 이전 페이지에서 채워지던 진행률/애니메이션을 여기서 이어받아야
+      //  "차오르다가 갑자기 꽉 참" 없이 계속 부드럽게 채워지는 것처럼 보인다.)
+      window.__loaderPct = 0;
+      window.__loaderFillInterval = null;
+      window.__startLoaderFill = function() {
+        var leafFill = document.getElementById('sk-leaf-fill');
+        clearInterval(window.__loaderFillInterval);
+        window.__loaderFillInterval = setInterval(function() {
+          window.__loaderPct += (91 - window.__loaderPct) * 0.055;
+          if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - window.__loaderPct).toFixed(2) + '% 0 0 0)';
+        }, 40);
+      };
       (function() {
         var wasNavigating = false;
+        var startPct = 0;
         try {
           wasNavigating = sessionStorage.getItem('pageLoaderActive') === '1';
+          startPct = parseFloat(sessionStorage.getItem('pageLoaderPct')) || 0;
           sessionStorage.removeItem('pageLoaderActive');
+          sessionStorage.removeItem('pageLoaderPct');
         } catch (e) {}
         if (wasNavigating) {
           var loader = document.getElementById('page-loader');
           var leafFill = document.getElementById('sk-leaf-fill');
+          window.__loaderPct = startPct;
+          window.__loaderResumedAt = Date.now();
           if (loader) loader.style.display = 'flex';
-          if (leafFill) leafFill.style.clipPath = 'inset(9% 0 0 0)';
+          if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - startPct).toFixed(2) + '% 0 0 0)';
+          window.__startLoaderFill();
         }
       })();
     </script>
@@ -777,11 +794,12 @@
         }
 
         const leafFill = document.getElementById('sk-leaf-fill');
-        let _fillInterval = null;
+        const LOADER_MIN_VISIBLE_MS = 400; // 채워지는 과정이 눈에 보이도록 보장하는 최소 시간
 
         function showLoader() {
           if (!loader) return;
           window.isPageLoading = true;
+          window.__loaderResumedAt = Date.now();
           try { sessionStorage.setItem('pageLoaderActive', '1'); } catch (e) {}
           if (leafFill) {
             leafFill.style.transition = '';
@@ -789,18 +807,20 @@
           }
           loader.style.opacity = '';
           loader.style.display = 'flex';
-          clearInterval(_fillInterval);
-          let pct = 0;
-          _fillInterval = setInterval(function() {
-            pct += (91 - pct) * 0.055;
-            if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - pct).toFixed(2) + '% 0 0 0)';
-          }, 40);
+          window.__loaderPct = 0;
+          window.__startLoaderFill();
         }
 
-        function hideLoader() {
-          window.isPageLoading = false;
-          clearInterval(_fillInterval);
-          if (!loader) return;
+        // 다른 페이지로 실제 이동하기 직전, 지금까지 채워진 진행률을 저장해
+        // 다음 문서에서 점프 없이 이어서 채워지도록 한다.
+        window.addEventListener('pagehide', function() {
+          if (window.isPageLoading) {
+            try { sessionStorage.setItem('pageLoaderPct', String(window.__loaderPct || 0)); } catch (e) {}
+          }
+        });
+
+        function finishAndFadeLoader() {
+          clearInterval(window.__loaderFillInterval);
           // 낙엽을 100%까지 눈에 보이게 채운 뒤에 fadeout을 시작합니다.
           if (leafFill) {
             leafFill.style.transition = 'clip-path 0.3s ease-out';
@@ -820,6 +840,14 @@
               }
             }, 200);
           }, 300);
+        }
+
+        function hideLoader() {
+          window.isPageLoading = false;
+          if (!loader) { clearInterval(window.__loaderFillInterval); return; }
+          const elapsed = window.__loaderResumedAt ? Date.now() - window.__loaderResumedAt : LOADER_MIN_VISIBLE_MS;
+          const wait = Math.max(0, LOADER_MIN_VISIBLE_MS - elapsed);
+          setTimeout(finishAndFadeLoader, wait);
         }
 
         // 링크 클릭
