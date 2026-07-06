@@ -124,35 +124,38 @@
     </div>
     <script>
       // 페이지 이동 중이었다면(showLoader에서 세팅) 새 문서가 그려지기 전에 로더를 이어서 표시한다.
-      // (일반 <a> 이동은 문서를 통째로 새로 그리므로, 이전 페이지에서 채워지던 진행률/애니메이션을 여기서 이어받아야
-      //  "차오르다가 갑자기 꽉 참" 없이 계속 부드럽게 채워지는 것처럼 보인다.)
-      window.__loaderPct = 0;
-      window.__loaderFillInterval = null;
-      window.__startLoaderFill = function() {
+      // (일반 <a> 이동은 문서를 통째로 새로 그리므로, 애니메이션 "시작 시각"만 이어받아 동일한 곡선을 계속 그린다.
+      //  실제 로드 속도와 무관하게 항상 정해진 시간 동안 하나의 일정한 속도로 채워지므로,
+      //  로드가 언제 끝났는지 티가 나는 속도 변화(seam)가 생기지 않는다.)
+      window.__loaderTotalMs = 550;
+      window.__loaderStartedAt = null;
+      window.__loaderRaf = null;
+      window.__runLoaderAnimation = function() {
         var leafFill = document.getElementById('sk-leaf-fill');
-        clearInterval(window.__loaderFillInterval);
-        window.__loaderFillInterval = setInterval(function() {
-          window.__loaderPct += (91 - window.__loaderPct) * 0.055;
-          if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - window.__loaderPct).toFixed(2) + '% 0 0 0)';
-        }, 40);
+        cancelAnimationFrame(window.__loaderRaf);
+        function tick() {
+          var elapsed = Date.now() - window.__loaderStartedAt;
+          var t = Math.min(elapsed / window.__loaderTotalMs, 1);
+          var pct = (1 - Math.pow(1 - t, 3)) * 100; // ease-out cubic
+          if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - pct).toFixed(2) + '% 0 0 0)';
+          if (t < 1) window.__loaderRaf = requestAnimationFrame(tick);
+        }
+        tick();
       };
       (function() {
         var wasNavigating = false;
-        var startPct = 0;
+        var startedAt = 0;
         try {
           wasNavigating = sessionStorage.getItem('pageLoaderActive') === '1';
-          startPct = parseFloat(sessionStorage.getItem('pageLoaderPct')) || 0;
+          startedAt = parseInt(sessionStorage.getItem('pageLoaderStartedAt'), 10) || 0;
           sessionStorage.removeItem('pageLoaderActive');
-          sessionStorage.removeItem('pageLoaderPct');
+          sessionStorage.removeItem('pageLoaderStartedAt');
         } catch (e) {}
-        if (wasNavigating) {
+        if (wasNavigating && startedAt) {
           var loader = document.getElementById('page-loader');
-          var leafFill = document.getElementById('sk-leaf-fill');
-          window.__loaderPct = startPct;
-          window.__loaderResumedAt = Date.now();
+          window.__loaderStartedAt = startedAt;
           if (loader) loader.style.display = 'flex';
-          if (leafFill) leafFill.style.clipPath = 'inset(' + (100 - startPct).toFixed(2) + '% 0 0 0)';
-          window.__startLoaderFill();
+          window.__runLoaderAnimation();
         }
       })();
     </script>
@@ -794,40 +797,35 @@
         }
 
         const leafFill = document.getElementById('sk-leaf-fill');
-        const LOADER_MIN_VISIBLE_MS = 400; // 채워지는 과정이 눈에 보이도록 보장하는 최소 시간
 
         function showLoader() {
           if (!loader) return;
           window.isPageLoading = true;
-          window.__loaderResumedAt = Date.now();
-          try { sessionStorage.setItem('pageLoaderActive', '1'); } catch (e) {}
+          window.__loaderStartedAt = Date.now();
+          try {
+            sessionStorage.setItem('pageLoaderActive', '1');
+            sessionStorage.setItem('pageLoaderStartedAt', String(window.__loaderStartedAt));
+          } catch (e) {}
           if (leafFill) {
             leafFill.style.transition = '';
             leafFill.style.clipPath = 'inset(100% 0 0 0)';
           }
           loader.style.opacity = '';
           loader.style.display = 'flex';
-          window.__loaderPct = 0;
-          window.__startLoaderFill();
+          window.__runLoaderAnimation();
         }
 
-        // 다른 페이지로 실제 이동하기 직전, 지금까지 채워진 진행률을 저장해
-        // 다음 문서에서 점프 없이 이어서 채워지도록 한다.
-        window.addEventListener('pagehide', function() {
-          if (window.isPageLoading) {
-            try { sessionStorage.setItem('pageLoaderPct', String(window.__loaderPct || 0)); } catch (e) {}
-          }
-        });
-
-        function finishAndFadeLoader() {
-          clearInterval(window.__loaderFillInterval);
-          // 낙엽을 100%까지 눈에 보이게 채운 뒤에 fadeout을 시작합니다.
-          if (leafFill) {
-            leafFill.style.transition = 'clip-path 0.3s ease-out';
-            void leafFill.offsetWidth;
-            leafFill.style.clipPath = 'inset(0% 0 0 0)';
-          }
+        // 애니메이션이 정해진 시간(__loaderTotalMs) 동안 하나의 곡선으로 100%까지 다 채워진 뒤에만 fadeout한다.
+        // 실제 페이지 로드가 그보다 먼저 끝나도 바로 넘기지 않고 애니메이션이 끝날 때까지 기다리므로,
+        // 채워지는 속도가 도중에 바뀌는 지점(=로드 완료 시점을 노출하는 seam)이 생기지 않는다.
+        function hideLoader() {
+          window.isPageLoading = false;
+          if (!loader) { cancelAnimationFrame(window.__loaderRaf); return; }
+          const elapsed = window.__loaderStartedAt ? Date.now() - window.__loaderStartedAt : window.__loaderTotalMs;
+          const wait = Math.max(0, window.__loaderTotalMs - elapsed);
           setTimeout(function() {
+            cancelAnimationFrame(window.__loaderRaf);
+            if (leafFill) leafFill.style.clipPath = 'inset(0% 0 0 0)';
             loader.style.opacity = '0';
             loader.style.transition = 'opacity 0.2s ease-out';
             setTimeout(function() {
@@ -839,15 +837,7 @@
                 leafFill.style.clipPath = 'inset(100% 0 0 0)';
               }
             }, 200);
-          }, 300);
-        }
-
-        function hideLoader() {
-          window.isPageLoading = false;
-          if (!loader) { clearInterval(window.__loaderFillInterval); return; }
-          const elapsed = window.__loaderResumedAt ? Date.now() - window.__loaderResumedAt : LOADER_MIN_VISIBLE_MS;
-          const wait = Math.max(0, LOADER_MIN_VISIBLE_MS - elapsed);
-          setTimeout(finishAndFadeLoader, wait);
+          }, wait);
         }
 
         // 링크 클릭
