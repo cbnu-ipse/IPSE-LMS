@@ -465,3 +465,22 @@ def get_attendance_streak(user, reference_date=None):
         check_date -= timedelta(days=1)
     return streak
 
+
+def get_max_attendance_streak(user):
+    """전체 기간을 대상으로 가장 길었던 연속 출석일수를 반환합니다."""
+    attended_dates = sorted(
+        Attendance.objects.filter(user=user).values_list('date', flat=True)
+    )
+
+    max_streak = 0
+    current_streak = 0
+    prev_date = None
+    for d in attended_dates:
+        if prev_date is not None and (d - prev_date).days == 1:
+            current_streak += 1
+        else:
+            current_streak = 1
+        max_streak = max(max_streak, current_streak)
+        prev_date = d
+    return max_streak
+
