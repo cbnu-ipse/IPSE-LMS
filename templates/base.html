@@ -1106,25 +1106,128 @@
         backdrop.id = 'user-profile-modal';
         backdrop.className = 'hidden fixed inset-0 z-[999] items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4';
         backdrop.innerHTML =
-          '<div class="relative bg-white rounded-2xl shadow-xl w-72 p-6 flex flex-col items-center text-center" data-modal-panel>' +
+          '<div class="relative bg-white rounded-2xl shadow-xl w-80 max-h-[85vh] overflow-y-auto p-6" data-modal-panel>' +
             '<button type="button" class="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-modal-close aria-label="닫기">' +
               '<i class="fa-solid fa-xmark"></i>' +
             '</button>' +
-            '<img class="w-20 h-20 rounded-full border-2 border-slate-100 object-cover mb-3">' +
-            '<p class="font-bold text-slate-800 text-base"></p>' +
-            '<p class="text-sm text-slate-400 mt-0.5"></p>' +
+            '<div data-modal-body></div>' +
           '</div>';
         document.body.appendChild(backdrop);
 
-        const img = backdrop.querySelector('img');
-        const nicknameEl = backdrop.querySelector('p:nth-of-type(1)');
-        const fullnameEl = backdrop.querySelector('p:nth-of-type(2)');
+        const bodyEl = backdrop.querySelector('[data-modal-body]');
+        const statsCache = {};
+
+        function escapeHtml(value) {
+          const div = document.createElement('div');
+          div.textContent = value == null ? '' : String(value);
+          return div.innerHTML;
+        }
+
+        function personHeaderHtml(picture, nickname, fullname, avatarSize) {
+          return (
+            '<img src="' + escapeHtml(picture) + '" class="rounded-full border-2 border-slate-100 object-cover mx-auto mb-3" style="width:' + avatarSize + 'px;height:' + avatarSize + 'px">' +
+            '<p class="font-bold text-slate-800 text-base text-center">' + escapeHtml(nickname) + '</p>' +
+            '<p class="text-sm text-slate-400 mt-0.5 text-center">' + escapeHtml(fullname) + '</p>'
+          );
+        }
+
+        function statsHtml(stats) {
+          if (!stats) {
+            return '<p class="text-xs text-slate-400 text-center py-1">정보를 불러오지 못했습니다.</p>';
+          }
+          const gamesHtml = stats.top_games && stats.top_games.length
+            ? stats.top_games.map(function(g) {
+                return '<span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] font-bold">' + escapeHtml(g.label) + ' ' + escapeHtml(g.rank) + '위</span>';
+              }).join('')
+            : '<p class="text-[11px] text-slate-400">현재 TOP 3 게임 없음</p>';
+
+          return (
+            '<div class="grid grid-cols-3 gap-2 text-center">' +
+              '<div class="bg-amber-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">낙엽</p><p class="font-bold text-amber-600 text-sm">' + escapeHtml(stats.leaves) + '</p></div>' +
+              '<div class="bg-orange-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">총 출석</p><p class="font-bold text-orange-600 text-sm">' + escapeHtml(stats.total_attendance) + '</p></div>' +
+              '<div class="bg-rose-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">연속 출석</p><p class="font-bold text-rose-600 text-sm">' + escapeHtml(stats.streak) + '</p></div>' +
+            '</div>' +
+            '<div class="mt-2">' +
+              '<p class="text-[11px] font-bold text-slate-400 mb-1">현재 TOP 3 게임</p>' +
+              '<div class="flex flex-wrap gap-1">' + gamesHtml + '</div>' +
+            '</div>'
+          );
+        }
+
+        function loadStats(userId, slotEl) {
+          if (!userId) {
+            slotEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-1">정보를 불러오지 못했습니다.</p>';
+            return;
+          }
+          if (statsCache[userId]) {
+            slotEl.innerHTML = statsHtml(statsCache[userId]);
+            return;
+          }
+          fetch('/ranking/api/profile-stats/' + encodeURIComponent(userId) + '/')
+            .then(function(res) { if (!res.ok) throw new Error('실패'); return res.json(); })
+            .then(function(data) {
+              statsCache[userId] = data;
+              slotEl.innerHTML = statsHtml(data);
+            })
+            .catch(function() {
+              slotEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-1">정보를 불러오지 못했습니다.</p>';
+            });
+        }
+
+        function openSingle(trigger) {
+          const withStats = trigger.dataset.hoverStats === '1';
+          bodyEl.innerHTML =
+            '<div class="flex flex-col items-center">' +
+              personHeaderHtml(trigger.dataset.picture, trigger.dataset.nickname, trigger.dataset.fullname, 80) +
+              (withStats ? '<div class="w-full mt-4 pt-4 border-t border-slate-100" data-stats-slot><p class="text-xs text-slate-400 text-center">불러오는 중...</p></div>' : '') +
+            '</div>';
+          if (withStats) {
+            loadStats(trigger.dataset.userId, bodyEl.querySelector('[data-stats-slot]'));
+          }
+        }
+
+        function openGroup(trigger) {
+          let members = [];
+          try {
+            members = JSON.parse(trigger.dataset.hoverGroup || '[]');
+          } catch (e) {
+            members = [];
+          }
+          const withStats = trigger.dataset.hoverStats === '1';
+
+          let html = '<p class="text-xs font-bold text-slate-400 tracking-wider mb-3 text-center">공동 순위 (' + members.length + '명)</p>' +
+            '<div class="space-y-4 divide-y divide-slate-100">';
+
+          members.forEach(function(member, idx) {
+            html +=
+              '<div class="' + (idx > 0 ? 'pt-4' : '') + '" data-member-block data-user-id="' + escapeHtml(member.userId) + '">' +
+                '<div class="flex items-center gap-3">' +
+                  '<img src="' + escapeHtml(member.picture) + '" class="w-12 h-12 rounded-full border-2 border-slate-100 object-cover">' +
+                  '<div>' +
+                    '<p class="font-bold text-slate-800 text-sm">' + escapeHtml(member.nickname) + '</p>' +
+                    '<p class="text-xs text-slate-400">' + escapeHtml(member.fullname) + '</p>' +
+                  '</div>' +
+                '</div>' +
+                (withStats ? '<div class="mt-3" data-stats-slot><p class="text-xs text-slate-400 text-center">불러오는 중...</p></div>' : '') +
+              '</div>';
+          });
+
+          html += '</div>';
+          bodyEl.innerHTML = html;
+
+          if (withStats) {
+            bodyEl.querySelectorAll('[data-member-block]').forEach(function(block) {
+              loadStats(block.dataset.userId, block.querySelector('[data-stats-slot]'));
+            });
+          }
+        }
 
         function openModal(trigger) {
-          img.src = trigger.dataset.picture || '';
-          nicknameEl.textContent = trigger.dataset.nickname || '';
-          fullnameEl.textContent = trigger.dataset.fullname || '';
-
+          if (trigger.dataset.hoverGroup) {
+            openGroup(trigger);
+          } else {
+            openSingle(trigger);
+          }
           backdrop.classList.remove('hidden');
           backdrop.classList.add('flex');
         }

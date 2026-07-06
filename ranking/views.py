@@ -2,15 +2,33 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Count
-from django.shortcuts import render, redirect
+from django.http import JsonResponse
+from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
 
 from accounts.models import Attendance, get_attendance_streak
 from contest.models import Contest, ContestParticipant, ContestSubmission
+from core.ranking_utils import assign_ranks, group_top_ranks
+from game.models import GameSeason
+from game.views import (
+	get_slot_ranking,
+	get_apple_ranking,
+	get_memory_match_ranking,
+	get_number_speed_ranking,
+	get_pattern_recall_ranking,
+)
 from .utils import (
 	get_problem_points_map,
 )
+
+GAME_BOARD_LABELS = {
+	"slot_game": "슬롯머신 랭킹",
+	"apple_game": "마지막 잎새 랭킹",
+	"memory_match": "카드 매칭 랭킹",
+	"number_speed": "넘버 스피드 랭킹",
+	"pattern_recall": "패턴 리콜 랭킹",
+}
 
 
 @login_required
@@ -62,13 +80,14 @@ def ranking_home(request):
 
 		ranking_rows = [row for row in ranking_rows if row["solved_count"] > 0]
 		ranking_rows.sort(key=lambda row: (-row["score"], row["user"].username.lower()))
+		assign_ranks(ranking_rows, "score")
 
 		context = {
 			"board": board,
 			"board_label": board_label,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
-			"top_rows": ranking_rows[:3],
+			"top_rows": group_top_ranks(ranking_rows, top_n=3),
 		}
 		return render(request, "ranking/ranking_home.html", context)
 
@@ -76,13 +95,14 @@ def ranking_home(request):
 		users = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
 		ranking_rows = [{"user": u, "score": u.leaves} for u in users]
 		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+		assign_ranks(ranking_rows, "score")
 
 		context = {
 			"board": board,
 			"board_label": board_label,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
-			"top_rows": ranking_rows[:3],
+			"top_rows": group_top_ranks(ranking_rows, top_n=3),
 		}
 		return render(request, "ranking/ranking_home.html", context)
 
@@ -92,13 +112,14 @@ def ranking_home(request):
 		).filter(total_attendance__gt=0)
 		ranking_rows = [{"user": u, "score": u.total_attendance} for u in users_qs]
 		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+		assign_ranks(ranking_rows, "score")
 
 		context = {
 			"board": board,
 			"board_label": board_label,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
-			"top_rows": ranking_rows[:3],
+			"top_rows": group_top_ranks(ranking_rows, top_n=3),
 		}
 		return render(request, "ranking/ranking_home.html", context)
 
@@ -111,13 +132,14 @@ def ranking_home(request):
 			if s > 0:
 				ranking_rows.append({"user": u, "score": s})
 		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
+		assign_ranks(ranking_rows, "score")
 
 		context = {
 			"board": board,
 			"board_label": board_label,
 			"contest_ranking_enabled": contest_ranking_enabled,
 			"ranking_rows": ranking_rows,
-			"top_rows": ranking_rows[:3],
+			"top_rows": group_top_ranks(ranking_rows, top_n=3),
 		}
 		return render(request, "ranking/ranking_home.html", context)
 
@@ -187,6 +209,7 @@ def ranking_home(request):
 			row["user"].username.lower(),
 		)
 	)
+	assign_ranks(ranking_rows, lambda row: (row["score"], row["penalty"]))
 
 	context = {
 		"board": board,
@@ -196,7 +219,7 @@ def ranking_home(request):
 		"selected_season_id": selected_contest.id,
 		"selected_contest": selected_contest,
 		"ranking_rows": ranking_rows,
-		"top_rows": ranking_rows[:3],
+		"top_rows": group_top_ranks(ranking_rows, top_n=3),
 	}
 	return render(request, "ranking/ranking_home.html", context)
 
@@ -250,9 +273,47 @@ def community_ranking(request):
                 ranking_rows.append({"user": u, "score": s})
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
+    assign_ranks(ranking_rows, "score")
+
     return render(request, "ranking/community_ranking.html", {
         "board": board,
         "board_label": board_label,
         "ranking_rows": ranking_rows,
-        "top_rows": ranking_rows[:3],
+        "top_rows": group_top_ranks(ranking_rows, top_n=3),
     })
+
+
+@login_required
+def profile_ranking_stats(request, user_id):
+	"""랭킹 프로필 모달용 부가 정보(낙엽/출석/연속출석/게임 TOP3)를 반환합니다."""
+	User = get_user_model()
+	user = get_object_or_404(User, pk=user_id, is_active=True)
+
+	kst_today = (timezone.now() + timedelta(hours=9)).date()
+	current_season = GameSeason.get_or_create_current()
+
+	game_getters = {
+		"slot_game": lambda: get_slot_ranking(top_n=3),
+		"apple_game": lambda: get_apple_ranking(top_n=3, season=current_season),
+		"memory_match": lambda: get_memory_match_ranking(top_n=3, season=current_season),
+		"number_speed": lambda: get_number_speed_ranking(top_n=3, season=current_season),
+		"pattern_recall": lambda: get_pattern_recall_ranking(top_n=3, season=current_season),
+	}
+
+	top_games = []
+	for board_key, getter in game_getters.items():
+		for row in getter():
+			if row["user"].id == user.id:
+				top_games.append({
+					"board": board_key,
+					"label": GAME_BOARD_LABELS[board_key],
+					"rank": row["rank"],
+				})
+				break
+
+	return JsonResponse({
+		"leaves": user.leaves,
+		"total_attendance": Attendance.objects.filter(user=user).count(),
+		"streak": get_attendance_streak(user, kst_today),
+		"top_games": top_games,
+	})

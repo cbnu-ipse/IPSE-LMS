@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.db import transaction
 from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore
 from accounts.models import User
+from core.ranking_utils import group_top_ranks
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 실물 슬롯머신 릴 구성 (Virtual Reel / Strip)
@@ -421,7 +422,7 @@ def game_ranking_view(request):
         "board": board,
         "board_label": board_label,
         "ranking_rows": ranking_rows,
-        "top_rows": ranking_rows[:3],
+        "top_rows": group_top_ranks(ranking_rows, top_n=3),
         "current_season": current_season,
         "selected_season": selected_season,
         "all_seasons": all_seasons,
