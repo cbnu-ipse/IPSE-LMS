@@ -2387,13 +2387,11 @@ def guestbook(request):
     paginator = Paginator(entries, 30)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    from django.utils import timezone
-    from datetime import timedelta
-    kst_now = timezone.now() + timedelta(hours=9)
-    today = kst_now.date()
+    kst_start, kst_end, _ = _kst_day_utc_range()
     has_written_today = Guestbook.objects.filter(
         author=request.user,
-        created_at__date=timezone.now().date()
+        created_at__gte=kst_start,
+        created_at__lt=kst_end,
     ).exists()
 
     from django.conf import settings
