@@ -64,6 +64,15 @@
         animation: sk-shimmer 1.6s ease-in-out infinite;
     }
     /* ── 페이지 전환 loader ── */
+    .streak-best-fire {
+      color: #e11d48;
+      text-shadow: 0 0 6px rgba(225, 29, 72, 0.55);
+      animation: streak-fire-flicker 1.1s ease-in-out infinite;
+    }
+    @keyframes streak-fire-flicker {
+      0%, 100% { opacity: 1; text-shadow: 0 0 6px rgba(225, 29, 72, 0.55); }
+      50% { opacity: 0.82; text-shadow: 0 0 12px rgba(225, 29, 72, 0.85); }
+    }
     #page-loader {
         position: fixed; inset: 0;
         background: rgba(255,255,255,0.96);
@@ -1155,7 +1164,7 @@
             '<div class="grid grid-cols-3 gap-2 text-center">' +
               '<div class="bg-amber-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">낙엽</p><p class="font-bold text-amber-600 text-sm">' + escapeHtml(stats.leaves) + '</p></div>' +
               '<div class="bg-orange-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">총 출석</p><p class="font-bold text-orange-600 text-sm">' + escapeHtml(stats.total_attendance) + '</p></div>' +
-              '<div class="bg-rose-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">연속 출석</p><p class="font-bold text-rose-600 text-sm">' + escapeHtml(stats.streak) + '</p></div>' +
+              '<div class="bg-rose-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">연속 출석</p><p class="font-bold text-sm ' + (stats.streak_is_best ? 'streak-best-fire' : 'text-rose-600') + '">' + (stats.streak_is_best ? '<i class="fa-solid fa-fire"></i> ' : '') + escapeHtml(stats.streak) + '</p></div>' +
             '</div>' +
             '<div class="mt-2">' +
               '<p class="text-[11px] font-bold text-slate-400 mb-1">현재 TOP 3 게임</p>' +

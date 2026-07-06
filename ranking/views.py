@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
 
-from accounts.models import Attendance, get_attendance_streak
+from accounts.models import Attendance, get_attendance_streak, get_max_attendance_streak
 from contest.models import Contest, ContestParticipant, ContestSubmission
 from core.ranking_utils import assign_ranks, group_top_ranks
 from game.models import GameSeason
@@ -124,12 +124,11 @@ def ranking_home(request):
 		return render(request, "ranking/ranking_home.html", context)
 
 	if board == "streak":
-		kst_today = (timezone.now() + timedelta(hours=9)).date()
 		users_qs = User.objects.filter(is_active=True).select_related("student")
 		ranking_rows = []
 		for u in users_qs:
-			s = get_attendance_streak(u, kst_today)
-			if s > 0:
+			s = get_max_attendance_streak(u)
+			if s >= 2:
 				ranking_rows.append({"user": u, "score": s})
 		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 		assign_ranks(ranking_rows, "score")
@@ -231,7 +230,7 @@ def community_ranking(request):
     from django.db.models import Q, Count
     from django.utils import timezone
     from datetime import timedelta
-    from accounts.models import Attendance, get_attendance_streak
+    from accounts.models import Attendance, get_max_attendance_streak
 
     User = get_user_model()
     board = request.GET.get("board", "leaves").strip()
@@ -265,11 +264,10 @@ def community_ranking(request):
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
     elif board == "streak":
-        kst_today = (timezone.now() + timedelta(hours=9)).date()
         qs = User.objects.filter(is_active=True).select_related("student")
         for u in qs:
-            s = get_attendance_streak(u, kst_today)
-            if s > 0:
+            s = get_max_attendance_streak(u)
+            if s >= 2:
                 ranking_rows.append({"user": u, "score": s})
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
@@ -311,9 +309,13 @@ def profile_ranking_stats(request, user_id):
 				})
 				break
 
+	current_streak = get_attendance_streak(user, kst_today)
+	max_streak = get_max_attendance_streak(user)
+
 	return JsonResponse({
 		"leaves": user.leaves,
 		"total_attendance": Attendance.objects.filter(user=user).count(),
-		"streak": get_attendance_streak(user, kst_today),
+		"streak": current_streak,
+		"streak_is_best": current_streak > 0 and current_streak >= max_streak,
 		"top_games": top_games,
 	})
