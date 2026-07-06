@@ -122,6 +122,23 @@
         <i id="sk-leaf-fill" class="fa-solid fa-leaf" style="position:absolute;inset:0;font-size:80px;color:#10b981;line-height:1;clip-path:inset(100% 0 0 0)"></i>
       </div>
     </div>
+    <script>
+      // 페이지 이동 중이었다면(showLoader에서 세팅) 새 문서가 그려지기 전에 로더를 이어서 표시한다.
+      // (일반 <a> 이동은 문서를 통째로 새로 그리므로, 이전 페이지의 로더 상태는 여기서 이어받아야 함)
+      (function() {
+        var wasNavigating = false;
+        try {
+          wasNavigating = sessionStorage.getItem('pageLoaderActive') === '1';
+          sessionStorage.removeItem('pageLoaderActive');
+        } catch (e) {}
+        if (wasNavigating) {
+          var loader = document.getElementById('page-loader');
+          var leafFill = document.getElementById('sk-leaf-fill');
+          if (loader) loader.style.display = 'flex';
+          if (leafFill) leafFill.style.clipPath = 'inset(9% 0 0 0)';
+        }
+      })();
+    </script>
     <!-- ── /loader ── -->
 
 
@@ -765,6 +782,7 @@
         function showLoader() {
           if (!loader) return;
           window.isPageLoading = true;
+          try { sessionStorage.setItem('pageLoaderActive', '1'); } catch (e) {}
           if (leafFill) {
             leafFill.style.transition = '';
             leafFill.style.clipPath = 'inset(100% 0 0 0)';
