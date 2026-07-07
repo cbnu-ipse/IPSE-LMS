@@ -122,8 +122,9 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-[15px]">
+                            {% with podium_cutoff=top_rows|last %}
                             {% for row in ranking_rows %}
-                            {% if forloop.counter > 3 %}
+                            {% if not podium_cutoff or row.rank > podium_cutoff.rank %}
                             <tr class="hover:bg-slate-50 transition">
                                 <td class="px-6 py-4 font-semibold text-slate-600">{{ row.rank }}위</td>
                                 <td class="px-6 py-4">
@@ -175,6 +176,7 @@
                                 <td colspan="4" class="px-6 py-10 text-center text-slate-400">TOP 3 안에 모든 랭커가 있습니다.</td>
                             </tr>
                             {% endif %}
+                            {% endwith %}
                         </tbody>
                     </table>
                 </div>
