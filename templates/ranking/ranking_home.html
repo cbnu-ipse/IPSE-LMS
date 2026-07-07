@@ -171,11 +171,13 @@
                                 <td colspan="4" class="px-6 py-10 text-center text-slate-400">랭킹 데이터가 없습니다.</td>
                             </tr>
                             {% endfor %}
-                            {% if ranking_rows|length > 0 and ranking_rows|length <= 3 %}
+                            {% with last_row=ranking_rows|last %}
+                            {% if last_row and podium_cutoff and last_row.rank <= podium_cutoff.rank %}
                             <tr>
                                 <td colspan="4" class="px-6 py-10 text-center text-slate-400">TOP 3 안에 모든 랭커가 있습니다.</td>
                             </tr>
                             {% endif %}
+                            {% endwith %}
                             {% endwith %}
                         </tbody>
                     </table>
