@@ -38,5 +38,5 @@ def chat_history_view(request):
     session = ChatSession.objects.filter(user=request.user).first()
     messages = session.messages.all() if session else []
     return JsonResponse({
-        "messages": [{"role": m.role, "content": m.content} for m in messages],
+        "messages": [{"id": m.pk, "role": m.role, "content": m.content} for m in messages],
     })
