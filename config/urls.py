@@ -12,6 +12,7 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),
     path("game/", include("game.urls")),
     path("course/", include("course.urls")),
+    path("mypage/", include("mypage.urls")),
     path("quiz/", include("quiz.urls")),
     path("contest/", include("contest.urls")),
     path("problems/", include("problems.urls")),
@@ -20,6 +21,7 @@ urlpatterns = [
     path("accounts/api/", include("accounts.api.urls", namespace="accounts-api")),
     path("compiler/", include("compiler.urls")),
     path("schedules/", include("schedules.urls")),
+    path("assistant/", include("assistant.urls")),
     path("recruit/<int:form_id>/", community.views.recruit_apply, name="recruit_apply"),
 ]
 

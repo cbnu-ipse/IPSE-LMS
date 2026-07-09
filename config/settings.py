@@ -107,6 +107,8 @@ PROJECT_APPS = [
     "compiler.apps.CompilerConfig",
     "schedules.apps.SchedulesConfig",
     "game.apps.GameConfig",
+    "mypage.apps.MypageConfig",
+    "assistant.apps.AssistantConfig",
 ]
 
 # Combine all apps
@@ -241,6 +243,11 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 EMAIL_FROM_ADDRESS = config("EMAIL_FROM_ADDRESS", default="noreply@ipse.ac.kr")
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=30, cast=int)
 DEFAULT_FROM_EMAIL = EMAIL_FROM_ADDRESS
+
+# mypage 앱: 학생 개인 자료 기반 AI 문제 생성
+OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
+MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.5")
+ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.5")
 SERVER_EMAIL = EMAIL_FROM_ADDRESS
 
 PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)

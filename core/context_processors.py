@@ -23,7 +23,7 @@ def vapid_settings(request):
     }
 
 
-_JUDGE_PATH_PREFIXES = ('/course/', '/quiz/', '/contest/', '/problems/', '/compiler/')
+_JUDGE_PATH_PREFIXES = ('/course/', '/quiz/', '/contest/', '/problems/', '/compiler/', '/mypage/')
 
 
 def site_section(request):
