@@ -16,6 +16,13 @@ class PersonalFolder(models.Model):
         return self.name
 
 
+class ProcessingStatus(models.TextChoices):
+    PENDING = "pending", "대기"
+    PROCESSING = "processing", "처리중"
+    DONE = "done", "완료"
+    FAILED = "failed", "실패"
+
+
 class PersonalDocument(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_documents")
     folder = models.ForeignKey(PersonalFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="documents")
@@ -27,6 +34,10 @@ class PersonalDocument(models.Model):
     )
     extracted_text = models.TextField(blank=True, verbose_name="추출된 본문 (미리보기·문제생성에 사용)")
     summary = models.TextField(blank=True, verbose_name="AI 자동 요약")
+    summary_status = models.CharField(
+        max_length=10, choices=ProcessingStatus.choices, default=ProcessingStatus.DONE,
+        verbose_name="요약 생성 상태 (백그라운드 처리 추적용)",
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -47,8 +58,12 @@ class GeneratedQuestion(models.Model):
 
     document = models.ForeignKey(PersonalDocument, on_delete=models.CASCADE, related_name="questions")
     question_type = models.CharField(max_length=10, choices=QuestionType.choices)
-    question_text = models.TextField()
-    answer = models.TextField(verbose_name="정답/모범답안")
+    question_text = models.TextField(blank=True)
+    answer = models.TextField(blank=True, verbose_name="정답/모범답안")
+    status = models.CharField(
+        max_length=10, choices=ProcessingStatus.choices, default=ProcessingStatus.DONE,
+        verbose_name="문제 생성 상태 (백그라운드 처리 추적용)",
+    )
     user_answer = models.TextField(blank=True, verbose_name="사용자가 제출한 답")
     is_correct = models.BooleanField(null=True, blank=True, default=None, verbose_name="채점 결과 (미응답 시 None)")
     feedback = models.TextField(blank=True, verbose_name="LLM 채점 피드백 (단답/서술형만)")

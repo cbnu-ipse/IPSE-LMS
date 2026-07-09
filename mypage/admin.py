@@ -11,12 +11,12 @@ class PersonalFolderAdmin(admin.ModelAdmin):
 
 @admin.register(PersonalDocument)
 class PersonalDocumentAdmin(admin.ModelAdmin):
-    list_display = ["title", "user", "folder", "uploaded_at"]
-    list_filter = ["uploaded_at"]
+    list_display = ["title", "user", "folder", "summary_status", "uploaded_at"]
+    list_filter = ["uploaded_at", "summary_status"]
     search_fields = ["title", "user__username"]
 
 
 @admin.register(GeneratedQuestion)
 class GeneratedQuestionAdmin(admin.ModelAdmin):
-    list_display = ["document", "question_type", "created_at"]
-    list_filter = ["question_type"]
+    list_display = ["document", "question_type", "status", "created_at"]
+    list_filter = ["question_type", "status"]

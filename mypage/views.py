@@ -1,19 +1,46 @@
 import logging
 import os
+import threading
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import connection
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .ai import explain_ox_answer, extract_text, generate_one_question, generate_summary, grade_answer
 from .forms import PersonalDocumentUploadForm, PersonalFolderForm
-from .models import GeneratedQuestion, PersonalDocument, PersonalFolder
+from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, ProcessingStatus
 
 logger = logging.getLogger(__name__)
 
 MAX_QUESTIONS_PER_TYPE = 20
+
+
+def _generate_summary_bg(document_id):
+    try:
+        text = PersonalDocument.objects.get(pk=document_id).extracted_text
+        summary = generate_summary(text)
+        PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
+    except Exception:
+        logger.exception("문서 %s 자동 요약 생성 실패", document_id)
+        PersonalDocument.objects.filter(pk=document_id).update(summary_status=ProcessingStatus.FAILED)
+    finally:
+        connection.close()
+
+
+def _generate_question_bg(question_id, extracted_text, question_type, existing_texts):
+    try:
+        q = generate_one_question(extracted_text, question_type, existing_questions=existing_texts)
+        GeneratedQuestion.objects.filter(pk=question_id).update(
+            question_text=q.get("question", ""), answer=q.get("answer", ""), status=ProcessingStatus.DONE,
+        )
+    except Exception:
+        logger.exception("문제 %s 생성 실패", question_id)
+        GeneratedQuestion.objects.filter(pk=question_id).update(status=ProcessingStatus.FAILED)
+    finally:
+        connection.close()
 
 
 @login_required
@@ -35,13 +62,10 @@ def document_list(request, folder_id=None):
             document.save()
             with document.file.open("rb") as fh:
                 document.extracted_text = extract_text(fh, document.file.name)
-            try:
-                document.summary = generate_summary(document.extracted_text)
-            except Exception:
-                logger.exception("문서 %s 자동 요약 생성 실패", document.pk)
-                document.summary = ""
-            document.save(update_fields=["extracted_text", "summary"])
-            messages.success(request, "자료가 업로드되었습니다.")
+            document.summary_status = ProcessingStatus.PROCESSING
+            document.save(update_fields=["extracted_text", "summary_status"])
+            threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
+            messages.success(request, "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다.")
             return redirect(request.path)
         messages.error(request, "업로드에 실패했습니다. 파일 형식과 크기를 확인해주세요.")
     else:
@@ -121,6 +145,7 @@ def document_preview(request, pk):
         "current_question": current_questions[q_index] if current_questions else None,
         "q_index": q_index,
         "max_questions_per_type": MAX_QUESTIONS_PER_TYPE,
+        "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
     })
 
 
@@ -146,21 +171,18 @@ def generate_question_view(request, pk, question_type):
         messages.error(request, f"이미 이 유형은 최대 {MAX_QUESTIONS_PER_TYPE}개까지 생성했습니다.")
         return redirect(redirect_base)
 
-    try:
-        q = generate_one_question(document.extracted_text, question_type, existing_questions=existing_texts)
-    except Exception:
-        logger.exception("문서 %s 문제(%s) 생성 실패", document.pk, question_type)
-        messages.error(request, "문제 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-        return redirect(redirect_base)
-
-    GeneratedQuestion.objects.create(
+    question = GeneratedQuestion.objects.create(
         document=document,
         question_type=question_type,
-        question_text=q.get("question", ""),
-        answer=q.get("answer", ""),
+        status=ProcessingStatus.PROCESSING,
     )
+    threading.Thread(
+        target=_generate_question_bg,
+        args=(question.pk, document.extracted_text, question_type, existing_texts),
+        daemon=True,
+    ).start()
 
-    messages.success(request, "문제가 추가로 생성되었습니다.")
+    messages.success(request, "문제를 생성하고 있습니다. 잠시 후 새로고침해주세요.")
     return redirect(f"{redirect_base}&q={len(existing_texts)}")
 
 
@@ -172,6 +194,10 @@ def submit_answer_view(request, pk, question_id):
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
 
     redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&tab={question.question_type}&q={request.GET.get('q', 0)}"
+
+    if question.status != ProcessingStatus.DONE:
+        messages.error(request, "문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")
+        return redirect(redirect_base)
 
     user_answer = request.POST.get("user_answer", "").strip()
     if not user_answer:
