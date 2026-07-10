@@ -165,3 +165,6 @@ image_05.png
 
 # DB/Media Backups
 backups/
+
+# yhw_agent_project: independent repo, pushed to a separate Gitea remote
+yhw_agent_project/

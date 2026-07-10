@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}개인 자료 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-4 py-10">
+    <h1 class="text-2xl font-bold text-slate-800 mb-6">내 학습 자료</h1>
+
+    {% if messages %}
+        <div class="mb-6 space-y-2">
+            {% for message in messages %}
+                <div class="px-4 py-2.5 rounded-xl text-sm font-medium {% if message.tags == 'error' %}bg-rose-50 text-rose-700 border border-rose-100{% else %}bg-emerald-50 text-emerald-700 border border-emerald-100{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <!-- 좌측: 폴더 사이드바 -->
+        <aside class="lg:col-span-3 space-y-6">
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-folder-open text-emerald-600 text-xl"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="font-bold text-slate-800 text-sm truncate">{% if current_folder %}{{ current_folder.name }}{% else %}전체 자료{% endif %}</h3>
+                        <p class="text-[11px] text-slate-400 font-medium">{{ documents|length }}개 자료</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">폴더</p>
+                <ul class="space-y-0.5">
+                    <li>
+                        <a href="{% url 'mypage:document_list' %}" class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition {% if not current_folder %}bg-emerald-50 text-emerald-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                            <i class="fa-solid fa-house w-4 {% if not current_folder %}text-emerald-600{% else %}text-slate-400{% endif %}"></i>전체 (루트)
+                        </a>
+                    </li>
+                    {% for f in folders %}
+                    <li>
+                        <a href="{% url 'mypage:document_list' folder_id=f.pk %}" class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition {% if current_folder.pk == f.pk %}bg-emerald-50 text-emerald-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                            <i class="fa-solid fa-folder text-amber-400 w-4"></i><span class="truncate">{{ f.name }}</span>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="border-t border-slate-100 pt-4">
+                    <form method="post" action="{% url 'mypage:folder_create' %}" class="flex gap-2">
+                        {% csrf_token %}
+                        {{ folder_form.name }}
+                        <button type="submit" class="shrink-0 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded-xl transition">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </form>
+                </div>
+
+                {% if current_folder %}
+                <form method="post" action="{% url 'mypage:folder_delete' current_folder.pk %}" onsubmit="return confirm('폴더를 삭제하시겠습니까? 안의 자료는 루트로 이동합니다.');" class="pt-2 border-t border-slate-100">
+                    {% csrf_token %}
+                    <button type="submit" class="w-full text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-2">이 폴더 삭제</button>
+                </form>
+                {% endif %}
+            </div>
+        </aside>
+
+        <!-- 우측: 업로드 + 파일/폴더 그리드 -->
+        <main class="lg:col-span-9 space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-100 p-6">
+                <h2 class="text-sm font-bold text-slate-700 mb-4">자료 업로드{% if current_folder %} · {{ current_folder.name }}{% endif %}</h2>
+                <form method="post" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-3">
+                    {% csrf_token %}
+                    {{ form.title }}
+                    {{ form.subject_code }}
+                    {{ form.file }}
+                    <button type="submit" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition">업로드</button>
+                </form>
+                <p class="text-xs text-slate-400 mt-2">PDF, DOC, DOCX, PPT, PPTX · 최대 20MB</p>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+                {% if not current_folder %}
+                    {% for f in folders %}
+                    <a href="{% url 'mypage:document_list' folder_id=f.pk %}" class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col items-center text-center gap-2">
+                        <i class="fa-solid fa-folder text-amber-400 text-3xl"></i>
+                        <p class="text-sm font-bold text-slate-700 truncate w-full">{{ f.name }}</p>
+                        <p class="text-[11px] text-slate-400">{{ f.doc_count }}개</p>
+                    </a>
+                    {% endfor %}
+                {% endif %}
+                {% for document in documents %}
+                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group">
+                    <a href="{% url 'mypage:document_preview' document.pk %}" class="flex flex-col items-center text-center gap-2">
+                        <i class="fa-regular fa-file-lines text-slate-400 text-3xl"></i>
+                        <p class="text-sm font-bold text-slate-700 truncate w-full">{{ document.title }}</p>
+                        <p class="text-[11px] text-slate-400">{{ document.uploaded_at|date:"Y-m-d" }}</p>
+                    </a>
+                    <form method="post" action="{% url 'mypage:document_delete' document.pk %}" onsubmit="return confirm('삭제하시겠습니까?');" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
+                        {% csrf_token %}
+                        <button type="submit" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if not documents and current_folder %}
+                <p class="text-sm text-slate-400 text-center py-10">이 폴더에는 아직 자료가 없습니다.</p>
+            {% elif not documents and not folders %}
+                <p class="text-sm text-slate-400 text-center py-10">아직 올린 자료가 없습니다.</p>
+            {% endif %}
+        </main>
+    </div>
+</section>
+{% endblock %}

@@ -203,6 +203,10 @@
                            class="h-full flex items-end pb-[18px] border-b-2 {% if 'ranking' in request.resolver_match.app_name or 'ranking' in request.resolver_match.url_name %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             랭킹
                         </a>
+                        <a href="{% url 'mypage:document_list' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.app_name == 'mypage' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            개인
+                        </a>
                     {% elif site_section == 'game' %}
                         <!-- 🎮 게임 서브도메인 메뉴 -->
                         <a href="{% url 'game_lobby' %}"
@@ -416,6 +420,7 @@
                         <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">문제</a>
                         <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">대회</a>
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
+                        <a href="{% url 'mypage:document_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">개인</a>
                     {% elif site_section == 'game' %}
                         <a href="{% url 'community_main' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
                             <span>← 잎새로 돌아가기</span>
@@ -530,6 +535,28 @@
         </a>
         </div>
     </div>
+    {% endif %}
+
+    {% if user.is_authenticated and site_section == 'judge' %}
+    <!-- 🤖 AI 어시스턴트 FAB -->
+    <div id="assistant-fab-container" class="fixed bottom-6 right-6 z-50">
+        <button id="assistant-fab-btn" class="relative w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-105">
+            <i class="fa-solid fa-robot text-lg"></i>
+            <span id="assistant-fab-badge" class="hidden absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
+        </button>
+        <div id="assistant-chat-panel" class="hidden absolute bottom-[calc(100%+12px)] right-0 w-[22rem] max-w-[calc(100vw-2rem)] h-[32rem] max-h-[70vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-emerald-600 text-white">
+                <span class="font-bold text-sm">AI 어시스턴트</span>
+                <button id="assistant-chat-close" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="assistant-chat-messages" class="flex-grow overflow-y-auto px-4 py-3 space-y-3 text-sm"></div>
+            <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
+                <input id="assistant-chat-input" type="text" autocomplete="off" placeholder="무엇이든 물어보세요" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">전송</button>
+            </form>
+        </div>
+    </div>
+    <script src="{% static 'js/assistant-chat.js' %}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-csrf-token="{{ csrf_token }}"></script>
     {% endif %}
     {% endif %}
 
