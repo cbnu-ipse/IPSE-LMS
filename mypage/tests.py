@@ -1,8 +1,11 @@
+import io
+import zipfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from .ai import extract_text
 from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
 from .views import _generate_question_bg, _generate_summary_bg
 
@@ -47,3 +50,25 @@ class BackgroundProcessingTests(TestCase):
             _generate_question_bg(question.pk, self.document.extracted_text, "ox", [])
         question.refresh_from_db()
         self.assertEqual(question.status, ProcessingStatus.FAILED)
+
+
+class ExtractTextFormatTests(TestCase):
+    def test_txt(self):
+        self.assertEqual(extract_text(io.BytesIO("안녕하세요".encode("utf-8")), "note.txt"), "안녕하세요")
+
+    def test_md(self):
+        self.assertEqual(extract_text(io.BytesIO(b"# heading"), "note.md"), "# heading")
+
+    def test_rtf(self):
+        rtf = rb"{\rtf1\ansi Hello RTF}"
+        self.assertIn("Hello RTF", extract_text(io.BytesIO(rtf), "note.rtf"))
+
+    def test_hwpx(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("Contents/section0.xml", "<root><p>hwpx 본문</p></root>")
+        buf.seek(0)
+        self.assertEqual(extract_text(buf, "note.hwpx"), "hwpx 본문")
+
+    def test_unsupported_extension_returns_empty(self):
+        self.assertEqual(extract_text(io.BytesIO(b"whatever"), "note.exe"), "")
