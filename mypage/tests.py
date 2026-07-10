@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from .ai import extract_text
 from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
-from .views import _generate_question_bg, _generate_summary_bg
+from .views import _generate_question_bg, _generate_summary_bg, _maybe_generate_course_bg
 
 User = get_user_model()
 
@@ -104,6 +104,38 @@ class GuardrailTests(TestCase):
         document = PersonalDocument.objects.get(user=self.user)
         self.assertEqual(document.summary_status, ProcessingStatus.PROCESSING)
         self.assertEqual(document.extracted_text, "평범한 학습 자료 본문입니다")
+
+
+class CourseAutoGenerationTests(TestCase):
+    def _make_doc(self, user, is_deleted=False):
+        return PersonalDocument.objects.create(
+            user=user, title="doc", subject_code="CS101", summary="요약 내용",
+            summary_status=ProcessingStatus.DONE, is_deleted=is_deleted,
+        )
+
+    def test_below_threshold_does_not_trigger(self):
+        user = User.objects.create_user(username="course_tester_below", password="pw")
+        for _ in range(4):
+            self._make_doc(user)
+
+        with patch("course.ai.generate_course_draft") as mock_draft:
+            _maybe_generate_course_bg("CS101")
+
+        mock_draft.assert_not_called()
+
+    def test_threshold_five_counts_soft_deleted_docs(self):
+        user = User.objects.create_user(username="course_tester_five", password="pw")
+        for _ in range(4):
+            self._make_doc(user, is_deleted=True)
+        self._make_doc(user)
+
+        with patch("course.ai.generate_course_draft") as mock_draft, \
+                patch("course.services.sync_course_from_draft") as mock_sync:
+            mock_draft.return_value = {"title": "t", "description": "d", "units": []}
+            _maybe_generate_course_bg("CS101")
+
+        mock_draft.assert_called_once()
+        mock_sync.assert_called_once()
 
 
 class SummaryMarkdownRenderTests(TestCase):
