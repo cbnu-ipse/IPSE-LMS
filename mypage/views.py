@@ -10,6 +10,8 @@ from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from assistant.guardrails import detect_prompt_injection
+
 from .ai import explain_ox_answer, extract_text, generate_one_question, generate_summary, grade_answer
 from .forms import PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, ProcessingStatus
@@ -85,7 +87,13 @@ def document_list(request, folder_id=None):
                 document.title = os.path.splitext(document.file.name)[0]
             document.save()
             with document.file.open("rb") as fh:
-                document.extracted_text = extract_text(fh, document.file.name)
+                extracted_text = extract_text(fh, document.file.name)
+            if detect_prompt_injection(extracted_text):
+                document.summary_status = ProcessingStatus.FAILED
+                document.save(update_fields=["summary_status"])
+                messages.error(request, "업로드한 자료에서 프롬프트 인젝션으로 의심되는 내용이 발견되어 처리를 중단했습니다.")
+                return redirect(request.path)
+            document.extracted_text = extracted_text
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
