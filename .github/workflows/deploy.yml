@@ -96,8 +96,10 @@ jobs:
       - name: Write env file
         env:
           ENV_DOCKER: ${{ secrets.ENV_DOCKER }}
+          ENV_JUDGE_DOCKER: ${{ secrets.ENV_JUDGE_DOCKER }}
         run: |
           $env:ENV_DOCKER | Set-Content -Encoding UTF8 .env.docker
+          $env:ENV_JUDGE_DOCKER | Set-Content -Encoding UTF8 .env.judge.docker
 
       - name: Log in to GHCR
         run: docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GHCR_TOKEN }}"
