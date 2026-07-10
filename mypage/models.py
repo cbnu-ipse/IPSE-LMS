@@ -38,6 +38,11 @@ class PersonalDocument(models.Model):
         max_length=10, choices=ProcessingStatus.choices, default=ProcessingStatus.DONE,
         verbose_name="요약 생성 상태 (백그라운드 처리 추적용)",
     )
+    subject_code = models.CharField(
+        max_length=50, blank=True, verbose_name="과목 코드",
+        help_text="같은 과목 코드로 자료가 쌓이면 강의가 자동 생성됩니다.",
+    )
+    is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -73,6 +73,7 @@
                 <form method="post" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-3">
                     {% csrf_token %}
                     {{ form.title }}
+                    {{ form.subject_code }}
                     {{ form.file }}
                     <button type="submit" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition">업로드</button>
                 </form>
@@ -85,7 +86,7 @@
                     <a href="{% url 'mypage:document_list' folder_id=f.pk %}" class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col items-center text-center gap-2">
                         <i class="fa-solid fa-folder text-amber-400 text-3xl"></i>
                         <p class="text-sm font-bold text-slate-700 truncate w-full">{{ f.name }}</p>
-                        <p class="text-[11px] text-slate-400">{{ f.documents.count }}개</p>
+                        <p class="text-[11px] text-slate-400">{{ f.doc_count }}개</p>
                     </a>
                     {% endfor %}
                 {% endif %}

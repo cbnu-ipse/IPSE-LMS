@@ -25,10 +25,17 @@ class PersonalDocumentUploadForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "자료명 (비워두면 파일명 사용)"}),
     )
+    subject_code = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            "class": INPUT_CLASS,
+            "placeholder": "과목 코드 (예: 소웨공) — 입력하면 자료가 쌓일 때 자동으로 강의가 생성됩니다",
+        }),
+    )
 
     class Meta:
         model = PersonalDocument
-        fields = ["title", "file"]
+        fields = ["title", "file", "subject_code"]
         widgets = {
             "file": forms.FileInput(attrs={"accept": ".pdf,.doc,.docx,.ppt,.pptx", "class": FILE_INPUT_CLASS}),
         }

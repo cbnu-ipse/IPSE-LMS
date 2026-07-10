@@ -5,6 +5,7 @@ import threading
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import connection
+from django.db.models import Count, Q
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -16,18 +17,41 @@ from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, Process
 logger = logging.getLogger(__name__)
 
 MAX_QUESTIONS_PER_TYPE = 20
+COURSE_DRAFT_THRESHOLD = 3
 
 
 def _generate_summary_bg(document_id):
     try:
-        text = PersonalDocument.objects.get(pk=document_id).extracted_text
-        summary = generate_summary(text)
+        document = PersonalDocument.objects.get(pk=document_id)
+        summary = generate_summary(document.extracted_text)
         PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
+        _maybe_generate_course_bg(document.subject_code)
     except Exception:
         logger.exception("문서 %s 자동 요약 생성 실패", document_id)
         PersonalDocument.objects.filter(pk=document_id).update(summary_status=ProcessingStatus.FAILED)
     finally:
         connection.close()
+
+
+def _maybe_generate_course_bg(subject_code):
+    """같은 과목 코드로 요약이 완료된 자료가 threshold 이상 쌓이면 강의를 자동 생성/갱신한다.
+    ponytail: 동시 업로드 시 여러 스레드가 동시에 threshold를 넘겨 OpenAI 호출이 중복될 수 있음
+    (Course.get_or_create로 DB 정합성 자체는 보장됨) — 트래픽이 문제될 때 락 추가."""
+    if not subject_code:
+        return
+    docs = PersonalDocument.objects.filter(
+        subject_code=subject_code, is_deleted=False, summary_status=ProcessingStatus.DONE
+    ).exclude(summary="")
+    if docs.count() < COURSE_DRAFT_THRESHOLD:
+        return
+    try:
+        from course.ai import generate_course_draft
+        from course.services import sync_course_from_draft
+
+        draft = generate_course_draft(subject_code, list(docs.values_list("summary", flat=True)))
+        sync_course_from_draft(subject_code, draft)
+    except Exception:
+        logger.exception("%s 과목 강의 초안 생성 실패", subject_code)
 
 
 def _generate_question_bg(question_id, extracted_text, question_type, existing_texts):
@@ -71,8 +95,10 @@ def document_list(request, folder_id=None):
     else:
         form = PersonalDocumentUploadForm()
 
-    folders = PersonalFolder.objects.filter(user=request.user)
-    documents = PersonalDocument.objects.filter(user=request.user, folder=folder)
+    folders = PersonalFolder.objects.filter(user=request.user).annotate(
+        doc_count=Count("documents", filter=Q(documents__is_deleted=False))
+    )
+    documents = PersonalDocument.objects.filter(user=request.user, folder=folder, is_deleted=False)
     return render(request, "mypage/list.html", {
         "documents": documents,
         "folders": folders,
@@ -109,7 +135,7 @@ def folder_delete(request, pk):
 
 @login_required
 def document_preview(request, pk):
-    document = get_object_or_404(PersonalDocument, pk=pk)
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
 
@@ -152,7 +178,7 @@ def document_preview(request, pk):
 @login_required
 @require_POST
 def generate_question_view(request, pk, question_type):
-    document = get_object_or_404(PersonalDocument, pk=pk)
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 문제를 생성할 수 있습니다.")
     if question_type not in dict(GeneratedQuestion.QuestionType.choices):
@@ -189,7 +215,7 @@ def generate_question_view(request, pk, question_type):
 @login_required
 @require_POST
 def submit_answer_view(request, pk, question_id):
-    question = get_object_or_404(GeneratedQuestion, pk=question_id, document_id=pk)
+    question = get_object_or_404(GeneratedQuestion, pk=question_id, document_id=pk, document__is_deleted=False)
     if question.document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
 
@@ -231,11 +257,12 @@ def submit_answer_view(request, pk, question_id):
 @login_required
 @require_POST
 def document_delete(request, pk):
-    document = get_object_or_404(PersonalDocument, pk=pk)
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 삭제할 수 있습니다.")
     folder_id = document.folder_id
-    document.delete()
+    document.is_deleted = True
+    document.save(update_fields=["is_deleted"])
     messages.success(request, "자료가 삭제되었습니다.")
     if folder_id:
         return redirect("mypage:document_list", folder_id=folder_id)
