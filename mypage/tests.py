@@ -104,3 +104,19 @@ class GuardrailTests(TestCase):
         document = PersonalDocument.objects.get(user=self.user)
         self.assertEqual(document.summary_status, ProcessingStatus.PROCESSING)
         self.assertEqual(document.extracted_text, "평범한 학습 자료 본문입니다")
+
+
+class SummaryMarkdownRenderTests(TestCase):
+    def test_preview_renders_summary_via_markdown_lite(self):
+        user = User.objects.create_user(username="preview_tester", password="pw")
+        document = PersonalDocument.objects.create(
+            user=user, title="doc", summary="## 핵심 요약\n\n- 항목1", summary_status=ProcessingStatus.DONE,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("mypage:document_preview", args=[document.pk]))
+
+        self.assertContains(response, 'id="document-summary-raw"')
+        self.assertContains(response, 'id="document-summary-content"')
+        self.assertContains(response, "## 핵심 요약")
+        self.assertContains(response, "js/markdown-lite.js")

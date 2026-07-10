@@ -22,7 +22,7 @@
         bubble.className = role === 'user'
             ? 'ml-auto max-w-[85%] bg-emerald-600 text-white rounded-2xl rounded-br-sm px-3 py-2'
             : 'mr-auto max-w-[85%] bg-slate-100 text-slate-700 rounded-2xl rounded-bl-sm px-3 py-2';
-        bubble.textContent = content;
+        bubble.innerHTML = window.renderMarkdown(content);
         messagesEl.appendChild(bubble);
         messagesEl.scrollTop = messagesEl.scrollHeight;
     }

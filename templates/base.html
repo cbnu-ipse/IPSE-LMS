@@ -544,7 +544,7 @@
             <i class="fa-solid fa-robot text-lg"></i>
             <span id="assistant-fab-badge" class="hidden absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
         </button>
-        <div id="assistant-chat-panel" class="hidden absolute bottom-[calc(100%+12px)] right-0 w-[22rem] max-w-[calc(100vw-2rem)] h-[32rem] max-h-[70vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
+        <div id="assistant-chat-panel" class="hidden absolute bottom-[calc(100%+12px)] right-0 w-[28rem] max-w-[calc(100vw-2rem)] h-[42rem] max-h-[80vh] bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden">
             <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-emerald-600 text-white">
                 <span class="font-bold text-sm">AI 어시스턴트</span>
                 <button id="assistant-chat-close" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
@@ -556,6 +556,7 @@
             </form>
         </div>
     </div>
+    <script src="{% static 'js/markdown-lite.js' %}"></script>
     <script src="{% static 'js/assistant-chat.js' %}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-csrf-token="{{ csrf_token }}"></script>
     {% endif %}
     {% endif %}

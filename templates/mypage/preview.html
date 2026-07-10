@@ -43,7 +43,8 @@
                         <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>요약을 생성하고 있습니다...</p>
                         <script>setTimeout(() => location.reload(), 2500);</script>
                     {% elif document.summary %}
-                        <div class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{{ document.summary }}</div>
+                        <textarea id="document-summary-raw" style="display:none;">{{ document.summary }}</textarea>
+                        <div id="document-summary-content" class="text-sm text-slate-600 leading-relaxed space-y-2"></div>
                     {% else %}
                         <p class="text-sm text-slate-400">요약을 생성하지 못했습니다.</p>
                     {% endif %}
@@ -129,4 +130,16 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if document.summary %}
+<script>
+    const summaryContent = document.getElementById('document-summary-content');
+    const summaryRaw = document.getElementById('document-summary-raw');
+    if (summaryContent && summaryRaw) {
+        summaryContent.innerHTML = window.renderMarkdown(summaryRaw.value);
+    }
+</script>
+{% endif %}
 {% endblock %}
