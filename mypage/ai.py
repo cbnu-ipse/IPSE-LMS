@@ -3,7 +3,7 @@ import json
 from django.conf import settings
 
 def extract_text(file_obj, filename):
-    """PDF/DOCX/PPTX 파일 객체에서 본문 텍스트를 뽑는다. 실패하면 빈 문자열을 반환한다."""
+    """다양한 형식의 파일 객체에서 본문 텍스트를 뽑는다. 실패하면 빈 문자열을 반환한다."""
     name = filename.lower()
     try:
         if name.endswith(".pdf"):
@@ -12,6 +12,16 @@ def extract_text(file_obj, filename):
             return _extract_docx(file_obj)
         if name.endswith(".pptx") or name.endswith(".ppt"):
             return _extract_pptx(file_obj)
+        if name.endswith(".txt") or name.endswith(".md"):
+            return _extract_plain_text(file_obj)
+        if name.endswith(".rtf"):
+            return _extract_rtf(file_obj)
+        if name.endswith(".hwpx"):
+            return _extract_hwpx(file_obj)
+        if name.endswith(".hwp"):
+            return _extract_hwp(file_obj)
+        if name.endswith((".jpg", ".jpeg", ".png")):
+            return _extract_image(file_obj, name)
     except Exception:
         return ""
     return ""
@@ -41,6 +51,65 @@ def _extract_pptx(f):
             if shape.has_text_frame:
                 lines.append(shape.text_frame.text)
     return "\n".join(lines)
+
+
+def _extract_plain_text(f):
+    return f.read().decode("utf-8", errors="ignore")
+
+
+def _extract_rtf(f):
+    from striprtf.striprtf import rtf_to_text
+
+    raw = f.read()
+    for encoding in ("utf-8", "cp949", "latin-1"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", errors="ignore")
+    return rtf_to_text(text)
+
+
+def _extract_hwpx(f):
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    texts = []
+    with zipfile.ZipFile(f) as zf:
+        for name in zf.namelist():
+            if name.startswith("Contents/section") and name.endswith(".xml"):
+                texts.append("".join(ET.fromstring(zf.read(name)).itertext()))
+    return "\n".join(texts)
+
+
+def _extract_hwp(f):
+    """HWP는 OLE의 PrvText(미리보기 텍스트) 스트림만 읽는다. 전체 본문이 아닌 미리보기 수준의 텍스트임."""
+    import olefile
+
+    with olefile.OleFileIO(f) as ole:
+        raw = ole.openstream("PrvText").read()
+    return raw.decode("utf-16-le", errors="ignore")
+
+
+def _extract_image(f, name):
+    import base64
+
+    b64 = base64.b64encode(f.read()).decode()
+    mime = "jpeg" if name.endswith((".jpg", ".jpeg")) else "png"
+    client = _client()
+    response = client.chat.completions.create(
+        model=settings.MYPAGE_CHAT_MODEL,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "이 이미지에 있는 텍스트와 핵심 내용을 최대한 그대로 옮겨 적어라."},
+                {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{b64}"}},
+            ],
+        }],
+    )
+    return response.choices[0].message.content
 
 
 def _client():

@@ -29,8 +29,10 @@ class PersonalDocument(models.Model):
     title = models.CharField(max_length=200, verbose_name="자료명")
     file = models.FileField(
         upload_to="personal_docs/%Y/%m/%d/",
-        help_text="허용 확장자: pdf, doc, docx, ppt, pptx (최대 20MB)",
-        validators=[FileExtensionValidator(["pdf", "doc", "docx", "ppt", "pptx"])],
+        help_text="허용 확장자: pdf, doc, docx, ppt, pptx, txt, md, rtf, hwp, hwpx, jpg, jpeg, png (최대 20MB)",
+        validators=[FileExtensionValidator(
+            ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md", "rtf", "hwp", "hwpx", "jpg", "jpeg", "png"]
+        )],
     )
     extracted_text = models.TextField(blank=True, verbose_name="추출된 본문 (미리보기·문제생성에 사용)")
     summary = models.TextField(blank=True, verbose_name="AI 자동 요약")
