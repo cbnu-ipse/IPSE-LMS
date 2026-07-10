@@ -3,7 +3,11 @@ from django import forms
 from .models import PersonalDocument, PersonalFolder
 
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
-ALLOWED_EXTENSIONS = (".pdf", ".doc", ".docx", ".ppt", ".pptx")
+ALLOWED_EXTENSIONS = (
+    ".pdf", ".doc", ".docx", ".ppt", ".pptx",
+    ".txt", ".md", ".rtf", ".hwp", ".hwpx",
+    ".jpg", ".jpeg", ".png",
+)
 
 INPUT_CLASS = (
     "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 "
@@ -37,7 +41,7 @@ class PersonalDocumentUploadForm(forms.ModelForm):
         model = PersonalDocument
         fields = ["title", "file", "subject_code"]
         widgets = {
-            "file": forms.FileInput(attrs={"accept": ".pdf,.doc,.docx,.ppt,.pptx", "class": FILE_INPUT_CLASS}),
+            "file": forms.FileInput(attrs={"accept": ",".join(ALLOWED_EXTENSIONS), "class": FILE_INPUT_CLASS}),
         }
 
     def clean_file(self):
@@ -46,7 +50,8 @@ class PersonalDocumentUploadForm(forms.ModelForm):
             if f.size > MAX_UPLOAD_SIZE:
                 raise forms.ValidationError("파일 크기는 20MB를 넘을 수 없습니다.")
             if not any(f.name.lower().endswith(ext) for ext in ALLOWED_EXTENSIONS):
-                raise forms.ValidationError("PDF, DOC, DOCX, PPT, PPTX 파일만 업로드할 수 있습니다.")
+                allowed = ", ".join(ext.lstrip(".").upper() for ext in ALLOWED_EXTENSIONS)
+                raise forms.ValidationError(f"{allowed} 파일만 업로드할 수 있습니다.")
         return f
 
 
