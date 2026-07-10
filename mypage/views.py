@@ -19,7 +19,7 @@ from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, Process
 logger = logging.getLogger(__name__)
 
 MAX_QUESTIONS_PER_TYPE = 20
-COURSE_DRAFT_THRESHOLD = 3
+COURSE_DRAFT_THRESHOLD = 5
 
 
 def _generate_summary_bg(document_id):
@@ -37,12 +37,14 @@ def _generate_summary_bg(document_id):
 
 def _maybe_generate_course_bg(subject_code):
     """같은 과목 코드로 요약이 완료된 자료가 threshold 이상 쌓이면 강의를 자동 생성/갱신한다.
+    소프트 삭제된 자료도 요약 데이터 자체는 남아있으므로 누적 대상에 포함시켜, 매번 새 자료가
+    쌓일 때마다(threshold 이상인 동안 계속) 강의 내용을 더 두텁게 갱신한다.
     ponytail: 동시 업로드 시 여러 스레드가 동시에 threshold를 넘겨 OpenAI 호출이 중복될 수 있음
     (Course.get_or_create로 DB 정합성 자체는 보장됨) — 트래픽이 문제될 때 락 추가."""
     if not subject_code:
         return
     docs = PersonalDocument.objects.filter(
-        subject_code=subject_code, is_deleted=False, summary_status=ProcessingStatus.DONE
+        subject_code=subject_code, summary_status=ProcessingStatus.DONE
     ).exclude(summary="")
     if docs.count() < COURSE_DRAFT_THRESHOLD:
         return
