@@ -11,9 +11,12 @@ class Problem(models.Model):
     title = models.CharField(max_length=200, verbose_name="문제 제목")
     category = models.ForeignKey(
         CourseCategory,
-        on_delete=models.SET_NULL,
+        # beta_judge DB로 분리되어 있어 Django가 cross-db SET_NULL을 처리할 수 없음.
+        # 실제 정리는 course/signals.py의 pre_delete 핸들러가 수행한다.
+        on_delete=models.DO_NOTHING,
         null=True,
         verbose_name="분야",
+        db_constraint=False,
     )
     difficulty = models.IntegerField(
         choices=DIFFICULTY_CHOICES,
@@ -25,8 +28,11 @@ class Problem(models.Model):
     flag = models.CharField(max_length=100, verbose_name="정답(Flag)")
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        # beta_judge DB로 분리되어 있어 Django가 cross-db CASCADE를 처리할 수 없음.
+        # 실제 정리는 accounts/signals.py의 pre_delete 핸들러가 수행한다.
+        on_delete=models.DO_NOTHING,
         verbose_name="출제자",
+        db_constraint=False,
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -47,8 +53,11 @@ class SolveRecord(models.Model):
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        # beta_judge DB로 분리되어 있어 Django가 cross-db CASCADE를 처리할 수 없음.
+        # 실제 정리는 accounts/signals.py의 pre_delete 핸들러가 수행한다.
+        on_delete=models.DO_NOTHING,
         related_name="solve_records",
+        db_constraint=False,
     )
     problem = models.ForeignKey(Problem, on_delete=models.CASCADE)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="TODO")
@@ -81,7 +90,9 @@ class ProblemComment(models.Model):
         on_delete=models.CASCADE,
         related_name="comments",
     )
-    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    # beta_judge DB로 분리되어 있어 Django가 cross-db CASCADE를 처리할 수 없음.
+    # 실제 정리는 accounts/signals.py의 pre_delete 핸들러가 수행한다.
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.DO_NOTHING, db_constraint=False)
     content = models.TextField(verbose_name="댓글 내용")
     created_at = models.DateTimeField(auto_now_add=True)
 

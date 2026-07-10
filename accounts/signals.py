@@ -1,5 +1,5 @@
 # accounts/signals.py
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 from django.conf import settings
 from django.contrib.auth.signals import user_logged_in
@@ -22,3 +22,17 @@ def save_student_profile(sender, instance, **kwargs):
 def on_user_logged_in(sender, request, user, **kwargs):
     """유저가 로그인하면 세션에 'just_logged_in' 플래그를 세팅합니다."""
     request.session['just_logged_in'] = True
+
+
+@receiver(pre_delete, sender=settings.AUTH_USER_MODEL)
+def cascade_delete_judge_data(sender, instance, **kwargs):
+    """judge(contest/problems) 앱은 beta_judge DB로 분리되어 있어 Django의 자동
+    CASCADE가 DB 경계를 넘지 못한다. User 삭제 시 관련 judge 데이터를 수동으로 정리한다."""
+    from contest.models import ContestParticipant, ContestSubmission
+    from problems.models import Problem, SolveRecord, ProblemComment
+
+    ContestParticipant.objects.filter(user=instance).delete()
+    ContestSubmission.objects.filter(user=instance).delete()
+    ProblemComment.objects.filter(author=instance).delete()
+    SolveRecord.objects.filter(user=instance).delete()
+    Problem.objects.filter(author=instance).delete()

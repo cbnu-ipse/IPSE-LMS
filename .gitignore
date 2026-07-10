@@ -60,6 +60,8 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+judge.sqlite3
+judge.sqlite3-journal
 
 # Flask stuff:
 instance/
@@ -156,6 +158,7 @@ CLAUDE.md
 
 # Docker environment files (secrets)
 .env.docker
+.env.judge.docker
 
 image_01.jpeg
 image_02.jpeg

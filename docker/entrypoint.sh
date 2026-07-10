@@ -3,6 +3,7 @@ set -e
 
 echo ">>> [entrypoint] Running database migrations..."
 python manage.py migrate --noinput
+python manage.py migrate --database=beta_judge --noinput
 
 echo ">>> [entrypoint] Collecting static files..."
 python manage.py collectstatic --noinput --clear
