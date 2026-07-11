@@ -45,7 +45,13 @@ window.renderMarkdown = function (text) {
         if (heading) {
             flushList();
             const level = heading[1].length;
-            html.push(`<h${level} class="font-bold mt-2 mb-1">${inline(heading[2])}</h${level}>`);
+            const HEADING_CLASS = {
+                1: 'text-xl font-bold mt-4 mb-2 text-slate-800',
+                2: 'text-base font-bold mt-4 mb-1.5 text-emerald-700',
+                3: 'text-sm font-bold mt-3 mb-1 text-slate-600',
+            };
+            const cls = HEADING_CLASS[level] || 'text-sm font-semibold mt-2 mb-1 text-slate-600';
+            html.push(`<h${level} class="${cls}">${inline(heading[2])}</h${level}>`);
             return;
         }
         const listItem = line.match(/^\s*[-*]\s+(.*)$/);
