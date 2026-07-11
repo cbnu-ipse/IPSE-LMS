@@ -152,6 +152,7 @@ media/
 DEV_GUIDE.md
 TODO.md
 DONE.md
+REQ.md
 CLAUDE.md
 
 # Docker environment files (secrets)

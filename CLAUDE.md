@@ -9,7 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Always ask before proceeding** when: requirements are ambiguous, the task involves a DB schema change or migration, a new package, or an unclear branch target.
 - Check `git status` before starting any task and report issues immediately.
 - Do not put AI (Claude, Codex, etc.) as a co-author on git commits.
+- Do not put "generated with ~(AI) on PR.
 - Record a summary in `DONE.md` when creating a PR.
+- Record a request in `REQ.md` when a new feature or bug fix is requested.
 
 ## Development Commands
 

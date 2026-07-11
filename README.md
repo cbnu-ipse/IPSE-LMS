@@ -27,5 +27,5 @@
 
 - Backend Framework: Python 3.12, Django 5.x
 - Frontend UI/UX: Tailwind CSS (Node.js v20 환경 기반 빌드), HTML5/Django Templates
-- Database: SQLite (개발 환경) -> PostgreSQL (배포 환경 전환 예정)
-- Version Control & CI/CD: Git / GitHub, Docker (추후 컨테이너 오케스트레이션 도입 예정)
+- Database: PostgreSQL
+- Version Control & CI/CD: Git / GitHub, Docker
