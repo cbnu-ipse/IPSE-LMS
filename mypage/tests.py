@@ -137,6 +137,20 @@ class CourseAutoGenerationTests(TestCase):
         mock_draft.assert_called_once()
         mock_sync.assert_called_once()
 
+    def test_lecture_material_docs_are_excluded_from_threshold(self):
+        user = User.objects.create_user(username="course_tester_lecture", password="pw")
+        for _ in range(5):
+            PersonalDocument.objects.create(
+                user=user, title="doc", subject_code="CS101", summary="요약 내용",
+                summary_status=ProcessingStatus.DONE,
+                document_type=PersonalDocument.DocumentType.LECTURE,
+            )
+
+        with patch("course.ai.generate_course_draft") as mock_draft:
+            _maybe_generate_course_bg("CS101")
+
+        mock_draft.assert_not_called()
+
 
 class SummaryMarkdownRenderTests(TestCase):
     def test_preview_renders_summary_via_markdown_lite(self):

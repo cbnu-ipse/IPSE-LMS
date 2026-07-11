@@ -44,7 +44,9 @@ def _maybe_generate_course_bg(subject_code):
     if not subject_code:
         return
     docs = PersonalDocument.objects.filter(
-        subject_code=subject_code, summary_status=ProcessingStatus.DONE
+        subject_code=subject_code,
+        summary_status=ProcessingStatus.DONE,
+        document_type=PersonalDocument.DocumentType.ASSIGNMENT,
     ).exclude(summary="")
     if docs.count() < COURSE_DRAFT_THRESHOLD:
         return
