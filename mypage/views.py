@@ -82,7 +82,7 @@ def document_list(request, folder_id=None):
             return HttpResponseForbidden("본인의 폴더만 볼 수 있습니다.")
 
     if request.method == "POST":
-        form = PersonalDocumentUploadForm(request.POST, request.FILES)
+        form = PersonalDocumentUploadForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             document = form.save(commit=False)
             document.user = request.user
@@ -105,7 +105,7 @@ def document_list(request, folder_id=None):
             return redirect(request.path)
         messages.error(request, "업로드에 실패했습니다. 파일 형식과 크기를 확인해주세요.")
     else:
-        form = PersonalDocumentUploadForm()
+        form = PersonalDocumentUploadForm(user=request.user)
 
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
         doc_count=Count("documents", filter=Q(documents__is_deleted=False))

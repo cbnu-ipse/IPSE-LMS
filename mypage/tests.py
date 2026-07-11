@@ -8,7 +8,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .ai import extract_text
-from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
+from .forms import PersonalDocumentUploadForm
+from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus, Subject
 from .views import _generate_question_bg, _generate_summary_bg, _maybe_generate_course_bg
 
 User = get_user_model()
@@ -166,3 +167,49 @@ class SummaryMarkdownRenderTests(TestCase):
         self.assertContains(response, 'id="document-summary-content"')
         self.assertContains(response, "## 핵심 요약")
         self.assertContains(response, "js/markdown-lite.js")
+
+
+class SubjectDropdownTests(TestCase):
+    def setUp(self):
+        self.subject = Subject.objects.create(name="데이터베이스")
+        self.student = User.objects.create_user(username="subject_student", password="pw")
+        self.admin = User.objects.create_user(username="subject_admin", password="pw", is_superuser=True)
+
+    def _upload_data(self, subject_code, custom_subject_code="", custom_subject_display_code=""):
+        return {
+            "title": "",
+            "subject_code": subject_code,
+            "custom_subject_code": custom_subject_code,
+            "custom_subject_display_code": custom_subject_display_code,
+            "file": SimpleUploadedFile("note.txt", b"content"),
+        }
+
+    def test_existing_subject_choice_is_valid_for_student(self):
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data(self.subject.name), files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.student,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["subject_code"], "데이터베이스")
+
+    def test_custom_option_not_offered_and_rejected_for_student(self):
+        form = PersonalDocumentUploadForm(user=self.student)
+        self.assertNotIn("__custom__", dict(form.fields["subject_code"].choices))
+
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data("__custom__", "새로운과목"),
+            files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.student,
+        )
+        self.assertFalse(form.is_valid())
+
+    def test_admin_can_add_new_subject_via_custom_option(self):
+        form = PersonalDocumentUploadForm(user=self.admin)
+        self.assertIn("__custom__", dict(form.fields["subject_code"].choices))
+
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data("__custom__", "새로운과목"),
+            files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.admin,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
