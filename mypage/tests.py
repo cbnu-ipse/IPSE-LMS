@@ -213,3 +213,50 @@ class SubjectDropdownTests(TestCase):
             user=self.admin,
         )
         self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["subject_code"], "새로운과목")
+        self.assertTrue(Subject.objects.filter(name="새로운과목").exists())
+
+    def test_admin_custom_subject_code_is_saved(self):
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data("__custom__", "새로운과목2", "CS202"),
+            files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.admin,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(Subject.objects.get(name="새로운과목2").code, "CS202")
+
+
+class QuizMergeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="quiz_tester", password="pw")
+        self.document = PersonalDocument.objects.create(
+            user=self.user, title="doc", extracted_text="본문",
+        )
+        self.client.force_login(self.user)
+
+    def test_total_cap_enforced_regardless_of_type(self):
+        for i, q_type in enumerate(["ox", "short", "essay"] * 7):
+            GeneratedQuestion.objects.create(document=self.document, question_type=q_type, status=ProcessingStatus.DONE)
+            if i == 19:
+                break
+
+        with patch("mypage.views.threading.Thread") as mocked_thread:
+            response = self.client.post(
+                reverse("mypage:generate_question", args=[self.document.pk]), {"question_type": "ox"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mocked_thread.assert_not_called()
+        self.assertEqual(self.document.questions.count(), 20)
+
+    def test_post_question_type_is_used_for_generation(self):
+        with patch("mypage.views.threading.Thread") as mocked_thread:
+            response = self.client.post(
+                reverse("mypage:generate_question", args=[self.document.pk]), {"question_type": "essay"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mocked_thread.assert_called_once()
+        question = self.document.questions.get()
+        self.assertEqual(question.question_type, "essay")
+        self.assertEqual(mocked_thread.call_args.kwargs["args"][2], "essay")

@@ -65,3 +65,26 @@ window.renderMarkdown = function (text) {
     flushList();
     return html.filter((h) => h !== '').join('');
 };
+
+// 최상위 `## ` 헤딩 기준으로 마크다운을 청크 단위로 나눈다. 첫 `##` 이전 내용은 "개요" 청크로 묶는다.
+window.splitMarkdownSections = function (text) {
+    const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+    const sections = [];
+    let current = null;
+    lines.forEach((line) => {
+        const match = line.match(/^##\s+(.*)$/);
+        if (match) {
+            current = { title: match[1].trim(), body: [line] };
+            sections.push(current);
+            return;
+        }
+        if (!current) {
+            current = { title: '개요', body: [] };
+            sections.push(current);
+        }
+        current.body.push(line);
+    });
+    return sections
+        .map((s) => ({ title: s.title, body: s.body.join('\n').trim() }))
+        .filter((s) => s.body !== '');
+};

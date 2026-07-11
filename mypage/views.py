@@ -18,7 +18,7 @@ from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, Process
 
 logger = logging.getLogger(__name__)
 
-MAX_QUESTIONS_PER_TYPE = 20
+MAX_QUESTIONS = 20
 COURSE_DRAFT_THRESHOLD = 5
 
 
@@ -152,19 +152,11 @@ def document_preview(request, pk):
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
 
     is_pdf = document.file.name.lower().endswith(".pdf")
-    valid_types = [c[0] for c in GeneratedQuestion.QuestionType.choices]
-    active_tab = request.GET.get("tab", "ox")
-    if active_tab not in valid_types:
-        active_tab = "ox"
     active_panel = request.GET.get("panel", "summary")
     if active_panel not in ("summary", "quiz"):
         active_panel = "summary"
 
-    tabs = [
-        (q_type, label, list(document.questions.filter(question_type=q_type)))
-        for q_type, label in GeneratedQuestion.QuestionType.choices
-    ]
-    current_questions = next(q for t, _, q in tabs if t == active_tab)
+    current_questions = list(document.questions.all())
     q_index = 0
     if current_questions:
         try:
@@ -177,38 +169,39 @@ def document_preview(request, pk):
         "document": document,
         "is_pdf": is_pdf,
         "active_panel": active_panel,
-        "active_tab": active_tab,
-        "tabs": tabs,
         "current_questions": current_questions,
         "current_question": current_questions[q_index] if current_questions else None,
         "q_index": q_index,
-        "max_questions_per_type": MAX_QUESTIONS_PER_TYPE,
+        "max_questions": MAX_QUESTIONS,
+        "question_types": GeneratedQuestion.QuestionType.choices,
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
     })
 
 
 @login_required
 @require_POST
-def generate_question_view(request, pk, question_type):
+def generate_question_view(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 문제를 생성할 수 있습니다.")
+    question_type = request.POST.get("question_type")
     if question_type not in dict(GeneratedQuestion.QuestionType.choices):
         raise Http404("존재하지 않는 문제 유형입니다.")
 
-    redirect_base = f"{document.get_absolute_url()}?panel=quiz&tab={question_type}"
+    redirect_base = f"{document.get_absolute_url()}?panel=quiz"
 
     if not document.extracted_text.strip():
         messages.error(request, "문서에서 텍스트를 추출하지 못해 문제를 생성할 수 없습니다.")
         return redirect(redirect_base)
 
+    existing_count = document.questions.count()
+    if existing_count >= MAX_QUESTIONS:
+        messages.error(request, f"이미 최대 {MAX_QUESTIONS}개까지 생성했습니다.")
+        return redirect(redirect_base)
+
     existing_texts = list(
         document.questions.filter(question_type=question_type).values_list("question_text", flat=True)
     )
-    if len(existing_texts) >= MAX_QUESTIONS_PER_TYPE:
-        messages.error(request, f"이미 이 유형은 최대 {MAX_QUESTIONS_PER_TYPE}개까지 생성했습니다.")
-        return redirect(redirect_base)
-
     question = GeneratedQuestion.objects.create(
         document=document,
         question_type=question_type,
@@ -221,7 +214,7 @@ def generate_question_view(request, pk, question_type):
     ).start()
 
     messages.success(request, "문제를 생성하고 있습니다. 잠시 후 새로고침해주세요.")
-    return redirect(f"{redirect_base}&q={len(existing_texts)}")
+    return redirect(f"{redirect_base}&q={existing_count}")
 
 
 @login_required
@@ -231,7 +224,7 @@ def submit_answer_view(request, pk, question_id):
     if question.document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
 
-    redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&tab={question.question_type}&q={request.GET.get('q', 0)}"
+    redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&q={request.GET.get('q', 0)}"
 
     if question.status != ProcessingStatus.DONE:
         messages.error(request, "문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")

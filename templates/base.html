@@ -898,6 +898,9 @@
         window.addEventListener('pageshow', function(e) {
           hideLoader();
         });
+
+        // JS가 직접 트리거하는 location.reload() 폴링(예: 요약/문제 생성 대기)에서도 재사용
+        window.showLoader = showLoader;
       })();
 
       // 로그아웃: CORS/cross-subdomain 문제를 완벽히 방지하기 위해 표준 HTML Form POST 전송 방식을 사용합니다.
