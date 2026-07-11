@@ -1,9 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 
 from mypage.models import Subject
 
-from .models import Lesson
+from .models import Course, CourseCategory, Lesson
 from .services import sync_course_from_draft
 
 User = get_user_model()
@@ -44,3 +45,18 @@ class SyncCourseFromDraftTests(TestCase):
         course, _, _ = sync_course_from_draft("자료구조", self.draft)
 
         self.assertEqual(course.title, "자료구조")
+
+
+class CourseListCardTests(TestCase):
+    def test_card_hides_category_badge_and_instructor_status(self):
+        instructor = User.objects.create_user(username="lecturer", password="pw", is_lecturer=True)
+        category = CourseCategory.objects.get_or_create(title="AI 자동 생성")[0]
+        Course.objects.create(code="CS999", title="테스트 강의", category=category, instructor=instructor)
+        student = User.objects.create_user(username="student", password="pw", is_student=True)
+        self.client.force_login(student)
+
+        response = self.client.get(reverse("course_list"))
+
+        self.assertContains(response, "테스트 강의")
+        self.assertNotContains(response, "보유 중")
+        self.assertNotContains(response, "학습 완료")
