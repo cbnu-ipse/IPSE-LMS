@@ -1,7 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Q, Count
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -38,7 +37,7 @@ def ranking_home(request):
 	board = request.GET.get("board", "problems").strip()
 	season = request.GET.get("season", "").strip()
 
-	allowed_boards = {"problems", "contest", "leaves", "attendance", "streak"}
+	allowed_boards = {"problems", "contest"}
 	if board not in allowed_boards:
 		board = "problems"
 
@@ -56,9 +55,6 @@ def ranking_home(request):
 	BOARD_LABELS = {
 		"problems": "문제 랭킹",
 		"contest": "대회 랭킹",
-		"leaves": "낙엽 랭킹",
-		"attendance": "출석 랭킹",
-		"streak": "연속 출석 랭킹",
 	}
 	board_label = BOARD_LABELS.get(board, "문제 랭킹")
 
@@ -80,57 +76,6 @@ def ranking_home(request):
 
 		ranking_rows = [row for row in ranking_rows if row["solved_count"] > 0]
 		ranking_rows.sort(key=lambda row: (-row["score"], row["user"].username.lower()))
-		assign_ranks(ranking_rows, "score")
-
-		context = {
-			"board": board,
-			"board_label": board_label,
-			"contest_ranking_enabled": contest_ranking_enabled,
-			"ranking_rows": ranking_rows,
-			"top_rows": group_top_ranks(ranking_rows, top_n=3),
-		}
-		return render(request, "ranking/ranking_home.html", context)
-
-	if board == "leaves":
-		users = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
-		ranking_rows = [{"user": u, "score": u.leaves} for u in users]
-		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
-		assign_ranks(ranking_rows, "score")
-
-		context = {
-			"board": board,
-			"board_label": board_label,
-			"contest_ranking_enabled": contest_ranking_enabled,
-			"ranking_rows": ranking_rows,
-			"top_rows": group_top_ranks(ranking_rows, top_n=3),
-		}
-		return render(request, "ranking/ranking_home.html", context)
-
-	if board == "attendance":
-		users_qs = User.objects.filter(is_active=True).select_related("student").annotate(
-			total_attendance=Count("attendances")
-		).filter(total_attendance__gt=0)
-		ranking_rows = [{"user": u, "score": u.total_attendance} for u in users_qs]
-		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
-		assign_ranks(ranking_rows, "score")
-
-		context = {
-			"board": board,
-			"board_label": board_label,
-			"contest_ranking_enabled": contest_ranking_enabled,
-			"ranking_rows": ranking_rows,
-			"top_rows": group_top_ranks(ranking_rows, top_n=3),
-		}
-		return render(request, "ranking/ranking_home.html", context)
-
-	if board == "streak":
-		users_qs = User.objects.filter(is_active=True).select_related("student")
-		ranking_rows = []
-		for u in users_qs:
-			s = get_max_attendance_streak(u)
-			if s >= 2:
-				ranking_rows.append({"user": u, "score": s})
-		ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 		assign_ranks(ranking_rows, "score")
 
 		context = {

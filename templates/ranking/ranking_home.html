@@ -35,19 +35,6 @@
                         <i class="fa-solid fa-trophy text-xs w-4 text-center"></i>대회 랭킹 (비활성)
                     </span>
                     {% endif %}
-                    <hr class="my-2 border-slate-100">
-                    <a href="?board=leaves"
-                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'leaves' %}bg-amber-50 text-amber-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-leaf text-xs w-4 text-center text-amber-500"></i>낙엽 랭킹
-                    </a>
-                    <a href="?board=attendance"
-                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'attendance' %}bg-orange-50 text-orange-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-calendar-check text-xs w-4 text-center text-orange-500"></i>출석 랭킹
-                    </a>
-                    <a href="?board=streak"
-                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'streak' %}bg-rose-50 text-rose-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
-                        <i class="fa-solid fa-fire text-xs w-4 text-center text-rose-500"></i>연속 출석 랭킹
-                    </a>
                 </nav>
             </div>
         </aside>
@@ -112,12 +99,6 @@
                                 {% elif board == 'contest' %}
                                 <th class="px-6 py-4 text-center">SOLVED</th>
                                 <th class="px-6 py-4 text-center">PENALTY</th>
-                                {% elif board == 'leaves' %}
-                                <th class="px-6 py-4 text-center">보유 낙엽</th>
-                                {% elif board == 'attendance' %}
-                                <th class="px-6 py-4 text-center">총 출석일</th>
-                                {% elif board == 'streak' %}
-                                <th class="px-6 py-4 text-center">연속 출석일</th>
                                 {% endif %}
                             </tr>
                         </thead>
@@ -151,18 +132,6 @@
                                 {% elif board == 'contest' %}
                                 <td class="px-6 py-4 text-center font-bold text-emerald-600">{{ row.score }}</td>
                                 <td class="px-6 py-4 text-center font-semibold text-slate-700">{{ row.penalty }}</td>
-                                {% elif board == 'leaves' %}
-                                <td class="px-6 py-4 text-center font-bold text-amber-600">
-                                    <span class="flex items-center justify-center gap-1"><i class="fa-solid fa-leaf text-amber-500"></i>{{ row.score }}</span>
-                                </td>
-                                {% elif board == 'attendance' %}
-                                <td class="px-6 py-4 text-center font-bold text-orange-600">
-                                    <span class="flex items-center justify-center gap-1"><i class="fa-solid fa-calendar-check text-orange-400"></i>{{ row.score }}일</span>
-                                </td>
-                                {% elif board == 'streak' %}
-                                <td class="px-6 py-4 text-center font-bold text-rose-600">
-                                    <span class="flex items-center justify-center gap-1"><i class="fa-solid fa-fire text-rose-400"></i>{{ row.score }}일</span>
-                                </td>
                                 {% endif %}
                             </tr>
                             {% endif %}
