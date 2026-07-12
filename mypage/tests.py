@@ -8,7 +8,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .ai import extract_text
-from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
+from .forms import PersonalDocumentUploadForm
+from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus, Subject
 from .views import _generate_question_bg, _generate_summary_bg, _maybe_generate_course_bg
 
 User = get_user_model()
@@ -137,6 +138,20 @@ class CourseAutoGenerationTests(TestCase):
         mock_draft.assert_called_once()
         mock_sync.assert_called_once()
 
+    def test_lecture_material_docs_are_excluded_from_threshold(self):
+        user = User.objects.create_user(username="course_tester_lecture", password="pw")
+        for _ in range(5):
+            PersonalDocument.objects.create(
+                user=user, title="doc", subject_code="CS101", summary="요약 내용",
+                summary_status=ProcessingStatus.DONE,
+                document_type=PersonalDocument.DocumentType.LECTURE,
+            )
+
+        with patch("course.ai.generate_course_draft") as mock_draft:
+            _maybe_generate_course_bg("CS101")
+
+        mock_draft.assert_not_called()
+
 
 class SummaryMarkdownRenderTests(TestCase):
     def test_preview_renders_summary_via_markdown_lite(self):
@@ -152,3 +167,96 @@ class SummaryMarkdownRenderTests(TestCase):
         self.assertContains(response, 'id="document-summary-content"')
         self.assertContains(response, "## 핵심 요약")
         self.assertContains(response, "js/markdown-lite.js")
+
+
+class SubjectDropdownTests(TestCase):
+    def setUp(self):
+        self.subject = Subject.objects.create(name="데이터베이스")
+        self.student = User.objects.create_user(username="subject_student", password="pw")
+        self.admin = User.objects.create_user(username="subject_admin", password="pw", is_superuser=True)
+
+    def _upload_data(self, subject_code, custom_subject_code="", custom_subject_display_code=""):
+        return {
+            "title": "",
+            "subject_code": subject_code,
+            "custom_subject_code": custom_subject_code,
+            "custom_subject_display_code": custom_subject_display_code,
+            "file": SimpleUploadedFile("note.txt", b"content"),
+        }
+
+    def test_existing_subject_choice_is_valid_for_student(self):
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data(self.subject.name), files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.student,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["subject_code"], "데이터베이스")
+
+    def test_custom_option_not_offered_and_rejected_for_student(self):
+        form = PersonalDocumentUploadForm(user=self.student)
+        self.assertNotIn("__custom__", dict(form.fields["subject_code"].choices))
+
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data("__custom__", "새로운과목"),
+            files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.student,
+        )
+        self.assertFalse(form.is_valid())
+
+    def test_admin_can_add_new_subject_via_custom_option(self):
+        form = PersonalDocumentUploadForm(user=self.admin)
+        self.assertIn("__custom__", dict(form.fields["subject_code"].choices))
+
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data("__custom__", "새로운과목"),
+            files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.admin,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["subject_code"], "새로운과목")
+        self.assertTrue(Subject.objects.filter(name="새로운과목").exists())
+
+    def test_admin_custom_subject_code_is_saved(self):
+        form = PersonalDocumentUploadForm(
+            data=self._upload_data("__custom__", "새로운과목2", "CS202"),
+            files={"file": SimpleUploadedFile("note.txt", b"content")},
+            user=self.admin,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(Subject.objects.get(name="새로운과목2").code, "CS202")
+
+
+class QuizMergeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="quiz_tester", password="pw")
+        self.document = PersonalDocument.objects.create(
+            user=self.user, title="doc", extracted_text="본문",
+        )
+        self.client.force_login(self.user)
+
+    def test_total_cap_enforced_regardless_of_type(self):
+        for i, q_type in enumerate(["ox", "short", "essay"] * 7):
+            GeneratedQuestion.objects.create(document=self.document, question_type=q_type, status=ProcessingStatus.DONE)
+            if i == 19:
+                break
+
+        with patch("mypage.views.threading.Thread") as mocked_thread:
+            response = self.client.post(
+                reverse("mypage:generate_question", args=[self.document.pk]), {"question_type": "ox"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mocked_thread.assert_not_called()
+        self.assertEqual(self.document.questions.count(), 20)
+
+    def test_post_question_type_is_used_for_generation(self):
+        with patch("mypage.views.threading.Thread") as mocked_thread:
+            response = self.client.post(
+                reverse("mypage:generate_question", args=[self.document.pk]), {"question_type": "essay"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mocked_thread.assert_called_once()
+        question = self.document.questions.get()
+        self.assertEqual(question.question_type, "essay")
+        self.assertEqual(mocked_thread.call_args.kwargs["args"][2], "essay")

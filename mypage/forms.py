@@ -1,6 +1,8 @@
 from django import forms
 
-from .models import PersonalDocument, PersonalFolder
+from .models import PersonalDocument, PersonalFolder, Subject
+
+CUSTOM_SUBJECT_VALUE = "__custom__"
 
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 ALLOWED_EXTENSIONS = (
@@ -29,20 +31,59 @@ class PersonalDocumentUploadForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "자료명 (비워두면 파일명 사용)"}),
     )
-    subject_code = forms.CharField(
+    subject_code = forms.ChoiceField(
+        required=False,
+        widget=forms.Select(attrs={"class": INPUT_CLASS, "id": "id_subject_code"}),
+    )
+    custom_subject_code = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={
-            "class": INPUT_CLASS,
-            "placeholder": "과목 코드 (예: 소웨공) — 입력하면 자료가 쌓일 때 자동으로 강의가 생성됩니다",
+            "class": INPUT_CLASS + " hidden",
+            "id": "id_custom_subject_code",
+            "placeholder": "새 강의 이름 입력",
         }),
+    )
+    custom_subject_display_code = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            "class": INPUT_CLASS + " hidden",
+            "id": "id_custom_subject_display_code",
+            "placeholder": "새 강의 코드 입력 (선택)",
+        }),
+    )
+    document_type = forms.ChoiceField(
+        choices=PersonalDocument.DocumentType.choices,
+        required=False,
+        widget=forms.Select(attrs={"class": INPUT_CLASS, "id": "id_document_type"}),
     )
 
     class Meta:
         model = PersonalDocument
-        fields = ["title", "file", "subject_code"]
+        fields = ["title", "file", "subject_code", "document_type"]
         widgets = {
             "file": forms.FileInput(attrs={"accept": ",".join(ALLOWED_EXTENSIONS), "class": FILE_INPUT_CLASS}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        choices = [("", "강의 선택")] + [(s.name, s.name) for s in Subject.objects.all()]
+        if user is not None and user.is_superuser:
+            choices.append((CUSTOM_SUBJECT_VALUE, "+ 새 강의 직접 입력"))
+        self.fields["subject_code"].choices = choices
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("subject_code") == CUSTOM_SUBJECT_VALUE:
+            if not self.user or not self.user.is_superuser:
+                raise forms.ValidationError("새 강의를 추가할 권한이 없습니다.")
+            name = cleaned_data.get("custom_subject_code", "").strip()
+            if not name:
+                raise forms.ValidationError("추가할 강의 이름을 입력해주세요.")
+            code = cleaned_data.get("custom_subject_display_code", "").strip()
+            Subject.objects.get_or_create(name=name, defaults={"code": code})
+            cleaned_data["subject_code"] = name
+        return cleaned_data
 
     def clean_file(self):
         f = self.cleaned_data.get("file")

@@ -27,103 +27,105 @@
         </div>
 
         <!-- 우측: 요약/퀴즈 패널 -->
-        <div class="lg:col-span-5 space-y-4 lg:sticky lg:top-6">
-            <div class="flex gap-1 bg-white rounded-2xl border border-slate-100 p-1">
+        <div class="lg:col-span-5 lg:sticky lg:top-6 lg:h-[80vh] flex flex-col gap-4">
+            <div class="shrink-0 flex gap-1 bg-white rounded-2xl border border-slate-100 p-1">
                 <a href="?panel=summary" class="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold transition {% if active_panel == 'summary' %}bg-emerald-600 text-white{% else %}text-slate-500 hover:text-slate-700{% endif %}">
                     <i class="fa-solid fa-file-lines mr-1.5"></i>요약
                 </a>
-                <a href="?panel=quiz&tab={{ active_tab }}" class="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold transition {% if active_panel == 'quiz' %}bg-emerald-600 text-white{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+                <a href="?panel=quiz" class="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold transition {% if active_panel == 'quiz' %}bg-emerald-600 text-white{% else %}text-slate-500 hover:text-slate-700{% endif %}">
                     <i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i>퀴즈
                 </a>
             </div>
 
             {% if active_panel == 'summary' %}
-                <div class="bg-white rounded-2xl border border-slate-100 p-6">
+                <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-100 p-6 flex flex-col">
                     {% if document.summary_status == 'processing' %}
                         <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>요약을 생성하고 있습니다...</p>
-                        <script>setTimeout(() => location.reload(), 2500);</script>
+                        <script>setTimeout(() => { window.showLoader && window.showLoader(); location.reload(); }, 2500);</script>
                     {% elif document.summary %}
                         <textarea id="document-summary-raw" style="display:none;">{{ document.summary }}</textarea>
-                        <div id="document-summary-content" class="text-sm text-slate-600 leading-relaxed space-y-2"></div>
+                        <div id="document-summary-tabs" class="shrink-0 flex gap-1 mb-4"></div>
+                        <div id="document-summary-content" class="flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
+                        <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
                     {% else %}
                         <p class="text-sm text-slate-400">요약을 생성하지 못했습니다.</p>
                     {% endif %}
                 </div>
             {% else %}
-                <div class="bg-white rounded-2xl border border-slate-100 p-6">
-                    <div class="flex gap-1 mb-4 border-b border-slate-100">
-                        {% for tab_key, tab_label, tab_questions in tabs %}
-                            <a href="?panel=quiz&tab={{ tab_key }}" class="px-3 py-2 text-xs font-bold rounded-t-lg transition {% if active_tab == tab_key %}bg-emerald-50 text-emerald-700{% else %}text-slate-400 hover:text-slate-600{% endif %}">
-                                {{ tab_label }} <span class="text-[10px] font-medium">{{ tab_questions|length }}/{{ max_questions_per_type }}</span>
-                            </a>
-                        {% endfor %}
-                    </div>
-
+                <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-100 p-6 flex flex-col">
                     {% if current_questions %}
                         <!-- 진행 상태 프로그레스 바 -->
-                        <div class="flex gap-1 mb-4">
+                        <div class="shrink-0 flex gap-1 mb-4">
                             {% for q in current_questions %}
-                                <a href="?panel=quiz&tab={{ active_tab }}&q={{ forloop.counter0 }}" class="flex-1 h-1.5 rounded-full transition {% if forloop.counter0 == q_index %}bg-emerald-600{% elif q.is_correct is not None %}bg-emerald-200{% else %}bg-slate-100{% endif %}"></a>
+                                <a href="?panel=quiz&q={{ forloop.counter0 }}" class="flex-1 h-1.5 rounded-full transition {% if forloop.counter0 == q_index %}bg-emerald-600{% elif q.is_correct is not None %}bg-emerald-200{% else %}bg-slate-100{% endif %}"></a>
                             {% endfor %}
                         </div>
-                        <p class="text-xs font-bold text-slate-400 mb-3">{{ q_index|add:1 }} / {{ current_questions|length }}</p>
+                        <p class="shrink-0 text-xs font-bold text-slate-400 mb-3">{{ q_index|add:1 }} / {{ current_questions|length }}</p>
 
-                        <div class="rounded-xl border border-slate-100 p-4">
-                            {% if current_question.status == 'processing' %}
-                                <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>문제를 생성하고 있습니다...</p>
-                                <script>setTimeout(() => location.reload(), 2500);</script>
-                            {% else %}
-                            <p class="text-sm font-medium text-slate-700">{{ current_question.question_text }}</p>
-
-                            {% if current_question.is_correct is None %}
-                                {% if active_tab == "ox" %}
-                                    <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
-                                        {% csrf_token %}
-                                        <button type="submit" name="user_answer" value="O" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">O</button>
-                                        <button type="submit" name="user_answer" value="X" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">X</button>
-                                    </form>
+                        <div class="flex-1 min-h-0 overflow-y-auto">
+                            <div class="rounded-xl border border-slate-100 p-4">
+                                {% if current_question.status == 'processing' %}
+                                    <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>문제를 생성하고 있습니다...</p>
+                                    <script>setTimeout(() => { window.showLoader && window.showLoader(); location.reload(); }, 2500);</script>
                                 {% else %}
-                                    <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
-                                        {% csrf_token %}
-                                        <input type="text" name="user_answer" required placeholder="답을 입력하세요" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
-                                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">제출</button>
-                                    </form>
-                                {% endif %}
-                            {% else %}
-                                <div class="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-sm">
-                                    <p class="text-slate-500">제출한 답: {{ current_question.user_answer }}</p>
-                                    {% if current_question.is_correct %}
-                                        <p class="font-bold text-emerald-600">정답입니다</p>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{{ current_question.get_question_type_display }}</span>
+                                <p class="text-sm font-medium text-slate-700 mt-1">{{ current_question.question_text }}</p>
+
+                                {% if current_question.is_correct is None %}
+                                    {% if current_question.question_type == "ox" %}
+                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                                            {% csrf_token %}
+                                            <button type="submit" name="user_answer" value="O" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">O</button>
+                                            <button type="submit" name="user_answer" value="X" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">X</button>
+                                        </form>
                                     {% else %}
-                                        <p class="font-bold text-rose-600">오답입니다</p>
+                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                                            {% csrf_token %}
+                                            <input type="text" name="user_answer" required placeholder="답을 입력하세요" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
+                                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">제출</button>
+                                        </form>
                                     {% endif %}
-                                    <p class="text-slate-500">정답: {{ current_question.answer }}</p>
-                                    {% if current_question.feedback %}
-                                        <div class="rounded-lg {% if current_question.is_correct %}bg-slate-50 text-slate-500{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %} px-3 py-2 mt-1">
-                                            {% if not current_question.is_correct %}<span class="font-bold">힌트/해설</span> · {% endif %}{{ current_question.feedback }}
-                                        </div>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-                            {% endif %}
+                                {% else %}
+                                    <div class="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-sm">
+                                        <p class="text-slate-500">제출한 답: {{ current_question.user_answer }}</p>
+                                        {% if current_question.is_correct %}
+                                            <p class="font-bold text-emerald-600">정답입니다</p>
+                                        {% else %}
+                                            <p class="font-bold text-rose-600">오답입니다</p>
+                                        {% endif %}
+                                        <p class="text-slate-500">정답: {{ current_question.answer }}</p>
+                                        {% if current_question.feedback %}
+                                            <div class="rounded-lg {% if current_question.is_correct %}bg-slate-50 text-slate-500{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %} px-3 py-2 mt-1">
+                                                {% if not current_question.is_correct %}<span class="font-bold">힌트/해설</span> · {% endif %}{{ current_question.feedback }}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                                {% endif %}
+                            </div>
                         </div>
 
                         <!-- 이전/다음 네비게이션 -->
-                        <div class="flex gap-2 mt-4">
-                            <a href="?panel=quiz&tab={{ active_tab }}&q={{ q_index|add:-1 }}" class="flex-1 text-center text-xs font-bold py-2 rounded-lg transition {% if q_index == 0 %}bg-slate-50 text-slate-300 pointer-events-none{% else %}bg-slate-50 text-slate-600 hover:bg-slate-100{% endif %}">&larr; 이전</a>
-                            <a href="?panel=quiz&tab={{ active_tab }}&q={{ q_index|add:1 }}" class="flex-1 text-center text-xs font-bold py-2 rounded-lg transition {% if q_index|add:1 >= current_questions|length %}bg-slate-50 text-slate-300 pointer-events-none{% else %}bg-slate-50 text-slate-600 hover:bg-slate-100{% endif %}">다음 &rarr;</a>
+                        <div class="shrink-0 flex gap-2 mt-4">
+                            <a href="?panel=quiz&q={{ q_index|add:-1 }}" class="flex-1 text-center text-xs font-bold py-2 rounded-lg transition {% if q_index == 0 %}bg-slate-50 text-slate-300 pointer-events-none{% else %}bg-slate-50 text-slate-600 hover:bg-slate-100{% endif %}">&larr; 이전</a>
+                            <a href="?panel=quiz&q={{ q_index|add:1 }}" class="flex-1 text-center text-xs font-bold py-2 rounded-lg transition {% if q_index|add:1 >= current_questions|length %}bg-slate-50 text-slate-300 pointer-events-none{% else %}bg-slate-50 text-slate-600 hover:bg-slate-100{% endif %}">다음 &rarr;</a>
                         </div>
                     {% else %}
-                        <p class="text-sm text-slate-400 text-center py-10">아직 생성된 문제가 없습니다.</p>
+                        <p class="flex-1 text-sm text-slate-400 text-center py-10">아직 생성된 문제가 없습니다.</p>
                     {% endif %}
 
-                    {% if current_questions|length < max_questions_per_type %}
-                        <form method="post" action="{% url 'mypage:generate_question' document.pk active_tab %}" class="mt-4">
+                    {% if current_questions|length < max_questions %}
+                        <form method="post" action="{% url 'mypage:generate_question' document.pk %}" class="shrink-0 flex gap-2 mt-4">
                             {% csrf_token %}
-                            <button type="submit" {% if has_pending_question %}disabled{% endif %} class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">{% if has_pending_question %}생성 중...{% else %}새 문제 생성{% endif %}</button>
+                            <select name="question_type" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 outline-none focus:border-emerald-500">
+                                {% for type_value, type_label in question_types %}
+                                    <option value="{{ type_value }}">{{ type_label }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" {% if has_pending_question %}disabled{% endif %} class="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">{% if has_pending_question %}생성 중...{% else %}새 문제 생성{% endif %}</button>
                         </form>
                     {% else %}
-                        <p class="text-xs font-bold text-slate-400 text-center py-2 mt-4">최대 {{ max_questions_per_type }}개까지 생성했습니다.</p>
+                        <p class="shrink-0 text-xs font-bold text-slate-400 text-center py-2 mt-4">최대 {{ max_questions }}개까지 생성했습니다.</p>
                     {% endif %}
                 </div>
             {% endif %}
@@ -135,11 +137,62 @@
 {% block extra_js %}
 {% if document.summary %}
 <script>
-    const summaryContent = document.getElementById('document-summary-content');
-    const summaryRaw = document.getElementById('document-summary-raw');
-    if (summaryContent && summaryRaw) {
-        summaryContent.innerHTML = window.renderMarkdown(summaryRaw.value);
-    }
+    (function () {
+        const summaryContent = document.getElementById('document-summary-content');
+        const summaryTabs = document.getElementById('document-summary-tabs');
+        const summaryNav = document.getElementById('document-summary-nav');
+        const summaryRaw = document.getElementById('document-summary-raw');
+        if (!summaryContent || !summaryTabs || !summaryNav || !summaryRaw) return;
+
+        const sections = window.splitMarkdownSections(summaryRaw.value);
+        if (sections.length <= 1) {
+            summaryContent.innerHTML = window.renderMarkdown(summaryRaw.value);
+            return;
+        }
+
+        const TAB_ACTIVE = 'flex-1 h-1.5 rounded-full transition bg-emerald-600';
+        const TAB_INACTIVE = 'flex-1 h-1.5 rounded-full transition bg-slate-100 hover:bg-slate-200';
+        const NAV_ACTIVE = 'flex-1 text-center text-xs font-bold py-2 rounded-lg transition bg-slate-50 text-slate-600 hover:bg-slate-100';
+        const NAV_DISABLED = 'flex-1 text-center text-xs font-bold py-2 rounded-lg transition bg-slate-50 text-slate-300 pointer-events-none';
+
+        let currentIndex = 0;
+
+        function showSection(index) {
+            currentIndex = index;
+            summaryContent.innerHTML = window.renderMarkdown(sections[index].body);
+            Array.from(summaryTabs.children).forEach((btn, i) => {
+                btn.className = i === index ? TAB_ACTIVE : TAB_INACTIVE;
+            });
+            renderNav();
+        }
+
+        function renderNav() {
+            summaryNav.innerHTML = '';
+            const prevBtn = document.createElement('button');
+            prevBtn.type = 'button';
+            prevBtn.innerHTML = '&larr; 이전';
+            prevBtn.className = currentIndex === 0 ? NAV_DISABLED : NAV_ACTIVE;
+            prevBtn.addEventListener('click', () => showSection(currentIndex - 1));
+
+            const nextBtn = document.createElement('button');
+            nextBtn.type = 'button';
+            nextBtn.innerHTML = '다음 &rarr;';
+            nextBtn.className = currentIndex >= sections.length - 1 ? NAV_DISABLED : NAV_ACTIVE;
+            nextBtn.addEventListener('click', () => showSection(currentIndex + 1));
+
+            summaryNav.appendChild(prevBtn);
+            summaryNav.appendChild(nextBtn);
+        }
+
+        sections.forEach((section, index) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.title = section.title;
+            btn.addEventListener('click', () => showSection(index));
+            summaryTabs.appendChild(btn);
+        });
+        showSection(0);
+    })();
 </script>
 {% endif %}
 {% endblock %}

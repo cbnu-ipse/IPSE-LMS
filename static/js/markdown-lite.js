@@ -45,7 +45,13 @@ window.renderMarkdown = function (text) {
         if (heading) {
             flushList();
             const level = heading[1].length;
-            html.push(`<h${level} class="font-bold mt-2 mb-1">${inline(heading[2])}</h${level}>`);
+            const HEADING_CLASS = {
+                1: 'text-xl font-bold mt-4 mb-2 text-slate-800',
+                2: 'text-base font-bold mt-4 mb-1.5 text-emerald-700',
+                3: 'text-sm font-bold mt-3 mb-1 text-slate-600',
+            };
+            const cls = HEADING_CLASS[level] || 'text-sm font-semibold mt-2 mb-1 text-slate-600';
+            html.push(`<h${level} class="${cls}">${inline(heading[2])}</h${level}>`);
             return;
         }
         const listItem = line.match(/^\s*[-*]\s+(.*)$/);
@@ -58,4 +64,27 @@ window.renderMarkdown = function (text) {
     });
     flushList();
     return html.filter((h) => h !== '').join('');
+};
+
+// 최상위 `## ` 헤딩 기준으로 마크다운을 청크 단위로 나눈다. 첫 `##` 이전 내용은 "개요" 청크로 묶는다.
+window.splitMarkdownSections = function (text) {
+    const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+    const sections = [];
+    let current = null;
+    lines.forEach((line) => {
+        const match = line.match(/^##\s+(.*)$/);
+        if (match) {
+            current = { title: match[1].trim(), body: [line] };
+            sections.push(current);
+            return;
+        }
+        if (!current) {
+            current = { title: '개요', body: [] };
+            sections.push(current);
+        }
+        current.body.push(line);
+    });
+    return sections
+        .map((s) => ({ title: s.title, body: s.body.join('\n').trim() }))
+        .filter((s) => s.body !== '');
 };

@@ -4,6 +4,17 @@ from django.db import models
 from django.urls import reverse
 
 
+class Subject(models.Model):
+    name = models.CharField(max_length=50, unique=True, verbose_name="강의 이름")
+    code = models.CharField(max_length=20, blank=True, default="", verbose_name="과목 코드")
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class PersonalFolder(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_folders")
     name = models.CharField(max_length=100)
@@ -24,6 +35,10 @@ class ProcessingStatus(models.TextChoices):
 
 
 class PersonalDocument(models.Model):
+    class DocumentType(models.TextChoices):
+        ASSIGNMENT = "assignment", "과제 (문제 제작용 데이터)"
+        LECTURE = "lecture", "일반 강의 자료"
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_documents")
     folder = models.ForeignKey(PersonalFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="documents")
     title = models.CharField(max_length=200, verbose_name="자료명")
@@ -43,6 +58,11 @@ class PersonalDocument(models.Model):
     subject_code = models.CharField(
         max_length=50, blank=True, verbose_name="과목 코드",
         help_text="같은 과목 코드로 자료가 쌓이면 강의가 자동 생성됩니다.",
+    )
+    document_type = models.CharField(
+        max_length=10, choices=DocumentType.choices, default=DocumentType.ASSIGNMENT,
+        verbose_name="자료 구분",
+        help_text="과제(문제 제작용)만 자동 강의 생성 대상에 포함됩니다.",
     )
     is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")
     uploaded_at = models.DateTimeField(auto_now_add=True)

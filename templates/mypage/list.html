@@ -74,10 +74,13 @@
                     {% csrf_token %}
                     {{ form.title }}
                     {{ form.subject_code }}
+                    {{ form.custom_subject_code }}
+                    {{ form.custom_subject_display_code }}
+                    {{ form.document_type }}
                     {{ form.file }}
                     <button type="submit" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition">업로드</button>
                 </form>
-                <p class="text-xs text-slate-400 mt-2">PDF, DOC, DOCX, PPT, PPTX, TXT, MD, RTF, HWP, HWPX, JPG, PNG · 최대 20MB</p>
+                <p class="text-xs text-slate-400 mt-2">PDF, DOC, DOCX, PPT, PPTX, TXT, MD, RTF, HWP, HWPX, JPG, PNG · 최대 20MB · 강의를 선택하면 자료가 쌓일 때 자동으로 강의가 생성됩니다</p>
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -113,4 +116,22 @@
         </main>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const select = document.getElementById('id_subject_code');
+        const customInput = document.getElementById('id_custom_subject_code');
+        const customCodeInput = document.getElementById('id_custom_subject_display_code');
+        if (!select || !customInput) return;
+        const sync = () => {
+            const isCustom = select.value === '__custom__';
+            customInput.classList.toggle('hidden', !isCustom);
+            if (customCodeInput) customCodeInput.classList.toggle('hidden', !isCustom);
+        };
+        select.addEventListener('change', sync);
+        sync();
+    })();
+</script>
 {% endblock %}

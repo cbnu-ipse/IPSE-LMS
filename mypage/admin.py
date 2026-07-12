@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import GeneratedQuestion, PersonalDocument, PersonalFolder
+from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, Subject
+
+
+@admin.register(Subject)
+class SubjectAdmin(admin.ModelAdmin):
+    list_display = ["name", "code"]
+    search_fields = ["name", "code"]
 
 
 @admin.register(PersonalFolder)
@@ -11,8 +17,8 @@ class PersonalFolderAdmin(admin.ModelAdmin):
 
 @admin.register(PersonalDocument)
 class PersonalDocumentAdmin(admin.ModelAdmin):
-    list_display = ["title", "user", "folder", "summary_status", "uploaded_at"]
-    list_filter = ["uploaded_at", "summary_status"]
+    list_display = ["title", "user", "folder", "document_type", "summary_status", "uploaded_at"]
+    list_filter = ["uploaded_at", "summary_status", "document_type"]
     search_fields = ["title", "user__username"]
 
 
