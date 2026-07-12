@@ -189,27 +189,30 @@ else:
 
 # Database
 # DATABASE_URL 환경변수가 있으면 PostgreSQL, 없으면 로컬 SQLite 사용
-_database_url = config("DATABASE_URL", default="")
-if _database_url:
-    import urllib.parse
-    _u = urllib.parse.urlparse(_database_url)
-    DATABASES = {
-        "default": {
+def _db_config(url_env_var, sqlite_filename):
+    url = config(url_env_var, default="")
+    if url:
+        import urllib.parse
+        u = urllib.parse.urlparse(url)
+        return {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": _u.path.lstrip("/"),
-            "USER": _u.username,
-            "PASSWORD": _u.password,
-            "HOST": _u.hostname,
-            "PORT": _u.port or 5432,
+            "NAME": u.path.lstrip("/"),
+            "USER": u.username,
+            "PASSWORD": u.password,
+            "HOST": u.hostname,
+            "PORT": u.port or 5432,
         }
+    return {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": os.path.join(BASE_DIR, sqlite_filename),
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
-        }
-    }
+
+
+DATABASES = {
+    "default": _db_config("DATABASE_URL", "db.sqlite3"),
+    "beta_judge": _db_config("JUDGE_DATABASE_URL", "judge.sqlite3"),
+}
+DATABASE_ROUTERS = ["config.db_router.JudgeRouter"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

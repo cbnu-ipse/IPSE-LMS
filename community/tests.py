@@ -214,6 +214,9 @@ class CommunityTestCase(TestCase):
 
 
 class CommunityLikeDislikeBestCommentTestCase(TestCase):
+    # home_view -> ranking.utils가 problems 앱(beta_judge DB)을 조회하므로 명시 필요
+    databases = {"default", "beta_judge"}
+
     def setUp(self):
         self.user1 = User.objects.create_user(username='user1', password='password123')
         self.user2 = User.objects.create_user(username='user2', password='password123')

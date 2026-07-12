@@ -142,9 +142,12 @@ class ContestParticipant(models.Model):
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        # beta_judge DB로 분리되어 있어 Django가 cross-db CASCADE를 처리할 수 없음.
+        # 실제 정리는 accounts/signals.py의 pre_delete 핸들러가 수행한다.
+        on_delete=models.DO_NOTHING,
         related_name="contest_participations",
         verbose_name="사용자",
+        db_constraint=False,
     )
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name="참가 시각")
     is_active = models.BooleanField(default=True, verbose_name="참가 활성 상태")
@@ -195,9 +198,12 @@ class ContestSubmission(models.Model):
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        # beta_judge DB로 분리되어 있어 Django가 cross-db CASCADE를 처리할 수 없음.
+        # 실제 정리는 accounts/signals.py의 pre_delete 핸들러가 수행한다.
+        on_delete=models.DO_NOTHING,
         related_name="contest_submissions",
         verbose_name="사용자",
+        db_constraint=False,
     )
 
     language = models.CharField(

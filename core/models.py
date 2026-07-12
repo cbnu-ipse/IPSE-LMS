@@ -34,10 +34,13 @@ class ActivityLog(models.Model):
     )
     problem = models.ForeignKey(
         "problems.Problem",
-        on_delete=models.CASCADE,
+        # beta_judge DB로 분리되어 있어 Django가 cross-db CASCADE를 처리할 수 없음.
+        # 실제 정리는 problems/signals.py의 pre_delete 핸들러가 수행한다.
+        on_delete=models.DO_NOTHING,
         null=True,
         blank=True,
         related_name="activity_logs",
+        db_constraint=False,
     )
     message = models.TextField(verbose_name="활동 내역")
     created_at = models.DateTimeField(auto_now_add=True)

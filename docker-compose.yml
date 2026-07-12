@@ -13,6 +13,19 @@ services:
       timeout: 5s
       retries: 5
 
+  db_judge:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.judge.docker
+    volumes:
+      - postgres_judge_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ipse_judge -d beta_judge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -38,6 +51,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db_judge:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -49,6 +64,7 @@ services:
 
 volumes:
   postgres_data:
+  postgres_judge_data:
   redis_data:
   media_data:
   static_data:
