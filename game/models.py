@@ -69,24 +69,8 @@ class GameSeason(models.Model):
 
     @classmethod
     def _maybe_send_warning(cls, season):
-        """종료 3일/1일 전이고 아직 보내지 않은 경고 알림을 백그라운드로 전송."""
-        days = season.days_remaining
-        if days == 3 and not season.warned_3d:
-            updated = cls.objects.filter(pk=season.pk, warned_3d=False).update(warned_3d=True)
-            if updated:
-                threading.Thread(
-                    target=cls._send_warning_notifications,
-                    args=(season, 3),
-                    daemon=True,
-                ).start()
-        elif days == 1 and not season.warned_1d:
-            updated = cls.objects.filter(pk=season.pk, warned_1d=False).update(warned_1d=True)
-            if updated:
-                threading.Thread(
-                    target=cls._send_warning_notifications,
-                    args=(season, 1),
-                    daemon=True,
-                ).start()
+        """시즌종료 알림은 발송하지 않음 (게시글 댓글/번개모임 알림만 유지)."""
+        return
 
     # ── 프로퍼티 ──────────────────────────────────────────────────────────────
 
@@ -106,48 +90,6 @@ class GameSeason(models.Model):
         return f"{self.start_date.strftime('%Y.%m.%d')} ~ {self.end_date.strftime('%m.%d')}"
 
     # ── 내부 로직 ─────────────────────────────────────────────────────────────
-
-    @classmethod
-    def _send_warning_notifications(cls, season, days_before):
-        """종료 N일 전 경고 알림을 이번 시즌 사과게임 참여자에게 전송."""
-        from game.models import AppleGameScore
-        from accounts.models import Notification, User
-        from accounts.utils import send_web_push
-
-        msg = (
-            f"{season.label} 사과게임 시즌이 {days_before}일 후 종료됩니다! "
-            "지금 바로 최고 점수에 도전해 보세요."
-        )
-        user_ids = (
-            AppleGameScore.objects
-            .filter(
-                played_at__date__gte=season.start_date,
-                played_at__date__lte=season.end_date,
-            )
-            .values_list("user_id", flat=True)
-            .distinct()
-        )
-        recipients = User.objects.filter(pk__in=user_ids)
-
-        for user in recipients:
-            # 시즌 종료 알림 수신 거부 설정 확인
-            try:
-                if not user.student.notify_game_season_ending:
-                    continue
-            except Exception:
-                pass
-            try:
-                notif = Notification.objects.create(
-                    recipient=user,
-                    sender=None,
-                    notification_type="game_season_ending",
-                    message=msg,
-                )
-                send_web_push(notif)
-            except Exception as e:
-                logger.error(f"[GameSeason] {user.username} 경고 알림 실패: {e}")
-
-        logger.info(f"[GameSeason] 시즌 {season.number} 종료 {days_before}일 전 알림 완료 ({recipients.count()}명).")
 
     @classmethod
     def _auto_finalize(cls, season):

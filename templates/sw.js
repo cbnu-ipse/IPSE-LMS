@@ -99,12 +99,12 @@ self.addEventListener('push', (event) => {
     payload = event.data.json();
   } catch (e) {
     payload = {
-      title: 'IPSE 알림',
+      title: 'IPSE',
       body: event.data.text()
     };
   }
 
-  const title = payload.title || 'IPSE 알림';
+  const title = payload.title || 'IPSE';
   const options = {
     body: payload.body || '',
     icon: payload.icon || '/static/img/IPSE-LOGO.png',
