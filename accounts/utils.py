@@ -70,7 +70,7 @@ def send_web_push(notification_obj):
         return
         
     payload = {
-        "title": "IPSE 알림",
+        "title": "IPSE",
         "body": notification_obj.message,
         "url": f"/accounts/notifications/{notification_obj.id}/read/",
         "icon": "/static/img/IPSE-LOGO.png",

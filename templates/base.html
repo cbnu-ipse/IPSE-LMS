@@ -130,6 +130,8 @@
       window.__loaderTotalMs = 550;
       window.__loaderStartedAt = null;
       window.__loaderRaf = null;
+      // 자정(KST) 경과 후 bfcache로 복원된 화면(방명록 완료 배지 등 날짜 기준 UI)이 갱신되도록 렌더 시점 날짜를 기록
+      window.__pageKstDate = "{% now 'Y-m-d' %}";
       window.__runLoaderAnimation = function() {
         var leafFill = document.getElementById('sk-leaf-fill');
         cancelAnimationFrame(window.__loaderRaf);
@@ -897,6 +899,28 @@
         // BF Cache 복원 시 loader가 켜진 채로 얼어붙는 것 방지
         window.addEventListener('pageshow', function(e) {
           hideLoader();
+          // ponytail: 클라이언트 시계 기준 근사치 — bfcache로 복원된 페이지가 자정(KST)을 넘겨서도
+          // 이전 날짜 기준 UI(방명록 작성완료 배지 등)를 그대로 보여주는 것을 막기 위해 날짜가 바뀐 경우에만 새로고침
+          if (e.persisted && window.__pageKstDate) {
+            var todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            if (todayKst !== window.__pageKstDate) {
+              location.reload();
+            }
+          }
+        });
+
+        // 새로고침(F5, Ctrl/Cmd+R) 시에도 로더를 보여준다.
+        // ponytail: beforeunload/unload는 뒤/앞으로가기 캐시(bfcache)를 깨뜨릴 수 있어 사용하지 않음 —
+        // 그 대신 키보드 단축키만 가로채므로, 브라우저 새로고침 버튼/주소창 새로고침은
+        // 페이지 JS가 원천적으로 감지할 수 없어 커버되지 않음.
+        document.addEventListener('keydown', function(e) {
+          if (window.isPageLoading) return;
+          const isF5 = e.key === 'F5';
+          const isCtrlR = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R');
+          if (!isF5 && !isCtrlR) return;
+          e.preventDefault();
+          showLoader();
+          requestAnimationFrame(function() { requestAnimationFrame(function() { location.reload(); }); });
         });
 
         // JS가 직접 트리거하는 location.reload() 폴링(예: 요약/문제 생성 대기)에서도 재사용
@@ -1098,7 +1122,7 @@
           if (window.Notification && Notification.permission === 'granted') {
             if ('serviceWorker' in navigator) {
               navigator.serviceWorker.ready.then((registration) => {
-                registration.showNotification("IPSE 알림", {
+                registration.showNotification("IPSE", {
                   body: n.message,
                   icon: '/static/img/IPSE-LOGO.png',
                   badge: '/static/img/favicon-ipse.svg',
@@ -1107,7 +1131,7 @@
                 });
               });
             } else {
-              new Notification("IPSE 알림", {
+              new Notification("IPSE", {
                 body: n.message,
                 icon: '/static/img/IPSE-LOGO.png'
               });
