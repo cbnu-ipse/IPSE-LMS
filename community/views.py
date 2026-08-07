@@ -435,6 +435,25 @@ def upload_editor_image(request):
 
 
 @login_required
+@require_POST
+def upload_editor_video(request):
+    video = request.FILES.get('video')
+    if not video:
+        return JsonResponse({'error': '동영상 파일이 없습니다.'}, status=400)
+    if not video.content_type.startswith('video/'):
+        return JsonResponse({'error': '동영상 파일만 업로드할 수 있습니다.'}, status=400)
+    if video.size > 50 * 1024 * 1024:
+        return JsonResponse({'error': '동영상 용량은 50MB 이하만 업로드할 수 있습니다.'}, status=400)
+
+    fs = FileSystemStorage()
+    # 서버의 media/editor_videos/ 폴더에 동영상 저장
+    filename = fs.save(f'editor_videos/{video.name}', video)
+    video_url = fs.url(filename)
+
+    return JsonResponse({'url': video_url})
+
+
+@login_required
 def schedule_list(request):
     return render(request, 'community/schedule_list.html')
 

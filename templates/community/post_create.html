@@ -213,7 +213,7 @@
 
                     <!-- 신규 첨부파일 업로드 영역 -->
                     <div class="flex items-center justify-center w-full">
-                        <label for="attachments" class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-white hover:bg-slate-50/50 hover:border-emerald-500 transition">
+                        <label id="attachments-dropzone" for="attachments" class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-white hover:bg-slate-50/50 hover:border-emerald-500 transition">
                             <div class="flex flex-col items-center justify-center pt-5 pb-6">
                                 <i class="fa-solid fa-cloud-arrow-up text-slate-400 text-2xl mb-2"></i>
                                 <p class="mb-1 text-xs text-slate-500 font-bold"><span class="text-emerald-600 font-bold">클릭하여 파일 선택</span> 또는 드래그 앤 드롭</p>
@@ -675,6 +675,37 @@
             });
         }
     }
+
+    // 첨부파일 영역에 실제 드래그 앤 드롭 동작 연결
+    (function() {
+        const dropzone = document.getElementById('attachments-dropzone');
+        const input = document.getElementById('attachments');
+        if (!dropzone || !input) return;
+
+        ['dragover', 'dragenter'].forEach(evt => {
+            dropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.add('border-emerald-500', 'bg-slate-50/50');
+            });
+        });
+        ['dragleave', 'dragend'].forEach(evt => {
+            dropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.remove('border-emerald-500', 'bg-slate-50/50');
+            });
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('border-emerald-500', 'bg-slate-50/50');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                input.files = e.dataTransfer.files;
+                updateFileList(input);
+            }
+        });
+    })();
 
     function updateFileList(input) {
         const previewDiv = document.getElementById('file-list-preview');
