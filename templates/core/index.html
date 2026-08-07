@@ -217,12 +217,17 @@
                                 </li>
                                 {% endfor %}
 
-                                <!-- 🔥 주간 인기글 (HOT) 목록 -->
+                                <!-- 🔥 주간 인기글 (HOT) 목록 (없으면 자유게시판 최근 글 1개로 대체) -->
                                 {% for post in hot_posts %}
                                 <li class="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 group">
                                     <a href="{% url 'post_detail' post.id %}" class="font-medium text-slate-700 hover:text-rose-700 transition flex-1 min-w-0 truncate pr-4 text-sm">
+                                        {% if post.is_fallback_recent %}
+                                        <span class="text-slate-400 text-sm mr-1.5"><i class="fa-solid fa-clock"></i></span>
+                                        <span class="font-bold text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded mr-1">최신</span>{{ post.title }}
+                                        {% else %}
                                         <span class="text-rose-500 text-sm mr-1.5"><i class="fa-solid fa-fire text-rose-500"></i></span>
-                                        <span class="font-bold text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded mr-1">인기</span>{{ post.title }}
+                                        <span class="font-bold text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded mr-1">인기</span>{% if post.hot_leaf_rewarded %}<span class="text-emerald-600 mr-1" title="🍂 인기글 등록 낙엽 보상 +7 지급됨"><i class="fa-solid fa-leaf"></i></span>{% endif %}{{ post.title }}
+                                        {% endif %}
                                     </a>
                                     <span class="text-xs text-slate-400 flex-shrink-0">{{ post.created_at|date:"m.d" }}</span>
                                 </li>

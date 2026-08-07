@@ -1,6 +1,7 @@
 import csv
 import datetime as dt_module
 import json
+import random
 from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -2008,16 +2009,17 @@ def post_like_toggle(request, post_id):
     """게시글 추천(좋아요) 토글 API"""
     if request.method == 'POST':
         post = get_object_or_404(CommunityPost, id=post_id)
-        
+        leaf_reward = 0
+
         with transaction.atomic():
             like_qs = CommunityPostLike.objects.filter(post=post, user=request.user)
             dislike_qs = CommunityPostDislike.objects.filter(post=post, user=request.user)
-            
+
             disliked_removed = False
             if dislike_qs.exists():
                 dislike_qs.delete()
                 disliked_removed = True
-                
+
             if like_qs.exists():
                 like_qs.delete()
                 liked = False
@@ -2026,7 +2028,19 @@ def post_like_toggle(request, post_id):
                 CommunityPostLike.objects.create(post=post, user=request.user)
                 liked = True
                 message = '이 글을 추천했습니다!'
-                
+
+                # 낙엽 응모 (게시글당 1회, 당첨/낙첨 무관하게 재응모 불가 → 좋아요 취소 후 재클릭으로 반복 응모하는 스팸 방지)
+                from accounts.models import LeafTransaction
+                reward_marker = f'게시글 추천 낙엽 응모 (#{post.id})'
+                already_entered = LeafTransaction.objects.filter(
+                    user=request.user, transaction_type='post_like_reward', description=reward_marker
+                ).exists()
+                if not already_entered:
+                    leaf_reward = 1 if random.random() < 0.1 else 0
+                    request.user.adjust_leaves(leaf_reward, 'post_like_reward', reward_marker)
+                    if leaf_reward:
+                        message = '이 글을 추천했습니다! 🍂 낙엽 1개를 획득했습니다!'
+
         return JsonResponse({
             'status': 'success',
             'liked': liked,
@@ -2034,7 +2048,8 @@ def post_like_toggle(request, post_id):
             'disliked_removed': disliked_removed,
             'like_count': post.like_count,
             'dislike_count': post.dislike_count,
-            'message': message
+            'message': message,
+            'leaf_reward': leaf_reward,
         })
     return JsonResponse({'status': 'error', 'message': '올바르지 않은 요청 방식입니다.'}, status=400)
 
