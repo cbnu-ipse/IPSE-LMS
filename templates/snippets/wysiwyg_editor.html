@@ -142,7 +142,81 @@
                 return null;
             }
 
+            // 동영상 삽입 (URL 직접 입력 / 로컬 파일 드래그·붙여넣기)
+            // 실제 임베드는 [video:URL] 플레이스홀더로 저장 후 상세 페이지에서 렌더링됨 (설문/첨부파일 플레이스홀더와 동일한 방식)
+            const uploadAndInsertVideo = (file) => {
+                if (file.size > 50 * 1024 * 1024) {
+                    const msg = '동영상 용량은 50MB 이하만 업로드할 수 있습니다.';
+                    if (window.showToast) window.showToast(msg, 'error'); else alert(msg);
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('video', file);
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+                if (window.showToast) window.showToast('동영상 업로드 중...', 'info');
 
+                fetch('/community/upload-video/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken },
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.url) {
+                        editor.insertText(`[video:${encodeURIComponent(data.url)}]`);
+                    } else {
+                        const msg = data.error || '동영상 업로드에 실패했습니다.';
+                        if (window.showToast) window.showToast(msg, 'error'); else alert(msg);
+                    }
+                })
+                .catch(() => {
+                    const msg = '동영상 업로드 중 오류가 발생했습니다.';
+                    if (window.showToast) window.showToast(msg, 'error'); else alert(msg);
+                });
+            };
+
+            try {
+                const videoBtn = document.createElement('button');
+                videoBtn.type = 'button';
+                videoBtn.className = 'toastui-editor-toolbar-icons';
+                videoBtn.style.backgroundImage = 'none';
+                videoBtn.innerHTML = '<i class="fa-solid fa-video" style="font-size:14px;color:#475569;"></i>';
+                videoBtn.addEventListener('click', () => {
+                    const url = prompt('삽입할 동영상 URL을 입력하세요 (유튜브, Vimeo 링크 또는 mp4 파일 주소)');
+                    if (!url || !url.trim()) return;
+                    editor.insertText(`[video:${encodeURIComponent(url.trim())}]`);
+                });
+
+                editor.insertToolbarItem({ groupIndex: 3, itemIndex: 3 }, {
+                    name: 'video',
+                    tooltip: '동영상 삽입',
+                    el: videoBtn
+                });
+            } catch (btnErr) {
+                console.warn("Failed to add video toolbar button:", btnErr);
+            }
+
+            // 로컬 동영상 파일을 본문에 드래그하거나 붙여넣으면 자동 업로드 후 삽입
+            // (이미지는 addImageBlobHook이 이미 처리하므로 video/* 파일만 가로챈다)
+            try {
+                el.addEventListener('drop', (e) => {
+                    const videoFile = Array.from(e.dataTransfer?.files || []).find(f => f.type.startsWith('video/'));
+                    if (!videoFile) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uploadAndInsertVideo(videoFile);
+                }, true);
+
+                el.addEventListener('paste', (e) => {
+                    const videoFile = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('video/'));
+                    if (!videoFile) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uploadAndInsertVideo(videoFile);
+                }, true);
+            } catch (dndErr) {
+                console.warn("Failed to bind video drag&drop/paste handlers:", dndErr);
+            }
 
             // 폼 서브밋 바인딩 연동
             if (formId) {

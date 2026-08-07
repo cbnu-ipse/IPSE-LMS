@@ -9,6 +9,7 @@ urlpatterns = [
     path('notice/<int:notice_id>/', views.notice_detail, name='notice_detail'),
     path('activity/<int:activity_id>/', views.activity_detail, name='activity_detail'),
     path('upload-image/', views.upload_editor_image, name='upload_editor_image'),
+    path('upload-video/', views.upload_editor_video, name='upload_editor_video'),
     path('schedules/', views.schedule_list, name='schedule_list'),
     path('schedule/<int:schedule_id>/', views.schedule_detail, name='schedule_detail'),
     # 투표
