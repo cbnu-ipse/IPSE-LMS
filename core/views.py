@@ -54,7 +54,23 @@ def home_view(request):
         key=lambda p: p.views + (p.comment_count * 5) + (p.like_count * 10),
         reverse=True
     )[:3]
-    
+    if not hot_posts:
+        fallback_post = CommunityPost.objects.filter(category='free', is_notice=False).order_by('-created_at').first()
+        if fallback_post:
+            fallback_post.is_fallback_recent = True
+            hot_posts = [fallback_post]
+    else:
+        # 인기글(TOP3) 등록 이력이 있으면 작성자에게 낙엽 7개 지급 (게시글당 1회만, LeafTransaction 이력으로 중복 지급 방지)
+        from accounts.models import LeafTransaction
+        for p in hot_posts:
+            reward_marker = f'인기글 등록 낙엽 보상 (#{p.id})'
+            p.hot_leaf_rewarded = LeafTransaction.objects.filter(
+                user=p.author, transaction_type='hot_post_reward', description=reward_marker
+            ).exists()
+            if not p.hot_leaf_rewarded:
+                p.author.adjust_leaves(7, 'hot_post_reward', reward_marker)
+                p.hot_leaf_rewarded = True
+
     # 2. 왼쪽 아래 달력용 데이터 (Event)
     events = NewsAndEvents.objects.filter(posted_as='Event').order_by('-upload_time')[:5]
     
@@ -108,7 +124,7 @@ def home_view(request):
     recent_academics = CommunityPost.objects.filter(
         category='academic',
         created_at__gte=timezone.now() - dt_module.timedelta(days=7)
-    ).order_by('-created_at')[:5]
+    ).order_by('-created_at')[:3]
 
     # 하루 1회 백그라운드 LMS 자동 연동 트리거 체크 (자동 로그인 세션 대응)
     import datetime
@@ -130,15 +146,15 @@ def home_view(request):
         request.session['last_notice_sync_date'] = today_str
 
     # 5. 오늘 방명록 항목 (KST 기준 오늘 날짜의 UTC 범위로 쿼리)
-    from django.utils import timezone as tz
-    today_utc_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0) - dt_module.timedelta(hours=9)
+    from community.views import _kst_day_utc_range
+    kst_start, kst_end, _ = _kst_day_utc_range()
     today_guestbook_entries = Guestbook.objects.filter(
-        created_at__gte=today_utc_start
+        created_at__gte=kst_start, created_at__lt=kst_end
     ).select_related('author').order_by('-created_at')[:10]
 
     has_written_guestbook_today = Guestbook.objects.filter(
         author=request.user,
-        created_at__gte=today_utc_start
+        created_at__gte=kst_start, created_at__lt=kst_end
     ).exists()
 
     context = {

@@ -1060,6 +1060,11 @@
                 if (dislikeCountEl) {
                     dislikeCountEl.innerText = data.dislike_count;
                 }
+
+                if (data.leaf_reward) {
+                    if (window.showToast) window.showToast('🍂 낙엽 1개를 획득했습니다!', 'success');
+                    else alert('🍂 낙엽 1개를 획득했습니다!');
+                }
             } else {
                 alert(data.message);
             }
