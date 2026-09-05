@@ -1306,7 +1306,7 @@
         content.innerHTML = '';
         
         if (!data || !Array.isArray(data.results)) return;
-        
+
         data.results.forEach((question, index) => {
             const card = document.createElement('div');
             card.className = 'bg-white border border-slate-200 rounded-2xl p-5 md:p-6 space-y-4';
@@ -1401,6 +1401,40 @@
             card.innerHTML = html;
             content.appendChild(card);
         });
+
+        renderSurveyRespondents(data.respondents);
+    }
+
+    // 실명 설문에서만 내려오는 "누가 무엇에 응답했는지" 표
+    function renderSurveyRespondents(respondents) {
+        const content = document.getElementById('results-content');
+        if (!content || !respondents || !respondents.rows.length) return;
+
+        const head = ['이름', '학번', '응답 시간', ...respondents.questions]
+            .map(h => `<th class="whitespace-nowrap px-3 py-2 text-left font-bold">${escapeHtml(h)}</th>`)
+            .join('');
+        const body = respondents.rows.map(row => {
+            const cells = [row.name, row.username, row.submitted_at, ...row.answers]
+                .map(v => `<td class="px-3 py-2 align-top text-slate-700">${escapeHtml(v)}</td>`)
+                .join('');
+            return `<tr class="border-t border-slate-100">${cells}</tr>`;
+        }).join('');
+
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-slate-200 rounded-2xl p-5 md:p-6 space-y-4';
+        card.innerHTML = `
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h5 class="text-sm font-extrabold text-slate-800">응답자별 상세</h5>
+                <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">${respondents.rows.length}명</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-xs">
+                    <thead class="bg-slate-50 text-slate-500"><tr>${head}</tr></thead>
+                    <tbody>${body}</tbody>
+                </table>
+            </div>
+        `;
+        content.appendChild(card);
     }
 
     function renderSurveyCharts(data) {
