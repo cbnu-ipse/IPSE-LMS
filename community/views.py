@@ -33,6 +33,41 @@ def _user_display_name(user):
     return getattr(user, 'display_author', '') or getattr(user, 'username', '(삭제됨)')
 
 
+_CSV_WEEKDAYS = '월화수목금토일'
+
+
+def _csv_dt(value):
+    """CSV 셀용 일시 문자열.
+
+    'YYYY-MM-DD HH:MM'만 쓰면 Excel이 날짜값으로 자동 변환해서 열 너비가 좁을 때
+    '###'로 표시된다. 요일을 끼워 넣어 텍스트로 인식되게 한다.
+    """
+    if not value:
+        return ''
+    local = timezone.localtime(value)
+    return f"{local:%Y-%m-%d}({_CSV_WEEKDAYS[local.weekday()]}) {local:%H:%M}"
+
+
+def _user_real_name(user):
+    """관리자 조회/CSV 전용 실명. 닉네임을 쓰는 _user_display_name과 달리 성+이름 우선."""
+    if not user:
+        return '(삭제됨)'
+    return user.get_full_name or user.username
+
+
+def _survey_answer_text(answer):
+    """설문 답변 1건을 사람이 읽는 문자열로. 미응답은 '(미응답)'."""
+    if not answer:
+        return '(미응답)'
+    if answer.choice:
+        return answer.choice.choice_text
+    if answer.text_answer:
+        return answer.text_answer
+    if answer.scale_answer:
+        return f"★ {answer.scale_answer}/5"
+    return ''
+
+
 def _parse_survey_datetime(dt_str):
     if not dt_str:
         return None
@@ -709,9 +744,9 @@ def poll_votes_export(request, poll_id):
         for choice in poll.choices.prefetch_related('votes__voter').all():
             for vote in choice.votes.select_related('voter').order_by('voted_at'):
                 voter = vote.voter
-                full_name = voter.get_full_name or voter.username
-                voted_at_local = timezone.localtime(vote.voted_at).strftime('%Y-%m-%d %H:%M:%S')
-                writer.writerow([full_name, voter.username, choice.text, voted_at_local])
+                writer.writerow([
+                    _user_real_name(voter), voter.username, choice.text, _csv_dt(vote.voted_at),
+                ])
 
     return response
 
@@ -948,9 +983,10 @@ def survey_results_api(request, survey_id):
         return JsonResponse({'error': '권한이 없습니다.'}, status=403)
     
     results = []
+    questions = list(survey.questions.all())
     responses = survey.responses.prefetch_related('answers__question', 'answers__choice')
     
-    for question in survey.questions.all():
+    for question in questions:
         question_result = {
             'id': question.id,
             'title': question.question_text,
@@ -989,8 +1025,32 @@ def survey_results_api(request, survey_id):
                     })
         
         results.append(question_result)
-    
-    return JsonResponse({'results': results})
+
+    payload = {'results': results}
+
+    # 실명 설문에 한해 "누가 무엇에 응답했는지" 표 데이터를 함께 내려준다.
+    if not survey.is_anonymous:
+        rows = []
+        respondent_qs = (
+            survey.responses
+            .select_related('respondent')
+            .prefetch_related('answers__choice')
+            .order_by('created_at')
+        )
+        for response_obj in respondent_qs:
+            answers = {a.question_id: a for a in response_obj.answers.all()}
+            rows.append({
+                'name': _user_real_name(response_obj.respondent),
+                'username': response_obj.respondent.username if response_obj.respondent else '',
+                'submitted_at': _csv_dt(response_obj.created_at),
+                'answers': [_survey_answer_text(answers.get(q.id)) for q in questions],
+            })
+        payload['respondents'] = {
+            'questions': [q.question_text for q in questions],
+            'rows': rows,
+        }
+
+    return JsonResponse(payload)
 
 
 @staff_member_required
@@ -1012,7 +1072,7 @@ def survey_results_export(request, survey_id):
 
     headers = []
     if not survey.is_anonymous:
-        headers.append('응답자')
+        headers.extend(['이름', '학번'])
     headers.append('응답 시간')
     headers.extend([question.question_text for question in questions])
     writer.writerow(headers)
@@ -1021,24 +1081,15 @@ def survey_results_export(request, survey_id):
         row = []
 
         if not survey.is_anonymous:
-            row.append(_user_display_name(response_obj.respondent))
+            respondent = response_obj.respondent
+            row.append(_user_real_name(respondent))
+            row.append(respondent.username if respondent else '')
 
-        row.append(timezone.localtime(response_obj.created_at).strftime('%Y-%m-%d %H:%M'))
+        row.append(_csv_dt(response_obj.created_at))
 
         for question in questions:
             answer = response_obj.answers.filter(question=question).first()
-            if answer:
-                if answer.choice:
-                    value = answer.choice.choice_text
-                elif answer.text_answer:
-                    value = answer.text_answer
-                elif answer.scale_answer:
-                    value = f"★ {answer.scale_answer}/5"
-                else:
-                    value = ''
-            else:
-                value = '(미응답)'
-            row.append(value)
+            row.append(_survey_answer_text(answer))
         writer.writerow(row)
 
     return http_response
@@ -1159,7 +1210,7 @@ def recruit_download_csv(request, form_id):
     writer.writerow(['이름', '학번', '학과', '연락처', '지원동기', '제출시간', '제출IP'])
 
     for app in applications:
-        local_time = timezone.localtime(app.submitted_at).strftime('%Y-%m-%d %H:%M:%S')
+        local_time = _csv_dt(app.submitted_at)
         writer.writerow([
             app.name,
             app.student_id,

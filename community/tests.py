@@ -368,7 +368,9 @@ class EmbeddedSurveyTestCase(TestCase):
     def setUp(self):
         self.staff_user = User.objects.create_user(username='staff_user', password='password123', is_staff=True)
         self.author_user = User.objects.create_user(username='author_user', password='password123')
-        self.normal_user = User.objects.create_user(username='normal_user', password='password123')
+        self.normal_user = User.objects.create_user(
+            username='normal_user', password='password123', last_name='홍', first_name='길동'
+        )
         self.client = Client()
 
     def test_post_creation_with_survey(self):
@@ -495,6 +497,36 @@ class EmbeddedSurveyTestCase(TestCase):
         response = self.client.get(export_url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8-sig')
+
+        # Real name + student id columns, and an Excel-safe timestamp (weekday keeps it text, not '###')
+        body = response.content.decode('utf-8-sig')
+        header, row = body.splitlines()[0], body.splitlines()[1]
+        self.assertTrue(header.startswith('이름,학번,응답 시간,'))
+        self.assertIn('홍 길동', row)
+        self.assertIn('normal_user', row)
+        self.assertRegex(row, r'\d{4}-\d{2}-\d{2}\([월화수목금토일]\) \d{2}:\d{2}')
+
+    def test_survey_results_api_lists_respondents(self):
+        from .models import CommunityPost, Survey, SurveyQuestion, SurveyQuestionChoice, SurveyResponse, SurveyAnswer
+        post = CommunityPost.objects.create(title='Post', content='Content', author=self.author_user)
+        survey = Survey.objects.create(post=post, title='Survey', created_by=self.author_user)
+        question = SurveyQuestion.objects.create(survey=survey, question_text='Q1', question_type='CHOICE', order=1)
+        choice = SurveyQuestionChoice.objects.create(question=question, choice_text='A', order=1)
+        response_obj = SurveyResponse.objects.create(survey=survey, respondent=self.normal_user)
+        SurveyAnswer.objects.create(response=response_obj, question=question, choice=choice)
+
+        self.client.login(username='staff_user', password='password123')
+        api_url = reverse('survey_results_api', kwargs={'survey_id': survey.id})
+        respondents = self.client.get(api_url).json()['respondents']
+        self.assertEqual(respondents['questions'], ['Q1'])
+        self.assertEqual(respondents['rows'][0]['name'], '홍 길동')
+        self.assertEqual(respondents['rows'][0]['username'], 'normal_user')
+        self.assertEqual(respondents['rows'][0]['answers'], ['A'])
+
+        # Anonymous surveys must not expose respondents
+        survey.is_anonymous = True
+        survey.save(update_fields=['is_anonymous'])
+        self.assertNotIn('respondents', self.client.get(api_url).json())
 
     def test_academic_board_restrictions(self):
         # 1. Normal users trying to post with 'academic' category should be restricted (coerced to 'free')
