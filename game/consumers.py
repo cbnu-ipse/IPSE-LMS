@@ -1,7 +1,12 @@
+import asyncio
 import json
 import time
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from channels.layers import get_channel_layer
+from django.utils import timezone
+
+from . import poker_engine
 
 LOBBY_GROUP = "lobby_chat"
 MAX_MESSAGE_LENGTH = 300  # 메시지 최대 길이 (글자)
@@ -114,4 +119,117 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
             pass
 
         return {"display_name": display_name, "picture_url": picture_url}
+
+
+# ── 포커 ──────────────────────────────────────────────────────────────────────
+
+POKER_GROUP = "poker_table"
+
+# ponytail: 단일 daphne 프로세스(entrypoint.sh에 -N 없음) 전제로, 워치독을
+# 프로세스당 asyncio 태스크 1개만 돌린다. 멀티 워커로 확장하면 Celery beat 등
+# 프로세스 독립적인 스케줄러로 옮겨야 한다.
+_watchdog_task = None
+
+
+async def _broadcast_poker_state():
+    channel_layer = get_channel_layer()
+    if channel_layer is not None:
+        await channel_layer.group_send(POKER_GROUP, {"type": "broadcast_state"})
+
+
+def _ensure_poker_watchdog():
+    global _watchdog_task
+    if _watchdog_task is None or _watchdog_task.done():
+        _watchdog_task = asyncio.create_task(_poker_watchdog_loop())
+
+
+async def _poker_watchdog_loop():
+    """턴 제한시간 / 다음 핸드 시작 시각을 감시하다가 처리한다.
+    마감시각이 바뀔 수 있으므로 최대 2초마다 다시 확인한다."""
+    global _watchdog_task
+    try:
+        while True:
+            deadline = await database_sync_to_async(poker_engine.next_deadline_at)()
+            if deadline is None:
+                return
+            wait = (deadline - timezone.now()).total_seconds()
+            if wait > 0:
+                await asyncio.sleep(min(wait, 2))
+                continue
+            await database_sync_to_async(poker_engine.process_due_deadlines)()
+            await _broadcast_poker_state()
+    finally:
+        _watchdog_task = None
+
+
+class PokerConsumer(AsyncWebsocketConsumer):
+    """포커 테이블(고정 1개) 실시간 WebSocket 컨슈머.
+    - 좌석마다 다른 정보(홀카드)가 보이므로 상태는 브로드캐스트 신호만 그룹으로
+      보내고, 각 연결이 자기 시점으로 get_state_for()를 다시 만들어 전송한다.
+    """
+
+    async def connect(self):
+        if not self.scope["user"].is_authenticated:
+            await self.close()
+            return
+        await self.channel_layer.group_add(POKER_GROUP, self.channel_name)
+        await self.accept()
+        _ensure_poker_watchdog()
+        await self._send_state()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(POKER_GROUP, self.channel_name)
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+
+        user = self.scope["user"]
+        msg_type = data.get("type")
+
+        # ponytail: 워치독은 단일 asyncio 태스크라 재기동(dev autoreload 등)으로
+        # 죽으면 실제 게임 액션이 있어야만 다시 살아났다. 하트비트(__ping__)를
+        # 포함해 모든 메시지에서 재기동을 시도해 다음 핸드/턴 마감이 방치되지
+        # 않도록 한다.
+        _ensure_poker_watchdog()
+
+        if msg_type == "sit":
+            handler = lambda: poker_engine.sit_down(user, data.get("seat_number"))
+        elif msg_type == "stand":
+            handler = lambda: poker_engine.stand_up(user)
+        elif msg_type == "action":
+            handler = lambda: poker_engine.player_action(user, data.get("action"), data.get("amount", 0))
+        elif msg_type == "buy_chips":
+            handler = lambda: poker_engine.buy_chips(user, data.get("leaves", 0))
+        elif msg_type == "cash_out_chips":
+            handler = lambda: poker_engine.cash_out_chips(user, data.get("chips", 0))
+        elif msg_type == "emoji":
+            handler = lambda: poker_engine.send_emoji(user, data.get("emoji"))
+        else:
+            return
+
+        ok, result = await database_sync_to_async(handler)()
+        if not ok:
+            await self.send(text_data=json.dumps({"type": "error", "message": result}, ensure_ascii=False))
+        elif msg_type == "emoji":
+            await self.channel_layer.group_send(
+                POKER_GROUP, {"type": "emoji_broadcast", "seat_number": result, "emoji": data.get("emoji")}
+            )
+        else:
+            await _broadcast_poker_state()
+
+    async def broadcast_state(self, event):
+        await self._send_state()
+
+    async def emoji_broadcast(self, event):
+        await self.send(text_data=json.dumps(
+            {"type": "emoji_reaction", "seat_number": event["seat_number"], "emoji": event["emoji"]},
+            ensure_ascii=False,
+        ))
+
+    async def _send_state(self):
+        state = await database_sync_to_async(poker_engine.get_state_for)(self.scope["user"])
+        await self.send(text_data=json.dumps(state, ensure_ascii=False))
 

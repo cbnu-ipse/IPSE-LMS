@@ -1,0 +1,1507 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 포커{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- 포커 테이블 -->
+        <div class="lg:col-span-9">
+            <div class="pk-outer">
+                <!-- 상태 바 -->
+                <div class="pk-stat-bar">
+                    <span class="pk-stat-chip"><i class="fa-solid fa-layer-group"></i> <span id="pk-hand-no">-</span>번째 핸드</span>
+                    <span class="pk-stat-chip" id="pk-round-chip"><i class="fa-solid fa-circle-info"></i> <span id="pk-round-label">대기 중</span></span>
+                    <span class="pk-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="pk-my-leaves">-</strong></span>
+                    <button type="button" id="pk-chip-exchange-btn" class="pk-stat-chip pk-chip-exchange-btn" onclick="openPkChipTab()" title="칩 충전/환전">
+                        <i class="fa-solid fa-coins"></i> 칩 환전
+                    </button>
+                    <button type="button" id="pk-sound-toggle" class="pk-sound-toggle" title="사운드 켜기/끄기">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                </div>
+
+                <!-- 테이블 -->
+                <div class="pk-table-wrap" id="pk-table-wrap">
+                    <div class="pk-table">
+                        <div class="pk-community">
+                            <div class="pk-pot">POT <span id="pk-pot">0</span></div>
+                            <div class="pk-board-cards" id="pk-community-cards"></div>
+                        </div>
+                        <div class="pk-seats" id="pk-seats">
+                            <div class="pk-seat" data-seat="0"></div>
+                            <div class="pk-seat" data-seat="1"></div>
+                            <div class="pk-seat" data-seat="2"></div>
+                            <div class="pk-seat" data-seat="3"></div>
+                            <div class="pk-seat" data-seat="4"></div>
+                            <div class="pk-seat" data-seat="5"></div>
+                        </div>
+                        <!-- 핸드 결과(5초) / 다음 핸드 카운트다운 — 항상 한 번에 하나만 표시 -->
+                        <div id="pk-center-msg" class="pk-center-msg hidden"></div>
+                    </div>
+                </div>
+
+                <!-- 하단 액션 바 -->
+                <div class="pk-action-bar" id="pk-action-bar">
+                    <div class="pk-hint">테이블에 앉으려면 빈 자리를 클릭하세요.</div>
+                </div>
+
+                <!-- 이모티콘 반응 -->
+                <div id="pk-emoji-bar" class="pk-emoji-bar hidden">
+                    <button type="button" class="pk-emoji-btn" data-emoji="👍">👍</button>
+                    <button type="button" class="pk-emoji-btn" data-emoji="😂">😂</button>
+                    <button type="button" class="pk-emoji-btn" data-emoji="😮">😮</button>
+                    <button type="button" class="pk-emoji-btn" data-emoji="😡">😡</button>
+                    <button type="button" class="pk-emoji-btn" data-emoji="🔥">🔥</button>
+                    <button type="button" class="pk-emoji-btn" data-emoji="❤️">❤️</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-3 mobile-hidden" id="pk-side-col">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'pk-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'pk-tab-chips')">
+                        <i class="fa-solid fa-coins"></i> 칩 관리
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="pk-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="pk-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                            연결 중...
+                        </span>
+                    </div>
+                    <div id="pk-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-center pt-4">아직 메시지가 없습니다.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input id="pk-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="pk-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 칩 관리 탭 -->
+                <div id="pk-tab-chips" class="gsp-pane" style="display:none">
+                    <div class="pk-chip-panel">
+                        <div class="pk-chip-rate"><i class="fa-solid fa-leaf" style="color:#059669"></i> 1 낙엽 = <span id="pk-chip-rate-num">-</span> 칩</div>
+                        <div class="pk-chip-row">
+                            <span>보유 낙엽</span>
+                            <strong id="pk-chip-my-leaves">-</strong>
+                        </div>
+                        <div class="pk-chip-row">
+                            <span>테이블 칩</span>
+                            <strong id="pk-chip-my-stack">-</strong>
+                        </div>
+                        <div class="pk-chip-row">
+                            <span>보관 칩</span>
+                            <strong id="pk-chip-my-wallet">-</strong>
+                        </div>
+                        <div id="pk-chip-buy" class="pk-chip-actions hidden">
+                            <label class="pk-chip-label">낙엽 → 칩 충전</label>
+                            <div class="pk-chip-input-row">
+                                <input type="number" id="pk-buy-chips-amount" class="pk-bet-input" min="1" value="10">
+                                <button type="button" id="pk-buy-chips-btn" class="pk-btn pk-btn-call">충전</button>
+                            </div>
+                        </div>
+                        <div id="pk-chip-sell" class="pk-chip-actions hidden">
+                            <label class="pk-chip-label">칩 → 낙엽 환전 (<span id="pk-chip-sell-unit">-</span>칩 단위로 환전, 나머지는 지갑에 보관)</label>
+                            <div class="pk-chip-input-row">
+                                <input type="number" id="pk-cash-out-amount" class="pk-bet-input" min="100" step="100" value="100">
+                            </div>
+                            <div class="pk-chip-btn-row">
+                                <button type="button" id="pk-cash-out-all-btn" class="pk-btn pk-btn-ghost">전액</button>
+                                <button type="button" id="pk-cash-out-btn" class="pk-btn pk-btn-call">환전</button>
+                            </div>
+                        </div>
+                        <div id="pk-chip-hint" class="pk-chip-hint">자리에서 일어나 있는 동안 낙엽을 칩으로 충전하고, 그 칩으로 앉을 수 있습니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="pk-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="togglePkChat()">
+    <i id="pk-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
+</section>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.gsp-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    font-size: .78rem;
+    color: #475569;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .4rem;
+    padding: .6rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── 상태 바 ─────────────────────────────────────────────────────── */
+.pk-stat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    flex-shrink: 0;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.pk-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.pk-sound-toggle:hover { color: #475569; }
+.pk-sound-toggle.muted { color: #cbd5e1; }
+.pk-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #64748b;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.pk-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pk-stat-chip i { color: #991b1b; font-size: .68rem; }
+.pk-chip-exchange-btn {
+    cursor: pointer;
+    color: #b45309;
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+.pk-chip-exchange-btn:hover { background: #fef3c7; }
+.pk-chip-exchange-btn i { color: #b45309; }
+
+/* ── 게임 외곽 ─────────────────────────────────────────────────────── */
+.pk-outer {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── 테이블 ──────────────────────────────────────────────────────── */
+.pk-table-wrap {
+    position: relative;
+    padding: 28px 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at 50% 40%, #134e2f 0%, #0b3320 70%, #082416 100%);
+    min-height: 460px;
+}
+.pk-table {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    aspect-ratio: 16 / 10;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, #1a5c3a 0%, #0f4429 75%);
+    border: 10px solid #5c3a21;
+    box-shadow: inset 0 0 40px rgba(0,0,0,.45), 0 10px 30px rgba(0,0,0,.35);
+}
+.pk-community {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.pk-pot {
+    color: #fef9c3;
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.pk-board-cards { display: flex; gap: 5px; }
+
+/* 카드 */
+.pk-card {
+    width: 34px; height: 48px;
+    border-radius: 6px;
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .86rem;
+    font-weight: 800;
+    color: #0f172a;
+    box-shadow: 0 2px 5px rgba(0,0,0,.3);
+    flex-shrink: 0;
+}
+.pk-card--red { color: #dc2626; }
+.pk-card--back {
+    background: repeating-linear-gradient(135deg, #4338ca, #4338ca 4px, #3730a3 4px, #3730a3 8px);
+    border: 1px solid rgba(255,255,255,.4);
+}
+.pk-card--placeholder {
+    background: rgba(255,255,255,.08);
+    border: 1px dashed rgba(255,255,255,.25);
+    box-shadow: none;
+}
+.pk-card--sm { width: 26px; height: 36px; font-size: .68rem; border-radius: 4px; }
+
+/* 새 핸드 시작 시 중앙 → 좌석으로 날아가는 카드 연출 */
+.pk-deal-card {
+    position: absolute;
+    width: 20px; height: 28px;
+    margin-left: -10px; margin-top: -14px;
+    border-radius: 4px;
+    background: repeating-linear-gradient(135deg, #4338ca, #4338ca 4px, #3730a3 4px, #3730a3 8px);
+    border: 1px solid rgba(255,255,255,.4);
+    box-shadow: 0 3px 8px rgba(0,0,0,.3);
+    z-index: 9;
+    pointer-events: none;
+    opacity: 0;
+    animation: pk-deal-fly .45s ease-out forwards;
+}
+@keyframes pk-deal-fly {
+    from { transform: translate(0, 0) scale(.7); opacity: 0; }
+    25% { opacity: 1; }
+    to { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; }
+}
+
+/* 내 카드 공개/비공개 토글 (어깨너머 훔쳐보기 방지) */
+.pk-eye-btn {
+    width: 30px; height: 30px;
+    border-radius: 999px;
+    border: 1px dashed rgba(255,255,255,.5);
+    background: rgba(15,23,42,.7);
+    color: #fff;
+    font-size: .75rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    align-self: center;
+}
+.pk-eye-btn:hover { background: rgba(15,23,42,.9); }
+
+/* 좌석 */
+.pk-seats { position: absolute; inset: 0; }
+.pk-seat {
+    position: absolute;
+    width: 118px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.pk-seat[data-seat="0"] { bottom: -8%; left: 50%; transform: translateX(-50%); }
+.pk-seat[data-seat="1"] { bottom: 6%; right: -6%; }
+.pk-seat[data-seat="2"] { top: 6%; right: -6%; }
+.pk-seat[data-seat="3"] { top: -8%; left: 50%; transform: translateX(-50%); }
+.pk-seat[data-seat="4"] { top: 6%; left: -6%; }
+.pk-seat[data-seat="5"] { bottom: 6%; left: -6%; }
+/* 위쪽 자리(2/3/4)는 앵커가 top이라 기본 방향(column)이면 카드→박스 순서로
+   테이블 중앙 쪽으로 쭉 밀려 내려온다. 박스가 위쪽 가장자리에 붙도록 뒤집는다. */
+.pk-seat[data-seat="2"], .pk-seat[data-seat="3"], .pk-seat[data-seat="4"] {
+    flex-direction: column-reverse;
+}
+
+.pk-empty-btn {
+    width: 56px; height: 56px;
+    border-radius: 999px;
+    border: 2px dashed rgba(255,255,255,.4);
+    background: rgba(255,255,255,.08);
+    color: rgba(255,255,255,.75);
+    font-size: .68rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+}
+.pk-empty-btn:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.7); }
+
+/* 좌석 박스: "앉기" 원 버튼 자리를 그대로 이어받는 원형 아바타 + 그 아래
+   이름/스택 라벨. 앉기 전/후에 같은 자리에 같은 크기의 원이 있다는 느낌을 준다. */
+.pk-seat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+.pk-seat-circle {
+    position: relative;
+    width: 56px; height: 56px;
+    border-radius: 999px;
+    background: #1e293b;
+    border: 2px solid rgba(255,255,255,.5);
+    box-shadow: 0 3px 10px rgba(0,0,0,.3);
+    flex-shrink: 0;
+}
+.pk-seat--turn .pk-seat-circle {
+    border-color: #facc15;
+    box-shadow: 0 0 0 3px rgba(250,204,21,.35), 0 3px 10px rgba(0,0,0,.3);
+}
+.pk-seat--winner .pk-seat-circle {
+    border-color: #facc15;
+    box-shadow: 0 0 0 3px rgba(250,204,21,.65), 0 0 18px rgba(250,204,21,.55);
+}
+.pk-seat--folded .pk-seat-circle { opacity: .45; }
+.pk-seat-cards { display: flex; align-items: center; gap: 3px; min-height: 31px; }
+.pk-seat-avatar {
+    width: 100%; height: 100%;
+    border-radius: 999px;
+    object-fit: cover;
+    display: block;
+}
+.pk-seat-label {
+    background: rgba(15,23,42,.72);
+    border-radius: 10px;
+    padding: 3px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    max-width: 100%;
+}
+.pk-seat-name {
+    color: #fff;
+    font-size: .68rem;
+    font-weight: 700;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pk-seat-stack {
+    color: #a7f3d0;
+    font-size: .68rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.pk-seat-bet {
+    position: absolute;
+    top: -14px; left: 50%;
+    transform: translateX(-50%);
+    background: #facc15;
+    color: #422006;
+    font-size: .6rem;
+    font-weight: 800;
+    padding: 1px 7px;
+    border-radius: 999px;
+    box-shadow: 0 2px 5px rgba(0,0,0,.25);
+    white-space: nowrap;
+}
+.pk-dealer-btn {
+    position: absolute;
+    top: -4px; right: -4px;
+    width: 20px; height: 20px;
+    border-radius: 999px;
+    background: #fff;
+    color: #0f172a;
+    font-size: .6rem;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,.3);
+}
+.pk-seat-tag {
+    font-size: .58rem;
+    font-weight: 800;
+    color: #fca5a5;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+.pk-seat-tag--allin { color: #fbbf24; }
+.pk-seat-turn-timer {
+    color: #facc15;
+    font-size: .62rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── 결과 배너(토스트에서 재사용) ──────────────────────────────────── */
+.pk-result-banner {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15,23,42,.88);
+    color: #fef9c3;
+    font-size: .74rem;
+    font-weight: 700;
+    padding: 7px 16px;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35);
+    z-index: 7;
+    text-align: center;
+    max-width: 90%;
+}
+.pk-result-banner.hidden { display: none; }
+
+/* ── 핸드 결과(5초) / 다음 핸드 카운트다운 ─────────────────────────
+   같은 자리에서 순서대로 교체 표시한다 — 동시에 겹쳐 뜨지 않는다. */
+.pk-center-msg {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    background: rgba(15,23,42,.9);
+    color: #fef9c3;
+    font-size: .78rem;
+    font-weight: 800;
+    padding: 10px 18px;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    text-align: center;
+    max-width: 85%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pk-center-msg.hidden { display: none; }
+.pk-center-msg-num {
+    font-size: 1.3rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── 이모티콘 반응 ───────────────────────────────────────────────── */
+.pk-emoji-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 20px 14px;
+    flex-wrap: wrap;
+}
+.pk-emoji-bar.hidden { display: none; }
+.pk-emoji-btn {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    width: 36px; height: 36px;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform .12s, background .12s;
+}
+.pk-emoji-btn:hover { background: #e2e8f0; transform: translateY(-1px); }
+.pk-emoji-btn:active { transform: scale(.92); }
+
+/* 누가 보냈는지 확실히 보이도록 아바타 원 바로 오른쪽에, 진짜 말풍선처럼
+   꼬리가 아바타 쪽을 가리키게 붙인다. 아바타(.pk-seat-circle)에 매달아
+   렌더링하므로 좌석이 위/아래 어느 줄에 있든 항상 같은 위치에 뜬다. */
+.pk-emoji-bubble {
+    position: absolute;
+    top: 50%; left: 100%;
+    transform: translateY(-50%) scale(.5);
+    margin-left: 8px;
+    font-size: 1.3rem;
+    line-height: 1;
+    background: rgba(255,255,255,.95);
+    border-radius: 999px;
+    padding: 5px 9px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    z-index: 8;
+    animation: pk-emoji-pop .18s ease-out forwards, pk-emoji-fade 2.4s ease-in forwards;
+    pointer-events: none;
+    white-space: nowrap;
+}
+.pk-emoji-bubble::after {
+    content: '';
+    position: absolute;
+    top: 50%; right: 100%;
+    transform: translateY(-50%);
+    border: 6px solid transparent;
+    border-right-color: rgba(255,255,255,.95);
+}
+@keyframes pk-emoji-pop {
+    from { transform: translateY(-50%) scale(.5); opacity: 0; }
+    to { transform: translateY(-50%) scale(1); opacity: 1; }
+}
+@keyframes pk-emoji-fade {
+    0%, 70% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* ── 버튼 ────────────────────────────────────────────────────────── */
+.pk-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 22px;
+    background: linear-gradient(135deg, #991b1b, #7f1d1d);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 16px rgba(153,27,27,0.35);
+}
+.pk-btn:hover { transform: translateY(-1px); }
+.pk-btn:active { transform: scale(0.97); }
+.pk-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.pk-btn-ghost {
+    background: #fff;
+    color: #475569;
+    box-shadow: none;
+    border: 1px solid #cbd5e1;
+}
+.pk-btn-ghost:hover { background: #f1f5f9; }
+.pk-btn-block { width: 100%; }
+.pk-btn-fold { background: linear-gradient(135deg, #475569, #334155); box-shadow: 0 6px 16px rgba(51,65,85,.35); }
+.pk-btn-call { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 6px 16px rgba(5,150,105,.35); }
+.pk-btn-raise { background: linear-gradient(135deg, #b45309, #92400e); box-shadow: 0 6px 16px rgba(180,83,9,.35); }
+
+/* ── 하단 액션 바 ────────────────────────────────────────────────── */
+.pk-action-bar {
+    padding: 14px 20px;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: 64px;
+}
+.pk-hint { color: #94a3b8; font-size: .8rem; text-align: center; }
+.pk-action-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.pk-turn-countdown {
+    font-weight: 800;
+    color: #dc2626;
+    font-variant-numeric: tabular-nums;
+    font-size: .85rem;
+}
+.pk-bet-input {
+    width: 90px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    font-size: .82rem;
+    font-weight: 700;
+    text-align: center;
+}
+.pk-chip-panel { padding: .9rem 1rem; display: flex; flex-direction: column; gap: 10px; }
+.pk-chip-rate {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .72rem; font-weight: 700; color: #64748b;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 6px 10px;
+}
+.pk-chip-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: .82rem; color: #475569; padding: 4px 2px;
+}
+.pk-chip-row strong { color: #1e293b; font-variant-numeric: tabular-nums; }
+.pk-chip-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.pk-chip-actions.hidden { display: none; }
+.pk-chip-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-top: 6px; }
+.pk-chip-input-row { display: flex; gap: 6px; }
+.pk-chip-input-row .pk-bet-input { flex: 1; width: auto; }
+.pk-chip-input-row .pk-btn { padding: 8px 14px; font-size: .76rem; }
+.pk-chip-btn-row { display: flex; gap: 6px; margin-top: 4px; }
+.pk-chip-btn-row .pk-btn { flex: 1; padding: 8px 4px; font-size: .76rem; white-space: nowrap; }
+.pk-chip-hint { color: #94a3b8; font-size: .74rem; text-align: center; padding: 8px 0; }
+
+/* ── 모바일 최적화 ───────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .pk-table-wrap { padding: 20px 12px; min-height: 380px; }
+    .pk-seat { width: 92px; }
+    .pk-seat-circle { width: 44px; height: 44px; }
+    .pk-card { width: 27px; height: 38px; font-size: .7rem; }
+    .pk-card--sm { width: 23px; height: 32px; font-size: .64rem; }
+    .pk-eye-btn { width: 24px; height: 24px; font-size: .62rem; }
+    .pk-stat-bar { font-size: .7rem; padding: 6px 10px; }
+    .pk-action-bar { padding: 10px 12px; }
+}
+
+/* ── 모바일 채팅/대기열 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #pk-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #pk-side-col .game-side-panel { height: 100% !important; }
+    #pk-side-col.mobile-hidden { display: none !important; }
+}
+/* ── 모바일 가로 모드: 테이블 풀스크린 + 스크롤 방지 ──────────────
+   CSS orientation 미디어쿼리는 iOS Safari 회전/URL바 변화 시
+   불안정하므로, JS가 body.pk-landscape 클래스로 결정적으로 제어 */
+body.pk-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.pk-landscape .pk-outer { border: none; border-radius: 0; box-shadow: none; }
+body.pk-landscape .pk-stat-bar { display: none; }
+body.pk-landscape .pk-table-wrap { padding: 4px; min-height: 0; }
+body.pk-landscape .pk-table { max-width: min(520px, 76vh, 92vw); }
+
+/* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ──────── */
+@media (max-width: 1023px) {
+    body:not(.pk-landscape) section.max-w-7xl {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-sizing: border-box;
+        min-height: 100dvh;
+        padding-top: 56px !important;
+    }
+}
+
+/* 게임 페이지에서는 사이트 푸터 숨김 */
+footer { display: none !important; }
+@media (max-width: 1023px) {
+    .pk-outer { overscroll-behavior: none; }
+}
+</style>
+
+<script src="{% static 'js/game-sound.js' %}"></script>
+<script>
+(function () {
+    const SEAT_COUNT = 6;
+    const seatsEl = Array.from({length: SEAT_COUNT}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
+    const communityEl = document.getElementById('pk-community-cards');
+    const potEl = document.getElementById('pk-pot');
+    const handNoEl = document.getElementById('pk-hand-no');
+    const roundLabelEl = document.getElementById('pk-round-label');
+    const myLeavesEl = document.getElementById('pk-my-leaves');
+    const actionBarEl = document.getElementById('pk-action-bar');
+    const centerMsgEl = document.getElementById('pk-center-msg');
+    const emojiBarEl = document.getElementById('pk-emoji-bar');
+    const chipLeavesEl = document.getElementById('pk-chip-my-leaves');
+    const chipStackEl = document.getElementById('pk-chip-my-stack');
+    const chipWalletEl = document.getElementById('pk-chip-my-wallet');
+    const chipBuyEl = document.getElementById('pk-chip-buy');
+    const chipSellEl = document.getElementById('pk-chip-sell');
+    const chipHintEl = document.getElementById('pk-chip-hint');
+    const buyChipsBtn = document.getElementById('pk-buy-chips-btn');
+    const cashOutBtn = document.getElementById('pk-cash-out-btn');
+    const cashOutAllBtn = document.getElementById('pk-cash-out-all-btn');
+    const chipRateNumEl = document.getElementById('pk-chip-rate-num');
+    const chipSellUnitEl = document.getElementById('pk-chip-sell-unit');
+    const cashOutAmountEl = document.getElementById('pk-cash-out-amount');
+    let chipsPerLeafShown = false; // 환전 단위(칩/낙엽)는 서버 값을 받은 뒤 최초 1회만 입력창 기본값을 채운다
+
+    const ROUND_LABELS = {
+        preflop: '프리플랍', flop: '플랍', turn: '턴', river: '리버', showdown: '쇼다운',
+    };
+    const RANK_LABELS = { T: '10' };
+    const SUIT_SYMBOLS = { S: '♠', H: '♥', D: '♦', C: '♣' };
+
+    let socket = null;
+    let heartbeatTimer = null;
+    let lastState = null;
+    let lastStateAt = 0;
+    let lastHandNumber = null;
+    let lastTurnSeat = null;
+    let centerMsgResultFor = null;
+    let centerMsgResultActive = false;
+    let centerMsgResultTimer = null;
+    let activeResultWinnerSeats = new Set(); // 결과 5초 창 동안 테두리 하이라이트할 좌석들
+    let myCardsRevealed = false; // 내 카드는 기본적으로 가려져 있다(어깨너머 훔쳐보기 방지)
+
+    function esc(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function cardHtml(card, small) {
+        const cls = 'pk-card' + (small ? ' pk-card--sm' : '');
+        if (!card) return `<span class="${cls} pk-card--placeholder"></span>`;
+        if (card === '??') return `<span class="${cls} pk-card--back"></span>`;
+        const rank = RANK_LABELS[card[0]] || card[0];
+        const suit = card[1];
+        const red = suit === 'H' || suit === 'D';
+        return `<span class="${cls}${red ? ' pk-card--red' : ''}">${rank}${SUIT_SYMBOLS[suit] || ''}</span>`;
+    }
+
+    function renderCommunity(cards) {
+        const slots = [];
+        for (let i = 0; i < 5; i++) slots.push(cardHtml(cards[i] || null));
+        communityEl.innerHTML = slots.join('');
+    }
+
+    function renderSeat(el, seat) {
+        el.classList.remove('pk-seat--turn', 'pk-seat--folded', 'pk-seat--winner');
+        if (seat.empty) {
+            el.innerHTML = `<button type="button" class="pk-empty-btn" data-sit="${seat.seat_number}">앉기</button>`;
+            return;
+        }
+        if (seat.is_turn) el.classList.add('pk-seat--turn');
+        if (seat.status === 'folded') el.classList.add('pk-seat--folded');
+        if (activeResultWinnerSeats.has(seat.seat_number)) el.classList.add('pk-seat--winner');
+
+        const hideOwnCards = seat.is_me && !myCardsRevealed;
+        const cardsHtml = (seat.hole_cards || []).map(c => cardHtml(hideOwnCards ? '??' : c, true)).join('');
+        const eyeBtn = seat.is_me && seat.hole_cards && seat.hole_cards.length
+            ? `<button type="button" class="pk-eye-btn" data-eye-toggle title="${myCardsRevealed ? '내 카드 가리기' : '내 카드 보기'}"><i class="fa-solid ${myCardsRevealed ? 'fa-eye-slash' : 'fa-eye'}"></i></button>`
+            : '';
+        const tag = seat.status === 'folded' ? '<div class="pk-seat-tag">폴드</div>'
+            : seat.status === 'all_in' ? '<div class="pk-seat-tag pk-seat-tag--allin">올인</div>'
+            : seat.status === 'out' ? '<div class="pk-seat-tag">대기</div>' : '';
+        const turnTimer = seat.is_turn && lastState && lastState.turn_seconds_left != null
+            ? `<div class="pk-seat-turn-timer"><span data-countdown="turn">${lastState.turn_seconds_left}</span>초</div>` : '';
+
+        // 아바타 원(.pk-seat-circle)은 앉기 전 "앉기" 버튼과 같은 위치/크기를 그대로
+        // 이어받는다 — 배팅액/딜러 배지도 원 모서리에 붙이고, 이모티콘 말풍선도
+        // 이 원을 기준으로 오른쪽에 띄운다(showEmojiBubble 참고).
+        el.innerHTML = `
+            <div class="pk-seat-cards">${cardsHtml}${eyeBtn}</div>
+            <div class="pk-seat-box">
+                <div class="pk-seat-circle">
+                    ${seat.current_bet > 0 ? `<span class="pk-seat-bet">${seat.current_bet}</span>` : ''}
+                    ${seat.is_dealer ? '<span class="pk-dealer-btn">D</span>' : ''}
+                    <img class="pk-seat-avatar" src="${esc(seat.picture)}" alt="">
+                </div>
+                <div class="pk-seat-label">
+                    <span class="pk-seat-name">${esc(seat.display_name)}${seat.is_me ? ' (나)' : ''}</span>
+                    <span class="pk-seat-stack">${seat.stack}</span>
+                    ${tag}
+                    ${turnTimer}
+                </div>
+            </div>`;
+    }
+
+    function fmtSecondsLeft(base, anchorMs) {
+        if (base == null) return null;
+        return Math.max(0, base - Math.floor((Date.now() - anchorMs) / 1000));
+    }
+
+    function tickCountdowns() {
+        if (!lastState) return;
+        document.querySelectorAll('[data-countdown]').forEach(el => {
+            const key = el.dataset.countdown;
+            const base = key === 'turn' ? lastState.turn_seconds_left
+                : key === 'next_hand' ? lastState.next_hand_seconds_left
+                : lastState.offer_seconds_left;
+            const secs = fmtSecondsLeft(base, lastStateAt);
+            el.textContent = secs != null ? secs : '';
+        });
+    }
+    setInterval(tickCountdowns, 1000);
+
+    function renderActionBar(state) {
+        if (state.my_seat_number == null) {
+            if (state.open_seats > 0) {
+                const walletChips = state.my_wallet_chips || 0;
+                if (walletChips < state.buy_in_chips) {
+                    actionBarEl.innerHTML = `<div class="pk-hint">앉으려면 보관 칩이 ${state.buy_in_chips}칩 이상 필요합니다. <button type="button" class="pk-btn pk-btn-call" onclick="openPkChipTab()">칩 충전하기</button></div>`;
+                } else {
+                    actionBarEl.innerHTML = `<div class="pk-hint">빈 자리를 클릭해 착석하세요. (바이인 ${state.buy_in_chips}칩)</div>`;
+                }
+            } else {
+                actionBarEl.innerHTML = `<div class="pk-hint">자리가 가득 찼습니다. 자리가 나면 먼저 클릭하는 사람이 앉습니다.</div>`;
+            }
+            return;
+        }
+
+        const mySeat = state.seats.find(s => s.seat_number === state.my_seat_number);
+        const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">일어나기</button>`];
+
+        if (state.turn_seat === state.my_seat_number && mySeat && mySeat.status === 'active') {
+            rows.push(`<span class="pk-turn-countdown"><span data-countdown="turn">${state.turn_seconds_left}</span>초</span>`);
+            rows.push(`<button type="button" class="pk-btn pk-btn-fold" data-action="fold">폴드</button>`);
+            if (state.can_check) {
+                rows.push(`<button type="button" class="pk-btn pk-btn-call" data-action="check">체크</button>`);
+            } else {
+                rows.push(`<button type="button" class="pk-btn pk-btn-call" data-action="call">콜 (${state.to_call})</button>`);
+            }
+            const isRaise = state.current_bet > 0;
+            const minAmount = isRaise ? state.min_raise_to : state.min_bet;
+            const maxAmount = mySeat.stack + mySeat.current_bet;
+            rows.push(`
+                <input type="number" id="pk-bet-amount" class="pk-bet-input" value="${Math.min(minAmount, maxAmount)}" min="${Math.min(minAmount, maxAmount)}" max="${maxAmount}" step="${state.small_blind}">
+                <button type="button" class="pk-btn pk-btn-raise" data-action="${isRaise ? 'raise' : 'bet'}">${isRaise ? '레이즈' : '베팅'}</button>
+            `);
+        } else if (state.table_status === 'playing') {
+            rows.push(`<div class="pk-hint">다른 사람의 턴입니다.</div>`);
+        } else if (state.next_hand_seconds_left != null) {
+            rows.push(`<div class="pk-hint">다음 핸드까지 <span data-countdown="next_hand">${state.next_hand_seconds_left}</span>초</div>`);
+        } else {
+            rows.push(`<div class="pk-hint">다른 플레이어를 기다리는 중입니다.</div>`);
+        }
+        actionBarEl.innerHTML = `<div class="pk-action-row">${rows.join('')}</div>`;
+    }
+
+    function renderChipPanel(state) {
+        chipLeavesEl.textContent = state.my_leaves != null ? state.my_leaves : '-';
+        chipRateNumEl.textContent = state.chips_per_leaf;
+        chipSellUnitEl.textContent = state.chips_per_leaf;
+        cashOutAmountEl.min = state.chips_per_leaf;
+        cashOutAmountEl.step = state.chips_per_leaf;
+        if (!chipsPerLeafShown) {
+            cashOutAmountEl.value = state.chips_per_leaf;
+            chipsPerLeafShown = true;
+        }
+        const seated = state.my_seat_number != null;
+        const walletChips = state.my_wallet_chips || 0;
+        chipStackEl.textContent = seated ? state.my_stack : '-';
+        chipWalletEl.textContent = state.my_wallet_chips != null ? walletChips : '-';
+        // 충전/환전 모두 자리에 앉아있지 않을 때만 가능 (게임 중 스택 빼돌리기 방지).
+        // 앉으려면 먼저 여기서 지갑에 칩을 채워둬야 한다.
+        chipBuyEl.classList.toggle('hidden', seated);
+        const canSell = !seated && walletChips > 0;
+        chipSellEl.classList.toggle('hidden', !canSell);
+        if (seated) {
+            chipHintEl.textContent = '충전/환전은 자리에서 일어난 후 할 수 있습니다.';
+            chipHintEl.classList.remove('hidden');
+        } else if (walletChips < state.buy_in_chips) {
+            chipHintEl.textContent = `자리에 앉으려면 보관 칩이 ${state.buy_in_chips}칩 이상 필요합니다. 낙엽을 칩으로 충전해주세요.`;
+            chipHintEl.classList.remove('hidden');
+        } else {
+            chipHintEl.classList.add('hidden');
+        }
+    }
+
+    // 핸드가 끝나면 결과를 테이블 중앙에 5초간 띄우고, 그 다음엔 같은 자리에
+    // 다음 핸드 카운트다운을 띄운다 — 항상 한쪽만 표시해 서로 겹치지 않는다.
+    function renderCenterMsg(state) {
+        const result = state.last_result;
+        const hasResult = result && result.winners && result.winners.length && result.hand_number != null;
+        // 새 핸드가 시작되면(다시 playing + preflop) 결과는 더 이상 최신이 아니다
+        const resultIsCurrent = hasResult
+            && !(state.table_status === 'playing' && state.round === 'preflop' && state.hand_number !== result.hand_number);
+
+        if (resultIsCurrent && result.hand_number !== centerMsgResultFor) {
+            centerMsgResultFor = result.hand_number;
+            centerMsgResultActive = true;
+            clearTimeout(centerMsgResultTimer);
+            centerMsgResultTimer = setTimeout(() => {
+                centerMsgResultActive = false;
+                if (lastState) render(lastState);
+            }, 5000);
+        } else if (!resultIsCurrent) {
+            centerMsgResultFor = null;
+            centerMsgResultActive = false;
+            clearTimeout(centerMsgResultTimer);
+        }
+
+        activeResultWinnerSeats = (resultIsCurrent && centerMsgResultActive)
+            ? new Set(result.winners.map(w => w.seat_number))
+            : new Set();
+
+        if (resultIsCurrent && centerMsgResultActive) {
+            const text = result.winners.map(w => `${esc(w.display_name)} +${w.amount}${w.hand_desc ? ` (${w.hand_desc})` : ''}`).join(', ');
+            centerMsgEl.textContent = `핸드 #${result.hand_number} 결과 — ${text}`;
+            centerMsgEl.classList.remove('hidden');
+        } else if (state.next_hand_seconds_left != null) {
+            centerMsgEl.innerHTML = `<span class="pk-center-msg-num" data-countdown="next_hand">${state.next_hand_seconds_left}</span>초 후 다음 핸드 시작`;
+            centerMsgEl.classList.remove('hidden');
+        } else {
+            centerMsgEl.classList.add('hidden');
+        }
+    }
+
+    function renderEmojiBar(state) {
+        emojiBarEl.classList.toggle('hidden', state.my_seat_number == null);
+    }
+
+    function render(state) {
+        handNoEl.textContent = state.hand_number || '-';
+        roundLabelEl.textContent = state.table_status === 'waiting'
+            ? (state.next_hand_seconds_left != null ? '다음 핸드 대기' : '대기 중')
+            : (ROUND_LABELS[state.round] || state.round);
+        myLeavesEl.textContent = state.my_leaves != null ? state.my_leaves : '-';
+        potEl.textContent = state.pot;
+
+        const isNewHand = state.hand_number !== lastHandNumber;
+        if (isNewHand) myCardsRevealed = false; // 새 핸드마다 다시 가림
+
+        // renderCenterMsg가 activeResultWinnerSeats를 채우므로, 좌석 하이라이트가
+        // 반영되도록 좌석을 그리기 전에 먼저 호출한다.
+        renderCenterMsg(state);
+        renderCommunity(state.community_cards || []);
+        state.seats.forEach(seat => renderSeat(seatsEl[seat.seat_number], seat));
+        renderActionBar(state);
+        renderChipPanel(state);
+        renderEmojiBar(state);
+
+        if (isNewHand && state.round === 'preflop') {
+            const occupiedSeats = state.seats.filter(s => !s.empty).map(s => s.seat_number);
+            playDealAnimation(occupiedSeats);
+        }
+
+        if (window.GameSound) {
+            if (state.my_seat_number != null && state.turn_seat === state.my_seat_number && state.turn_seat !== lastTurnSeat) {
+                window.GameSound.play('pop');
+            }
+            if (isNewHand && state.round === 'showdown') {
+                if (state.my_seat_number != null) {
+                    const myUsername = (state.seats.find(s => s.is_me) || {}).username;
+                    const won = state.last_result && state.last_result.winners
+                        && state.last_result.winners.some(w => w.username === myUsername);
+                    window.GameSound.play(won ? 'winSmall' : 'lose');
+                } else {
+                    window.GameSound.play('success');
+                }
+            }
+        }
+        lastTurnSeat = state.turn_seat;
+        lastHandNumber = state.hand_number;
+    }
+
+    function applyState(state) {
+        lastState = state;
+        lastStateAt = Date.now();
+        render(state);
+    }
+
+    function showToast(message) {
+        if (window.GameSound) window.GameSound.play('error');
+        const el = document.createElement('div');
+        el.className = 'pk-result-banner';
+        el.style.cssText = 'top:auto;bottom:12px;background:rgba(153,27,27,.92);';
+        el.textContent = message;
+        document.getElementById('pk-table-wrap').appendChild(el);
+        setTimeout(() => el.remove(), 3200);
+    }
+
+    function send(payload) {
+        if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+    }
+
+    function showEmojiBubble(seatNumber, emoji) {
+        const seatEl = seatsEl[seatNumber];
+        if (!seatEl) return;
+        // 아바타 원(.pk-seat-circle)에 매달아야 좌석 위치와 상관없이 항상
+        // "아바타 오른쪽"에 뜬다 — 빈 자리 등 아직 원이 없으면 무시한다.
+        const circleEl = seatEl.querySelector('.pk-seat-circle');
+        if (!circleEl) return;
+        const bubble = document.createElement('div');
+        bubble.className = 'pk-emoji-bubble';
+        bubble.textContent = emoji;
+        circleEl.appendChild(bubble);
+        setTimeout(() => bubble.remove(), 2400);
+    }
+
+    // 새 핸드가 시작될 때 테이블 중앙에서 각 좌석으로 카드가 날아가는 연출.
+    // 실제 카드 값과 무관한 순수 시각 효과라 서버 데이터 없이 재생 가능하다.
+    function playDealAnimation(seatNumbers) {
+        const tableEl = document.querySelector('.pk-table');
+        if (!tableEl) return;
+        const tableRect = tableEl.getBoundingClientRect();
+        const cx = tableRect.width / 2;
+        const cy = tableRect.height / 2;
+        seatNumbers.forEach((seatNum, i) => {
+            const seatEl = seatsEl[seatNum];
+            if (!seatEl) return;
+            const seatRect = seatEl.getBoundingClientRect();
+            const dx = (seatRect.left + seatRect.width / 2) - tableRect.left - cx;
+            const dy = (seatRect.top + seatRect.height / 2) - tableRect.top - cy;
+            for (let c = 0; c < 2; c++) {
+                const card = document.createElement('div');
+                card.className = 'pk-deal-card';
+                card.style.left = cx + 'px';
+                card.style.top = cy + 'px';
+                card.style.setProperty('--dx', dx + 'px');
+                card.style.setProperty('--dy', dy + 'px');
+                const delay = i * 60 + c * 90;
+                card.style.animationDelay = `${delay}ms`;
+                tableEl.appendChild(card);
+                setTimeout(() => card.remove(), delay + 500);
+            }
+        });
+    }
+
+    emojiBarEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('.pk-emoji-btn');
+        if (!btn) return;
+        if (window.GameSound) window.GameSound.play('click');
+        send({ type: 'emoji', emoji: btn.dataset.emoji });
+    });
+
+    // ── 클릭 위임 ────────────────────────────────────────────────
+    document.getElementById('pk-seats').addEventListener('click', (e) => {
+        if (!e.target.closest('[data-eye-toggle]')) return;
+        myCardsRevealed = !myCardsRevealed;
+        if (window.GameSound) window.GameSound.play('tap');
+        if (lastState) render(lastState);
+    });
+    document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
+        const sitBtn = e.target.closest('[data-sit]');
+        if (!sitBtn) return;
+        if (window.GameSound) window.GameSound.play('click');
+        send({ type: 'sit', seat_number: Number(sitBtn.dataset.sit) });
+    });
+    actionBarEl.addEventListener('click', (e) => {
+        if (e.target.id === 'pk-stand-btn') {
+            if (window.GameSound) window.GameSound.play('tap');
+            send({ type: 'stand' });
+            return;
+        }
+        const actionBtn = e.target.closest('[data-action]');
+        if (!actionBtn) return;
+        const action = actionBtn.dataset.action;
+        if (window.GameSound) {
+            window.GameSound.play(action === 'fold' ? 'tap' : (action === 'bet' || action === 'raise') ? 'pop' : 'click');
+        }
+        if (action === 'bet' || action === 'raise') {
+            const amountInput = document.getElementById('pk-bet-amount');
+            send({ type: 'action', action, amount: Number(amountInput.value) });
+        } else {
+            send({ type: 'action', action });
+        }
+    });
+    buyChipsBtn.addEventListener('click', () => {
+        if (window.GameSound) window.GameSound.play('click');
+        send({ type: 'buy_chips', leaves: Number(document.getElementById('pk-buy-chips-amount').value) });
+    });
+    cashOutBtn.addEventListener('click', () => {
+        if (window.GameSound) window.GameSound.play('click');
+        send({ type: 'cash_out_chips', chips: Number(document.getElementById('pk-cash-out-amount').value) });
+    });
+    cashOutAllBtn.addEventListener('click', () => {
+        if (window.GameSound) window.GameSound.play('click');
+        const walletChips = (lastState && lastState.my_wallet_chips) || 0;
+        document.getElementById('pk-cash-out-amount').value = walletChips;
+        send({ type: 'cash_out_chips', chips: walletChips });
+    });
+
+    // ── 모바일 가로모드 여부를 body 클래스로 반영 ──
+    function isLandscapeMode() {
+        return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+    }
+    function applyLandscapeMode() {
+        document.body.classList.toggle('pk-landscape', isLandscapeMode());
+    }
+    applyLandscapeMode();
+    window.addEventListener('resize', applyLandscapeMode);
+    window.addEventListener('orientationchange', () => setTimeout(applyLandscapeMode, 120));
+
+    // ── 사운드 음소거 토글 ────────────────────────────────────────
+    (function () {
+        const btn = document.getElementById('pk-sound-toggle');
+        if (!btn) return;
+        const icon = btn.querySelector('i');
+        function renderMute() {
+            const isMuted = window.GameSound && window.GameSound.isMuted();
+            btn.classList.toggle('muted', !!isMuted);
+            icon.className = isMuted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+        }
+        btn.addEventListener('click', () => {
+            if (window.GameSound) window.GameSound.toggleMute();
+            renderMute();
+        });
+        renderMute();
+    })();
+
+    // ── 포커 테이블 WebSocket ───────────────────────────────────────
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${wsProto}://${location.host}/ws/poker/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen = () => {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => send({ type: '__ping__' }), HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.type === 'error') {
+                showToast(data.message);
+            } else if (data.type === 'state') {
+                applyState(data);
+            } else if (data.type === 'emoji_reaction') {
+                showEmojiBubble(data.seat_number, data.emoji);
+            }
+        };
+        socket.onclose = () => { clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
+    }
+    connect();
+})();
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+}
+
+function openPkChipTab() {
+    const chipsTabBtn = document.querySelector('.gsp-tab[onclick*="pk-tab-chips"]');
+    if (chipsTabBtn) gspSwitch(chipsTabBtn, 'pk-tab-chips');
+    const col = document.getElementById('pk-side-col');
+    if (col && col.classList.contains('mobile-hidden')) togglePkChat();
+}
+
+function togglePkChat() {
+    const col  = document.getElementById('pk-side-col');
+    const icon = document.getElementById('pk-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('pk-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+</script>
+
+<script>
+// ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
+(function () {
+    const box   = document.getElementById('pk-chat-messages');
+    const input = document.getElementById('pk-chat-input');
+    const btn   = document.getElementById('pk-chat-send');
+    const badge = document.getElementById('pk-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let socket = null;
+    let heartbeatTimer = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 연결됨';
+            input.disabled  = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...';
+            input.disabled  = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function append(name, message, time, isSystem, pictureUrl) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+
+        const d = document.createElement('div');
+        if (isSystem) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            const avatar = pictureUrl
+                ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if (data.error) {
+                append('SYSTEM', data.message, '', true, '');
+            } else {
+                append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            }
+        };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-top-pills {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.15s;
+  }
+  #game-top-pills.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-pill {
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  .game-quick-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    color: #374151;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.15s;
+  }
+  .game-quick-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    var topPills = document.createElement('div');
+    topPills.id = 'game-top-pills';
+    document.body.appendChild(topPills);
+
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    topPills.appendChild(pill);
+
+    var lobbyBtn = document.createElement('a');
+    lobbyBtn.href = "{% url 'game_lobby' %}";
+    lobbyBtn.className = 'game-quick-pill';
+    lobbyBtn.title = '게임 로비로 이동';
+    lobbyBtn.innerHTML = '<i class="fa-solid fa-house"></i>';
+    topPills.appendChild(lobbyBtn);
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      topPills.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      topPills.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        topPills.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        topPills.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
+})();
+</script>
+{% endblock %}
