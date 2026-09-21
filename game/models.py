@@ -360,9 +360,11 @@ class PatternRecallScore(models.Model):
 
 POKER_SEATS = 6
 POKER_CHIPS_PER_LEAF = 1000  # 1낙엽 = 1000칩 환전 비율
-POKER_BUY_IN_LEAVES = 200  # 바이인 시 차감되는 낙엽 수
-POKER_SMALL_BLIND = 5 * POKER_CHIPS_PER_LEAF   # 이하 값들은 전부 칩 단위
-POKER_BIG_BLIND = 10 * POKER_CHIPS_PER_LEAF
+POKER_BUY_IN_LEAVES = 5  # 바이인 시 차감되는 낙엽 수 (5낙엽 = 5000칩)
+# 블라인드는 전체 재화 스코프를 낮추기 위해 낙엽 환전 비율과 무관하게
+# 칩 단위 소액으로 직접 고정한다 (첫 콜 금액 = 빅블라인드 5칩).
+POKER_SMALL_BLIND = 2
+POKER_BIG_BLIND = 5
 POKER_BUY_IN = POKER_BUY_IN_LEAVES * POKER_CHIPS_PER_LEAF
 
 
