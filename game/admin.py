@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore
+from .models import (
+    SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
+    PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
+)
 
 
 @admin.register(GameSeason)
@@ -59,3 +62,31 @@ class PatternRecallScoreAdmin(admin.ModelAdmin):
     list_filter = ("played_at",)
     search_fields = ("user__username",)
     ordering = ("-score",)
+
+
+@admin.register(PokerTable)
+class PokerTableAdmin(admin.ModelAdmin):
+    list_display = ("id", "status", "round", "hand_number", "pot", "current_turn_seat", "updated_at")
+    readonly_fields = ("updated_at",)
+
+
+@admin.register(PokerSeat)
+class PokerSeatAdmin(admin.ModelAdmin):
+    list_display = ("table", "seat_number", "user", "stack", "status", "joined_at")
+    list_filter = ("status",)
+    search_fields = ("user__username",)
+    ordering = ("table", "seat_number")
+
+
+@admin.register(PokerHandLog)
+class PokerHandLogAdmin(admin.ModelAdmin):
+    list_display = ("table", "hand_number", "pot", "ended_at")
+    search_fields = ()
+    ordering = ("-ended_at",)
+
+
+@admin.register(PokerChipWallet)
+class PokerChipWalletAdmin(admin.ModelAdmin):
+    list_display = ("user", "chips")
+    search_fields = ("user__username",)
+    ordering = ("-chips",)

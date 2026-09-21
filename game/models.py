@@ -348,3 +348,127 @@ class PatternRecallScore(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.score}점 (Lv.{self.level})"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 온라인 포커 (텍사스 홀덤, 6인 고정 테이블 1개)
+#
+# 다른 미니게임과 달리 플레이어끼리 낙엽을 걸고 뺏고 따는 제로섬 베팅이라
+# 별도의 시즌 랭킹/점수 모델이 아닌, 실시간 테이블 상태를 DB에 영속화하는
+# 구조로 만든다. 실제 상태머신 로직은 game/poker_engine.py 에 있다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+POKER_SEATS = 6
+POKER_CHIPS_PER_LEAF = 1000  # 1낙엽 = 1000칩 환전 비율
+POKER_BUY_IN_LEAVES = 200  # 바이인 시 차감되는 낙엽 수
+POKER_SMALL_BLIND = 5 * POKER_CHIPS_PER_LEAF   # 이하 값들은 전부 칩 단위
+POKER_BIG_BLIND = 10 * POKER_CHIPS_PER_LEAF
+POKER_BUY_IN = POKER_BUY_IN_LEAVES * POKER_CHIPS_PER_LEAF
+
+
+class PokerTable(models.Model):
+    """싱글턴 테이블 — pk=1 인 행만 존재한다 (방 1개 고정)."""
+    STATUS_CHOICES = [("waiting", "대기 중"), ("playing", "진행 중")]
+    ROUND_CHOICES = [
+        ("preflop", "프리플랍"), ("flop", "플랍"), ("turn", "턴"),
+        ("river", "리버"), ("showdown", "쇼다운"),
+    ]
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="waiting")
+    round = models.CharField(max_length=10, choices=ROUND_CHOICES, default="preflop")
+    dealer_seat = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="딜러 버튼 자리")
+    current_turn_seat = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="현재 차례 자리")
+    turn_deadline = models.DateTimeField(null=True, blank=True, verbose_name="현재 차례 제한시각")
+    next_hand_at = models.DateTimeField(null=True, blank=True, verbose_name="다음 핸드 시작 예정시각")
+    pot = models.PositiveIntegerField(default=0, verbose_name="팟")
+    current_bet = models.PositiveIntegerField(default=0, verbose_name="현재 스트리트 콜 금액")
+    min_raise = models.PositiveIntegerField(default=POKER_BIG_BLIND, verbose_name="최소 레이즈 단위")
+    community_cards = models.JSONField(default=list, blank=True, verbose_name="커뮤니티 카드")
+    deck = models.JSONField(default=list, blank=True, verbose_name="남은 덱 (서버 전용)")
+    hand_number = models.PositiveIntegerField(default=0, verbose_name="핸드 번호")
+    last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 핸드 결과 요약")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "포커 테이블"
+        verbose_name_plural = "포커 테이블"
+
+    def __str__(self):
+        return f"포커 테이블 ({self.get_status_display()})"
+
+    @classmethod
+    def get_solo(cls):
+        """싱글턴 테이블과 6개 좌석을 보장해서 반환한다."""
+        table, _ = cls.objects.get_or_create(pk=1)
+        existing = set(table.seats.values_list("seat_number", flat=True))
+        missing = [n for n in range(POKER_SEATS) if n not in existing]
+        if missing:
+            PokerSeat.objects.bulk_create([
+                PokerSeat(table=table, seat_number=n) for n in missing
+            ])
+        return table
+
+
+class PokerSeat(models.Model):
+    STATUS_CHOICES = [
+        ("empty", "빈 자리"), ("active", "참여 중"), ("folded", "폴드"),
+        ("all_in", "올인"), ("out", "이번 핸드 미참여"),
+    ]
+    table = models.ForeignKey(PokerTable, on_delete=models.CASCADE, related_name="seats")
+    seat_number = models.PositiveSmallIntegerField(verbose_name="자리 번호")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="poker_seats", verbose_name="사용자"
+    )
+    stack = models.PositiveIntegerField(default=0, verbose_name="보유 스택")
+    current_bet = models.PositiveIntegerField(default=0, verbose_name="이번 스트리트 베팅액")
+    contributed_total = models.PositiveIntegerField(default=0, verbose_name="이번 핸드 누적 베팅액")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="empty")
+    hole_cards = models.JSONField(default=list, blank=True, verbose_name="홀 카드")
+    has_acted_this_street = models.BooleanField(default=False)
+    consecutive_timeouts = models.PositiveSmallIntegerField(default=0, verbose_name="연속 시간초과 횟수")
+    leaving_after_hand = models.BooleanField(default=False, verbose_name="핸드 종료 후 퇴장 예정")
+    joined_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["seat_number"]
+        unique_together = [("table", "seat_number")]
+        verbose_name = "포커 좌석"
+        verbose_name_plural = "포커 좌석 목록"
+
+    def __str__(self):
+        who = self.user.username if self.user_id else "빈 자리"
+        return f"{self.seat_number}번 - {who}"
+
+
+class PokerHandLog(models.Model):
+    """낙엽 이동 자체는 LeafTransaction 원장이 기록하므로, 여기서는 핸드 결과만 남긴다."""
+    table = models.ForeignKey(PokerTable, on_delete=models.CASCADE, related_name="hand_logs")
+    hand_number = models.PositiveIntegerField()
+    pot = models.PositiveIntegerField()
+    community_cards = models.JSONField(default=list, blank=True)
+    winners = models.JSONField(default=list, blank=True)  # [{"username", "amount", "hand_desc", "seat_number"}]
+    ended_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ended_at"]
+        verbose_name = "포커 핸드 기록"
+        verbose_name_plural = "포커 핸드 기록 목록"
+
+    def __str__(self):
+        return f"#{self.hand_number} - 팟 {self.pot}"
+
+
+class PokerChipWallet(models.Model):
+    """자리에서 일어날 때 칩을 낙엽으로 강제 환급하지 않고 여기 보관한다.
+    좌석에 앉아있지 않아도 언제든 이 잔액을 낙엽으로 환전할 수 있다."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="poker_wallet"
+    )
+    chips = models.PositiveIntegerField(default=0, verbose_name="보관 칩")
+
+    class Meta:
+        verbose_name = "포커 칩 지갑"
+        verbose_name_plural = "포커 칩 지갑 목록"
+
+    def __str__(self):
+        return f"{self.user} - {self.chips}칩"

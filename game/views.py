@@ -368,6 +368,13 @@ def slot_ranking(request):
 
 
 @login_required
+def poker_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    chat_messages = list(latest)[::-1]
+    return render(request, "game/poker.html", {"title": "포커", "chat_messages": chat_messages})
+
+
+@login_required
 def game_ranking_view(request):
     """게임 서브도메인 전용 랭킹 페이지."""
     board = request.GET.get("board", "slot_game").strip()

@@ -19,6 +19,7 @@ urlpatterns = [
     path("pattern-recall/", views.pattern_recall_view, name="pattern_recall"),
     path("pattern-recall/score/", views.save_pattern_recall_score, name="pattern_recall_score"),
     path("pattern-recall/ranking/", views.pattern_recall_ranking, name="pattern_recall_ranking"),
+    path("poker/", views.poker_view, name="poker"),
     path("slot/ranking/", views.slot_ranking, name="slot_ranking"),
     path("ranking/", views.game_ranking_view, name="game_ranking"),
     path("season-reward/dismiss/", views.dismiss_season_reward, name="season_reward_dismiss"),
