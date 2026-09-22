@@ -708,6 +708,12 @@ def process_due_deadlines():
             seat = seats_by_number.get(table.current_turn_seat)
             if seat and seat.status == "active":
                 _handle_turn_timeout(table, seats_by_number, seat)
+            else:
+                # 턴을 가진 좌석이 (관리자가 자리를 강제로 비우는 등) 도중에
+                # active가 아니게 되면 아무도 액션할 수 없는데 turn_deadline만
+                # 과거에 남아 게임이 영원히 멈춘다 — 다음 액션 가능한 사람에게
+                # 턴을 넘겨 복구한다.
+                _resolve_turn(table, seats_by_number, table.current_turn_seat)
 
         if table.status == "waiting" and table.next_hand_at and now >= table.next_hand_at:
             _deal_new_hand(table)
