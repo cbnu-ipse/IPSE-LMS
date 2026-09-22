@@ -15,8 +15,8 @@
                 <div class="hl-stat-bar">
                     <i class="fa-solid fa-coins text-amber-400 text-xs"></i>
                     <span id="hl-chips-badge" class="font-bold">{{ chips }}</span>칩
-                    <button type="button" id="hl-charge-toggle" class="hl-charge-toggle" title="낙엽을 칩으로 충전">
-                        <i class="fa-solid fa-plus"></i> 충전
+                    <button type="button" id="hl-chip-exchange-btn" class="hl-chip-exchange-btn" onclick="openHlChipTab()" title="칩 충전/환전">
+                        <i class="fa-solid fa-right-left"></i> 칩 환전
                     </button>
                     <span class="text-slate-600/40 mx-2">|</span>
                     <i class="fa-solid fa-fire text-orange-400 text-xs"></i>
@@ -24,15 +24,6 @@
                     <button type="button" id="hl-sound-toggle" class="hl-sound-toggle" title="사운드 켜기/끄기">
                         <i class="fa-solid fa-volume-high"></i>
                     </button>
-                </div>
-
-                <!-- 낙엽→칩 충전 패널 (포커와 공유하는 칩 지갑) -->
-                <div id="hl-charge-panel" class="hl-charge-panel hidden">
-                    <span class="hl-charge-label">내 낙엽 <strong id="hl-my-leaves">{{ request.user.leaves }}</strong>개 · 1낙엽 = {{ chips_per_leaf }}칩</span>
-                    <div class="hl-charge-row">
-                        <input type="number" id="hl-charge-input" min="1" value="1" class="hl-charge-input">
-                        <button type="button" id="hl-charge-submit" class="hl-charge-submit">충전</button>
-                    </div>
                 </div>
 
                 <!-- 테이블 본체 -->
@@ -92,15 +83,15 @@
             </div><!-- /.hl-outer -->
         </div><!-- lg:col-span-9 -->
 
-        <!-- RIGHT: 채팅 + 랭킹 탭 -->
+        <!-- RIGHT: 채팅 + 칩 관리 탭 -->
         <div class="lg:col-span-3 mobile-hidden" id="hl-side-col" style="position:sticky;top:6rem">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'hl-tab-chat')">
                         <i class="fa-solid fa-comments"></i> 채팅
                     </button>
-                    <button class="gsp-tab" onclick="gspSwitch(this,'hl-tab-rank')">
-                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    <button class="gsp-tab" onclick="gspSwitch(this,'hl-tab-chips')">
+                        <i class="fa-solid fa-coins"></i> 칩 관리
                     </button>
                 </div>
 
@@ -136,10 +127,35 @@
                     </div>
                 </div>
 
-                <!-- 랭킹 탭 -->
-                <div id="hl-tab-rank" class="gsp-pane" style="display:none">
-                    <div id="hl-ranking-list" class="gsp-ranking">
-                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                <!-- 칩 관리 탭 (포커와 공유하는 칩 지갑) -->
+                <div id="hl-tab-chips" class="gsp-pane" style="display:none">
+                    <div class="hl-chip-panel">
+                        <div class="hl-chip-rate"><i class="fa-solid fa-leaf" style="color:#059669"></i> 1 낙엽 = <span id="hl-chip-rate-num">{{ chips_per_leaf }}</span> 칩</div>
+                        <div class="hl-chip-row">
+                            <span>보유 낙엽</span>
+                            <strong id="hl-chip-my-leaves">{{ request.user.leaves }}</strong>
+                        </div>
+                        <div class="hl-chip-row">
+                            <span>보관 칩</span>
+                            <strong id="hl-chip-my-wallet">{{ chips }}</strong>
+                        </div>
+                        <div class="hl-chip-actions">
+                            <label class="hl-chip-label">낙엽 → 칩 충전</label>
+                            <div class="hl-chip-input-row">
+                                <input type="number" id="hl-buy-chips-amount" class="hl-chip-input" min="1" value="10">
+                                <button type="button" id="hl-buy-chips-btn" class="hl-chip-btn">충전</button>
+                            </div>
+                        </div>
+                        <div class="hl-chip-actions">
+                            <label class="hl-chip-label">칩 → 낙엽 환전 (<span id="hl-chip-sell-unit">{{ chips_per_leaf }}</span>칩 단위로 환전, 나머지는 지갑에 보관)</label>
+                            <div class="hl-chip-input-row">
+                                <input type="number" id="hl-cash-out-amount" class="hl-chip-input" min="{{ chips_per_leaf }}" step="{{ chips_per_leaf }}" value="{{ chips_per_leaf }}">
+                            </div>
+                            <div class="hl-chip-btn-row">
+                                <button type="button" id="hl-cash-out-all-btn" class="hl-chip-btn hl-chip-btn--ghost">전액</button>
+                                <button type="button" id="hl-cash-out-btn" class="hl-chip-btn hl-chip-btn--buy">환전</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -218,7 +234,6 @@
     border-top: 1px solid #f1f5f9;
     flex-shrink: 0;
 }
-.gsp-ranking { flex: 1; overflow-y: auto; }
 /* ── 컴팩트 상태 바 ────────────────────────────── */
 .hl-stat-bar {
     display: flex;
@@ -242,7 +257,7 @@
 }
 .hl-sound-toggle:hover { color: #e2e8f0; }
 .hl-sound-toggle.muted { color: #64748b; }
-.hl-charge-toggle {
+.hl-chip-exchange-btn {
     display: inline-flex;
     align-items: center;
     gap: 3px;
@@ -256,42 +271,56 @@
     cursor: pointer;
     line-height: 1.4;
 }
-.hl-charge-toggle:hover { background: rgba(6,182,212,0.2); }
-.hl-charge-panel {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: .5rem 1rem;
-    background: rgba(6,182,212,0.06);
-    border-bottom: 1px solid rgba(255,255,255,.08);
-    font-size: .68rem;
-    color: #94a3b8;
+.hl-chip-exchange-btn:hover { background: rgba(6,182,212,0.2); }
+/* ── 칩 관리 탭 (포커와 동일한 구조) ─────────────────────────────── */
+.hl-chip-panel { padding: .9rem 1rem; display: flex; flex-direction: column; gap: 10px; }
+.hl-chip-rate {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .72rem; font-weight: 700; color: #64748b;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 6px 10px;
 }
-.hl-charge-label strong { color: #e2e8f0; }
-.hl-charge-row { display: flex; gap: 6px; }
-.hl-charge-input {
-    width: 84px;
-    padding: 4px 8px;
-    border-radius: 8px;
-    border: 1px solid #334155;
-    background: #0a0f1e;
-    color: #e2e8f0;
-    font-size: .72rem;
+.hl-chip-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: .82rem; color: #475569; padding: 4px 2px;
+}
+.hl-chip-row strong { color: #1e293b; font-variant-numeric: tabular-nums; }
+.hl-chip-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.hl-chip-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-top: 6px; }
+.hl-chip-input-row { display: flex; gap: 6px; }
+.hl-chip-input-row .hl-chip-input { flex: 1; width: auto; }
+.hl-chip-input {
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    font-size: .82rem;
     font-weight: 700;
+    text-align: center;
 }
-.hl-charge-submit {
-    padding: 4px 12px;
-    border-radius: 8px;
+.hl-chip-btn-row { display: flex; gap: 6px; margin-top: 4px; }
+.hl-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    background: linear-gradient(135deg, #059669, #047857);
+    color: white;
     border: none;
-    background: linear-gradient(135deg, #06b6d4, #0891b2);
-    color: #fff;
-    font-size: .68rem;
-    font-weight: 800;
+    border-radius: 10px;
+    font-size: .76rem;
+    font-weight: 700;
     cursor: pointer;
+    white-space: nowrap;
 }
-.hl-charge-submit:hover { filter: brightness(1.1); }
+.hl-chip-btn:hover { filter: brightness(1.1); }
+.hl-chip-btn--ghost {
+    flex: 1;
+    background: #fff;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+.hl-chip-btn--ghost:hover { background: #f1f5f9; filter: none; }
+.hl-chip-btn--buy { flex: 1; }
 /* ── 전체 컨테이너 ─────────────────────────────── */
 .hl-outer {
     width: 100%;
@@ -587,7 +616,8 @@ const betAreaEl   = document.getElementById('hl-bet-area');
 const resultBannerEl = document.getElementById('hl-result-banner');
 const streakBadgeEl  = document.getElementById('hl-streak-badge');
 const chipsBadgeEl   = document.getElementById('hl-chips-badge');
-const myLeavesEl     = document.getElementById('hl-my-leaves');
+const chipMyLeavesEl = document.getElementById('hl-chip-my-leaves');
+const chipMyWalletEl = document.getElementById('hl-chip-my-wallet');
 const payoutAmountEl = document.getElementById('hl-payout-amount');
 const btnHigher = document.getElementById('hl-btn-higher');
 const btnLower  = document.getElementById('hl-btn-lower');
@@ -608,9 +638,14 @@ function paintCard(rank) {
 function fmtMult(m) { return m == null ? '' : `x${m.toFixed(2)}`; }
 
 function updateNavLeaves(leaves) {
-    myLeavesEl.textContent = leaves;
+    chipMyLeavesEl.textContent = leaves;
     const navLeaf = document.querySelector('[title="낙엽 잔액"] span');
     if (navLeaf) navLeaf.textContent = leaves;
+}
+
+function updateChips(chips) {
+    chipsBadgeEl.textContent = chips;
+    chipMyWalletEl.textContent = chips;
 }
 
 function render() {
@@ -668,10 +703,9 @@ async function hlStart() {
     try {
         const data = await hlPost('start', { bet });
         hlState = data;
-        chipsBadgeEl.textContent = data.chips;
+        updateChips(data.chips);
         render();
         if (window.GameSound) window.GameSound.play('click');
-        loadHlRanking();
     } catch (err) {
         window.showToast(err.message, 'error');
     } finally {
@@ -735,7 +769,7 @@ async function hlCashout() {
     btnCashout.disabled = true;
     try {
         const data = await hlPost('cashout');
-        chipsBadgeEl.textContent = data.chips;
+        updateChips(data.chips);
         resultBannerEl.className = 'hl-result-banner win';
         resultBannerEl.textContent = `🎉 캐시아웃 완료! ${data.streak}연속으로 ${data.payout}칩을 획득했습니다.`;
         resultBannerEl.classList.remove('hidden');
@@ -744,7 +778,6 @@ async function hlCashout() {
         if (window.GameSound) window.GameSound.play('jackpot');
         confetti({ particleCount: 120, spread: 75, origin: { y: 0.6 } });
         setTimeout(() => { betAreaEl.classList.remove('hidden'); }, 200);
-        loadHlRanking();
     } catch (err) {
         window.showToast(err.message, 'error');
         btnCashout.disabled = false;
@@ -755,68 +788,67 @@ async function hlCashout() {
 
 render();
 
-// ─── 하이로우 랭킹 로드 ──────────────────────────────────────────────────────
-function loadHlRanking() {
-    const list = document.getElementById('hl-ranking-list');
-    fetch('{% url "highlow_ranking" %}', { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => {
-            if (!data.ranking || data.ranking.length === 0) {
-                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
-                return;
-            }
-            const MEDALS = ['🥇', '🥈', '🥉'];
-            list.innerHTML = data.ranking.map(row => {
-                const badge = row.rank <= 3
-                    ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
-                    : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
-                const cls   = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
-                const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
-                const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
-                return `
-                    <div class="flex items-center gap-3 px-5 py-3 ${cls}">
-                        <div class="w-8 text-center leading-none">${badge}</div>
-                        <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
-                        <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
-                        <span class="font-bold text-sm text-cyan-600 flex-shrink-0">${row.streak}연속</span>
-                    </div>`;
-            }).join('');
-        })
-        .catch(() => {
-            list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
-        });
+function openHlChipTab() {
+    const chipsTabBtn = document.querySelector('.gsp-tab[onclick*="hl-tab-chips"]');
+    if (chipsTabBtn) gspSwitch(chipsTabBtn, 'hl-tab-chips');
+    const col = document.getElementById('hl-side-col');
+    if (col && col.classList.contains('mobile-hidden')) toggleHlChat();
 }
 
-document.addEventListener('DOMContentLoaded', loadHlRanking);
-
-// ─── 낙엽→칩 충전 (포커와 공유하는 칩 지갑) ─────────────────────────
+// ─── 칩 관리 (포커와 공유하는 칩 지갑, 포커와 동일한 충전/환전 구조) ────
 (function () {
-    const toggleBtn = document.getElementById('hl-charge-toggle');
-    const panel = document.getElementById('hl-charge-panel');
-    const input = document.getElementById('hl-charge-input');
-    const submitBtn = document.getElementById('hl-charge-submit');
+    const buyBtn = document.getElementById('hl-buy-chips-btn');
+    const buyInput = document.getElementById('hl-buy-chips-amount');
+    const cashOutBtn = document.getElementById('hl-cash-out-btn');
+    const cashOutAllBtn = document.getElementById('hl-cash-out-all-btn');
+    const cashOutInput = document.getElementById('hl-cash-out-amount');
 
-    toggleBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
-
-    submitBtn.addEventListener('click', async () => {
-        const leaves = parseInt(input.value, 10);
+    buyBtn.addEventListener('click', async () => {
+        const leaves = parseInt(buyInput.value, 10);
         if (!leaves || leaves < 1) {
             window.showToast('충전할 낙엽 수를 입력해주세요.', 'error');
             return;
         }
-        submitBtn.disabled = true;
+        buyBtn.disabled = true;
         try {
             const data = await hlPost('buy-chips', { leaves });
-            chipsBadgeEl.textContent = data.chips;
+            updateChips(data.chips);
             updateNavLeaves(data.leaves);
             window.showToast(`${leaves}낙엽을 ${leaves * {{ chips_per_leaf }}}칩으로 충전했습니다.`, 'success');
             if (window.GameSound) window.GameSound.play('success');
-            panel.classList.add('hidden');
         } catch (err) {
             window.showToast(err.message, 'error');
         } finally {
-            submitBtn.disabled = false;
+            buyBtn.disabled = false;
         }
+    });
+
+    async function cashOut(chips) {
+        if (!chips || chips < 1) {
+            window.showToast('환전할 칩 수를 입력해주세요.', 'error');
+            return;
+        }
+        cashOutBtn.disabled = true;
+        cashOutAllBtn.disabled = true;
+        try {
+            const data = await hlPost('cash-out-chips', { chips });
+            updateChips(data.chips);
+            updateNavLeaves(data.leaves);
+            window.showToast(`${chips}칩을 낙엽으로 환전했습니다.`, 'success');
+            if (window.GameSound) window.GameSound.play('success');
+        } catch (err) {
+            window.showToast(err.message, 'error');
+        } finally {
+            cashOutBtn.disabled = false;
+            cashOutAllBtn.disabled = false;
+        }
+    }
+
+    cashOutBtn.addEventListener('click', () => cashOut(parseInt(cashOutInput.value, 10)));
+    cashOutAllBtn.addEventListener('click', () => {
+        const walletChips = parseInt(chipMyWalletEl.textContent, 10) || 0;
+        cashOutInput.value = walletChips;
+        cashOut(walletChips);
     });
 })();
 

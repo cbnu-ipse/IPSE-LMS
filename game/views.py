@@ -9,7 +9,7 @@ from django.db import transaction
 from .models import (
     SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
-    PokerChipWallet, POKER_CHIPS_PER_LEAF,
+    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable,
 )
 from . import poker_engine
 from accounts.models import User
@@ -101,24 +101,6 @@ def get_slot_ranking(top_n=10):
     rows = sorted(user_best.values(), key=lambda r: -r["grade_val"])
     result = rows if top_n is None else rows[:top_n]
     return _assign_ranks(result, "grade_val")
-
-
-def get_highlow_ranking(top_n=10):
-    """하이로우 전체 기간 최고 연속 성공 기록 랭킹 (시즌 없음)."""
-    from django.db.models import Max
-    qs = (
-        HighLowPlayLog.objects.values("user")
-        .annotate(best=Max("streak"))
-        .filter(best__gt=0)
-        .order_by("-best")
-    )
-    user_ids = [entry["user"] for entry in qs]
-    streak_map = {entry["user"]: entry["best"] for entry in qs}
-    users = User.objects.filter(pk__in=user_ids).select_related("student")
-    rows = [{"user": u, "score": streak_map[u.pk]} for u in users]
-    rows.sort(key=lambda r: -r["score"])
-    result = rows if top_n is None else rows[:top_n]
-    return _assign_ranks(result, "score")
 
 
 def get_apple_ranking(top_n=10, season=None):
@@ -770,6 +752,7 @@ def highlow_buy_chips(request):
     except (ValueError, TypeError):
         return JsonResponse({"status": "error", "message": "충전할 낙엽 수가 올바르지 않습니다."}, status=400)
 
+    PokerTable.get_solo()  # 포커 페이지를 연 적 없어도 칩 지갑 싱글턴 테이블 행이 있어야 함
     ok, message = poker_engine.buy_chips(request.user, leaves_amount)
     if not ok:
         return JsonResponse({"status": "error", "message": message}, status=400)
@@ -780,16 +763,19 @@ def highlow_buy_chips(request):
 
 
 @login_required
-def highlow_ranking(request):
-    rows = get_highlow_ranking(10)
-    data = [
-        {
-            "rank": r["rank"],
-            "name": r["user"].display_name,
-            "picture": r["user"].get_picture(),
-            "streak": r["score"],
-            "is_me": r["user"].id == request.user.id,
-        }
-        for r in rows
-    ]
-    return JsonResponse({"ranking": data})
+@require_POST
+def highlow_cash_out_chips(request):
+    """칩 → 낙엽 환전. 포커 칩 지갑을 그대로 공유하므로 로직은 poker_engine.cash_out_chips를 재사용."""
+    try:
+        chips_amount = int(json.loads(request.body or "{}").get("chips"))
+    except (ValueError, TypeError):
+        return JsonResponse({"status": "error", "message": "환전할 칩 수가 올바르지 않습니다."}, status=400)
+
+    PokerTable.get_solo()  # 포커 페이지를 연 적 없어도 칩 지갑 싱글턴 테이블 행이 있어야 함
+    ok, message = poker_engine.cash_out_chips(request.user, chips_amount)
+    if not ok:
+        return JsonResponse({"status": "error", "message": message}, status=400)
+
+    wallet = PokerChipWallet.objects.get(user=request.user)
+    request.user.refresh_from_db()
+    return JsonResponse({"status": "success", "chips": wallet.chips, "leaves": request.user.leaves})

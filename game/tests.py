@@ -220,3 +220,21 @@ class HighLowGameTestCase(TestCase):
         self.assertEqual(res.status_code, 400)
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.chips, 990)  # 거부됐으니 잔액 변화 없어야 함
+
+    def test_buy_chips_converts_leaves_to_shared_poker_wallet(self):
+        self.user.leaves = 5
+        self.user.save()
+        res = self._post("buy-chips", {"leaves": 2})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["leaves"], 3)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.chips, 1000 + 2 * 1000)
+
+    def test_cash_out_chips_converts_shared_poker_wallet_to_leaves(self):
+        res = self._post("cash-out-chips", {"chips": 1000})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["leaves"], 1)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.chips, 0)
