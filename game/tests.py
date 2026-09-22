@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from . import poker_engine, views as game_views
-from .models import PokerSeat, PokerTable, HighLowSession, HighLowPlayLog
+from .models import PokerSeat, PokerTable, PokerChipWallet, HighLowSession, HighLowPlayLog
 from .poker_engine import evaluate_best_of_7, _build_side_pots
 
 
@@ -124,12 +124,11 @@ class PokerNextHandSchedulingTestCase(TestCase):
 
 
 class HighLowGameTestCase(TestCase):
-    """회귀 테스트: 하이로우 베팅/정산이 낙엽 잔액과 어긋나지 않는지 확인 (money path 핵심 로직)."""
+    """회귀 테스트: 하이로우 베팅/정산이 (포커와 공유하는) 칩 지갑 잔액과 어긋나지 않는지 확인 (money path 핵심 로직)."""
 
     def setUp(self):
         self.user = User.objects.create_user(username="hl1", password="x")
-        self.user.leaves = 100
-        self.user.save()
+        self.wallet = PokerChipWallet.objects.create(user=self.user, chips=1000)
         self.client.force_login(self.user)
 
     def _post(self, path, payload=None):
@@ -144,12 +143,19 @@ class HighLowGameTestCase(TestCase):
         self.assertIsNone(game_views._highlow_multiplier(14, "higher"))  # A(14)보다 높은 랭크는 없음
         self.assertIsNotNone(game_views._highlow_multiplier(8, "higher"))
 
+    def test_start_rejected_when_chip_wallet_insufficient(self):
+        self.wallet.chips = 3  # 최소 베팅(5)보다 적은 칩만 보유
+        self.wallet.save()
+        res = self._post("start", {"bet": 5})
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(HighLowSession.objects.filter(user=self.user).exists())
+
     def test_start_deducts_bet_and_creates_session(self):
         with patch.object(game_views, "_highlow_draw_rank", return_value=8):
             res = self._post("start", {"bet": 10})
         self.assertEqual(res.status_code, 200)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.leaves, 90)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.chips, 990)
         self.assertTrue(HighLowSession.objects.filter(user=self.user).exists())
 
     def test_correct_guess_increases_streak_and_payout(self):
@@ -164,6 +170,18 @@ class HighLowGameTestCase(TestCase):
         self.assertEqual(session.current_rank, 12)
         self.assertGreater(session.potential_payout, 10)  # 베팅액보다 커야 정상 배당
 
+    def test_correct_guess_at_min_bet_still_grows_payout(self):
+        # 회귀 테스트: int()로 소수점을 버리면 최소 베팅 시 배당이 반올림 전까지
+        # 그대로 남아 배수가 적용 안 되는 것처럼 보였던 버그 (round()로 수정).
+        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+            self._post("start", {"bet": game_views.HIGHLOW_MIN_BET})
+        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+            res = self._post("guess", {"guess": "higher"})
+        data = res.json()
+        self.assertEqual(data["result"], "continue")
+        session = HighLowSession.objects.get(user=self.user)
+        self.assertGreater(session.potential_payout, game_views.HIGHLOW_MIN_BET)
+
     def test_wrong_guess_busts_and_forfeits_bet(self):
         with patch.object(game_views, "_highlow_draw_rank", return_value=8):
             self._post("start", {"bet": 10})
@@ -172,8 +190,8 @@ class HighLowGameTestCase(TestCase):
         data = res.json()
         self.assertEqual(data["result"], "bust")
         self.assertFalse(HighLowSession.objects.filter(user=self.user).exists())
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.leaves, 90)  # 베팅액은 시작 시점에 이미 차감, 환불 없음
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.chips, 990)  # 베팅액은 시작 시점에 이미 차감, 환불 없음
         log = HighLowPlayLog.objects.get(user=self.user)
         self.assertEqual(log.result, "busted")
         self.assertEqual(log.payout, 0)
@@ -189,8 +207,8 @@ class HighLowGameTestCase(TestCase):
         data = res.json()
 
         self.assertEqual(data["payout"], expected_payout)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.leaves, 90 + expected_payout)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.chips, 990 + expected_payout)
         self.assertFalse(HighLowSession.objects.filter(user=self.user).exists())
         log = HighLowPlayLog.objects.get(user=self.user, result="cashed_out")
         self.assertEqual(log.streak, 1)
@@ -200,5 +218,5 @@ class HighLowGameTestCase(TestCase):
             self._post("start", {"bet": 10})
         res = self._post("cashout")
         self.assertEqual(res.status_code, 400)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.leaves, 90)  # 거부됐으니 잔액 변화 없어야 함
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.chips, 990)  # 거부됐으니 잔액 변화 없어야 함

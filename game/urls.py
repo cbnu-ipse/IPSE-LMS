@@ -24,6 +24,7 @@ urlpatterns = [
     path("highlow/start/", views.highlow_start, name="highlow_start"),
     path("highlow/guess/", views.highlow_guess, name="highlow_guess"),
     path("highlow/cashout/", views.highlow_cashout, name="highlow_cashout"),
+    path("highlow/buy-chips/", views.highlow_buy_chips, name="highlow_buy_chips"),
     path("highlow/ranking/", views.highlow_ranking, name="highlow_ranking"),
     path("slot/ranking/", views.slot_ranking, name="slot_ranking"),
     path("ranking/", views.game_ranking_view, name="game_ranking"),

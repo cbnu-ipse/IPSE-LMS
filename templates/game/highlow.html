@@ -13,14 +13,26 @@
 
                 <!-- 컴팩트 상태 바 -->
                 <div class="hl-stat-bar">
-                    <i class="fa-solid fa-leaf text-amber-400 text-xs"></i>
-                    <span id="hl-leaves-badge" class="font-bold">{{ request.user.leaves }}</span>개
+                    <i class="fa-solid fa-coins text-amber-400 text-xs"></i>
+                    <span id="hl-chips-badge" class="font-bold">{{ chips }}</span>칩
+                    <button type="button" id="hl-charge-toggle" class="hl-charge-toggle" title="낙엽을 칩으로 충전">
+                        <i class="fa-solid fa-plus"></i> 충전
+                    </button>
                     <span class="text-slate-600/40 mx-2">|</span>
                     <i class="fa-solid fa-fire text-orange-400 text-xs"></i>
                     <span id="hl-streak-badge" class="font-bold">0</span>연속
                     <button type="button" id="hl-sound-toggle" class="hl-sound-toggle" title="사운드 켜기/끄기">
                         <i class="fa-solid fa-volume-high"></i>
                     </button>
+                </div>
+
+                <!-- 낙엽→칩 충전 패널 (포커와 공유하는 칩 지갑) -->
+                <div id="hl-charge-panel" class="hl-charge-panel hidden">
+                    <span class="hl-charge-label">내 낙엽 <strong id="hl-my-leaves">{{ request.user.leaves }}</strong>개 · 1낙엽 = {{ chips_per_leaf }}칩</span>
+                    <div class="hl-charge-row">
+                        <input type="number" id="hl-charge-input" min="1" value="1" class="hl-charge-input">
+                        <button type="button" id="hl-charge-submit" class="hl-charge-submit">충전</button>
+                    </div>
                 </div>
 
                 <!-- 테이블 본체 -->
@@ -54,7 +66,7 @@
                         </div>
                         <div class="hl-payout-row">
                             <div class="hl-payout-info">
-                                지금 캐시아웃 시 <span id="hl-payout-amount" class="hl-payout-amount">0</span>낙엽
+                                지금 캐시아웃 시 <span id="hl-payout-amount" class="hl-payout-amount">0</span>칩
                             </div>
                             <button id="hl-btn-cashout" onclick="hlCashout()" class="hl-cashout-btn" disabled>
                                 <i class="fa-solid fa-sack-dollar"></i> 캐시아웃
@@ -64,7 +76,7 @@
 
                     <!-- 베팅 폼 -->
                     <div id="hl-bet-area" class="hl-bet-area">
-                        <label for="hl-bet-input" class="hl-bet-label">베팅할 낙엽</label>
+                        <label for="hl-bet-input" class="hl-bet-label">베팅할 칩</label>
                         <div class="hl-bet-row">
                             <input type="number" id="hl-bet-input" min="{{ min_bet }}" max="{{ max_bet }}" step="1" value="{{ min_bet }}" class="hl-bet-input">
                             <button type="button" class="hl-bet-quick" onclick="hlSetBet({{ min_bet }})">최소</button>
@@ -230,6 +242,56 @@
 }
 .hl-sound-toggle:hover { color: #e2e8f0; }
 .hl-sound-toggle.muted { color: #64748b; }
+.hl-charge-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(6,182,212,0.12);
+    border: 1px solid rgba(6,182,212,0.3);
+    color: #67e8f9;
+    font-size: .65rem;
+    font-weight: 700;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.4;
+}
+.hl-charge-toggle:hover { background: rgba(6,182,212,0.2); }
+.hl-charge-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: .5rem 1rem;
+    background: rgba(6,182,212,0.06);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: .68rem;
+    color: #94a3b8;
+}
+.hl-charge-label strong { color: #e2e8f0; }
+.hl-charge-row { display: flex; gap: 6px; }
+.hl-charge-input {
+    width: 84px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0a0f1e;
+    color: #e2e8f0;
+    font-size: .72rem;
+    font-weight: 700;
+}
+.hl-charge-submit {
+    padding: 4px 12px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    color: #fff;
+    font-size: .68rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+.hl-charge-submit:hover { filter: brightness(1.1); }
 /* ── 전체 컨테이너 ─────────────────────────────── */
 .hl-outer {
     width: 100%;
@@ -524,7 +586,8 @@ const actionAreaEl = document.getElementById('hl-action-area');
 const betAreaEl   = document.getElementById('hl-bet-area');
 const resultBannerEl = document.getElementById('hl-result-banner');
 const streakBadgeEl  = document.getElementById('hl-streak-badge');
-const leavesBadgeEl  = document.getElementById('hl-leaves-badge');
+const chipsBadgeEl   = document.getElementById('hl-chips-badge');
+const myLeavesEl     = document.getElementById('hl-my-leaves');
 const payoutAmountEl = document.getElementById('hl-payout-amount');
 const btnHigher = document.getElementById('hl-btn-higher');
 const btnLower  = document.getElementById('hl-btn-lower');
@@ -544,7 +607,8 @@ function paintCard(rank) {
 
 function fmtMult(m) { return m == null ? '' : `x${m.toFixed(2)}`; }
 
-function updateNavLeaf(leaves) {
+function updateNavLeaves(leaves) {
+    myLeavesEl.textContent = leaves;
     const navLeaf = document.querySelector('[title="낙엽 잔액"] span');
     if (navLeaf) navLeaf.textContent = leaves;
 }
@@ -577,8 +641,8 @@ function render() {
 
 function hlSetBet(v) { betInputEl.value = v; }
 function hlSetBetMax() {
-    const leaves = parseInt(leavesBadgeEl.textContent, 10) || 0;
-    betInputEl.value = Math.max({{ min_bet }}, Math.min({{ max_bet }}, leaves));
+    const chips = parseInt(chipsBadgeEl.textContent, 10) || 0;
+    betInputEl.value = Math.max({{ min_bet }}, Math.min({{ max_bet }}, chips));
 }
 
 async function hlPost(path, payload) {
@@ -596,7 +660,7 @@ async function hlStart() {
     if (hlBusy) return;
     const bet = parseInt(betInputEl.value, 10);
     if (!bet || bet < {{ min_bet }} || bet > {{ max_bet }}) {
-        window.showToast(`베팅은 {{ min_bet }}~{{ max_bet }} 낙엽 사이여야 합니다.`, 'error');
+        window.showToast(`베팅은 {{ min_bet }}~{{ max_bet }} 칩 사이여야 합니다.`, 'error');
         return;
     }
     hlBusy = true;
@@ -604,8 +668,7 @@ async function hlStart() {
     try {
         const data = await hlPost('start', { bet });
         hlState = data;
-        leavesBadgeEl.textContent = data.leaves;
-        updateNavLeaf(data.leaves);
+        chipsBadgeEl.textContent = data.chips;
         render();
         if (window.GameSound) window.GameSound.play('click');
         loadHlRanking();
@@ -672,10 +735,9 @@ async function hlCashout() {
     btnCashout.disabled = true;
     try {
         const data = await hlPost('cashout');
-        leavesBadgeEl.textContent = data.leaves;
-        updateNavLeaf(data.leaves);
+        chipsBadgeEl.textContent = data.chips;
         resultBannerEl.className = 'hl-result-banner win';
-        resultBannerEl.textContent = `🎉 캐시아웃 완료! ${data.streak}연속으로 ${data.payout}낙엽을 획득했습니다.`;
+        resultBannerEl.textContent = `🎉 캐시아웃 완료! ${data.streak}연속으로 ${data.payout}칩을 획득했습니다.`;
         resultBannerEl.classList.remove('hidden');
         actionAreaEl.classList.add('hidden');
         hlState = null;
@@ -726,6 +788,37 @@ function loadHlRanking() {
 }
 
 document.addEventListener('DOMContentLoaded', loadHlRanking);
+
+// ─── 낙엽→칩 충전 (포커와 공유하는 칩 지갑) ─────────────────────────
+(function () {
+    const toggleBtn = document.getElementById('hl-charge-toggle');
+    const panel = document.getElementById('hl-charge-panel');
+    const input = document.getElementById('hl-charge-input');
+    const submitBtn = document.getElementById('hl-charge-submit');
+
+    toggleBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
+
+    submitBtn.addEventListener('click', async () => {
+        const leaves = parseInt(input.value, 10);
+        if (!leaves || leaves < 1) {
+            window.showToast('충전할 낙엽 수를 입력해주세요.', 'error');
+            return;
+        }
+        submitBtn.disabled = true;
+        try {
+            const data = await hlPost('buy-chips', { leaves });
+            chipsBadgeEl.textContent = data.chips;
+            updateNavLeaves(data.leaves);
+            window.showToast(`${leaves}낙엽을 ${leaves * {{ chips_per_leaf }}}칩으로 충전했습니다.`, 'success');
+            if (window.GameSound) window.GameSound.play('success');
+            panel.classList.add('hidden');
+        } catch (err) {
+            window.showToast(err.message, 'error');
+        } finally {
+            submitBtn.disabled = false;
+        }
+    });
+})();
 
 // ─── 사운드 음소거 토글 ────────────────────────────────────────────
 (function () {
