@@ -293,3 +293,51 @@ class PokerDisconnectGraceTestCase(TestCase):
         await asyncio.sleep(0)  # 취소가 반영될 시간을 준다
         seat = await database_sync_to_async(PokerSeat.objects.get)(table=self.table, seat_number=0)
         self.assertEqual(seat.user_id, self.user.id)  # 취소됐으니 자리 유지
+
+
+class PokerWatchdogResilienceTestCase(TestCase):
+    """회귀 테스트: 워치독 루프가 한 틱에서 예외를 만나면 조용히 죽어버려서,
+    누군가 새 WS 메시지를 보내 다시 살리기 전까지 턴 진행/다음 핸드 시작이
+    영원히 멈추는 사고가 있었다. 예외를 삼키고 계속 재시도해야 한다."""
+
+    def setUp(self):
+        self.table = PokerTable.get_solo()
+        u1 = User.objects.create_user(username="w1", password="x")
+        u2 = User.objects.create_user(username="w2", password="x")
+        PokerChipWallet.objects.bulk_create([
+            PokerChipWallet(user=u1, chips=poker_engine.POKER_BUY_IN),
+            PokerChipWallet(user=u2, chips=poker_engine.POKER_BUY_IN),
+        ])
+        for u, seat_number in ((u1, 0), (u2, 1)):
+            ok, _ = poker_engine.sit_down(u, seat_number)
+            self.assertTrue(ok)
+        self.table.refresh_from_db()
+        self.table.next_hand_at = timezone.now() - timedelta(seconds=1)
+        self.table.save()
+
+    async def test_watchdog_retries_after_a_failing_tick(self):
+        real_process_due_deadlines = poker_engine.process_due_deadlines
+        call_count = {"n": 0}
+
+        def flaky_process_due_deadlines():
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("simulated failure")
+            return real_process_due_deadlines()
+
+        with patch.object(poker_engine, "process_due_deadlines", side_effect=flaky_process_due_deadlines), \
+             patch.object(game_consumers, "POKER_WATCHDOG_ERROR_RETRY_SECONDS", 0):
+            task = asyncio.create_task(game_consumers._poker_watchdog_loop())
+            for _ in range(100):
+                await asyncio.sleep(0.01)
+                if call_count["n"] >= 2:
+                    break
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        self.assertGreaterEqual(call_count["n"], 2)  # 첫 실패 후 재시도가 실제로 일어났다
+        await database_sync_to_async(self.table.refresh_from_db)()
+        self.assertEqual(self.table.hand_number, 1)  # 재시도에서 다음 핸드가 정상적으로 시작됐다
