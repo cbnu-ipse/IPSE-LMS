@@ -1,3 +1,4 @@
+import json
 import random
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -5,7 +6,10 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore
+from .models import (
+    SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
+    HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
+)
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -95,6 +99,24 @@ def get_slot_ranking(top_n=10):
     rows = sorted(user_best.values(), key=lambda r: -r["grade_val"])
     result = rows if top_n is None else rows[:top_n]
     return _assign_ranks(result, "grade_val")
+
+
+def get_highlow_ranking(top_n=10):
+    """하이로우 전체 기간 최고 연속 성공 기록 랭킹 (시즌 없음)."""
+    from django.db.models import Max
+    qs = (
+        HighLowPlayLog.objects.values("user")
+        .annotate(best=Max("streak"))
+        .filter(best__gt=0)
+        .order_by("-best")
+    )
+    user_ids = [entry["user"] for entry in qs]
+    streak_map = {entry["user"]: entry["best"] for entry in qs}
+    users = User.objects.filter(pk__in=user_ids).select_related("student")
+    rows = [{"user": u, "score": streak_map[u.pk]} for u in users]
+    rows.sort(key=lambda r: -r["score"])
+    result = rows if top_n is None else rows[:top_n]
+    return _assign_ranks(result, "score")
 
 
 def get_apple_ranking(top_n=10, season=None):
@@ -590,3 +612,162 @@ def season_reward_debug(request):
     )
     from django.shortcuts import redirect
     return redirect(request.GET.get("next", "/"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 하이로우 (Hi-Lo)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _highlow_draw_rank():
+    return random.randint(2, 14)
+
+
+def _highlow_multiplier(rank, guess):
+    """`guess`(higher/lower)가 맞았을 때 배당 배수. 그 랭크에서 나올 수 없는 방향이면 None."""
+    favorable = (14 - rank) if guess == "higher" else (rank - 2)
+    if favorable <= 0:
+        return None
+    probability = favorable / 13
+    return round(HIGHLOW_RTP / probability, 4)
+
+
+def _highlow_state(session):
+    """현재 상태 + 다음 선택지별 배당을 함께 내려준다 (프론트에서 버튼 활성/배당 표시용)."""
+    return {
+        "active": True,
+        "bet": session.bet,
+        "rank": session.current_rank,
+        "streak": session.streak,
+        "potential_payout": session.potential_payout,
+        "higher_multiplier": _highlow_multiplier(session.current_rank, "higher"),
+        "lower_multiplier": _highlow_multiplier(session.current_rank, "lower"),
+    }
+
+
+@login_required
+def highlow_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    session = HighLowSession.objects.filter(user=request.user).first()
+    return render(request, "game/highlow.html", {
+        "title": "하이로우",
+        "chat_messages": list(latest)[::-1],
+        "session_state_json": json.dumps(_highlow_state(session) if session else None),
+        "min_bet": HIGHLOW_MIN_BET,
+        "max_bet": HIGHLOW_MAX_BET,
+    })
+
+
+@login_required
+@require_POST
+def highlow_start(request):
+    user = request.user
+
+    if HighLowSession.objects.filter(user=user).exists():
+        return JsonResponse({"status": "error", "message": "이미 진행 중인 판이 있습니다."}, status=400)
+
+    try:
+        bet = int(json.loads(request.body or "{}").get("bet"))
+    except (ValueError, TypeError):
+        return JsonResponse({"status": "error", "message": "베팅 금액이 올바르지 않습니다."}, status=400)
+
+    if not (HIGHLOW_MIN_BET <= bet <= HIGHLOW_MAX_BET):
+        return JsonResponse(
+            {"status": "error", "message": f"베팅은 {HIGHLOW_MIN_BET}~{HIGHLOW_MAX_BET} 낙엽 사이여야 합니다."},
+            status=400,
+        )
+
+    with transaction.atomic():
+        user_db = User.objects.select_for_update().get(id=user.id)
+        try:
+            user_db.adjust_leaves(-bet, "HIGHLOW_BET", "하이로우 베팅")
+        except ValueError:
+            return JsonResponse({"status": "error", "message": "낙엽이 부족합니다."}, status=400)
+
+        session = HighLowSession.objects.create(
+            user=user_db, bet=bet, current_rank=_highlow_draw_rank(), streak=0, potential_payout=0,
+        )
+        user_db.refresh_from_db()
+
+    return JsonResponse({"status": "success", "leaves": user_db.leaves, **_highlow_state(session)})
+
+
+@login_required
+@require_POST
+def highlow_guess(request):
+    user = request.user
+    try:
+        guess = json.loads(request.body or "{}").get("guess")
+    except ValueError:
+        guess = None
+    if guess not in ("higher", "lower"):
+        return JsonResponse({"status": "error", "message": "잘못된 요청입니다."}, status=400)
+
+    with transaction.atomic():
+        session = HighLowSession.objects.select_for_update().filter(user=user).first()
+        if not session:
+            return JsonResponse({"status": "error", "message": "진행 중인 판이 없습니다."}, status=400)
+
+        multiplier = _highlow_multiplier(session.current_rank, guess)
+        if multiplier is None:
+            return JsonResponse({"status": "error", "message": "그 카드에서는 선택할 수 없는 방향입니다."}, status=400)
+
+        next_rank = _highlow_draw_rank()
+        # 동점(next_rank == current_rank)은 항상 실패 처리 (단순하고 공정한 규칙)
+        correct = next_rank > session.current_rank if guess == "higher" else next_rank < session.current_rank
+
+        if not correct:
+            HighLowPlayLog.objects.create(
+                user=user, bet=session.bet, streak=session.streak, payout=0, result="busted",
+            )
+            prev_rank = session.current_rank
+            session.delete()
+            return JsonResponse({
+                "status": "success", "result": "bust",
+                "prev_rank": prev_rank, "next_rank": next_rank,
+                "streak": 0, "leaves": user.leaves,
+            })
+
+        base = session.potential_payout if session.streak > 0 else session.bet
+        session.potential_payout = int(base * multiplier)
+        session.streak += 1
+        session.current_rank = next_rank
+        session.save()
+
+    return JsonResponse({"status": "success", "result": "continue", **_highlow_state(session)})
+
+
+@login_required
+@require_POST
+def highlow_cashout(request):
+    user = request.user
+    with transaction.atomic():
+        session = HighLowSession.objects.select_for_update().filter(user=user).first()
+        if not session or session.streak == 0:
+            return JsonResponse({"status": "error", "message": "캐시아웃할 수 있는 판이 없습니다."}, status=400)
+
+        user_db = User.objects.select_for_update().get(id=user.id)
+        user_db.adjust_leaves(session.potential_payout, "HIGHLOW_CASHOUT", "하이로우 캐시아웃")
+        HighLowPlayLog.objects.create(
+            user=user_db, bet=session.bet, streak=session.streak, payout=session.potential_payout, result="cashed_out",
+        )
+        payout, streak = session.potential_payout, session.streak
+        session.delete()
+        user_db.refresh_from_db()
+
+    return JsonResponse({"status": "success", "payout": payout, "streak": streak, "leaves": user_db.leaves})
+
+
+@login_required
+def highlow_ranking(request):
+    rows = get_highlow_ranking(10)
+    data = [
+        {
+            "rank": r["rank"],
+            "name": r["user"].display_name,
+            "picture": r["user"].get_picture(),
+            "streak": r["score"],
+            "is_me": r["user"].id == request.user.id,
+        }
+        for r in rows
+    ]
+    return JsonResponse({"ranking": data})
