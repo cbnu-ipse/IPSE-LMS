@@ -264,6 +264,37 @@ class HighLowGameTestCase(TestCase):
         self.assertEqual(self.wallet.chips, 0)
 
 
+class PokerMissingSingletonRowTestCase(TestCase):
+    """회귀 테스트: 관리자가 PokerTable(pk=1)을 지운 뒤 아무도 포커 페이지를 새로
+    열지 않은 상태(즉 get_solo()가 한 번도 안 불린 상태)에서 액션을 보내면,
+    각 함수가 PokerTable.objects.get(pk=1)을 직접 호출해 DoesNotExist로 죽었다
+    — 컨슈머 쪽에서 예외를 삼키던 시절엔 소켓만 조용히 끊기고 로그도 없었다."""
+
+    def _wallet_user(self, username, chips=10000):
+        user = User.objects.create_user(username=username, password="x")
+        PokerChipWallet.objects.create(user=user, chips=chips)
+        return user
+
+    def test_sit_and_stand_recreate_missing_table_row(self):
+        self.assertFalse(PokerTable.objects.filter(pk=1).exists())
+        user = self._wallet_user("p1")
+
+        ok, err = poker_engine.sit_down(user, 0)
+        self.assertTrue(ok, err)
+
+        ok, err = poker_engine.stand_up(user)
+        self.assertTrue(ok, err)
+
+    def test_player_action_on_missing_table_row_fails_gracefully(self):
+        self.assertFalse(PokerTable.objects.filter(pk=1).exists())
+        user = self._wallet_user("p2")
+        # 앉지 않은 채로 액션을 보내는 경우 — DoesNotExist로 죽지 않고
+        # 정상적인 실패 응답(ok=False)이어야 한다.
+        ok, err = poker_engine.player_action(user, "check", 0)
+        self.assertFalse(ok)
+        self.assertIsInstance(err, str)
+
+
 class PokerDisconnectGraceTestCase(TestCase):
     """회귀 테스트: 앉은 채로 연결만 끊고 다시는 접속하지 않으면(새로고침이 아닌
     이탈) 유예시간 뒤에 자리에서 자동으로 내려가야 한다 — 그렇지 않으면

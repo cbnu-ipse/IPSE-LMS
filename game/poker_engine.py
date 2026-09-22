@@ -205,6 +205,10 @@ def _maybe_reset_empty_table(table):
 
 def sit_down(user, seat_number):
     with transaction.atomic():
+        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
+        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
+        # 보장해두고 잠근다.
+        PokerTable.get_solo()
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
@@ -244,6 +248,10 @@ def sit_down(user, seat_number):
 
 def stand_up(user):
     with transaction.atomic():
+        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
+        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
+        # 보장해두고 잠근다.
+        PokerTable.get_solo()
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
@@ -281,6 +289,10 @@ def buy_chips(user, leaves_amount):
     if leaves_amount <= 0:
         return False, "충전할 낙엽 수가 올바르지 않습니다."
     with transaction.atomic():
+        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
+        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
+        # 보장해두고 잠근다.
+        PokerTable.get_solo()
         table = PokerTable.objects.select_for_update().get(pk=1)
         seat = PokerSeat.objects.select_for_update().filter(table=table, user=user).first()
         if seat:
@@ -308,6 +320,10 @@ def cash_out_chips(user, chips_amount):
     if chips_amount <= 0:
         return False, "환전할 칩 수가 올바르지 않습니다."
     with transaction.atomic():
+        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
+        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
+        # 보장해두고 잠근다.
+        PokerTable.get_solo()
         table = PokerTable.objects.select_for_update().get(pk=1)
         seat = PokerSeat.objects.select_for_update().filter(table=table, user=user).first()
         if seat:
@@ -557,6 +573,10 @@ def player_action(user, action, amount=0):
     except (TypeError, ValueError):
         amount = 0
     with transaction.atomic():
+        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
+        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
+        # 보장해두고 잠근다.
+        PokerTable.get_solo()
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
@@ -698,6 +718,10 @@ def process_due_deadlines():
     """마감시각이 지난 항목들을 처리한다. 여러 개가 동시에 지났어도 전부 처리."""
     now = timezone.now()
     with transaction.atomic():
+        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
+        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
+        # 보장해두고 잠근다.
+        PokerTable.get_solo()
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
