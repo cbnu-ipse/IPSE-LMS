@@ -1,12 +1,14 @@
+import asyncio
 import json
 from datetime import timedelta
 from unittest.mock import patch
 
+from channels.db import database_sync_to_async
 from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import User
-from . import poker_engine, views as game_views
+from . import consumers as game_consumers, poker_engine, views as game_views
 from .models import PokerSeat, PokerTable, PokerChipWallet, HighLowSession, HighLowPlayLog
 from .poker_engine import evaluate_best_of_7, _build_side_pots
 
@@ -238,3 +240,34 @@ class HighLowGameTestCase(TestCase):
         self.assertEqual(data["leaves"], 1)
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.chips, 0)
+
+
+class PokerDisconnectGraceTestCase(TestCase):
+    """회귀 테스트: 앉은 채로 연결만 끊고 다시는 접속하지 않으면(새로고침이 아닌
+    이탈) 유예시간 뒤에 자리에서 자동으로 내려가야 한다 — 그렇지 않으면
+    2명 미만이라 핸드가 돌지 않는 한 자리를 영원히 차지하는 버그가 난다."""
+
+    def setUp(self):
+        self.table = PokerTable.get_solo()
+        self.user = User.objects.create_user(username="afk1", password="x")
+        PokerChipWallet.objects.create(user=self.user, chips=poker_engine.POKER_BUY_IN)
+        ok, _ = poker_engine.sit_down(self.user, 0)
+        self.assertTrue(ok)
+
+    def tearDown(self):
+        game_consumers._disconnect_grace_tasks.clear()
+
+    async def test_disconnect_grace_vacates_seat_after_timeout(self):
+        with patch.object(game_consumers, "POKER_DISCONNECT_GRACE_SECONDS", 0):
+            await game_consumers._schedule_disconnect_grace(self.user)
+        seat = await database_sync_to_async(PokerSeat.objects.get)(table=self.table, seat_number=0)
+        self.assertIsNone(seat.user_id)
+
+    async def test_reconnect_cancels_pending_grace_vacate(self):
+        task = asyncio.create_task(game_consumers._schedule_disconnect_grace(self.user))
+        game_consumers._disconnect_grace_tasks[self.user.id] = task
+        await asyncio.sleep(0)  # 태스크가 asyncio.sleep()에 들어갈 때까지 양보
+        game_consumers._cancel_disconnect_grace(self.user.id)
+        await asyncio.sleep(0)  # 취소가 반영될 시간을 준다
+        seat = await database_sync_to_async(PokerSeat.objects.get)(table=self.table, seat_number=0)
+        self.assertEqual(seat.user_id, self.user.id)  # 취소됐으니 자리 유지
