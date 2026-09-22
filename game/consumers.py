@@ -250,6 +250,15 @@ class PokerConsumer(AsyncWebsocketConsumer):
         # 않도록 한다.
         _ensure_poker_watchdog()
 
+        if msg_type == "__ping__":
+            # 클라이언트가 하트비트 응답으로 연결 생존을 확인한다 — 배포 등으로
+            # 서버 컨테이너가 TCP FIN 없이 죽으면 브라우저는 소켓이 여전히
+            # 열려있다고 착각해(readyState OPEN) 재접속을 시도하지 않는 "좀비
+            # 연결"이 생긴다. pong이 계속 안 오면 클라이언트가 직접 끊고
+            # 재접속하도록 신호를 준다.
+            await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+
         if msg_type == "sit":
             handler = lambda: poker_engine.sit_down(user, data.get("seat_number"))
         elif msg_type == "stand":
