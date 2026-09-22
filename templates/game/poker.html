@@ -1198,14 +1198,22 @@ footer { display: none !important; }
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${wsProto}://${location.host}/ws/poker/`;
     const HEARTBEAT_INTERVAL_MS = 25000;
+    // 배포로 서버 컨테이너가 TCP FIN 없이 죽으면, 브라우저는 소켓이 여전히
+    // 열려있다고 착각해(readyState OPEN) onclose가 영영 안 뜨는 "좀비 연결"이
+    // 남는다 — 하트비트 pong이 두 번 이상 안 오면 직접 끊고 재연결한다.
+    const CONNECTION_STALE_MS = HEARTBEAT_INTERVAL_MS * 2 + 10000;
+    let lastMessageAt = 0;
+    let staleCheckTimer = null;
 
     function connect() {
         socket = new WebSocket(wsUrl);
         socket.onopen = () => {
+            lastMessageAt = Date.now();
             clearInterval(heartbeatTimer);
             heartbeatTimer = setInterval(() => send({ type: '__ping__' }), HEARTBEAT_INTERVAL_MS);
         };
         socket.onmessage = (e) => {
+            lastMessageAt = Date.now();
             const data = JSON.parse(e.data);
             if (data.type === 'error') {
                 showToast(data.message);
@@ -1219,6 +1227,12 @@ footer { display: none !important; }
         socket.onerror = () => socket.close();
     }
     connect();
+    clearInterval(staleCheckTimer);
+    staleCheckTimer = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > CONNECTION_STALE_MS) {
+            socket.close();
+        }
+    }, 5000);
 })();
 
 function gspSwitch(btn, paneId) {
