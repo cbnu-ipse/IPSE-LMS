@@ -124,6 +124,28 @@ class PokerNextHandSchedulingTestCase(TestCase):
         self.assertEqual(table.round, "preflop")
         self.assertEqual(table.hand_number, 1)
 
+    def test_process_due_deadlines_recovers_when_turn_seat_is_no_longer_active(self):
+        """회귀 테스트: 턴을 가진 좌석이 (관리자 조작 등으로) active가 아니게
+        되면, 기존 코드는 아무 것도 하지 않아 turn_deadline만 과거에 남은 채
+        게임이 영원히 멈췄다. 다음 액션 가능한 사람에게 턴이 넘어가야 한다."""
+        table, seats_by_number = self._seat_two_active_players()
+        s0, s1 = seats_by_number[0], seats_by_number[1]
+        table.current_turn_seat = 0
+        table.turn_deadline = timezone.now() - timedelta(seconds=1)
+        table.save()
+        s0.status = "empty"  # 좌석이 강제로 비워진 상황을 재현
+        s0.user = None
+        s0.save()
+
+        poker_engine.process_due_deadlines()
+
+        table.refresh_from_db()
+        s1.refresh_from_db()
+        # 액션 가능한 사람이 s1 하나뿐이므로 핸드가 그대로 종료되며 팟을 가져가야 한다
+        self.assertEqual(table.pot, 0)
+        self.assertGreater(s1.stack, 19000)
+        self.assertIsNone(table.turn_deadline)
+
 
 class HighLowGameTestCase(TestCase):
     """회귀 테스트: 하이로우 베팅/정산이 (포커와 공유하는) 칩 지갑 잔액과 어긋나지 않는지 확인 (money path 핵심 로직)."""
