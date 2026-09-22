@@ -130,6 +130,14 @@ POKER_GROUP = "poker_table"
 # 프로세스 독립적인 스케줄러로 옮겨야 한다.
 _watchdog_task = None
 
+# 연결이 끊긴 뒤에도 이 시간(초) 안에 재접속하면 자리를 그대로 유지한다.
+# (새로고침·짧은 네트워크 끊김 등은 흔하고, 클라이언트도 5초 후 자동 재접속을
+# 시도하므로 그보다 넉넉하게 잡는다.) 그보다 오래 끊겨 있으면 자리에서
+# 일어난 것으로 간주해 stand_up()을 그대로 재사용한다 — 핸드 진행 중이면
+# stand_up() 자체가 즉시 비우지 않고 핸드 종료 후 퇴장을 예약하므로 안전하다.
+POKER_DISCONNECT_GRACE_SECONDS = 20
+_disconnect_grace_tasks = {}  # user_id -> asyncio.Task
+
 
 async def _broadcast_poker_state():
     channel_layer = get_channel_layer()
@@ -141,6 +149,27 @@ def _ensure_poker_watchdog():
     global _watchdog_task
     if _watchdog_task is None or _watchdog_task.done():
         _watchdog_task = asyncio.create_task(_poker_watchdog_loop())
+
+
+def _cancel_disconnect_grace(user_id):
+    """재접속에 성공했으니 예약된 자동 퇴장을 취소한다."""
+    task = _disconnect_grace_tasks.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
+
+
+async def _schedule_disconnect_grace(user):
+    """연결이 끊긴 유저를 유예 시간 뒤에도 재접속하지 않으면 자리에서 내보낸다.
+    (같은 유저가 여러 탭을 열어둔 경우는 드문 예외로 두고 신경 쓰지 않는다.)"""
+    try:
+        await asyncio.sleep(POKER_DISCONNECT_GRACE_SECONDS)
+        ok, _ = await database_sync_to_async(poker_engine.stand_up)(user)
+        if ok:
+            await _broadcast_poker_state()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _disconnect_grace_tasks.pop(user.id, None)
 
 
 async def _poker_watchdog_loop():
@@ -172,6 +201,7 @@ class PokerConsumer(AsyncWebsocketConsumer):
         if not self.scope["user"].is_authenticated:
             await self.close()
             return
+        _cancel_disconnect_grace(self.scope["user"].id)
         await self.channel_layer.group_add(POKER_GROUP, self.channel_name)
         await self.accept()
         _ensure_poker_watchdog()
@@ -179,6 +209,9 @@ class PokerConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(POKER_GROUP, self.channel_name)
+        user = self.scope.get("user")
+        if user and user.is_authenticated and user.id not in _disconnect_grace_tasks:
+            _disconnect_grace_tasks[user.id] = asyncio.create_task(_schedule_disconnect_grace(user))
 
     async def receive(self, text_data):
         try:
