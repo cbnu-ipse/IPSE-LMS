@@ -5,6 +5,7 @@ import time
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
+from django.db import close_old_connections
 from django.utils import timezone
 
 from . import poker_engine
@@ -202,6 +203,11 @@ async def _poker_watchdog_loop():
                 raise
             except Exception:
                 logger.exception("poker watchdog tick failed, retrying")
+                # 백그라운드 태스크라 일반 요청 사이클(request_started 시그널)을
+                # 안 타서, DB 연결이 죽은 채로 남아있으면 재시도해도 매번 같은
+                # 예외로 영원히 실패한다 — 죽은 연결을 강제로 버리고 다음 시도
+                # 때 새로 연결하게 한다.
+                await database_sync_to_async(close_old_connections)()
                 await asyncio.sleep(POKER_WATCHDOG_ERROR_RETRY_SECONDS)
     finally:
         _watchdog_task = None
