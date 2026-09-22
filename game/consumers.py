@@ -274,7 +274,19 @@ class PokerConsumer(AsyncWebsocketConsumer):
         else:
             return
 
-        ok, result = await database_sync_to_async(handler)()
+        try:
+            ok, result = await database_sync_to_async(handler)()
+        except Exception:
+            # ponytail: 여기서 잡지 않으면 예외가 그대로 올라가 소켓이 로그 한 줄 없이
+            # 끊기고, 클라이언트는 5초 후 재접속만 반복해 "포커만 계속 안 됨"처럼 보인다.
+            # 어떤 액션이 터졌는지 서버 로그에 남기고, 클라이언트에는 에러로 알려준다.
+            logger.exception("poker action failed: type=%s user=%s", msg_type, getattr(user, "id", None))
+            await database_sync_to_async(close_old_connections)()
+            await self.send(text_data=json.dumps(
+                {"type": "error", "message": "처리 중 오류가 발생했습니다. 새로고침 후 다시 시도해주세요."},
+                ensure_ascii=False,
+            ))
+            return
         if not ok:
             await self.send(text_data=json.dumps({"type": "error", "message": result}, ensure_ascii=False))
         elif msg_type == "emoji":
