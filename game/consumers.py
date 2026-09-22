@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -7,6 +8,8 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 
 from . import poker_engine
+
+logger = logging.getLogger(__name__)
 
 LOBBY_GROUP = "lobby_chat"
 MAX_MESSAGE_LENGTH = 300  # 메시지 최대 길이 (글자)
@@ -130,6 +133,13 @@ POKER_GROUP = "poker_table"
 # 프로세스 독립적인 스케줄러로 옮겨야 한다.
 _watchdog_task = None
 
+# 워치독 루프 한 틱에서 예기치 못한 예외가 나면 그 자리에서 태스크 전체가
+# 조용히 죽어버려서(아무 로그도 안 남고), 누군가 다시 메시지를 보내
+# _ensure_poker_watchdog()를 트리거하기 전까지 턴 진행/다음 핸드 시작이
+# 영원히 멈추는 사고가 있었다 — 예외를 로그로 남기고 삼킨 뒤 이 시간(초)
+# 후 같은 루프에서 다시 시도한다.
+POKER_WATCHDOG_ERROR_RETRY_SECONDS = 2
+
 # 연결이 끊긴 뒤에도 이 시간(초) 안에 재접속하면 자리를 그대로 유지한다.
 # (새로고침·짧은 네트워크 끊김 등은 흔하고, 클라이언트도 5초 후 자동 재접속을
 # 시도하므로 그보다 넉넉하게 잡는다.) 그보다 오래 끊겨 있으면 자리에서
@@ -178,15 +188,21 @@ async def _poker_watchdog_loop():
     global _watchdog_task
     try:
         while True:
-            deadline = await database_sync_to_async(poker_engine.next_deadline_at)()
-            if deadline is None:
-                return
-            wait = (deadline - timezone.now()).total_seconds()
-            if wait > 0:
-                await asyncio.sleep(min(wait, 2))
-                continue
-            await database_sync_to_async(poker_engine.process_due_deadlines)()
-            await _broadcast_poker_state()
+            try:
+                deadline = await database_sync_to_async(poker_engine.next_deadline_at)()
+                if deadline is None:
+                    return
+                wait = (deadline - timezone.now()).total_seconds()
+                if wait > 0:
+                    await asyncio.sleep(min(wait, 2))
+                    continue
+                await database_sync_to_async(poker_engine.process_due_deadlines)()
+                await _broadcast_poker_state()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("poker watchdog tick failed, retrying")
+                await asyncio.sleep(POKER_WATCHDOG_ERROR_RETRY_SECONDS)
     finally:
         _watchdog_task = None
 
