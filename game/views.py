@@ -1,3 +1,4 @@
+import json
 import random
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -5,7 +6,12 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import transaction
-from .models import SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore
+from .models import (
+    SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
+    HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
+    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable,
+)
+from . import poker_engine
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -590,3 +596,186 @@ def season_reward_debug(request):
     )
     from django.shortcuts import redirect
     return redirect(request.GET.get("next", "/"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 하이로우 (Hi-Lo)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _highlow_draw_rank():
+    return random.randint(2, 14)
+
+
+def _highlow_multiplier(rank, guess):
+    """`guess`(higher/lower)가 맞았을 때 배당 배수. 그 랭크에서 나올 수 없는 방향이면 None."""
+    favorable = (14 - rank) if guess == "higher" else (rank - 2)
+    if favorable <= 0:
+        return None
+    probability = favorable / 13
+    return round(HIGHLOW_RTP / probability, 4)
+
+
+def _highlow_state(session):
+    """현재 상태 + 다음 선택지별 배당을 함께 내려준다 (프론트에서 버튼 활성/배당 표시용)."""
+    return {
+        "active": True,
+        "bet": session.bet,
+        "rank": session.current_rank,
+        "streak": session.streak,
+        "potential_payout": session.potential_payout,
+        "higher_multiplier": _highlow_multiplier(session.current_rank, "higher"),
+        "lower_multiplier": _highlow_multiplier(session.current_rank, "lower"),
+    }
+
+
+@login_required
+def highlow_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    session = HighLowSession.objects.filter(user=request.user).first()
+    wallet = PokerChipWallet.objects.filter(user=request.user).first()
+    return render(request, "game/highlow.html", {
+        "title": "하이로우",
+        "chat_messages": list(latest)[::-1],
+        "session_state_json": json.dumps(_highlow_state(session) if session else None),
+        "min_bet": HIGHLOW_MIN_BET,
+        "max_bet": HIGHLOW_MAX_BET,
+        "chips": wallet.chips if wallet else 0,
+        "chips_per_leaf": POKER_CHIPS_PER_LEAF,
+    })
+
+
+@login_required
+@require_POST
+def highlow_start(request):
+    user = request.user
+
+    if HighLowSession.objects.filter(user=user).exists():
+        return JsonResponse({"status": "error", "message": "이미 진행 중인 판이 있습니다."}, status=400)
+
+    try:
+        bet = int(json.loads(request.body or "{}").get("bet"))
+    except (ValueError, TypeError):
+        return JsonResponse({"status": "error", "message": "베팅 금액이 올바르지 않습니다."}, status=400)
+
+    if not (HIGHLOW_MIN_BET <= bet <= HIGHLOW_MAX_BET):
+        return JsonResponse(
+            {"status": "error", "message": f"베팅은 {HIGHLOW_MIN_BET}~{HIGHLOW_MAX_BET} 칩 사이여야 합니다."},
+            status=400,
+        )
+
+    with transaction.atomic():
+        wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user=user)
+        if wallet.chips < bet:
+            return JsonResponse({"status": "error", "message": "칩이 부족합니다. 먼저 낙엽을 칩으로 충전해주세요."}, status=400)
+        wallet.chips -= bet
+        wallet.save(update_fields=["chips"])
+
+        session = HighLowSession.objects.create(
+            user=user, bet=bet, current_rank=_highlow_draw_rank(), streak=0, potential_payout=0,
+        )
+
+    return JsonResponse({"status": "success", "chips": wallet.chips, **_highlow_state(session)})
+
+
+@login_required
+@require_POST
+def highlow_guess(request):
+    user = request.user
+    try:
+        guess = json.loads(request.body or "{}").get("guess")
+    except ValueError:
+        guess = None
+    if guess not in ("higher", "lower"):
+        return JsonResponse({"status": "error", "message": "잘못된 요청입니다."}, status=400)
+
+    with transaction.atomic():
+        session = HighLowSession.objects.select_for_update().filter(user=user).first()
+        if not session:
+            return JsonResponse({"status": "error", "message": "진행 중인 판이 없습니다."}, status=400)
+
+        multiplier = _highlow_multiplier(session.current_rank, guess)
+        if multiplier is None:
+            return JsonResponse({"status": "error", "message": "그 카드에서는 선택할 수 없는 방향입니다."}, status=400)
+
+        next_rank = _highlow_draw_rank()
+        # 동점(next_rank == current_rank)은 항상 실패 처리 (단순하고 공정한 규칙)
+        correct = next_rank > session.current_rank if guess == "higher" else next_rank < session.current_rank
+
+        if not correct:
+            HighLowPlayLog.objects.create(
+                user=user, bet=session.bet, streak=session.streak, payout=0, result="busted",
+            )
+            prev_rank = session.current_rank
+            session.delete()
+            return JsonResponse({
+                "status": "success", "result": "bust",
+                "prev_rank": prev_rank, "next_rank": next_rank,
+                "streak": 0,
+            })
+
+        base = session.potential_payout if session.streak > 0 else session.bet
+        session.potential_payout = round(base * multiplier)
+        session.streak += 1
+        session.current_rank = next_rank
+        session.save()
+
+    return JsonResponse({"status": "success", "result": "continue", **_highlow_state(session)})
+
+
+@login_required
+@require_POST
+def highlow_cashout(request):
+    user = request.user
+    with transaction.atomic():
+        session = HighLowSession.objects.select_for_update().filter(user=user).first()
+        if not session or session.streak == 0:
+            return JsonResponse({"status": "error", "message": "캐시아웃할 수 있는 판이 없습니다."}, status=400)
+
+        wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user=user)
+        wallet.chips += session.potential_payout
+        wallet.save(update_fields=["chips"])
+        HighLowPlayLog.objects.create(
+            user=user, bet=session.bet, streak=session.streak, payout=session.potential_payout, result="cashed_out",
+        )
+        payout, streak = session.potential_payout, session.streak
+        session.delete()
+
+    return JsonResponse({"status": "success", "payout": payout, "streak": streak, "chips": wallet.chips})
+
+
+@login_required
+@require_POST
+def highlow_buy_chips(request):
+    """낙엽 → 칩 충전. 포커 칩 지갑을 그대로 공유하므로 로직은 poker_engine.buy_chips를 재사용."""
+    try:
+        leaves_amount = int(json.loads(request.body or "{}").get("leaves"))
+    except (ValueError, TypeError):
+        return JsonResponse({"status": "error", "message": "충전할 낙엽 수가 올바르지 않습니다."}, status=400)
+
+    PokerTable.get_solo()  # 포커 페이지를 연 적 없어도 칩 지갑 싱글턴 테이블 행이 있어야 함
+    ok, message = poker_engine.buy_chips(request.user, leaves_amount)
+    if not ok:
+        return JsonResponse({"status": "error", "message": message}, status=400)
+
+    wallet = PokerChipWallet.objects.get(user=request.user)
+    request.user.refresh_from_db()
+    return JsonResponse({"status": "success", "chips": wallet.chips, "leaves": request.user.leaves})
+
+
+@login_required
+@require_POST
+def highlow_cash_out_chips(request):
+    """칩 → 낙엽 환전. 포커 칩 지갑을 그대로 공유하므로 로직은 poker_engine.cash_out_chips를 재사용."""
+    try:
+        chips_amount = int(json.loads(request.body or "{}").get("chips"))
+    except (ValueError, TypeError):
+        return JsonResponse({"status": "error", "message": "환전할 칩 수가 올바르지 않습니다."}, status=400)
+
+    PokerTable.get_solo()  # 포커 페이지를 연 적 없어도 칩 지갑 싱글턴 테이블 행이 있어야 함
+    ok, message = poker_engine.cash_out_chips(request.user, chips_amount)
+    if not ok:
+        return JsonResponse({"status": "error", "message": message}, status=400)
+
+    wallet = PokerChipWallet.objects.get(user=request.user)
+    request.user.refresh_from_db()
+    return JsonResponse({"status": "success", "chips": wallet.chips, "leaves": request.user.leaves})

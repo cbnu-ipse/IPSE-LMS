@@ -1,0 +1,1179 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 하이로우{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- LEFT: 하이로우 테이블 -->
+        <div class="lg:col-span-9">
+            <div class="hl-outer">
+
+                <!-- 컴팩트 상태 바 -->
+                <div class="hl-stat-bar">
+                    <i class="fa-solid fa-coins text-amber-400 text-xs"></i>
+                    <span id="hl-chips-badge" class="font-bold">{{ chips }}</span>칩
+                    <button type="button" id="hl-chip-exchange-btn" class="hl-chip-exchange-btn" onclick="openHlChipTab()" title="칩 충전/환전">
+                        <i class="fa-solid fa-right-left"></i> 칩 환전
+                    </button>
+                    <span class="text-slate-600/40 mx-2">|</span>
+                    <i class="fa-solid fa-fire text-orange-400 text-xs"></i>
+                    <span id="hl-streak-badge" class="font-bold">0</span>연속
+                    <button type="button" id="hl-sound-toggle" class="hl-sound-toggle" title="사운드 켜기/끄기">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                </div>
+
+                <!-- 테이블 본체 -->
+                <div class="hl-table-body">
+                    <div class="hl-neon-border"></div>
+
+                    <!-- 카드 -->
+                    <div class="hl-card-area">
+                        <div id="hl-card" class="hl-card">
+                            <div class="hl-card-face">
+                                <span id="hl-card-rank" class="hl-card-rank">?</span>
+                                <span id="hl-card-suit" class="hl-card-suit">♠</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 결과 배너 -->
+                    <div id="hl-result-banner" class="hl-result-banner hidden"></div>
+
+                    <!-- 진행 중 액션: 높다/낮다 + 캐시아웃 -->
+                    <div id="hl-action-area" class="hl-action-area hidden">
+                        <div class="hl-guess-row">
+                            <button id="hl-btn-lower" onclick="hlGuess('lower')" class="hl-guess-btn hl-guess-btn--lower">
+                                <i class="fa-solid fa-arrow-down"></i> 낮다
+                                <span id="hl-lower-mult" class="hl-mult"></span>
+                            </button>
+                            <button id="hl-btn-higher" onclick="hlGuess('higher')" class="hl-guess-btn hl-guess-btn--higher">
+                                <i class="fa-solid fa-arrow-up"></i> 높다
+                                <span id="hl-higher-mult" class="hl-mult"></span>
+                            </button>
+                        </div>
+                        <div class="hl-payout-row">
+                            <div class="hl-payout-info">
+                                지금 캐시아웃 시 <span id="hl-payout-amount" class="hl-payout-amount">0</span>칩
+                            </div>
+                            <button id="hl-btn-cashout" onclick="hlCashout()" class="hl-cashout-btn" disabled>
+                                <i class="fa-solid fa-sack-dollar"></i> 캐시아웃
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 베팅 폼 -->
+                    <div id="hl-bet-area" class="hl-bet-area">
+                        <label for="hl-bet-input" class="hl-bet-label">베팅할 칩</label>
+                        <div class="hl-bet-row">
+                            <input type="number" id="hl-bet-input" min="{{ min_bet }}" max="{{ max_bet }}" step="1" value="{{ min_bet }}" class="hl-bet-input">
+                            <button type="button" class="hl-bet-quick" onclick="hlSetBet({{ min_bet }})">최소</button>
+                            <button type="button" class="hl-bet-quick" onclick="hlSetBetMax()">최대</button>
+                        </div>
+                        <button id="hl-btn-start" onclick="hlStart()" class="hl-start-btn">
+                            <i class="fa-solid fa-play"></i> 게임 시작
+                        </button>
+                    </div>
+                </div>
+
+                <p class="hl-hint">직전 카드보다 높을지 낮을지 맞히면 배당이 붙습니다 · 동점은 실패 처리 · 언제든 캐시아웃 가능</p>
+            </div><!-- /.hl-outer -->
+        </div><!-- lg:col-span-9 -->
+
+        <!-- RIGHT: 채팅 + 칩 관리 탭 -->
+        <div class="lg:col-span-3 mobile-hidden" id="hl-side-col" style="position:sticky;top:6rem">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'hl-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'hl-tab-chips')">
+                        <i class="fa-solid fa-coins"></i> 칩 관리
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="hl-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="hl-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...
+                        </span>
+                    </div>
+                    <div id="hl-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-[11px] text-center pt-4">아직 채팅 내역이 없습니다.<br>첫 메시지를 남겨보세요! 🎉</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input type="text" id="hl-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="hl-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 칩 관리 탭 (포커와 공유하는 칩 지갑) -->
+                <div id="hl-tab-chips" class="gsp-pane" style="display:none">
+                    <div class="hl-chip-panel">
+                        <div class="hl-chip-rate"><i class="fa-solid fa-leaf" style="color:#059669"></i> 1 낙엽 = <span id="hl-chip-rate-num">{{ chips_per_leaf }}</span> 칩</div>
+                        <div class="hl-chip-row">
+                            <span>보유 낙엽</span>
+                            <strong id="hl-chip-my-leaves">{{ request.user.leaves }}</strong>
+                        </div>
+                        <div class="hl-chip-row">
+                            <span>보관 칩</span>
+                            <strong id="hl-chip-my-wallet">{{ chips }}</strong>
+                        </div>
+                        <div class="hl-chip-actions">
+                            <label class="hl-chip-label">낙엽 → 칩 충전</label>
+                            <div class="hl-chip-input-row">
+                                <input type="number" id="hl-buy-chips-amount" class="hl-chip-input" min="1" value="10">
+                                <button type="button" id="hl-buy-chips-btn" class="hl-chip-btn">충전</button>
+                            </div>
+                        </div>
+                        <div class="hl-chip-actions">
+                            <label class="hl-chip-label">칩 → 낙엽 환전 (<span id="hl-chip-sell-unit">{{ chips_per_leaf }}</span>칩 단위로 환전, 나머지는 지갑에 보관)</label>
+                            <div class="hl-chip-input-row">
+                                <input type="number" id="hl-cash-out-amount" class="hl-chip-input" min="{{ chips_per_leaf }}" step="{{ chips_per_leaf }}" value="{{ chips_per_leaf }}">
+                            </div>
+                            <div class="hl-chip-btn-row">
+                                <button type="button" id="hl-cash-out-all-btn" class="hl-chip-btn hl-chip-btn--ghost">전액</button>
+                                <button type="button" id="hl-cash-out-btn" class="hl-chip-btn hl-chip-btn--buy">환전</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="hl-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="toggleHlChat()">
+    <i id="hl-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; background: #fff; }
+.gsp-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    font-size: .72rem;
+    color: #475569;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+/* ── 컴팩트 상태 바 ────────────────────────────── */
+.hl-stat-bar {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .4rem 1rem;
+    background: rgba(255,255,255,.05);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: .7rem;
+    color: #94a3b8;
+}
+.hl-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.hl-sound-toggle:hover { color: #e2e8f0; }
+.hl-sound-toggle.muted { color: #64748b; }
+.hl-chip-exchange-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(6,182,212,0.12);
+    border: 1px solid rgba(6,182,212,0.3);
+    color: #67e8f9;
+    font-size: .65rem;
+    font-weight: 700;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.4;
+}
+.hl-chip-exchange-btn:hover { background: rgba(6,182,212,0.2); }
+/* ── 칩 관리 탭 (포커와 동일한 구조) ─────────────────────────────── */
+.hl-chip-panel { padding: .9rem 1rem; display: flex; flex-direction: column; gap: 10px; }
+.hl-chip-rate {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .72rem; font-weight: 700; color: #64748b;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 6px 10px;
+}
+.hl-chip-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: .82rem; color: #475569; padding: 4px 2px;
+}
+.hl-chip-row strong { color: #1e293b; font-variant-numeric: tabular-nums; }
+.hl-chip-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.hl-chip-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-top: 6px; }
+.hl-chip-input-row { display: flex; gap: 6px; }
+.hl-chip-input-row .hl-chip-input { flex: 1; width: auto; }
+.hl-chip-input {
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    font-size: .82rem;
+    font-weight: 700;
+    text-align: center;
+}
+.hl-chip-btn-row { display: flex; gap: 6px; margin-top: 4px; }
+.hl-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    background: linear-gradient(135deg, #059669, #047857);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: .76rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.hl-chip-btn:hover { filter: brightness(1.1); }
+.hl-chip-btn--ghost {
+    flex: 1;
+    background: #fff;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+.hl-chip-btn--ghost:hover { background: #f1f5f9; filter: none; }
+.hl-chip-btn--buy { flex: 1; }
+/* ── 전체 컨테이너 ─────────────────────────────── */
+.hl-outer {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 24px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+}
+/* ── 테이블 본체 ────────────────────────────────── */
+.hl-table-body {
+    position: relative;
+    padding: 28px 24px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+}
+.hl-neon-border {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 60px rgba(6,182,212,0.05);
+}
+
+/* ── 카드 ──────────────────────────────────────── */
+.hl-card-area {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 4px;
+    perspective: 800px;
+}
+.hl-card {
+    width: 140px;
+    height: 196px;
+    border-radius: 14px;
+    background: #f8fafc;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 0 2px #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+    transform-style: preserve-3d;
+}
+.hl-card.hl-flip { transform: rotateY(360deg); }
+.hl-card.hl-correct { box-shadow: 0 0 0 3px #22c55e, 0 10px 30px rgba(34,197,94,0.35); }
+.hl-card.hl-wrong { box-shadow: 0 0 0 3px #f43f5e, 0 10px 30px rgba(244,63,94,0.35); }
+.hl-card-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+.hl-card-rank {
+    font-size: 3.2rem;
+    font-weight: 900;
+    line-height: 1;
+    color: #0f172a;
+}
+.hl-card-suit { font-size: 1.6rem; }
+.hl-card-suit.red { color: #e11d48; }
+.hl-card-suit.black { color: #0f172a; }
+
+/* ── 결과 배너 ─────────────────────────────────── */
+.hl-result-banner {
+    width: 100%;
+    text-align: center;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    animation: hlFadeIn 0.4s ease;
+}
+.hl-result-banner.win {
+    background: rgba(34,197,94,0.15);
+    border: 1px solid rgba(34,197,94,0.35);
+    color: #4ade80;
+}
+.hl-result-banner.lose {
+    background: rgba(244,63,94,0.15);
+    border: 1px solid rgba(244,63,94,0.3);
+    color: #fb7185;
+}
+@keyframes hlFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 높다/낮다 + 캐시아웃 ──────────────────────── */
+.hl-action-area {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.hl-guess-row {
+    display: flex;
+    gap: 10px;
+}
+.hl-guess-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 12px 10px;
+    border-radius: 14px;
+    border: none;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.hl-guess-btn--lower { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+.hl-guess-btn--higher { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.hl-guess-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.hl-guess-btn:active:not(:disabled) { transform: scale(0.97); }
+.hl-guess-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.hl-mult { font-size: 11px; font-weight: 700; opacity: 0.85; }
+
+.hl-payout-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 10px 14px;
+}
+.hl-payout-info { font-size: 12px; color: #cbd5e1; font-weight: 600; }
+.hl-payout-amount { color: #fbbf24; font-weight: 900; font-size: 15px; }
+.hl-cashout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.hl-cashout-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.hl-cashout-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── 베팅 폼 ────────────────────────────────────── */
+.hl-bet-area {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.hl-bet-label { font-size: 11px; color: #94a3b8; font-weight: 700; }
+.hl-bet-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    max-width: 320px;
+}
+.hl-bet-input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: #0a0f1e;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+}
+.hl-bet-quick {
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.hl-bet-quick:hover { background: #334155; }
+.hl-start-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 320px;
+    padding: 14px 24px;
+    border: none;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #06b6d4, #0891b2, #0e7490);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 0 24px rgba(6,182,212,0.25);
+    letter-spacing: 0.02em;
+}
+.hl-start-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.hl-start-btn:active:not(:disabled) { transform: scale(0.97); }
+.hl-start-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
+
+.hl-hint {
+    text-align: center;
+    font-size: 10px;
+    color: #475569;
+    padding: 8px 20px 16px;
+    font-weight: 600;
+}
+.hidden { display: none !important; }
+
+/* ── 모바일 최적화 ───────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .hl-table-body { padding: 16px 10px 14px; gap: 12px; }
+    .hl-card { width: 108px; height: 152px; }
+    .hl-card-rank { font-size: 2.4rem; }
+    .hl-card-suit { font-size: 1.2rem; }
+    .hl-guess-btn { font-size: 12px; padding: 10px 8px; }
+    .hl-start-btn { font-size: 13px; padding: 11px 20px; max-width: 100%; }
+    .hl-hint { font-size: 9px; padding: 6px 10px 12px; }
+    .hl-result-banner { font-size: 12px; padding: 8px 12px; }
+    .hl-stat-bar { font-size: .65rem; }
+}
+
+/* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #hl-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #hl-side-col .game-side-panel { height: 100% !important; }
+    #hl-side-col.mobile-hidden { display: none !important; }
+    .hl-outer { overscroll-behavior: none; }
+}
+
+/* ── 모바일 가로모드: 스크롤 없이 한 화면에 (JS가 body.hl-landscape 토글) ── */
+body.hl-landscape section.max-w-7xl { padding: 36px 8px 4px !important; }
+body.hl-landscape .hl-outer { padding: 0 !important; }
+body.hl-landscape .hl-stat-bar { font-size: .6rem; padding: 3px 10px; margin-bottom: 4px; }
+body.hl-landscape .hl-table-body { padding: 8px 14px 10px; gap: 8px; border-radius: 18px; }
+body.hl-landscape .hl-card { width: 90px; height: 126px; }
+body.hl-landscape .hl-card-rank { font-size: 2rem; }
+body.hl-landscape .hl-card-suit { font-size: 1rem; }
+body.hl-landscape .hl-guess-btn { padding: 8px 6px; font-size: 11px; }
+body.hl-landscape .hl-start-btn { padding: 7px 20px; font-size: 12px; border-radius: 12px; }
+body.hl-landscape .hl-hint { display: none; }
+</style>
+
+<script src="{% static 'js/game-sound.js' %}"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   하이로우 게임 로직
+   ═══════════════════════════════════════════════════════════════════ */
+
+const RANK_LABEL = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
+const SUITS = [
+    { char: '♠', color: 'black' }, { char: '♣', color: 'black' },
+    { char: '♥', color: 'red' },   { char: '♦', color: 'red' },
+];
+let hlBusy = false;
+let hlState = {{ session_state_json|safe }};
+
+const cardEl      = document.getElementById('hl-card');
+const rankEl      = document.getElementById('hl-card-rank');
+const suitEl      = document.getElementById('hl-card-suit');
+const actionAreaEl = document.getElementById('hl-action-area');
+const betAreaEl   = document.getElementById('hl-bet-area');
+const resultBannerEl = document.getElementById('hl-result-banner');
+const streakBadgeEl  = document.getElementById('hl-streak-badge');
+const chipsBadgeEl   = document.getElementById('hl-chips-badge');
+const chipMyLeavesEl = document.getElementById('hl-chip-my-leaves');
+const chipMyWalletEl = document.getElementById('hl-chip-my-wallet');
+const payoutAmountEl = document.getElementById('hl-payout-amount');
+const btnHigher = document.getElementById('hl-btn-higher');
+const btnLower  = document.getElementById('hl-btn-lower');
+const btnCashout = document.getElementById('hl-btn-cashout');
+const btnStart  = document.getElementById('hl-btn-start');
+const betInputEl = document.getElementById('hl-bet-input');
+
+function rankLabel(rank) { return RANK_LABEL[rank] || String(rank); }
+
+function paintCard(rank) {
+    // 무늬는 게임 판정에 영향 없는 순수 장식 — 매번 랜덤 선택
+    const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
+    rankEl.textContent = rankLabel(rank);
+    suitEl.textContent = suit.char;
+    suitEl.className = `hl-card-suit ${suit.color}`;
+}
+
+function fmtMult(m) { return m == null ? '' : `x${m.toFixed(2)}`; }
+
+function updateNavLeaves(leaves) {
+    chipMyLeavesEl.textContent = leaves;
+    const navLeaf = document.querySelector('[title="낙엽 잔액"] span');
+    if (navLeaf) navLeaf.textContent = leaves;
+}
+
+function updateChips(chips) {
+    chipsBadgeEl.textContent = chips;
+    chipMyWalletEl.textContent = chips;
+}
+
+function render() {
+    resultBannerEl.classList.add('hidden');
+    cardEl.classList.remove('hl-correct', 'hl-wrong');
+
+    if (hlState && hlState.active) {
+        paintCard(hlState.rank);
+        actionAreaEl.classList.remove('hidden');
+        betAreaEl.classList.add('hidden');
+        streakBadgeEl.textContent = hlState.streak;
+        payoutAmountEl.textContent = hlState.potential_payout;
+
+        btnHigher.disabled = hlState.higher_multiplier == null;
+        btnLower.disabled = hlState.lower_multiplier == null;
+        document.getElementById('hl-higher-mult').textContent = fmtMult(hlState.higher_multiplier);
+        document.getElementById('hl-lower-mult').textContent = fmtMult(hlState.lower_multiplier);
+        btnCashout.disabled = hlState.streak === 0;
+    } else {
+        rankEl.textContent = '?';
+        suitEl.textContent = '🂠';
+        suitEl.className = 'hl-card-suit';
+        actionAreaEl.classList.add('hidden');
+        betAreaEl.classList.remove('hidden');
+        streakBadgeEl.textContent = '0';
+    }
+}
+
+function hlSetBet(v) { betInputEl.value = v; }
+function hlSetBetMax() {
+    const chips = parseInt(chipsBadgeEl.textContent, 10) || 0;
+    betInputEl.value = Math.max({{ min_bet }}, Math.min({{ max_bet }}, chips));
+}
+
+async function hlPost(path, payload) {
+    const res = await fetch(`/game/highlow/${path}/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || '오류가 발생했습니다.');
+    return data;
+}
+
+async function hlStart() {
+    if (hlBusy) return;
+    const bet = parseInt(betInputEl.value, 10);
+    if (!bet || bet < {{ min_bet }} || bet > {{ max_bet }}) {
+        window.showToast(`베팅은 {{ min_bet }}~{{ max_bet }} 칩 사이여야 합니다.`, 'error');
+        return;
+    }
+    hlBusy = true;
+    btnStart.disabled = true;
+    try {
+        const data = await hlPost('start', { bet });
+        hlState = data;
+        updateChips(data.chips);
+        render();
+        if (window.GameSound) window.GameSound.play('click');
+    } catch (err) {
+        window.showToast(err.message, 'error');
+    } finally {
+        btnStart.disabled = false;
+        hlBusy = false;
+    }
+}
+
+async function hlGuess(guess) {
+    if (hlBusy || !hlState || !hlState.active) return;
+    hlBusy = true;
+    btnHigher.disabled = true;
+    btnLower.disabled = true;
+    cardEl.classList.add('hl-flip');
+    if (window.GameSound) window.GameSound.play('tap');
+
+    let data;
+    try {
+        data = await hlPost('guess', { guess });
+    } catch (err) {
+        window.showToast(err.message, 'error');
+        cardEl.classList.remove('hl-flip');
+        render();
+        hlBusy = false;
+        return;
+    }
+
+    setTimeout(() => {
+        cardEl.classList.remove('hl-flip');
+
+        if (data.result === 'bust') {
+            paintCard(data.next_rank);
+            cardEl.classList.add('hl-wrong');
+            resultBannerEl.className = 'hl-result-banner lose';
+            resultBannerEl.textContent = `아쉽게도 실패! ${data.streak === 0 ? '' : `${data.streak}`}연속에서 베팅액을 잃었습니다.`;
+            resultBannerEl.classList.remove('hidden');
+            actionAreaEl.classList.add('hidden');
+            if (window.GameSound) window.GameSound.play('lose');
+            hlState = null;
+            setTimeout(() => { betAreaEl.classList.remove('hidden'); }, 200);
+        } else {
+            hlState = data;
+            paintCard(data.rank);
+            cardEl.classList.add('hl-correct');
+            streakBadgeEl.textContent = data.streak;
+            payoutAmountEl.textContent = data.potential_payout;
+            btnHigher.disabled = data.higher_multiplier == null;
+            btnLower.disabled = data.lower_multiplier == null;
+            document.getElementById('hl-higher-mult').textContent = fmtMult(data.higher_multiplier);
+            document.getElementById('hl-lower-mult').textContent = fmtMult(data.lower_multiplier);
+            btnCashout.disabled = false;
+            if (window.GameSound) window.GameSound.play('success');
+        }
+        hlBusy = false;
+    }, 320);
+}
+
+async function hlCashout() {
+    if (hlBusy || !hlState || !hlState.active || hlState.streak === 0) return;
+    hlBusy = true;
+    btnCashout.disabled = true;
+    try {
+        const data = await hlPost('cashout');
+        updateChips(data.chips);
+        resultBannerEl.className = 'hl-result-banner win';
+        resultBannerEl.textContent = `🎉 캐시아웃 완료! ${data.streak}연속으로 ${data.payout}칩을 획득했습니다.`;
+        resultBannerEl.classList.remove('hidden');
+        actionAreaEl.classList.add('hidden');
+        hlState = null;
+        if (window.GameSound) window.GameSound.play('jackpot');
+        confetti({ particleCount: 120, spread: 75, origin: { y: 0.6 } });
+        setTimeout(() => { betAreaEl.classList.remove('hidden'); }, 200);
+    } catch (err) {
+        window.showToast(err.message, 'error');
+        btnCashout.disabled = false;
+    } finally {
+        hlBusy = false;
+    }
+}
+
+render();
+
+function openHlChipTab() {
+    const chipsTabBtn = document.querySelector('.gsp-tab[onclick*="hl-tab-chips"]');
+    if (chipsTabBtn) gspSwitch(chipsTabBtn, 'hl-tab-chips');
+    const col = document.getElementById('hl-side-col');
+    if (col && col.classList.contains('mobile-hidden')) toggleHlChat();
+}
+
+// ─── 칩 관리 (포커와 공유하는 칩 지갑, 포커와 동일한 충전/환전 구조) ────
+(function () {
+    const buyBtn = document.getElementById('hl-buy-chips-btn');
+    const buyInput = document.getElementById('hl-buy-chips-amount');
+    const cashOutBtn = document.getElementById('hl-cash-out-btn');
+    const cashOutAllBtn = document.getElementById('hl-cash-out-all-btn');
+    const cashOutInput = document.getElementById('hl-cash-out-amount');
+
+    buyBtn.addEventListener('click', async () => {
+        const leaves = parseInt(buyInput.value, 10);
+        if (!leaves || leaves < 1) {
+            window.showToast('충전할 낙엽 수를 입력해주세요.', 'error');
+            return;
+        }
+        buyBtn.disabled = true;
+        try {
+            const data = await hlPost('buy-chips', { leaves });
+            updateChips(data.chips);
+            updateNavLeaves(data.leaves);
+            window.showToast(`${leaves}낙엽을 ${leaves * {{ chips_per_leaf }}}칩으로 충전했습니다.`, 'success');
+            if (window.GameSound) window.GameSound.play('success');
+        } catch (err) {
+            window.showToast(err.message, 'error');
+        } finally {
+            buyBtn.disabled = false;
+        }
+    });
+
+    async function cashOut(chips) {
+        if (!chips || chips < 1) {
+            window.showToast('환전할 칩 수를 입력해주세요.', 'error');
+            return;
+        }
+        cashOutBtn.disabled = true;
+        cashOutAllBtn.disabled = true;
+        try {
+            const data = await hlPost('cash-out-chips', { chips });
+            updateChips(data.chips);
+            updateNavLeaves(data.leaves);
+            window.showToast(`${chips}칩을 낙엽으로 환전했습니다.`, 'success');
+            if (window.GameSound) window.GameSound.play('success');
+        } catch (err) {
+            window.showToast(err.message, 'error');
+        } finally {
+            cashOutBtn.disabled = false;
+            cashOutAllBtn.disabled = false;
+        }
+    }
+
+    cashOutBtn.addEventListener('click', () => cashOut(parseInt(cashOutInput.value, 10)));
+    cashOutAllBtn.addEventListener('click', () => {
+        const walletChips = parseInt(chipMyWalletEl.textContent, 10) || 0;
+        cashOutInput.value = walletChips;
+        cashOut(walletChips);
+    });
+})();
+
+// ─── 사운드 음소거 토글 ────────────────────────────────────────────
+(function () {
+    const btn = document.getElementById('hl-sound-toggle');
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    function renderMute() {
+        const muted = window.GameSound && window.GameSound.isMuted();
+        btn.classList.toggle('muted', !!muted);
+        icon.className = muted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+    }
+    btn.addEventListener('click', () => {
+        if (window.GameSound) window.GameSound.toggleMute();
+        renderMute();
+    });
+    renderMute();
+})();
+
+// ─── 모바일 가로모드: 스크롤 없이 한 화면에 배치 ─────────────────
+function isHlLandscape() {
+    return window.innerWidth < 1024 && window.innerWidth > window.innerHeight;
+}
+function applyHlLandscape() {
+    document.body.classList.toggle('hl-landscape', isHlLandscape());
+}
+applyHlLandscape();
+window.addEventListener('resize', applyHlLandscape);
+window.addEventListener('orientationchange', () => setTimeout(applyHlLandscape, 120));
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+}
+
+function toggleHlChat() {
+    const col  = document.getElementById('hl-side-col');
+    const icon = document.getElementById('hl-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('hl-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+</script>
+
+<script>
+// ─── 로비 채팅 WebSocket ─────────────────────────────────────────────────────
+(function () {
+    const box    = document.getElementById('hl-chat-messages');
+    const input  = document.getElementById('hl-chat-input');
+    const btn    = document.getElementById('hl-chat-send');
+    const badge  = document.getElementById('hl-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let socket   = null;
+    let heartbeatTimer = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold transition';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 실시간 채널';
+            input.disabled = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold transition';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 끊김';
+            input.disabled = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function avatar(name, pic) {
+        return pic
+            ? `<img src="${esc(pic)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+            : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+    }
+
+    function append(name, message, time, isError, pic) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+        const d = document.createElement('div');
+        if (isError) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700 text-[10px]"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar(name, pic)}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen    = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = e  => {
+            const data = JSON.parse(e.data);
+            if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
+            else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+        };
+        socket.onclose   = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror   = () => socket.close();
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* 게임 페이지에서는 사이트 푸터 숨김 */
+  footer { display: none !important; }
+  /* 수납된 nav 알약이 콘텐츠를 가리지 않도록 상단 여백 확보 */
+  section.max-w-7xl { padding-top: 48px !important; }
+  /* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ────── */
+  @media (max-width: 1023px) {
+      body:not(.hl-landscape) section.max-w-7xl {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          box-sizing: border-box;
+          min-height: 100dvh;
+          padding-top: 56px !important;
+      }
+  }
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-top-pills {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.15s;
+  }
+  #game-top-pills.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-pill {
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  .game-quick-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    color: #374151;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.15s;
+  }
+  .game-quick-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    var topPills = document.createElement('div');
+    topPills.id = 'game-top-pills';
+    document.body.appendChild(topPills);
+
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    topPills.appendChild(pill);
+
+    var lobbyBtn = document.createElement('a');
+    lobbyBtn.href = "{% url 'game_lobby' %}";
+    lobbyBtn.className = 'game-quick-pill';
+    lobbyBtn.title = '게임 로비로 이동';
+    lobbyBtn.innerHTML = '<i class="fa-solid fa-house"></i>';
+    topPills.appendChild(lobbyBtn);
+
+    var restartBtn = document.createElement('button');
+    restartBtn.type = 'button';
+    restartBtn.className = 'game-quick-pill';
+    restartBtn.title = '다시 시작';
+    restartBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i>';
+    restartBtn.addEventListener('click', function () { location.reload(); });
+    topPills.appendChild(restartBtn);
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      topPills.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      topPills.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        topPills.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        topPills.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
+})();
+</script>
+{% endblock %}

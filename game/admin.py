@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
+    HighLowSession, HighLowPlayLog,
 )
 
 
@@ -90,3 +91,18 @@ class PokerChipWalletAdmin(admin.ModelAdmin):
     list_display = ("user", "chips")
     search_fields = ("user__username",)
     ordering = ("-chips",)
+
+
+@admin.register(HighLowSession)
+class HighLowSessionAdmin(admin.ModelAdmin):
+    list_display = ("user", "bet", "current_rank", "streak", "potential_payout", "created_at")
+    search_fields = ("user__username",)
+    ordering = ("-created_at",)
+
+
+@admin.register(HighLowPlayLog)
+class HighLowPlayLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "bet", "streak", "payout", "result", "created_at")
+    list_filter = ("result",)
+    search_fields = ("user__username",)
+    ordering = ("-created_at",)

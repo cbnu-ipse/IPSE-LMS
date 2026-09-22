@@ -474,3 +474,59 @@ class PokerChipWallet(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.chips}칩"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 하이로우(Hi-Lo) — 낙엽을 직접 베팅에 쓰는 푸시유어럭(push-your-luck) 카드 게임.
+#
+# 무늬 없이 랭크(2~14, A=14)만 있는 카드를 매번 새로 뽑는다(리셰플 없이 매번
+# 13가지 랭크 중 균등 추첨 — 덱 소진/카드 카운팅을 신경 쓸 필요가 없어지므로
+# 의도적으로 단순화했다). 직전 카드보다 높다/낮다를 맞히면 배당이 붙고, 언제든
+# 캐시아웃하거나 계속 이어갈 수 있다. 슬롯머신처럼 상태머신이 단순해 별도
+# engine 모듈 없이 game/views.py 안에서 처리한다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+HIGHLOW_MIN_BET = 5
+HIGHLOW_MAX_BET = 300
+HIGHLOW_RTP = 0.92  # 배당 공식에 곱하는 목표 환급률 (하우스 엣지 확보용)
+
+
+class HighLowSession(models.Model):
+    """진행 중인 하이로우 한 판의 상태. 유저당 최대 1개(동시에 두 판 불가)."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="highlow_session", verbose_name="사용자"
+    )
+    bet = models.PositiveIntegerField(verbose_name="베팅 낙엽")
+    current_rank = models.PositiveSmallIntegerField(verbose_name="현재 카드 랭크 (2~14, 11~14=J/Q/K/A)")
+    streak = models.PositiveIntegerField(default=0, verbose_name="연속 성공 횟수")
+    potential_payout = models.PositiveIntegerField(default=0, verbose_name="지금 캐시아웃 시 받을 낙엽")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "하이로우 진행 상태"
+        verbose_name_plural = "하이로우 진행 상태 목록"
+
+    def __str__(self):
+        return f"{self.user} - 베팅 {self.bet}, {self.streak}연속"
+
+
+class HighLowPlayLog(models.Model):
+    """하이로우 한 판이 끝난 기록 (캐시아웃/실패). 최고 연속 기록 랭킹에 사용."""
+    RESULT_CHOICES = [("cashed_out", "캐시아웃"), ("busted", "실패")]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="highlow_play_logs", verbose_name="사용자"
+    )
+    bet = models.PositiveIntegerField(verbose_name="베팅 낙엽")
+    streak = models.PositiveIntegerField(default=0, verbose_name="연속 성공 횟수")
+    payout = models.PositiveIntegerField(default=0, verbose_name="정산 낙엽")
+    result = models.CharField(max_length=10, choices=RESULT_CHOICES, verbose_name="결과")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="종료 시각")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "하이로우 플레이 기록"
+        verbose_name_plural = "하이로우 플레이 기록 목록"
+
+    def __str__(self):
+        return f"{self.user} - {self.streak}연속 ({self.get_result_display()})"
