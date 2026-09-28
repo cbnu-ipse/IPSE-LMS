@@ -124,8 +124,8 @@
                     <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'slot-tab-chat')">
                         <i class="fa-solid fa-comments"></i> 채팅
                     </button>
-                    <button class="gsp-tab" onclick="gspSwitch(this,'slot-tab-rank')">
-                        <i class="fa-solid fa-trophy"></i> 랭킹
+                    <button class="gsp-tab" onclick="gspSwitch(this,'slot-tab-online')">
+                        <i class="fa-solid fa-users"></i> 접속자 <span id="slot-online-count"></span>
                     </button>
                 </div>
 
@@ -161,9 +161,9 @@
                     </div>
                 </div>
 
-                <!-- 랭킹 탭 -->
-                <div id="slot-tab-rank" class="gsp-pane" style="display:none">
-                    <div id="slot-ranking-list" class="gsp-ranking">
+                <!-- 접속자 탭 -->
+                <div id="slot-tab-online" class="gsp-pane" style="display:none">
+                    <div id="slot-online-list" class="gsp-ranking">
                         <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
                     </div>
                 </div>
@@ -925,44 +925,8 @@ async function spinSlot() {
 
     updateButtonState();
     isSpinning = false;
-    loadSlotRanking();
 }
 
-// ─── 슬롯머신 랭킹 로드 ──────────────────────────────────────────────────────
-function loadSlotRanking() {
-    const GRADE_COLOR = { S:'text-violet-600', A:'text-amber-500', B:'text-sky-500', C:'text-emerald-600', D:'text-slate-600', E:'text-slate-400' };
-    const list = document.getElementById('slot-ranking-list');
-    fetch('{% url "slot_ranking" %}', { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => {
-            if (!data.ranking || data.ranking.length === 0) {
-                list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">아직 기록이 없습니다.</div>';
-                return;
-            }
-            const MEDALS = ['🥇', '🥈', '🥉'];
-            list.innerHTML = data.ranking.map(row => {
-                const badge = row.rank <= 3
-                    ? `<span class="text-xl">${MEDALS[row.rank - 1]}</span>`
-                    : `<span class="text-sm font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
-                const cls   = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
-                const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500 font-normal">(나)</span>' : '';
-                const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
-                const gradeCls = GRADE_COLOR[row.grade] || 'text-slate-500';
-                return `
-                    <div class="flex items-center gap-3 px-5 py-3 ${cls}">
-                        <div class="w-8 text-center leading-none">${badge}</div>
-                        <img src="${row.picture}" alt="${row.name}" class="w-8 h-8 rounded-full border border-slate-200 object-cover flex-shrink-0">
-                        <span class="flex-1 font-semibold text-sm ${nameCls} truncate">${row.name}${meTxt}</span>
-                        <span class="font-bold text-sm ${gradeCls} flex-shrink-0">${row.grade_display}</span>
-                    </div>`;
-            }).join('');
-        })
-        .catch(() => {
-            list.innerHTML = '<div class="py-6 text-center text-slate-400 text-sm">랭킹을 불러올 수 없습니다.</div>';
-        });
-}
-
-document.addEventListener('DOMContentLoaded', loadSlotRanking);
 
 // ─── 사운드 음소거 토글 ────────────────────────────────────────────
 (function () {
@@ -1072,7 +1036,7 @@ async function debugSpin(grade) {
     const btn    = document.getElementById('slot-chat-send');
     const badge  = document.getElementById('slot-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket   = null;
     let heartbeatTimer = null;
@@ -1128,11 +1092,36 @@ async function debugSpin(grade) {
         };
         socket.onmessage = e  => {
             const data = JSON.parse(e.data);
-            if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
+            if (data.type === 'presence') {
+                renderOnlineUsers(data.users);
+            } else if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
             else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
         };
         socket.onclose   = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror   = () => socket.close();
+    }
+
+    // ─── 실시간 접속자 탭 ───
+    const onlineList  = document.getElementById('slot-online-list');
+    const onlineCount = document.getElementById('slot-online-count');
+    const MY_USER_ID  = {{ request.user.id }};
+    function renderOnlineUsers(users) {
+        onlineCount.textContent = users.length;
+        if (!users.length) {
+            onlineList.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-6">접속자가 없습니다.</p>';
+            return;
+        }
+        onlineList.innerHTML = users.map(u => {
+            const isMe = u.user_id === MY_USER_ID;
+            const pic = u.picture_url
+                ? `<img src="${esc(u.picture_url)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(u.display_name.charAt(0))}</span>`;
+            return `<div class="flex items-center gap-2 px-4 py-2.5 ${isMe ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                        ${pic}
+                        <span class="flex-1 font-semibold text-xs ${isMe ? 'text-emerald-700' : 'text-slate-700'} truncate">${esc(u.display_name)}${isMe ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : ''}</span>
+                    </div>`;
+        }).join('');
     }
 
     function send() {

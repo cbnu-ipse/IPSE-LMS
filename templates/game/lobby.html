@@ -287,15 +287,15 @@
             </div>
         </div>
 
-        <!-- 💬 채팅 + 랭킹 탭 패널 (오른쪽 4) -->
+        <!-- 💬 채팅 + 접속자 탭 패널 (오른쪽 4) -->
         <div id="lobby-chat-container" class="lg:col-span-3 game-side-panel mobile-hidden">
             <!-- 탭 헤더 -->
             <div class="gsp-tabs">
                 <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'lobby-tab-chat')">
                     <i class="fa-solid fa-comments"></i> 채팅
                 </button>
-                <button class="gsp-tab" onclick="gspSwitch(this,'lobby-tab-rank')">
-                    <i class="fa-solid fa-trophy"></i> 랭킹
+                <button class="gsp-tab" onclick="gspSwitch(this,'lobby-tab-online')">
+                    <i class="fa-solid fa-users"></i> 접속자 <span id="lobby-online-count"></span>
                 </button>
             </div>
 
@@ -332,9 +332,9 @@
                 </div>
             </div>
 
-            <!-- 랭킹 탭 -->
-            <div id="lobby-tab-rank" class="gsp-pane" style="display:none">
-                <div id="lobby-ranking-list" class="gsp-ranking">
+            <!-- 접속자 탭 -->
+            <div id="lobby-tab-online" class="gsp-pane" style="display:none">
+                <div id="lobby-online-list" class="gsp-ranking">
                     <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
                 </div>
             </div>
@@ -538,8 +538,6 @@
     flex-shrink: 0;
 }
 .gsp-ranking { flex: 1; overflow-y: auto; }
-.gsp-rank-section { padding: .5rem .75rem .25rem; }
-.gsp-rank-section-title { font-size: .68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .25rem; }
 </style>
 {% endblock %}
 
@@ -553,7 +551,7 @@
 
     // ─── 프로토콜 자동 분기 및 WebSocket 설정 ───
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/`;
+    const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/?presence=1`;
 
     let socket = null;
     const HEARTBEAT_INTERVAL_MS = 25000;
@@ -626,7 +624,9 @@
 
         socket.onmessage = function (e) {
             const data = JSON.parse(e.data);
-            if (data.error === 'spam_blocked') {
+            if (data.type === 'presence') {
+                renderOnlineUsers(data.users);
+            } else if (data.error === 'spam_blocked') {
                 appendMessage('SYSTEM', data.message, '', true, '');
             } else {
                 const displayName = data.display_name || data.username;
@@ -644,6 +644,26 @@
         socket.onerror = function () {
             socket.close();
         };
+    }
+
+    // ─── 실시간 접속자 탭 ───
+    const onlineList  = document.getElementById('lobby-online-list');
+    const onlineCount = document.getElementById('lobby-online-count');
+    const MY_USER_ID  = {{ request.user.id }};
+    function renderOnlineUsers(users) {
+        onlineCount.textContent = users.length;
+        if (!users.length) {
+            onlineList.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-6">접속자가 없습니다.</p>';
+            return;
+        }
+        onlineList.innerHTML = users.map(u => {
+            const isMe = u.user_id === MY_USER_ID;
+            return `<div class="flex items-center gap-2 px-4 py-2.5 ${isMe ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                        ${buildAvatar(u.display_name, u.picture_url)}
+                        <span class="flex-1 font-semibold text-xs ${isMe ? 'text-emerald-700' : 'text-slate-700'} truncate">${esc(u.display_name)}${isMe ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : ''}</span>
+                    </div>`;
+        }).join('');
     }
 
     function sendMessage() {
@@ -703,84 +723,6 @@ function gspSwitch(btn, paneId) {
     panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
     btn.classList.add('gsp-tab--active');
     document.getElementById(paneId).style.display = '';
-    if (paneId === 'lobby-tab-rank') loadLobbyRanking();
-}
-
-function loadLobbyRanking() {
-    const container = document.getElementById('lobby-ranking-list');
-    const MEDALS = ['🥇', '🥈', '🥉'];
-
-    function rowHtml(row, scoreHtml) {
-        const badge = row.rank <= 3
-            ? `<span class="text-base">${MEDALS[row.rank - 1]}</span>`
-            : `<span class="text-xs font-bold text-slate-400 tabular-nums">${row.rank}위</span>`;
-        const cls = row.is_me ? 'bg-emerald-50 border-l-2 border-emerald-400' : '';
-        const nameCls = row.is_me ? 'text-emerald-700' : 'text-slate-700';
-        const meTxt = row.is_me ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : '';
-        return `<div class="flex items-center gap-2 px-4 py-2.5 ${cls}">
-                    <div class="w-7 text-center leading-none flex-shrink-0">${badge}</div>
-                    <img src="${row.picture}" alt="${row.name}" class="w-7 h-7 rounded-full border border-slate-200 object-cover flex-shrink-0">
-                    <span class="flex-1 font-semibold text-xs ${nameCls} truncate">${row.name}${meTxt}</span>
-                    <span class="text-xs font-bold text-slate-500 flex-shrink-0 tabular-nums">${scoreHtml}</span>
-                </div>`;
-    }
-
-    function sectionTitle(icon, label) {
-        return `<div class="gsp-rank-section"><p class="gsp-rank-section-title"><i class="${icon}"></i> ${label}</p></div>`;
-    }
-
-    Promise.all([
-        fetch('{% url "slot_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-        fetch('{% url "apple_game_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-        fetch('{% url "memory_match_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-        fetch('{% url "number_speed_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-        fetch('{% url "pattern_recall_ranking" %}', { credentials: 'same-origin' }).then(r => r.json()),
-    ]).then(([slotData, appleData, memoryData, numberSpeedData, patternRecallData]) => {
-        let html = '';
-
-        html += sectionTitle('fa-solid fa-dice', '슬롯머신 랭킹');
-        if (slotData.ranking && slotData.ranking.length) {
-            html += slotData.ranking.map(r => rowHtml(r, `<span>${r.grade_display}</span>`)).join('');
-        } else {
-            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
-        }
-
-        html += '<div class="border-t border-slate-100 my-1"></div>';
-        html += sectionTitle('fa-solid fa-leaf', '마지막 잎새 랭킹');
-        if (appleData.ranking && appleData.ranking.length) {
-            html += appleData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
-        } else {
-            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
-        }
-
-        html += '<div class="border-t border-slate-100 my-1"></div>';
-        html += sectionTitle('fa-solid fa-clone', '카드 매칭 랭킹');
-        if (memoryData.ranking && memoryData.ranking.length) {
-            html += memoryData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
-        } else {
-            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
-        }
-
-        html += '<div class="border-t border-slate-100 my-1"></div>';
-        html += sectionTitle('fa-solid fa-stopwatch', '넘버 스피드 랭킹');
-        if (numberSpeedData.ranking && numberSpeedData.ranking.length) {
-            html += numberSpeedData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
-        } else {
-            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
-        }
-
-        html += '<div class="border-t border-slate-100 my-1"></div>';
-        html += sectionTitle('fa-solid fa-brain', '패턴 리콜 랭킹');
-        if (patternRecallData.ranking && patternRecallData.ranking.length) {
-            html += patternRecallData.ranking.map(r => rowHtml(r, `${r.score}점`)).join('');
-        } else {
-            html += '<p class="text-[11px] text-slate-400 text-center py-3">기록 없음</p>';
-        }
-
-        container.innerHTML = html;
-    }).catch(() => {
-        container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-6">랭킹을 불러올 수 없습니다.</p>';
-    });
 }
 </script>
 {% endblock %}

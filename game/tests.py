@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from channels.db import database_sync_to_async
+from channels.testing import WebsocketCommunicator
 from django.test import TestCase
 from django.utils import timezone
 
@@ -293,6 +294,46 @@ class PokerMissingSingletonRowTestCase(TestCase):
         ok, err = poker_engine.player_action(user, "check", 0)
         self.assertFalse(ok)
         self.assertIsInstance(err, str)
+
+
+class LobbyPresenceTestCase(TestCase):
+    """실시간 접속자 목록: 같은 유저의 여러 탭은 한 명으로 세고, 마지막 탭이
+    닫힐 때만 목록에서 빠져야 한다. presence=1 로 연결한 소켓만 목록을 받는다."""
+
+    def tearDown(self):
+        game_consumers._online_users.clear()
+
+    async def _connect(self, user, presence=True):
+        comm = WebsocketCommunicator(
+            game_consumers.LobbyChatConsumer.as_asgi(),
+            "/ws/lobby/chat/" + ("?presence=1" if presence else ""),
+        )
+        comm.scope["user"] = user
+        connected, _ = await comm.connect()
+        self.assertTrue(connected)
+        return comm
+
+    async def test_presence_counts_tabs_per_user(self):
+        u1 = await database_sync_to_async(User.objects.create_user)(username="on1", password="x")
+        u2 = await database_sync_to_async(User.objects.create_user)(username="on2", password="x")
+
+        watcher = await self._connect(u1)
+        msg = await watcher.receive_json_from()
+        self.assertEqual([u["user_id"] for u in msg["users"]], [u1.id])
+
+        other = await self._connect(u2, presence=False)  # 목록은 안 받는 게임 페이지
+        msg = await watcher.receive_json_from()
+        self.assertEqual({u["user_id"] for u in msg["users"]}, {u1.id, u2.id})
+
+        second_tab = await self._connect(u2, presence=False)
+        await second_tab.disconnect()  # 탭 하나 닫아도 아직 접속 중
+        self.assertTrue(await watcher.receive_nothing())
+
+        await other.disconnect()
+        msg = await watcher.receive_json_from()
+        self.assertEqual([u["user_id"] for u in msg["users"]], [u1.id])
+        self.assertTrue(await other.receive_nothing())
+        await watcher.disconnect()
 
 
 class PokerDisconnectGraceTestCase(TestCase):

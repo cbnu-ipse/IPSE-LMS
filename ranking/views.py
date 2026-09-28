@@ -194,8 +194,30 @@ def community_ranking(request):
     ranking_rows = []
 
     if board == "leaves":
-        qs = User.objects.filter(is_active=True, leaves__gt=0).select_related("student")
-        ranking_rows = [{"user": u, "score": u.leaves} for u in qs]
+        # 보유 칩(지갑 + 포커 좌석 스택)도 낙엽으로 환전했다고 가정해 합산한다.
+        # 실제 환전(cash_out_chips)과 같이 1낙엽 미만 칩은 버린다.
+        from django.db.models import Sum
+        from game.models import POKER_CHIPS_PER_LEAF, PokerChipWallet, PokerSeat
+
+        chips_by_user = {}
+        for uid, chips in PokerChipWallet.objects.filter(chips__gt=0).values_list("user_id", "chips"):
+            chips_by_user[uid] = chips_by_user.get(uid, 0) + chips
+        seat_stacks = (
+            PokerSeat.objects.filter(user__isnull=False, stack__gt=0)
+            .values("user_id").annotate(total=Sum("stack"))
+        )
+        for row in seat_stacks:
+            chips_by_user[row["user_id"]] = chips_by_user.get(row["user_id"], 0) + row["total"]
+
+        qs = (
+            User.objects.filter(is_active=True)
+            .filter(Q(leaves__gt=0) | Q(id__in=list(chips_by_user)))
+            .select_related("student")
+        )
+        for u in qs:
+            score = u.leaves + chips_by_user.get(u.id, 0) // POKER_CHIPS_PER_LEAF
+            if score > 0:
+                ranking_rows.append({"user": u, "score": score})
         ranking_rows.sort(key=lambda r: (-r["score"], r["user"].username.lower()))
 
     elif board == "attendance":

@@ -16,6 +16,23 @@ LOBBY_GROUP = "lobby_chat"
 MAX_MESSAGE_LENGTH = 300  # 메시지 최대 길이 (글자)
 SPAM_COOLDOWN_SECONDS = 1.0  # 스팸 방지 쿨타임 (초)
 
+# 실시간 접속자 목록. 로비 채팅 소켓은 놀이터의 모든 게임 페이지가 연결하므로
+# 이 소켓 연결 = 놀이터 접속으로 본다. 목록은 ?presence=1 로 연결한 페이지(접속자
+# 탭이 있는 페이지)에만 보낸다 — 다른 페이지의 채팅 스크립트는 presence 메시지를
+# 모르므로 채팅 메시지로 잘못 그리게 된다.
+# ponytail: 프로세스 메모리 dict — 단일 daphne 프로세스 전제(포커 워치독과 동일).
+# 멀티 워커로 확장하면 Redis 등 공유 저장소로 옮겨야 한다.
+PRESENCE_GROUP = "lobby_presence"
+_online_users = {}  # user_id -> {"user_id", "display_name", "picture_url", "count"}
+
+
+def _presence_payload():
+    users = sorted(
+        ({k: v for k, v in u.items() if k != "count"} for u in _online_users.values()),
+        key=lambda u: u["display_name"].lower(),
+    )
+    return json.dumps({"type": "presence", "users": users}, ensure_ascii=False)
+
 
 class LobbyChatConsumer(AsyncWebsocketConsumer):
     """
@@ -36,8 +53,37 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(LOBBY_GROUP, self.channel_name)
         await self.accept()
 
+        user = self.scope["user"]
+        info = await self._get_user_chat_info(user)
+        entry = _online_users.get(user.id)
+        is_new_user = entry is None
+        if is_new_user:
+            entry = _online_users[user.id] = {"user_id": user.id, **info, "count": 0}
+        entry["count"] += 1  # 같은 유저가 탭을 여러 개 열어도 한 명으로 센다
+        self.presence_counted = True
+
+        if b"presence=1" in self.scope.get("query_string", b""):
+            await self.channel_layer.group_add(PRESENCE_GROUP, self.channel_name)
+            if not is_new_user:  # 새 유저면 아래 브로드캐스트로 받는다
+                await self.send(text_data=_presence_payload())
+        if is_new_user:
+            await self.channel_layer.group_send(PRESENCE_GROUP, {"type": "presence_update"})
+
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(LOBBY_GROUP, self.channel_name)
+        await self.channel_layer.group_discard(PRESENCE_GROUP, self.channel_name)
+        if not getattr(self, "presence_counted", False):
+            return
+        user_id = self.scope["user"].id
+        entry = _online_users.get(user_id)
+        if entry:
+            entry["count"] -= 1
+            if entry["count"] <= 0:
+                del _online_users[user_id]
+                await self.channel_layer.group_send(PRESENCE_GROUP, {"type": "presence_update"})
+
+    async def presence_update(self, event):
+        await self.send(text_data=_presence_payload())
 
     async def receive(self, text_data):
         """클라이언트로부터 메시지 수신 → DB 저장 → 그룹 브로드캐스트"""
