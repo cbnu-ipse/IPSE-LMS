@@ -9,6 +9,12 @@
 빈 자리는 별도 대기열 없이, 먼저 "앉기"를 누른 사람이 그대로 앉는다(요청 시점에
 select_for_update로 자리를 잠그므로 동시 클릭이 와도 한 명만 성공한다).
 
+# ponytail: PokerSeat.user는 nullable FK라 select_related("user")가 LEFT OUTER JOIN이
+# 된다 — 여기에 select_for_update()를 그냥 걸면 Postgres가
+# "FOR UPDATE cannot be applied to the nullable side of an outer join"로 거부한다
+# (SQLite는 조용히 무시해서 로컬 테스트로는 안 잡힘). seats 조회는 항상
+# select_for_update(of=("self",))로 PokerSeat 테이블만 잠글 것.
+
 공개 함수(뷰/컨슈머에서 호출):
     get_state_for(user)         — 접속자 시점의 테이블 상태 스냅샷
     sit_down(user, seat_number) — 착석. 칩 지갑에서 바이인만큼 차감해 스택으로
@@ -255,7 +261,7 @@ def stand_up(user):
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
-            for s in PokerSeat.objects.select_for_update().filter(table=table).select_related("user")
+            for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
         }
         seat = next((s for s in seats_by_number.values() if s.user_id == user.id), None)
         if not seat:
@@ -580,7 +586,7 @@ def player_action(user, action, amount=0):
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
-            for s in PokerSeat.objects.select_for_update().filter(table=table).select_related("user")
+            for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
         }
         seat = next((s for s in seats_by_number.values() if s.user_id == user.id), None)
         if not seat:
@@ -620,7 +626,7 @@ def _post_blind(seat, amount, table):
 def _deal_new_hand(table):
     seats_by_number = {
         s.seat_number: s
-        for s in PokerSeat.objects.select_for_update().filter(table=table).select_related("user")
+        for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
     }
     for s in list(seats_by_number.values()):
         if s.user_id and (s.stack <= 0 or s.leaving_after_hand):
@@ -725,7 +731,7 @@ def process_due_deadlines():
         table = PokerTable.objects.select_for_update().get(pk=1)
         seats_by_number = {
             s.seat_number: s
-            for s in PokerSeat.objects.select_for_update().filter(table=table).select_related("user")
+            for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
         }
 
         if table.status == "playing" and table.turn_deadline and now >= table.turn_deadline:
