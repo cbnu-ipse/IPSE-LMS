@@ -70,6 +70,9 @@
                     <button class="gsp-tab" onclick="gspSwitch(this,'pk-tab-chips')">
                         <i class="fa-solid fa-coins"></i> 칩 관리
                     </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'pk-tab-online')">
+                        <i class="fa-solid fa-users"></i> 접속자 <span id="pk-online-count"></span>
+                    </button>
                 </div>
 
                 <!-- 채팅 탭 -->
@@ -102,6 +105,13 @@
                         <input id="pk-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
                                class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
                         <button id="pk-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 접속자 탭 -->
+                <div id="pk-tab-online" class="gsp-pane" style="display:none">
+                    <div id="pk-online-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
                     </div>
                 </div>
 
@@ -1270,7 +1280,7 @@ function togglePkChat() {
     const btn   = document.getElementById('pk-chat-send');
     const badge = document.getElementById('pk-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/`;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
     let heartbeatTimer = null;
@@ -1326,7 +1336,9 @@ function togglePkChat() {
         };
         socket.onmessage = e => {
             const data = JSON.parse(e.data);
-            if (data.error) {
+            if (data.type === 'presence') {
+                renderOnlineUsers(data.users);
+            } else if (data.error) {
                 append('SYSTEM', data.message, '', true, '');
             } else {
                 append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
@@ -1334,6 +1346,29 @@ function togglePkChat() {
         };
         socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror = () => socket.close();
+    }
+
+    // ─── 실시간 접속자 탭 ───
+    const onlineList  = document.getElementById('pk-online-list');
+    const onlineCount = document.getElementById('pk-online-count');
+    const MY_USER_ID  = {{ request.user.id }};
+    function renderOnlineUsers(users) {
+        onlineCount.textContent = users.length;
+        if (!users.length) {
+            onlineList.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-6">접속자가 없습니다.</p>';
+            return;
+        }
+        onlineList.innerHTML = users.map(u => {
+            const isMe = u.user_id === MY_USER_ID;
+            const pic = u.picture_url
+                ? `<img src="${esc(u.picture_url)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(u.display_name.charAt(0))}</span>`;
+            return `<div class="flex items-center gap-2 px-4 py-2.5 ${isMe ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                        ${pic}
+                        <span class="flex-1 font-semibold text-xs ${isMe ? 'text-emerald-700' : 'text-slate-700'} truncate">${esc(u.display_name)}${isMe ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : ''}</span>
+                    </div>`;
+        }).join('');
     }
 
     function send() {
