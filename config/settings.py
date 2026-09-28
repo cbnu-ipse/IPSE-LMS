@@ -173,7 +173,9 @@ if _redis_url:
                 "hosts": [{
                     "address": _redis_url,
                     "health_check_interval": 20,
-                    "socket_timeout": 5,
+                    # Must exceed channels_redis brpop_timeout (5s): each consumer blocks
+                    # on BZPOPMIN for up to 5s, so an equal socket timeout kills idle sockets.
+                    "socket_timeout": 15,
                     "socket_connect_timeout": 5,
                     "retry_on_timeout": True,
                 }],
