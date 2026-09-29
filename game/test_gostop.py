@@ -8,8 +8,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import User
-from . import consumers as game_consumers, gostop_engine as eng
-from .models import GostopGameLog, GostopRoom, GostopSeat, PokerChipWallet, GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT
+from . import consumers as game_consumers, gostop_engine as eng, poker_engine
+from .models import GostopGameLog, GostopRoom, GostopSeat, PokerChipWallet, PokerSeat, GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT
 
 # 카드 id = (월-1)*4 + 월 안 순번. 예) 1월 광=0, 1월 홍단=1, 12월 비광=44
 GWANG = [0, 8, 28, 40, 44]
@@ -210,9 +210,21 @@ class GostopRoomTestCase(TestCase):
     def chips(self, u):
         return PokerChipWallet.objects.get(user=u).chips
 
+    def test_enter_with_whole_wallet(self):
+        PokerChipWallet.objects.filter(user=self.a).update(chips=12345)
+        _, room_id = eng.create_room(self.a, "matgo")
+        eng.join_room(self.b, room_id)
+        stacks = dict(GostopSeat.objects.values_list("user__username", "stack"))
+        self.assertEqual(stacks, {"a": 12345, "b": GOSTOP_BUY_IN * 2})
+        self.assertEqual((self.chips(self.a), self.chips(self.b)), (0, 0))
+
     def test_buy_in_required(self):
         c = User.objects.create_user(username="c", password="x")
-        self.assertFalse(eng.create_room(c, "matgo")[0])
+        self.assertFalse(eng.create_room(c, "matgo")[0])  # 지갑 없음
+        PokerChipWallet.objects.create(user=c, chips=GOSTOP_BUY_IN - 1)
+        self.assertFalse(eng.create_room(c, "matgo")[0])  # 최소 미만
+        self.assertEqual(self.chips(c), GOSTOP_BUY_IN - 1)
+        self.assertFalse(GostopRoom.objects.exists())
         self.assertFalse(eng.create_room(self.a, "poker")[0])
 
     def _start(self, mode, *users):
@@ -243,7 +255,7 @@ class GostopRoomTestCase(TestCase):
         room.refresh_from_db()
         self.assertEqual((room.status, room.state["leaving"]), ("playing", [0]))
         self.assertEqual(GostopSeat.objects.filter(room=room).count(), 2)
-        self.assertEqual(self.chips(self.a), GOSTOP_BUY_IN)  # 아직 방 스택 그대로
+        self.assertEqual(self.chips(self.a), 0)  # 보관 칩 전부 들고 들어가 있고, 판 중엔 정산 없음
 
         eng._end_game(GostopRoom.objects.get(pk=room.pk), {"winner": 1, "reason": "stop"})
         seat = GostopSeat.objects.get(room=room)
@@ -305,7 +317,7 @@ class GostopRoomTestCase(TestCase):
         room.save()
         eng._end_game(room, {"winner": None, "reason": "nagari"})
         stacks = dict(GostopSeat.objects.filter(room=room).values_list("user__username", "stack"))
-        self.assertEqual(stacks, {"a": GOSTOP_BUY_IN - 700, "b": GOSTOP_BUY_IN + 700})
+        self.assertEqual(stacks, {"a": GOSTOP_BUY_IN * 2 - 700, "b": GOSTOP_BUY_IN * 2 + 700})
         room.refresh_from_db()
         self.assertEqual((room.last_result["nagari"], room.carry_multiplier), (True, 2))
 
@@ -380,3 +392,53 @@ class GostopPageTestCase(TestCase):
         self.assertContains(res, "gs-cards-data")
         self.assertContains(res, "/ws/gostop/")
         self.assertContains(res, "?presence=1")
+
+
+class GostopChipConservationTestCase(TestCase):
+    """돈복사 방지: 방 만들기/입장/퇴장 예약·취소/끊김/재접속/두기/시간초과, 포커 착석/일어나기를
+    무작위로 섞어도 (지갑 + 고스톱 스택 + 포커 스택) 칩 총합은 절대 변하지 않아야 한다."""
+
+    def total(self):
+        return (sum(PokerChipWallet.objects.values_list("chips", flat=True))
+                + sum(GostopSeat.objects.values_list("stack", flat=True))
+                + sum(PokerSeat.objects.values_list("stack", flat=True)))
+
+    def test_random_operations_conserve_chips(self):
+        rng = random.Random(7)
+        users = [User.objects.create_user(username=f"u{i}", password="x") for i in range(6)]
+        poker_engine.PokerTable.get_solo()
+        for i, u in enumerate(users):
+            PokerChipWallet.objects.create(user=u, chips=[0, 3000, 5000, 7000, 12000, 50000][i])
+        start = self.total()
+        for step in range(2500):
+            u = rng.choice(users)
+            op = rng.random()
+            if op < .12:
+                eng.create_room(u, rng.choice(["matgo", "gostop"]))
+            elif op < .3:
+                room = GostopRoom.objects.order_by("?").first()
+                if room:
+                    eng.join_room(u, room.id)
+            elif op < .38:
+                eng.leave_room(u)
+            elif op < .42:
+                eng.leave_room(u, away=True)
+            elif op < .46:
+                eng.mark_back(u)
+            elif op < .5:
+                poker_engine.sit_down(u, rng.randrange(8))
+            elif op < .54:
+                poker_engine.stand_up(u)
+            elif op < .8:
+                seat = GostopSeat.objects.filter(user=u).select_related("room").first()
+                if seat and seat.room.status == "playing" and seat.room.state.get("turn") == seat.seat:
+                    eng._act(u, lambda st, s: eng.auto_act(st, s))
+            else:
+                GostopRoom.objects.update(
+                    next_game_at=timezone.now() - timedelta(seconds=1),
+                    turn_deadline=timezone.now() - timedelta(seconds=1),
+                )
+                eng.process_due_deadlines()
+            self.assertEqual(self.total(), start, f"step {step}")
+            # 5000칩 미만으로 방 스택을 가진 사람은 없어야 한다 (입장 시점 기준)
+        self.assertFalse(GostopSeat.objects.filter(user=users[0]).exists())  # 0칩 유저는 입장 불가

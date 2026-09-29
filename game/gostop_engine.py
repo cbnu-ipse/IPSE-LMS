@@ -548,12 +548,14 @@ def _lock_my_room(user):
 
 
 def _take_buy_in(user):
+    """최소 바이인 이상이면 보관 칩 전부를 가지고 들어간다. 가져간 칩 수(모자라면 0)."""
     wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
     if not wallet or wallet.chips < GOSTOP_BUY_IN:
-        return False
-    wallet.chips -= GOSTOP_BUY_IN
+        return 0
+    chips = wallet.chips
+    wallet.chips = 0
     wallet.save(update_fields=["chips"])
-    return True
+    return chips
 
 
 def _refund(user_id, chips):
@@ -565,7 +567,7 @@ def _refund(user_id, chips):
 
 
 def _need_buy_in_msg():
-    return f"칩 지갑에 {GOSTOP_BUY_IN:,}칩({GOSTOP_BUY_IN // POKER_CHIPS_PER_LEAF}낙엽)이 있어야 입장할 수 있습니다."
+    return f"칩 지갑에 최소 {GOSTOP_BUY_IN:,}칩({GOSTOP_BUY_IN // POKER_CHIPS_PER_LEAF}낙엽)이 있어야 입장할 수 있습니다."
 
 
 def create_room(user, mode):
@@ -575,10 +577,11 @@ def create_room(user, mode):
         User.objects.select_for_update().get(id=user.id)  # 같은 유저의 동시 입장 직렬화
         if GostopSeat.objects.filter(user=user).exists():
             return False, "이미 참여 중인 방이 있습니다."
-        if not _take_buy_in(user):
+        chips = _take_buy_in(user)
+        if not chips:
             return False, _need_buy_in_msg()
         room = GostopRoom.objects.create(mode=mode)
-        GostopSeat.objects.create(room=room, user=user, seat=0, stack=GOSTOP_BUY_IN)
+        GostopSeat.objects.create(room=room, user=user, seat=0, stack=chips)
     return True, room.id
 
 
@@ -593,9 +596,10 @@ def join_room(user, room_id):
         count = GostopSeat.objects.filter(room=room).count()
         if count >= _capacity(room):
             return False, "방이 가득 찼습니다."
-        if not _take_buy_in(user):
+        chips = _take_buy_in(user)
+        if not chips:
             return False, _need_buy_in_msg()
-        GostopSeat.objects.create(room=room, user=user, seat=count, stack=GOSTOP_BUY_IN)
+        GostopSeat.objects.create(room=room, user=user, seat=count, stack=chips)
         if count + 1 == _capacity(room):
             room.next_first = random.randrange(_capacity(room))
             room.carry_multiplier = 1
