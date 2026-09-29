@@ -399,7 +399,7 @@
 }
 
 /* 내 카드 (공동 카드 아래) — 어깨너머 훔쳐보기 방지로 기본은 뒷면.
-   마우스가 있는 기기는 올리면, 터치 기기는 탭하면 뒤집힌다. */
+   어떤 기기든 클릭/탭하면 뒤집히고, 마우스 기기는 올려도 뒤집힌다. */
 .pk-my-cards {
     display: flex;
     align-items: center;
@@ -411,9 +411,11 @@
 }
 .pk-my-cards.hidden { display: none; }
 .pk-my-cards-row { display: flex; gap: 5px; }
-.pk-my-cards-hint { font-size: .6rem; font-weight: 700; color: rgba(255,255,255,.55); max-width: 52px; line-height: 1.25; }
+.pk-my-cards-hint { font-size: .6rem; font-weight: 700; color: rgba(255,255,255,.55); max-width: 64px; line-height: 1.25; }
 .pk-my-cards.revealed .pk-flip-inner { transform: rotateY(180deg); }
-@media (hover: hover) {
+/* 터치인데 hover를 지원한다고 보고하는 기기는 탭 후 :hover가 달라붙어 다시 가릴 수 없으므로
+   정밀한 포인터(마우스)일 때만 호버로 뒤집는다 */
+@media (hover: hover) and (pointer: fine) {
     .pk-my-cards:hover .pk-flip-inner { transform: rotateY(180deg); }
 }
 .pk-my-cards--folded { opacity: .45; }
@@ -854,8 +856,11 @@ footer { display: none !important; }
     let centerMsgResultActive = false;
     let centerMsgResultTimer = null;
     let activeResultWinnerSeats = new Set(); // 결과 표시 창 동안 테두리 하이라이트할 좌석들
-    let myCardsRevealed = false; // 터치 기기에서 탭으로 내 카드를 뒤집어 둔 상태 (새 핸드마다 다시 가림)
-    const IS_TOUCH = window.matchMedia('(hover: none)').matches;
+    let myCardsRevealed = false; // 클릭/탭으로 내 카드를 뒤집어 둔 상태 (새 핸드마다 다시 가림)
+    // 안내 문구용일 뿐 — 뒤집기 자체는 기기 판별 없이 클릭/탭으로 항상 동작한다.
+    // (예전엔 (hover: none) 판별 기기만 탭이 먹어서, hover를 지원한다고 보고하는 터치 기기에선
+    //  탭도 호버도 안 돼 카드가 뒷면만 보였다)
+    const HAS_MOUSE = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
     const myCardsEl = document.getElementById('pk-my-cards');
 
     // 공동 카드 순차 뒤집기: 카드별 뒤집기 시작 시각을 기억해 두고, 상태가 다시 와서 다시
@@ -934,7 +939,7 @@ footer { display: none !important; }
         myCardsEl.classList.toggle('revealed', myCardsRevealed);
         myCardsEl.classList.toggle('pk-my-cards--folded', me.status === 'folded');
         myCardsEl.innerHTML = `<div class="pk-my-cards-row">${cards.map(c => flipCardHtml(c)).join('')}</div>
-            <div class="pk-my-cards-hint">${IS_TOUCH ? (myCardsRevealed ? '탭해서 가리기' : '탭해서 보기') : '올려서 보기'}</div>`;
+            <div class="pk-my-cards-hint">${myCardsRevealed ? (HAS_MOUSE ? '클릭해서 가리기' : '탭해서 가리기') : (HAS_MOUSE ? '올리거나 클릭해서 보기' : '탭해서 보기')}</div>`;
     }
 
     function renderSeat(el, seat) {
@@ -1238,9 +1243,8 @@ footer { display: none !important; }
     });
 
     // ── 클릭 위임 ────────────────────────────────────────────────
-    // 터치 기기는 탭으로 내 카드를 뒤집는다 (마우스 기기는 CSS :hover)
+    // 클릭/탭으로 내 카드를 뒤집는다 (마우스 기기는 CSS :hover로도)
     myCardsEl.addEventListener('click', () => {
-        if (!IS_TOUCH) return;
         myCardsRevealed = !myCardsRevealed;
         if (window.GameSound) window.GameSound.play('tap');
         if (lastState) renderMyCards(lastState);
