@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import poker_engine
+from . import gostop_engine, poker_engine
 
 logger = logging.getLogger(__name__)
 
@@ -355,3 +355,138 @@ class PokerConsumer(AsyncWebsocketConsumer):
         state = await database_sync_to_async(poker_engine.get_state_for)(self.scope["user"])
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 고스톱(맞고 2인 / 고스톱 3인) — 방 목록과 내 방 상태를 하나의 소켓/그룹으로 보낸다. 상태가 바뀌면
+# 그룹 전체에 신호만 보내고 각 연결이 자기 시점(get_state_for)으로 다시 만든다.
+# ponytail: 모든 방 변경이 맞고 페이지 접속자 전원에게 재조회를 일으킨다 —
+# 동아리 규모에선 충분, 접속자가 많아지면 방별 그룹 + 목록 그룹으로 나눌 것.
+# 워치독/재접속 유예는 포커와 같은 단일 프로세스 asyncio 태스크 방식.
+# ─────────────────────────────────────────────────────────────────────────────
+
+GOSTOP_GROUP = "gostop"
+GOSTOP_DISCONNECT_GRACE_SECONDS = 20
+_gostop_watchdog_task = None
+_gostop_disconnect_tasks = {}  # user_id -> asyncio.Task
+
+
+async def _broadcast_gostop_state():
+    channel_layer = get_channel_layer()
+    if channel_layer is not None:
+        await channel_layer.group_send(GOSTOP_GROUP, {"type": "broadcast_state"})
+
+
+def _ensure_gostop_watchdog():
+    global _gostop_watchdog_task
+    if _gostop_watchdog_task is None or _gostop_watchdog_task.done():
+        _gostop_watchdog_task = asyncio.create_task(_gostop_watchdog_loop())
+
+
+async def _gostop_watchdog_loop():
+    global _gostop_watchdog_task
+    try:
+        while True:
+            try:
+                deadline = await database_sync_to_async(gostop_engine.next_deadline_at)()
+                if deadline is None:
+                    return
+                wait = (deadline - timezone.now()).total_seconds()
+                if wait > 0:
+                    await asyncio.sleep(min(wait, 2))
+                    continue
+                await database_sync_to_async(gostop_engine.process_due_deadlines)()
+                await _broadcast_gostop_state()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("gostop watchdog tick failed, retrying")
+                await database_sync_to_async(close_old_connections)()
+                await asyncio.sleep(POKER_WATCHDOG_ERROR_RETRY_SECONDS)
+    finally:
+        _gostop_watchdog_task = None
+
+
+async def _gostop_disconnect_grace(user):
+    """유예 시간 안에 재접속하지 않으면 방에서 내보낸다 (진행 중이면 기권)."""
+    try:
+        await asyncio.sleep(GOSTOP_DISCONNECT_GRACE_SECONDS)
+        ok, _ = await database_sync_to_async(gostop_engine.leave_room)(user)
+        if ok:
+            await _broadcast_gostop_state()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _gostop_disconnect_tasks.pop(user.id, None)
+
+
+class GostopConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+        task = _gostop_disconnect_tasks.pop(user.id, None)
+        if task and not task.done():
+            task.cancel()
+        await self.channel_layer.group_add(GOSTOP_GROUP, self.channel_name)
+        await self.accept()
+        _ensure_gostop_watchdog()
+        await self._send_state()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(GOSTOP_GROUP, self.channel_name)
+        user = self.scope.get("user")
+        if user and user.is_authenticated and user.id not in _gostop_disconnect_tasks:
+            _gostop_disconnect_tasks[user.id] = asyncio.create_task(_gostop_disconnect_grace(user))
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        user = self.scope["user"]
+        msg_type = data.get("type")
+        _ensure_gostop_watchdog()
+
+        if msg_type == "__ping__":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+
+        handlers = {
+            "create": lambda: gostop_engine.create_room(user, data.get("mode")),
+            "join": lambda: gostop_engine.join_room(user, data.get("room_id")),
+            "leave": lambda: gostop_engine.leave_room(user),
+            "play": lambda: gostop_engine.play(user, data.get("card"), data.get("target"), data.get("mode")),
+            "choose": lambda: gostop_engine.choose_flip(user, data.get("target")),
+            "go_stop": lambda: gostop_engine.declare(user, data.get("go")),
+            "buy_chips": lambda: poker_engine.buy_chips(user, data.get("leaves", 0)),
+            "cash_out_chips": lambda: poker_engine.cash_out_chips(user, data.get("chips", 0)),
+        }
+        handler = handlers.get(msg_type)
+        if handler is None:
+            return
+        try:
+            ok, result = await database_sync_to_async(handler)()
+        except Exception:
+            logger.exception("gostop action failed: type=%s user=%s", msg_type, getattr(user, "id", None))
+            await database_sync_to_async(close_old_connections)()
+            await self.send(text_data=json.dumps(
+                {"type": "error", "message": "처리 중 오류가 발생했습니다. 새로고침 후 다시 시도해주세요."},
+                ensure_ascii=False,
+            ))
+            return
+        if not ok:
+            await self.send(text_data=json.dumps({"type": "error", "message": result}, ensure_ascii=False))
+            return
+        if msg_type in ("buy_chips", "cash_out_chips"):
+            await self._send_state()
+        else:
+            await _broadcast_gostop_state()
+
+    async def broadcast_state(self, event):
+        await self._send_state()
+
+    async def _send_state(self):
+        state = await database_sync_to_async(gostop_engine.get_state_for)(self.scope["user"])
+        await self.send(text_data=json.dumps(state, ensure_ascii=False))
