@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    HighLowSession, HighLowPlayLog, MatgoRoom, MatgoGameLog,
+    HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog,
 )
 
 
@@ -108,15 +108,22 @@ class HighLowPlayLogAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
 
 
-@admin.register(MatgoRoom)
-class MatgoRoomAdmin(admin.ModelAdmin):
-    list_display = ("id", "host", "host_stack", "guest", "guest_stack", "status", "carry_multiplier", "updated_at")
-    list_filter = ("status",)
-    search_fields = ("host__username", "guest__username")
+@admin.register(GostopRoom)
+class GostopRoomAdmin(admin.ModelAdmin):
+    list_display = ("id", "mode", "status", "carry_multiplier", "updated_at")
+    list_filter = ("mode", "status")
 
 
-@admin.register(MatgoGameLog)
-class MatgoGameLogAdmin(admin.ModelAdmin):
-    list_display = ("id", "room_number", "winner", "loser", "points", "chips", "ended_at")
-    search_fields = ("winner__username", "loser__username")
+@admin.register(GostopSeat)
+class GostopSeatAdmin(admin.ModelAdmin):
+    list_display = ("room", "seat", "user", "stack")
+    search_fields = ("user__username",)
+    ordering = ("room", "seat")
+
+
+@admin.register(GostopGameLog)
+class GostopGameLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "room_number", "mode", "winner", "chips", "ended_at")
+    list_filter = ("mode",)
+    search_fields = ("winner__username",)
     ordering = ("-ended_at",)

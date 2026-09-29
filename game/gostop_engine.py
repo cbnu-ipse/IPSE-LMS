@@ -1,23 +1,27 @@
 """
-맞고(2인 고스톱) 규칙 엔진 + 방 상태머신.
+고스톱 규칙 엔진 + 방 상태머신. 방마다 맞고(2인) 또는 고스톱(3인) 모드.
 
 앞부분은 DB와 무관한 순수 규칙 함수(state dict를 직접 변경), 뒷부분은 방/칩을
-다루는 DB 함수다. 판 진행 상태는 MatgoRoom.state 하나에 JSON으로 저장한다.
+다루는 DB 함수다. 판 진행 상태는 GostopRoom.state 하나에 JSON으로 저장한다.
 모든 DB 상태 변경은 `transaction.atomic()` + 방 행 `select_for_update()`로 방 단위로 잠근다.
 
 카드는 0~47 정수 id. month = id // 4 + 1, 월 안에서의 종류는 CARDS 표를 따른다.
-플레이어는 side 0(방장) / 1(상대) 로 부르고, state의 리스트 필드는 side로 인덱싱한다.
+플레이어는 side(= 좌석 번호, 0이 방장)로 부르고, state의 리스트 필드는 side로 인덱싱한다.
+차례는 side 0 → 1 → 2 → 0 순서로 돈다.
 
-규칙 요약 (표준 맞고):
-    - 손패 10장씩, 바닥 8장, 더미 20장. 바닥에 같은 월 4장이 깔리면 다시 섞는다.
-    - 7점 이상 나면 고/스톱. 1·2고 +1·+2점, 3고부터 (점수+고 횟수) × 2^(고-2).
-    - 피박(패자 피 7장 이하)·광박·멍박(승자 열끗 7장 이상)·흔들기·폭탄 각 ×2.
-    - 뻑/따닥/쪽/쓸/뻑 먹기(자뻑은 2장)/폭탄 시 상대 피를 가져온다.
+규칙 요약:
+    - 맞고: 손패 10장, 바닥 8장, 7점 나기, 피박은 패자 피 7장 이하.
+      고스톱(3인): 손패 7장, 바닥 6장, 3점 나기, 피박은 패자 피 5장 이하.
+      바닥에 같은 월 4장이 깔리면 다시 섞는다.
+    - 1·2고 +1·+2점, 3고부터 (점수+고 횟수) × 2^(고-2).
+    - 피박·광박·멍박(승자 열끗 7장 이상)은 패자별로, 흔들기·폭탄은 승자 기준으로 각 ×2.
+    - 고박: 고를 불렀던 사람이 지면 다른 패자 몫까지 혼자 낸다 (3인에서만 의미 있음).
+    - 뻑/따닥/쪽/쓸/뻑 먹기(자뻑은 2장)/폭탄 시 다른 모든 사람에게서 피를 가져온다.
     - 총통(손패 같은 월 4장)·3뻑은 즉시 10점 승리. 나가리는 다음 판 ×2 누적.
     - 국진(9월 열끗)은 열끗/쌍피 중 유리한 쪽을 자동 선택한다.
 
 공개 함수(뷰/컨슈머에서 호출):
-    create_room(user) / join_room(user, room_id) / leave_room(user)
+    create_room(user, mode) / join_room(user, room_id) / leave_room(user)
     play(user, card, target, mode) / choose_flip(user, target) / declare(user, go)
     next_deadline_at() / process_due_deadlines()   — 워치독용
     get_state_for(user)                             — 접속자 시점 상태 스냅샷
@@ -31,18 +35,21 @@ from django.utils import timezone
 
 from accounts.models import User
 from .models import (
-    MatgoRoom, MatgoGameLog, PokerChipWallet,
-    MATGO_BUY_IN, MATGO_CHIPS_PER_POINT, POKER_CHIPS_PER_LEAF,
+    GostopRoom, GostopSeat, GostopGameLog, PokerChipWallet,
+    GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT, POKER_CHIPS_PER_LEAF,
 )
 
-MATGO_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
-MATGO_MAX_TIMEOUTS = 3        # 연속 시간초과 이 횟수면 기권 처리 후 퇴장
-MATGO_START_DELAY = 3         # 두 명이 모이고 첫 판 시작까지(초)
-MATGO_NEXT_GAME_DELAY = 8     # 판 종료 후 결과를 보여주고 다음 판까지(초)
-MATGO_WIN_SCORE = 7           # 날 수 있는 최소 점수
-MATGO_PIBAK_MAX = 7           # 패자 피가 이 장수 이하면 피박
-MATGO_MEONGBAK_MIN = 7        # 승자 열끗이 이 장수 이상이면 멍박
-MATGO_SPECIAL_WIN_POINTS = 10  # 총통·3뻑 즉시 승리 점수
+GOSTOP_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
+GOSTOP_MAX_TIMEOUTS = 3        # 연속 시간초과 이 횟수면 기권 처리 후 퇴장
+GOSTOP_START_DELAY = 3         # 인원이 다 차고 첫 판 시작까지(초)
+GOSTOP_NEXT_GAME_DELAY = 8     # 판 종료 후 결과를 보여주고 다음 판까지(초)
+GOSTOP_MEONGBAK_MIN = 7        # 승자 열끗이 이 장수 이상이면 멍박
+GOSTOP_SPECIAL_WIN_POINTS = 10  # 총통·3뻑 즉시 승리 점수
+
+MODES = {
+    "matgo": {"label": "맞고", "players": 2, "hand": 10, "floor": 8, "win_score": 7, "pibak_max": 7},
+    "gostop": {"label": "고스톱", "players": 3, "hand": 7, "floor": 6, "win_score": 3, "pibak_max": 5},
+}
 
 
 # ── 카드 ─────────────────────────────────────────────────────────────────────
@@ -119,69 +126,102 @@ def best_score(captured):
     return max(score_breakdown(captured, o)["total"] for o in (False, True))
 
 
+def _pay(st, w, l, w_opt, l_opt):
+    """승자 w가 패자 l에게서 받을 점수(나가리 배수 제외)와 적용된 박."""
+    sc = score_breakdown(st["captured"][w], w_opt)
+    lsc = score_breakdown(st["captured"][l], l_opt)
+    go = st["go"][w]
+    pts = sc["total"] + go
+    if go >= 3:
+        pts *= 2 ** (go - 2)
+    baks = []
+    if sc["pi_pts"] > 0 and lsc["pi_count"] <= st["pibak_max"]:
+        baks.append("피박")
+    if sc["gwang_pts"] > 0 and lsc["gwang_count"] == 0:
+        baks.append("광박")
+    if sc["yeol_count"] >= GOSTOP_MEONGBAK_MIN:
+        baks.append("멍박")
+    return pts * 2 ** (len(baks) + st["shakes"][w]), baks
+
+
+def _best_pays(st, w, losers):
+    """승자는 자기에게 유리한 국진 선택, 각 패자는 그 선택에 대해 가장 적게 내는 선택."""
+    def for_option(w_opt):
+        return {l: min((_pay(st, w, l, w_opt, l_opt) for l_opt in (False, True)), key=lambda r: r[0]) for l in losers}
+    return max((for_option(o) for o in (False, True)), key=lambda d: sum(p for p, _ in d.values()))
+
+
 def settle(st, winner, reason):
-    """승자가 받을 점수(나가리 배수 제외)와 내역."""
+    """승리 시 지불 목록 [{side, points, baks, gobak}]과 공통 내역. 점수에 나가리 배수는 제외."""
+    n = len(st["hands"])
+    losers = [l for l in range(n) if l != winner]
     if reason in ("chongtong", "3ppeok"):
-        return MATGO_SPECIAL_WIN_POINTS, {"reason": reason}
-    loser = 1 - winner
-    go = st["go"][winner]
+        pays = {l: (GOSTOP_SPECIAL_WIN_POINTS, []) for l in losers}
+        detail = {"reason": reason}
+    else:
+        pays = _best_pays(st, winner, losers)
+        detail = {
+            "reason": reason, "base": best_score(st["captured"][winner]),
+            "go": st["go"][winner], "shakes": st["shakes"][winner],
+        }
+    payments = [{"side": l, "points": pays[l][0], "baks": pays[l][1], "gobak": False} for l in losers]
+    goers = [l for l in losers if st["go"][l] > 0]
+    if goers and len(losers) > 1 and reason == "stop":
+        payer = st.get("last_go") if st.get("last_go") in goers else goers[0]
+        total = sum(p["points"] for p in payments)
+        for p in payments:
+            p["points"], p["gobak"] = (total, True) if p["side"] == payer else (0, False)
+    return payments, detail
 
-    def pay(w_opt, l_opt):
-        sc = score_breakdown(st["captured"][winner], w_opt)
-        lsc = score_breakdown(st["captured"][loser], l_opt)
-        pts = sc["total"] + go
-        if go >= 3:
-            pts *= 2 ** (go - 2)
-        baks = []
-        if sc["pi_pts"] > 0 and lsc["pi_count"] <= MATGO_PIBAK_MAX:
-            baks.append("피박")
-        if sc["gwang_pts"] > 0 and lsc["gwang_count"] == 0:
-            baks.append("광박")
-        if sc["yeol_count"] >= MATGO_MEONGBAK_MIN:
-            baks.append("멍박")
-        pts *= 2 ** (len(baks) + st["shakes"][winner])
-        return pts, {"reason": reason, "base": sc["total"], "go": go, "baks": baks, "shakes": st["shakes"][winner]}
 
-    # 승자는 자기에게 유리한 국진 선택, 패자는 그 선택에 대해 가장 적게 내는 선택
-    points, detail = max(
-        (min((pay(w, l) for l in (False, True)), key=lambda r: r[0]) for w in (False, True)),
-        key=lambda r: r[0],
-    )
-    if reason == "forfeit":
-        points = max(points, MATGO_WIN_SCORE)
-    return points, detail
+def forfeit_payments(st, forfeiter):
+    """기권: 기권자 혼자, 남은 사람 각자에게 그 시점에 났다고 치고(최소 난 점수) 낸다."""
+    n = len(st["hands"])
+    result = []
+    for w in range(n):
+        if w == forfeiter:
+            continue
+        pts, baks = _best_pays(st, w, [forfeiter])[forfeiter]
+        result.append({"side": w, "points": max(pts, st["win_score"]), "baks": baks})
+    return result
 
 
 # ── 판 진행 (순수 함수: state dict를 직접 변경) ───────────────────────────────
 
-def new_game(first, rng=random):
+def new_game(mode, first, rng=random):
     """(state, outcome) 반환. outcome은 총통이면 승리 dict, 아니면 None."""
+    cfg = MODES[mode]
+    n, h, f = cfg["players"], cfg["hand"], cfg["floor"]
     while True:
         deck = list(range(48))
         rng.shuffle(deck)
-        floor = deck[20:28]
+        floor = deck[n * h:n * h + f]
         if all(sum(1 for c in floor if month(c) == m) < 4 for m in range(1, 13)):
             break
     st = {
-        "hands": [sorted(deck[0:10]), sorted(deck[10:20])],
+        "win_score": cfg["win_score"],
+        "pibak_max": cfg["pibak_max"],
+        "hands": [sorted(deck[i * h:(i + 1) * h]) for i in range(n)],
         "floor": floor,
-        "pile": deck[28:48],
-        "captured": [[], []],
-        "bombs": [0, 0],
+        "pile": deck[n * h + f:],
+        "captured": [[] for _ in range(n)],
+        "bombs": [0] * n,
         "turn": first,
         "phase": "play",
         "pending": None,
-        "go": [0, 0],
-        "go_score": [0, 0],
-        "shakes": [0, 0],
-        "shaken": [[], []],
-        "ppeok": [0, 0],
+        "go": [0] * n,
+        "go_score": [0] * n,
+        "last_go": None,
+        "shakes": [0] * n,
+        "shaken": [[] for _ in range(n)],
+        "ppeok": [0] * n,
         "ppeok_months": {},
-        "timeouts": [0, 0],
+        "timeouts": [0] * n,
         "events": [],
         "last_play": None,
     }
-    for side in (first, 1 - first):
+    for i in range(n):
+        side = (first + i) % n
         hand = st["hands"][side]
         if any(sum(1 for c in hand if month(c) == m) == 4 for m in range(1, 13)):
             st["phase"] = "over"
@@ -197,19 +237,23 @@ def _capture(st, s, cards):
 
 
 def _steal_pi(st, s, n):
-    opp = st["captured"][1 - s]
-    for _ in range(n):
-        victim = next((c for c in opp if CARDS[c]["k"] == "p"), None)
-        if victim is None:
-            victim = next((c for c in opp if CARDS[c]["k"] == "pp"), None)
-        if victim is None:
-            return
-        opp.remove(victim)
-        st["captured"][s].append(victim)
+    """다른 모든 사람에게서 피를 n장씩 가져온다 (없으면 쌍피, 그것도 없으면 못 가져옴)."""
+    for other in range(len(st["hands"])):
+        if other == s:
+            continue
+        opp = st["captured"][other]
+        for _ in range(n):
+            victim = next((c for c in opp if CARDS[c]["k"] == "p"), None)
+            if victim is None:
+                victim = next((c for c in opp if CARDS[c]["k"] == "pp"), None)
+            if victim is None:
+                break
+            opp.remove(victim)
+            st["captured"][s].append(victim)
 
 
 def _take_stack(st, s, m, events):
-    """바닥에 3장 쌓인 월을 4번째 패로 먹을 때 — 뻑이었으면 상대 피를 가져온다."""
+    """바닥에 3장 쌓인 월을 4번째 패로 먹을 때 — 뻑이었으면 피를 가져온다."""
     owner = st["ppeok_months"].pop(str(m), None)
     if owner is None:
         return 0
@@ -218,7 +262,7 @@ def _take_stack(st, s, m, events):
 
 
 def _check_turn(st, s):
-    if st["phase"] != "play" and st["phase"] != "choose_flip" and st["phase"] != "go_stop":
+    if st["phase"] not in ("play", "choose_flip", "go_stop"):
         raise ValueError("진행 중인 판이 아닙니다.")
     if st["turn"] != s:
         raise ValueError("내 차례가 아닙니다.")
@@ -369,7 +413,7 @@ def _finish_turn(st, s, steals, events):
     _steal_pi(st, s, steals)
     st["events"] = events
     score = best_score(st["captured"][s])
-    if score >= MATGO_WIN_SCORE and score > st["go_score"][s]:
+    if score >= st["win_score"] and score > st["go_score"][s]:
         if last:
             st["phase"] = "over"
             return {"winner": s, "reason": "stop"}
@@ -379,7 +423,7 @@ def _finish_turn(st, s, steals, events):
         st["phase"] = "over"
         return {"winner": None, "reason": "nagari"}
     st["phase"] = "play"
-    st["turn"] = 1 - s
+    st["turn"] = (s + 1) % len(st["hands"])
     return None
 
 
@@ -392,9 +436,10 @@ def declare_go_stop(st, s, go):
         return {"winner": s, "reason": "stop"}
     st["go"][s] += 1
     st["go_score"][s] = best_score(st["captured"][s])
+    st["last_go"] = s
     st["events"] = [f"{st['go'][s]}고"]
     st["phase"] = "play"
-    st["turn"] = 1 - s
+    st["turn"] = (s + 1) % len(st["hands"])
     return None
 
 
@@ -415,26 +460,31 @@ def auto_act(st, s):
 
 # ── 방 / 칩 (DB) ─────────────────────────────────────────────────────────────
 
-def _user_room(user, lock=False):
-    qs = MatgoRoom.objects.filter(Q(host=user) | Q(guest=user))
-    if lock:
-        qs = qs.select_for_update(of=("self",))
-    return qs.first()
+def _capacity(room):
+    return MODES[room.mode]["players"]
 
 
-def _side_of(room, user_id):
-    if room.host_id == user_id:
-        return 0
-    if room.guest_id == user_id:
-        return 1
-    return None
+def _seats(room):
+    return list(GostopSeat.objects.select_for_update(of=("self",)).filter(room=room).select_related("user").order_by("seat"))
+
+
+def _lock_my_room(user):
+    """(room, seat) — 방 행을 먼저 잠그고 좌석을 다시 읽는다. 없으면 (None, None)."""
+    seat = GostopSeat.objects.filter(user=user).first()
+    if not seat:
+        return None, None
+    room = GostopRoom.objects.select_for_update().filter(pk=seat.room_id).first()
+    seat = GostopSeat.objects.select_for_update().filter(pk=seat.pk).first()
+    if not room or not seat:
+        return None, None
+    return room, seat
 
 
 def _take_buy_in(user):
     wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
-    if not wallet or wallet.chips < MATGO_BUY_IN:
+    if not wallet or wallet.chips < GOSTOP_BUY_IN:
         return False
-    wallet.chips -= MATGO_BUY_IN
+    wallet.chips -= GOSTOP_BUY_IN
     wallet.save(update_fields=["chips"])
     return True
 
@@ -448,126 +498,147 @@ def _refund(user_id, chips):
 
 
 def _need_buy_in_msg():
-    return f"칩 지갑에 {MATGO_BUY_IN:,}칩({MATGO_BUY_IN // POKER_CHIPS_PER_LEAF}낙엽)이 있어야 입장할 수 있습니다."
+    return f"칩 지갑에 {GOSTOP_BUY_IN:,}칩({GOSTOP_BUY_IN // POKER_CHIPS_PER_LEAF}낙엽)이 있어야 입장할 수 있습니다."
 
 
-def create_room(user):
+def create_room(user, mode):
+    if mode not in MODES:
+        return False, "잘못된 게임 종류입니다."
     with transaction.atomic():
         User.objects.select_for_update().get(id=user.id)  # 같은 유저의 동시 입장 직렬화
-        if _user_room(user):
+        if GostopSeat.objects.filter(user=user).exists():
             return False, "이미 참여 중인 방이 있습니다."
         if not _take_buy_in(user):
             return False, _need_buy_in_msg()
-        room = MatgoRoom.objects.create(host=user, host_stack=MATGO_BUY_IN)
+        room = GostopRoom.objects.create(mode=mode)
+        GostopSeat.objects.create(room=room, user=user, seat=0, stack=GOSTOP_BUY_IN)
     return True, room.id
 
 
 def join_room(user, room_id):
     with transaction.atomic():
         User.objects.select_for_update().get(id=user.id)
-        if _user_room(user):
+        if GostopSeat.objects.filter(user=user).exists():
             return False, "이미 참여 중인 방이 있습니다."
-        room = MatgoRoom.objects.select_for_update().filter(pk=room_id).first()
-        if not room or not room.host_id or room.guest_id:
+        room = GostopRoom.objects.select_for_update().filter(pk=room_id).first()
+        if not room:
             return False, "입장할 수 없는 방입니다."
+        count = GostopSeat.objects.filter(room=room).count()
+        if count >= _capacity(room):
+            return False, "방이 가득 찼습니다."
         if not _take_buy_in(user):
             return False, _need_buy_in_msg()
-        room.guest = user
-        room.guest_stack = MATGO_BUY_IN
-        room.next_first = random.randint(0, 1)
-        room.carry_multiplier = 1
-        room.next_game_at = timezone.now() + timedelta(seconds=MATGO_START_DELAY)
-        room.save()
+        GostopSeat.objects.create(room=room, user=user, seat=count, stack=GOSTOP_BUY_IN)
+        if count + 1 == _capacity(room):
+            room.next_first = random.randrange(_capacity(room))
+            room.carry_multiplier = 1
+            room.next_game_at = timezone.now() + timedelta(seconds=GOSTOP_START_DELAY)
+            room.save()
     return True, room.id
 
 
-def _remove_player(room, side):
-    """스택을 지갑으로 돌려주고 자리를 비운다. 방장이 나가면 상대가 방장이 된다."""
-    stacks = [room.host_stack, room.guest_stack]
-    ids = [room.host_id, room.guest_id]
-    _refund(ids[side], stacks[side])
-    ids[side], stacks[side] = None, 0
-    if ids[0] is None:
-        ids, stacks = [ids[1], None], [stacks[1], 0]
-    if ids[0] is None:
+def _remove_seat(room, seat):
+    """스택을 지갑으로 돌려주고 좌석을 비운 뒤 번호를 앞으로 당긴다. 방이 비면 삭제하고 False."""
+    _refund(seat.user_id, seat.stack)
+    removed = seat.seat
+    seat.delete()
+    # 오름차순으로 한 칸씩 당기면 unique(room, seat) 충돌이 없다
+    for s in GostopSeat.objects.filter(room=room, seat__gt=removed).order_by("seat"):
+        s.seat -= 1
+        s.save(update_fields=["seat"])
+    if not GostopSeat.objects.filter(room=room).exists():
         room.delete()
-        return
-    room.host_id, room.guest_id = ids
-    room.host_stack, room.guest_stack = stacks[0], stacks[1] or 0
+        return False
     room.status = "waiting"
     room.state = {}
     room.turn_deadline = None
     room.next_game_at = None
     room.carry_multiplier = 1
+    room.next_first = 0
     room.save()
+    return True
 
 
 def leave_room(user):
-    """퇴장. 판 진행 중이면 기권 처리(상대 승리) 후 나간다."""
+    """퇴장. 판 진행 중이면 기권 처리 후 나간다."""
     with transaction.atomic():
-        room = _user_room(user, lock=True)
+        room, seat = _lock_my_room(user)
         if not room:
             return False, "참여 중인 방이 없습니다."
-        side = _side_of(room, user.id)
         if room.status == "playing":
-            _end_game(room, {"winner": 1 - side, "reason": "forfeit"})
-        _remove_player(room, side)
+            _end_game(room, {"forfeit": seat.seat})
+            seat.refresh_from_db()
+        _remove_seat(room, seat)
     return True, None
-
-
-def _players(room):
-    return [room.host, room.guest]
 
 
 def _end_game(room, outcome):
     st = room.state
     st["phase"] = "over"
-    players = _players(room)
+    seats = _seats(room)
+    names = [s.user.display_name for s in seats]
+    carry = room.carry_multiplier
     now = timezone.now()
-    if outcome["winner"] is None:
-        room.carry_multiplier = min(room.carry_multiplier * 2, 64)
+
+    if outcome.get("winner") is None and "forfeit" not in outcome:
+        room.carry_multiplier = min(carry * 2, 64)
         room.last_result = {"nagari": True, "carry": room.carry_multiplier}
-        MatgoGameLog.objects.create(room_number=room.pk, detail={"reason": "nagari"})
+        GostopGameLog.objects.create(room_number=room.pk, mode=room.mode, detail={"reason": "nagari"})
     else:
-        w = outcome["winner"]
-        points, detail = settle(st, w, outcome["reason"])
-        points *= room.carry_multiplier
-        detail["carry"] = room.carry_multiplier
-        stacks = [room.host_stack, room.guest_stack]
-        chips = min(points * MATGO_CHIPS_PER_POINT, stacks[1 - w])
-        stacks[w] += chips
-        stacks[1 - w] -= chips
-        room.host_stack, room.guest_stack = stacks
+        if "forfeit" in outcome:
+            f = outcome["forfeit"]
+            transfers = [(f, p["side"], p["points"] * carry, p["baks"], False) for p in forfeit_payments(st, f)]
+            detail = {"reason": "forfeit", "forfeit_side": f, "forfeit_name": names[f]}
+            winner = transfers[0][1] if len(transfers) == 1 else None  # 3인 기권은 받는 사람이 둘이라 기록상 승자 없음
+        else:
+            winner = outcome["winner"]
+            payments, detail = settle(st, winner, outcome["reason"])
+            transfers = [(p["side"], winner, p["points"] * carry, p["baks"], p["gobak"]) for p in payments]
+            detail.update(winner_side=winner, winner_name=names[winner])
+            room.next_first = winner
+        rows = []
+        for payer, receiver, points, baks, gobak in transfers:
+            chips = min(points * GOSTOP_CHIPS_PER_POINT, seats[payer].stack)
+            seats[payer].stack -= chips
+            seats[receiver].stack += chips
+            rows.append({
+                "from_side": payer, "from_name": names[payer], "to_side": receiver, "to_name": names[receiver],
+                "points": points, "chips": chips, "baks": baks, "gobak": gobak,
+            })
+        for s in seats:
+            s.save(update_fields=["stack"])
         room.carry_multiplier = 1
-        room.next_first = w
-        room.last_result = {
-            "nagari": False, "winner_side": w,
-            "winner_name": players[w].display_name, "loser_name": players[1 - w].display_name,
-            "points": points, "chips": chips, **detail,
-        }
-        MatgoGameLog.objects.create(
-            room_number=room.pk, winner=players[w], loser=players[1 - w],
-            points=points, chips=chips, detail=detail,
+        room.last_result = dict(detail, nagari=False, carry=carry, transfers=rows)
+        GostopGameLog.objects.create(
+            room_number=room.pk, mode=room.mode, winner=seats[winner].user if winner is not None else None,
+            chips=sum(r["chips"] for r in rows), detail=room.last_result,
         )
     room.status = "waiting"
     room.turn_deadline = None
-    room.next_game_at = now + timedelta(seconds=MATGO_NEXT_GAME_DELAY)
+    room.next_game_at = now + timedelta(seconds=GOSTOP_NEXT_GAME_DELAY)
     room.state = st
     room.save()
 
 
 def _start_game(room):
     # 칩을 다 잃은 사람은 다음 판 전에 내보낸다 (다시 입장하면 새로 바이인)
-    for side, stack in ((1, room.guest_stack), (0, room.host_stack)):
-        if stack == 0:
-            _remove_player(room, side)
+    while True:
+        busted = GostopSeat.objects.select_for_update().filter(room=room, stack=0).first()
+        if not busted:
+            break
+        if not _remove_seat(room, busted):
             return
-    st, outcome = new_game(room.next_first)
+    seats = _seats(room)
+    if len(seats) < _capacity(room):
+        room.next_game_at = None
+        room.save(update_fields=["next_game_at"])
+        return
+    st, outcome = new_game(room.mode, room.next_first % len(seats))
     room.state = st
     room.status = "playing"
     room.next_game_at = None
     room.last_result = {}
-    room.turn_deadline = timezone.now() + timedelta(seconds=MATGO_TURN_TIMEOUT)
+    room.turn_deadline = timezone.now() + timedelta(seconds=GOSTOP_TURN_TIMEOUT)
     room.save()
     if outcome:
         _end_game(room, outcome)
@@ -575,21 +646,20 @@ def _start_game(room):
 
 def _act(user, fn):
     with transaction.atomic():
-        room = _user_room(user, lock=True)
+        room, seat = _lock_my_room(user)
         if not room or room.status != "playing":
             return False, "진행 중인 판이 없습니다."
-        side = _side_of(room, user.id)
         st = room.state
         try:
-            outcome = fn(st, side)
+            outcome = fn(st, seat.seat)
         except ValueError as e:
             return False, str(e)
-        st["timeouts"][side] = 0
+        st["timeouts"][seat.seat] = 0
         room.state = st
         if outcome:
             _end_game(room, outcome)
         else:
-            room.turn_deadline = timezone.now() + timedelta(seconds=MATGO_TURN_TIMEOUT)
+            room.turn_deadline = timezone.now() + timedelta(seconds=GOSTOP_TURN_TIMEOUT)
             room.save()
     return True, None
 
@@ -609,7 +679,7 @@ def declare(user, go):
 # ── 워치독 ───────────────────────────────────────────────────────────────────
 
 def next_deadline_at():
-    agg = MatgoRoom.objects.aggregate(
+    agg = GostopRoom.objects.aggregate(
         turn=Min("turn_deadline", filter=Q(status="playing")),
         nxt=Min("next_game_at", filter=Q(status="waiting")),
     )
@@ -619,103 +689,103 @@ def next_deadline_at():
 
 def process_due_deadlines():
     now = timezone.now()
-    due_ids = list(MatgoRoom.objects.filter(
+    due_ids = list(GostopRoom.objects.filter(
         Q(status="playing", turn_deadline__lte=now) | Q(status="waiting", next_game_at__lte=now)
     ).values_list("id", flat=True))
     for room_id in due_ids:
         with transaction.atomic():
-            room = MatgoRoom.objects.select_for_update().filter(pk=room_id).first()
+            room = GostopRoom.objects.select_for_update().filter(pk=room_id).first()
             if not room:
                 continue
             if room.status == "playing" and room.turn_deadline and room.turn_deadline <= now:
                 st = room.state
                 side = st["turn"]
                 st["timeouts"][side] += 1
-                if st["timeouts"][side] >= MATGO_MAX_TIMEOUTS:
-                    _end_game(room, {"winner": 1 - side, "reason": "forfeit"})
-                    _remove_player(room, side)
+                if st["timeouts"][side] >= GOSTOP_MAX_TIMEOUTS:
+                    _end_game(room, {"forfeit": side})
+                    _remove_seat(room, GostopSeat.objects.select_for_update().get(room=room, seat=side))
                     continue
                 outcome = auto_act(st, side)
                 room.state = st
                 if outcome:
                     _end_game(room, outcome)
                 else:
-                    room.turn_deadline = now + timedelta(seconds=MATGO_TURN_TIMEOUT)
+                    room.turn_deadline = now + timedelta(seconds=GOSTOP_TURN_TIMEOUT)
                     room.save()
             elif room.status == "waiting" and room.next_game_at and room.next_game_at <= now:
-                if room.host_id and room.guest_id:
-                    _start_game(room)
-                else:
-                    room.next_game_at = None
-                    room.save(update_fields=["next_game_at"])
+                _start_game(room)
     return bool(due_ids)
 
 
 # ── 상태 스냅샷 ───────────────────────────────────────────────────────────────
 
 def _player_view(u):
-    if not u:
-        return None
     return {"user_id": u.id, "display_name": u.display_name, "picture": u.get_picture()}
 
 
 def _game_view(room, st, me):
-    opp = 1 - me
     now = timezone.now()
     turn_left = None
     if room.status == "playing" and room.turn_deadline:
         turn_left = max(0, round((room.turn_deadline - now).total_seconds()))
     over = st.get("phase") == "over"
     pending = st.get("pending")
+    mine = st["turn"] == me
     return {
         "phase": st["phase"],
-        "my_turn": st["turn"] == me and not over,
+        "turn": st["turn"],
+        "my_turn": mine and not over,
+        "win_score": st["win_score"],
         "floor": st["floor"],
         "pile_count": len(st["pile"]),
         "my_hand": st["hands"][me],
         "my_bombs": st["bombs"][me],
-        # 판이 끝나면 상대 손패도 공개
-        "opp_hand": st["hands"][opp] if over else None,
-        "opp_hand_count": len(st["hands"][opp]) + st["bombs"][opp],
-        "captured": [st["captured"][me], st["captured"][opp]],
-        "scores": [best_score(st["captured"][me]), best_score(st["captured"][opp])],
-        "go": [st["go"][me], st["go"][opp]],
-        "shakes": [st["shakes"][me], st["shakes"][opp]],
-        "ppeok": [st["ppeok"][me], st["ppeok"][opp]],
+        # 판이 끝나면 모두의 손패 공개
+        "hands": st["hands"] if over else None,
+        "hand_counts": [len(h) + b for h, b in zip(st["hands"], st["bombs"])],
+        "captured": st["captured"],
+        "scores": [best_score(c) for c in st["captured"]],
+        "go": st["go"],
+        "shakes": st["shakes"],
+        "ppeok": st["ppeok"],
         "shaken": st["shaken"][me],
-        "pending_options": pending["options"] if pending and st["turn"] == me else None,
+        "pending_options": pending["options"] if pending and mine else None,
         "pending_card": pending["card"] if pending else None,
         "events": st["events"],
-        "last_play": dict(st["last_play"], mine=st["last_play"]["side"] == me) if st.get("last_play") else None,
+        "last_play": st["last_play"],
         "turn_seconds_left": turn_left,
     }
 
 
 def get_state_for(user):
-    rooms = list(MatgoRoom.objects.select_related("host", "guest").order_by("created_at"))
-    my_room = next((r for r in rooms if user.id in (r.host_id, r.guest_id)), None)
+    rooms = list(GostopRoom.objects.prefetch_related("seats__user").order_by("created_at"))
+    my_seat = GostopSeat.objects.filter(user_id=user.id).first()
     wallet = PokerChipWallet.objects.filter(user_id=user.id).values_list("chips", flat=True).first()
     # ponytail: WS 스코프의 user.leaves는 연결 시점 값이라 매번 DB에서 읽는다 (포커와 동일)
     my_leaves = User.objects.filter(id=user.id).values_list("leaves", flat=True).first()
 
     room_view = None
+    my_room = next((r for r in rooms if my_seat and r.id == my_seat.room_id), None)
     if my_room:
-        me = _side_of(my_room, user.id)
-        players = _players(my_room)
-        stacks = [my_room.host_stack, my_room.guest_stack]
+        me = my_seat.seat
+        seats = sorted(my_room.seats.all(), key=lambda s: s.seat)
         next_left = None
         if my_room.next_game_at:
             next_left = max(0, round((my_room.next_game_at - timezone.now()).total_seconds()))
         last = dict(my_room.last_result)
-        if "winner_side" in last:
-            last["i_won"] = last["winner_side"] == me
+        if last.get("transfers") is not None:
+            last["my_net"] = sum(
+                t["chips"] if t["to_side"] == me else -t["chips"] if t["from_side"] == me else 0
+                for t in last["transfers"]
+            )
         room_view = {
             "id": my_room.id,
+            "mode": my_room.mode,
+            "mode_label": MODES[my_room.mode]["label"],
+            "capacity": _capacity(my_room),
             "status": my_room.status,
-            "me": _player_view(players[me]),
-            "opp": _player_view(players[1 - me]),
-            "my_stack": stacks[me],
-            "opp_stack": stacks[1 - me],
+            "me": me,
+            "seats": [dict(_player_view(s.user), side=s.seat, stack=s.stack) for s in seats],
             "carry_multiplier": my_room.carry_multiplier,
             "next_game_seconds_left": next_left,
             "last_result": last,
@@ -725,13 +795,17 @@ def get_state_for(user):
     return {
         "type": "state",
         "rooms": [
-            {"id": r.id, "status": r.status, "host": _player_view(r.host), "guest": _player_view(r.guest)}
+            {
+                "id": r.id, "mode": r.mode, "mode_label": MODES[r.mode]["label"],
+                "capacity": _capacity(r), "status": r.status,
+                "players": [_player_view(s.user) for s in sorted(r.seats.all(), key=lambda s: s.seat)],
+            }
             for r in rooms
         ],
         "room": room_view,
         "wallet_chips": wallet or 0,
         "my_leaves": my_leaves,
-        "buy_in": MATGO_BUY_IN,
-        "chips_per_point": MATGO_CHIPS_PER_POINT,
+        "buy_in": GOSTOP_BUY_IN,
+        "chips_per_point": GOSTOP_CHIPS_PER_POINT,
         "chips_per_leaf": POKER_CHIPS_PER_LEAF,
     }

@@ -1,82 +1,81 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}IPSE 놀이터 | 맞고{% endblock %}
+{% block title %}IPSE 놀이터 | 고스톱{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 py-8">
     <div class="grid lg:grid-cols-12 gap-6 items-start">
 
-        <!-- 맞고 판 -->
+        <!-- 고스톱 판 -->
         <div class="lg:col-span-9">
-            <div class="mg-outer">
+            <div class="gs-outer">
                 <!-- 상태 바 -->
-                <div class="mg-stat-bar">
-                    <span class="mg-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="mg-room-label">방 목록</span></span>
-                    <span class="mg-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="mg-my-leaves">-</strong></span>
-                    <span class="mg-stat-chip"><i class="fa-solid fa-coins"></i> 보관 칩 <strong id="mg-my-wallet-top">-</strong></span>
-                    <button type="button" class="mg-stat-chip mg-chip-exchange-btn" onclick="openMgChipTab()" title="칩 충전/환전">
+                <div class="gs-stat-bar">
+                    <span class="gs-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="gs-room-label">방 목록</span></span>
+                    <span class="gs-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="gs-my-leaves">-</strong></span>
+                    <span class="gs-stat-chip"><i class="fa-solid fa-coins"></i> 보관 칩 <strong id="gs-my-wallet-top">-</strong></span>
+                    <button type="button" class="gs-stat-chip gs-chip-exchange-btn" onclick="openGsChipTab()" title="칩 충전/환전">
                         <i class="fa-solid fa-coins"></i> 칩 환전
                     </button>
-                    <button type="button" id="mg-sound-toggle" class="mg-sound-toggle" title="사운드 켜기/끄기">
+                    <button type="button" id="gs-sound-toggle" class="gs-sound-toggle" title="사운드 켜기/끄기">
                         <i class="fa-solid fa-volume-high"></i>
                     </button>
                 </div>
 
-                <div class="mg-felt" id="mg-felt">
+                <div class="gs-felt" id="gs-felt">
                     <!-- 방 목록 -->
-                    <div id="mg-lobby-view" class="mg-lobby"></div>
+                    <div id="gs-lobby-view" class="gs-lobby"></div>
 
                     <!-- 게임판 -->
-                    <div id="mg-game-view" class="mg-game hidden">
-                        <div class="mg-player" id="mg-opp-row"></div>
-                        <div class="mg-captured" id="mg-opp-captured"></div>
-                        <div class="mg-board">
-                            <div class="mg-pile-col">
-                                <div id="mg-pile"></div>
-                                <div id="mg-last-play" class="mg-last-play"></div>
+                    <div id="gs-game-view" class="gs-game hidden">
+                        <div id="gs-opps" class="gs-opps"></div>
+                        <div class="gs-board">
+                            <div class="gs-pile-col">
+                                <div id="gs-pile"></div>
+                                <div id="gs-last-play" class="gs-last-play"></div>
                             </div>
-                            <div class="mg-floor" id="mg-floor"></div>
+                            <div class="gs-floor" id="gs-floor"></div>
                         </div>
-                        <div class="mg-captured" id="mg-my-captured"></div>
-                        <div class="mg-player mg-player--me" id="mg-me-row"></div>
-                        <div class="mg-hand" id="mg-hand"></div>
-                        <div id="mg-center-msg" class="mg-center-msg hidden"></div>
-                        <div id="mg-event-pop" class="mg-event-pop hidden"></div>
+                        <div class="gs-captured" id="gs-my-captured"></div>
+                        <div id="gs-me-row"></div>
+                        <div class="gs-hand" id="gs-hand"></div>
+                        <div id="gs-center-msg" class="gs-center-msg hidden"></div>
+                        <div id="gs-event-pop" class="gs-event-pop hidden"></div>
                     </div>
                 </div>
 
                 <!-- 하단 액션 바 -->
-                <div class="mg-action-bar" id="mg-action-bar">
-                    <div class="mg-hint">연결 중...</div>
+                <div class="gs-action-bar" id="gs-action-bar">
+                    <div class="gs-hint">연결 중...</div>
                 </div>
             </div>
         </div>
 
         <!-- RIGHT: 사이드 패널 -->
-        <div class="lg:col-span-3 mobile-hidden" id="mg-side-col">
+        <div class="lg:col-span-3 mobile-hidden" id="gs-side-col">
             <div class="game-side-panel">
                 <div class="gsp-tabs">
-                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'mg-tab-chat')">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'gs-tab-chat')">
                         <i class="fa-solid fa-comments"></i> 채팅
                     </button>
-                    <button class="gsp-tab" onclick="gspSwitch(this,'mg-tab-chips')">
+                    <button class="gsp-tab" onclick="gspSwitch(this,'gs-tab-chips')">
                         <i class="fa-solid fa-coins"></i> 칩 관리
                     </button>
-                    <button class="gsp-tab" onclick="gspSwitch(this,'mg-tab-online')">
-                        <i class="fa-solid fa-users"></i> 접속자 <span id="mg-online-count"></span>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'gs-tab-online')">
+                        <i class="fa-solid fa-users"></i> 접속자 <span id="gs-online-count"></span>
                     </button>
                 </div>
 
                 <!-- 채팅 탭 -->
-                <div id="mg-tab-chat" class="gsp-pane">
+                <div id="gs-tab-chat" class="gsp-pane">
                     <div class="gsp-pane-head">
-                        <span id="mg-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                        <span id="gs-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
                             <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
                             연결 중...
                         </span>
                     </div>
-                    <div id="mg-chat-messages" class="gsp-messages">
+                    <div id="gs-chat-messages" class="gsp-messages">
                         {% for msg in chat_messages %}
                         <div class="flex gap-2 items-start">
                             {% if msg.user.picture and msg.user.picture.name != "default.png" %}
@@ -95,63 +94,63 @@
                         {% endfor %}
                     </div>
                     <div class="gsp-input-row">
-                        <input id="mg-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                        <input id="gs-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
                                class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
-                        <button id="mg-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                        <button id="gs-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
                     </div>
                 </div>
 
                 <!-- 접속자 탭 -->
-                <div id="mg-tab-online" class="gsp-pane" style="display:none">
-                    <div id="mg-online-list" class="gsp-ranking">
+                <div id="gs-tab-online" class="gsp-pane" style="display:none">
+                    <div id="gs-online-list" class="gsp-ranking">
                         <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
                     </div>
                 </div>
 
                 <!-- 칩 관리 탭 -->
-                <div id="mg-tab-chips" class="gsp-pane" style="display:none">
-                    <div class="mg-chip-panel">
-                        <div class="mg-chip-rate"><i class="fa-solid fa-leaf" style="color:#059669"></i> 1 낙엽 = <span id="mg-chip-rate-num">-</span> 칩</div>
-                        <div class="mg-chip-row">
+                <div id="gs-tab-chips" class="gsp-pane" style="display:none">
+                    <div class="gs-chip-panel">
+                        <div class="gs-chip-rate"><i class="fa-solid fa-leaf" style="color:#059669"></i> 1 낙엽 = <span id="gs-chip-rate-num">-</span> 칩</div>
+                        <div class="gs-chip-row">
                             <span>보유 낙엽</span>
-                            <strong id="mg-chip-my-leaves">-</strong>
+                            <strong id="gs-chip-my-leaves">-</strong>
                         </div>
-                        <div class="mg-chip-row">
+                        <div class="gs-chip-row">
                             <span>방 스택</span>
-                            <strong id="mg-chip-my-stack">-</strong>
+                            <strong id="gs-chip-my-stack">-</strong>
                         </div>
-                        <div class="mg-chip-row">
+                        <div class="gs-chip-row">
                             <span>보관 칩</span>
-                            <strong id="mg-chip-my-wallet">-</strong>
+                            <strong id="gs-chip-my-wallet">-</strong>
                         </div>
-                        <div id="mg-chip-buy" class="mg-chip-actions">
-                            <label class="mg-chip-label">낙엽 → 칩 충전</label>
-                            <div class="mg-chip-input-row">
-                                <input type="number" id="mg-buy-chips-amount" class="mg-bet-input" min="1" value="10">
-                                <button type="button" id="mg-buy-chips-btn" class="mg-btn mg-btn-call">충전</button>
+                        <div id="gs-chip-buy" class="gs-chip-actions">
+                            <label class="gs-chip-label">낙엽 → 칩 충전</label>
+                            <div class="gs-chip-input-row">
+                                <input type="number" id="gs-buy-chips-amount" class="gs-bet-input" min="1" value="10">
+                                <button type="button" id="gs-buy-chips-btn" class="gs-btn gs-btn-call">충전</button>
                             </div>
                         </div>
-                        <div id="mg-chip-sell" class="mg-chip-actions hidden">
-                            <label class="mg-chip-label">칩 → 낙엽 환전 (<span id="mg-chip-sell-unit">-</span>칩 단위로 환전, 나머지는 지갑에 보관)</label>
-                            <div class="mg-chip-input-row">
-                                <input type="number" id="mg-cash-out-amount" class="mg-bet-input" min="100" step="100" value="100">
+                        <div id="gs-chip-sell" class="gs-chip-actions hidden">
+                            <label class="gs-chip-label">칩 → 낙엽 환전 (<span id="gs-chip-sell-unit">-</span>칩 단위로 환전, 나머지는 지갑에 보관)</label>
+                            <div class="gs-chip-input-row">
+                                <input type="number" id="gs-cash-out-amount" class="gs-bet-input" min="100" step="100" value="100">
                             </div>
-                            <div class="mg-chip-btn-row">
-                                <button type="button" id="mg-cash-out-all-btn" class="mg-btn mg-btn-ghost">전액</button>
-                                <button type="button" id="mg-cash-out-btn" class="mg-btn mg-btn-call">환전</button>
+                            <div class="gs-chip-btn-row">
+                                <button type="button" id="gs-cash-out-all-btn" class="gs-btn gs-btn-ghost">전액</button>
+                                <button type="button" id="gs-cash-out-btn" class="gs-btn gs-btn-call">환전</button>
                             </div>
                         </div>
-                        <div id="mg-chip-hint" class="mg-chip-hint">낙엽을 칩으로 충전한 뒤 방에 입장할 수 있습니다.</div>
+                        <div id="gs-chip-hint" class="gs-chip-hint">낙엽을 칩으로 충전한 뒤 방에 입장할 수 있습니다.</div>
                     </div>
                 </div>
             </div>
         </div>
     </div><!-- grid -->
 <!-- 모바일 전용 채팅 FAB -->
-<button type="button" id="mg-toggle-chat-fab"
+<button type="button" id="gs-toggle-chat-fab"
     class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
-    title="채팅 열기/닫기" onclick="toggleMgChat()">
-    <i id="mg-fab-icon" class="fa-solid fa-comments text-xl"></i>
+    title="채팅 열기/닫기" onclick="toggleGsChat()">
+    <i id="gs-fab-icon" class="fa-solid fa-comments text-xl"></i>
 </button>
 </section>
 
@@ -227,7 +226,7 @@
     overflow-y: auto;
 }
 /* ── 상태 바 ─────────────────────────────────────────────────────── */
-.mg-stat-bar {
+.gs-stat-bar {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -237,7 +236,7 @@
     gap: 10px;
     flex-wrap: wrap;
 }
-.mg-sound-toggle {
+.gs-sound-toggle {
     margin-left: auto;
     background: none;
     border: none;
@@ -247,9 +246,9 @@
     cursor: pointer;
     line-height: 1;
 }
-.mg-sound-toggle:hover { color: #475569; }
-.mg-sound-toggle.muted { color: #cbd5e1; }
-.mg-stat-chip {
+.gs-sound-toggle:hover { color: #475569; }
+.gs-sound-toggle.muted { color: #cbd5e1; }
+.gs-stat-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -262,14 +261,14 @@
     color: #64748b;
     box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
-.mg-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
-.mg-stat-chip i { color: #b91c1c; font-size: .68rem; }
-.mg-chip-exchange-btn { cursor: pointer; color: #b45309; border-color: #fde68a; background: #fffbeb; }
-.mg-chip-exchange-btn:hover { background: #fef3c7; }
-.mg-chip-exchange-btn i { color: #b45309; }
+.gs-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+.gs-stat-chip i { color: #b91c1c; font-size: .68rem; }
+.gs-chip-exchange-btn { cursor: pointer; color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.gs-chip-exchange-btn:hover { background: #fef3c7; }
+.gs-chip-exchange-btn i { color: #b45309; }
 
 /* ── 외곽 / 담요 ─────────────────────────────────────────────────── */
-.mg-outer {
+.gs-outer {
     position: relative;
     background: #ffffff;
     border: 1px solid #e2e8f0;
@@ -277,22 +276,22 @@
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
 }
-.mg-felt {
+.gs-felt {
     position: relative;
     min-height: 520px;
     padding: 14px 16px;
     background: radial-gradient(circle at 50% 45%, #1f6b3f 0%, #14532d 65%, #0c3a1f 100%);
     color: #fff;
 }
-.mg-outer .hidden { display: none !important; }
+.gs-outer .hidden { display: none !important; }
 
 /* ── 방 목록 ─────────────────────────────────────────────────────── */
-.mg-lobby { max-width: 560px; margin: 0 auto; padding: 10px 0; }
-.mg-lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.mg-lobby-head h3 { font-size: 1.05rem; font-weight: 800; }
-.mg-lobby-head p { font-size: .74rem; color: #bbf7d0; margin-top: 2px; }
-.mg-room-list { display: flex; flex-direction: column; gap: 8px; }
-.mg-room {
+.gs-lobby { max-width: 560px; margin: 0 auto; padding: 10px 0; }
+.gs-lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.gs-lobby-head h3 { font-size: 1.05rem; font-weight: 800; }
+.gs-lobby-head p { font-size: .74rem; color: #bbf7d0; margin-top: 2px; }
+.gs-room-list { display: flex; flex-direction: column; gap: 8px; }
+.gs-room {
     display: flex; align-items: center; gap: 10px;
     background: rgba(255,255,255,.08);
     border: 1px solid rgba(255,255,255,.14);
@@ -300,23 +299,27 @@
     padding: 10px 12px;
     font-size: .82rem;
 }
-.mg-room--mine { border-color: #fde047; }
-.mg-room-no { font-weight: 800; color: #fde68a; min-width: 34px; }
-.mg-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.mg-room-player { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
-.mg-room-player img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; }
-.mg-room-vs { color: #86efac; font-size: .7rem; font-weight: 800; }
-.mg-room-empty { color: #86efac; font-size: .75rem; }
-.mg-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
-.mg-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
-.mg-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
-.mg-rules { margin-top: 18px; font-size: .74rem; color: #dcfce7; background: rgba(0,0,0,.18); border-radius: 12px; padding: 10px 14px; }
-.mg-rules summary { cursor: pointer; font-weight: 800; color: #fff; }
-.mg-rules ul { margin-top: 8px; padding-left: 16px; list-style: disc; display: flex; flex-direction: column; gap: 3px; }
+.gs-room--mine { border-color: #fde047; }
+.gs-room-no { font-weight: 800; color: #fde68a; min-width: 34px; }
+.gs-room-mode { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: #b91c1c; white-space: nowrap; }
+.gs-room-mode--gostop { background: #7c3aed; }
+.gs-lobby-create { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.gs-opps { display: flex; flex-direction: column; gap: 8px; }
+.gs-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.gs-room-player { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.gs-room-player img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; }
+.gs-room-vs { color: #86efac; font-size: .7rem; font-weight: 800; }
+.gs-room-empty { color: #86efac; font-size: .75rem; }
+.gs-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
+.gs-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
+.gs-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
+.gs-rules { margin-top: 18px; font-size: .74rem; color: #dcfce7; background: rgba(0,0,0,.18); border-radius: 12px; padding: 10px 14px; }
+.gs-rules summary { cursor: pointer; font-weight: 800; color: #fff; }
+.gs-rules ul { margin-top: 8px; padding-left: 16px; list-style: disc; display: flex; flex-direction: column; gap: 3px; }
 
 /* ── 게임판 ──────────────────────────────────────────────────────── */
-.mg-game { display: flex; flex-direction: column; gap: 10px; }
-.mg-player {
+.gs-game { display: flex; flex-direction: column; gap: 10px; }
+.gs-player {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 6px 10px;
     border-radius: 12px;
@@ -324,26 +327,26 @@
     border: 2px solid transparent;
     font-size: .8rem;
 }
-.mg-player--turn { border-color: #fde047; box-shadow: 0 0 0 3px rgba(253,224,71,.2); }
-.mg-player img { width: 32px; height: 32px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,.6); }
-.mg-player-name { font-weight: 800; }
-.mg-player-stack { color: #fde68a; font-weight: 700; font-variant-numeric: tabular-nums; }
-.mg-player-score { background: #fef3c7; color: #92400e; font-weight: 800; border-radius: 999px; padding: 2px 9px; font-size: .74rem; }
-.mg-badge { background: rgba(255,255,255,.14); border-radius: 999px; padding: 2px 8px; font-size: .68rem; font-weight: 800; }
-.mg-badge--go { background: #dc2626; }
-.mg-player-timer { margin-left: auto; font-weight: 800; color: #fde047; font-variant-numeric: tabular-nums; }
-.mg-opp-hand { display: flex; margin-left: auto; }
-.mg-opp-hand .mg-card { margin-left: -18px; }
-.mg-opp-hand .mg-card:first-child { margin-left: 0; }
+.gs-player--turn { border-color: #fde047; box-shadow: 0 0 0 3px rgba(253,224,71,.2); }
+.gs-player img { width: 32px; height: 32px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,.6); }
+.gs-player-name { font-weight: 800; }
+.gs-player-stack { color: #fde68a; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gs-player-score { background: #fef3c7; color: #92400e; font-weight: 800; border-radius: 999px; padding: 2px 9px; font-size: .74rem; }
+.gs-badge { background: rgba(255,255,255,.14); border-radius: 999px; padding: 2px 8px; font-size: .68rem; font-weight: 800; }
+.gs-badge--go { background: #dc2626; }
+.gs-player-timer { margin-left: auto; font-weight: 800; color: #fde047; font-variant-numeric: tabular-nums; }
+.gs-opp-hand { display: flex; margin-left: auto; }
+.gs-opp-hand .gs-card { margin-left: -18px; }
+.gs-opp-hand .gs-card:first-child { margin-left: 0; }
 
-.mg-captured { display: flex; gap: 14px; flex-wrap: wrap; min-height: 44px; padding: 0 4px; }
-.mg-cap-group { display: flex; align-items: flex-end; gap: 4px; }
-.mg-cap-cards { display: flex; }
-.mg-cap-cards .mg-card { margin-left: -14px; }
-.mg-cap-cards .mg-card:first-child { margin-left: 0; }
-.mg-cap-count { font-size: .68rem; font-weight: 800; color: #bbf7d0; white-space: nowrap; }
+.gs-captured { display: flex; gap: 14px; flex-wrap: wrap; min-height: 44px; padding: 0 4px; }
+.gs-cap-group { display: flex; align-items: flex-end; gap: 4px; }
+.gs-cap-cards { display: flex; }
+.gs-cap-cards .gs-card { margin-left: -14px; }
+.gs-cap-cards .gs-card:first-child { margin-left: 0; }
+.gs-cap-count { font-size: .68rem; font-weight: 800; color: #bbf7d0; white-space: nowrap; }
 
-.mg-board {
+.gs-board {
     display: flex; align-items: center; gap: 16px;
     min-height: 150px;
     padding: 12px;
@@ -351,17 +354,17 @@
     background: rgba(0,0,0,.12);
     border: 1px dashed rgba(255,255,255,.18);
 }
-.mg-pile-col { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
-.mg-pile { position: relative; }
-.mg-pile-count { position: absolute; bottom: -8px; right: -8px; background: #fde047; color: #713f12; font-size: .66rem; font-weight: 800; border-radius: 999px; padding: 1px 6px; }
-.mg-last-play { display: flex; align-items: center; gap: 3px; font-size: .62rem; color: #bbf7d0; }
-.mg-floor { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; align-content: center; }
-.mg-floor-group { display: flex; }
-.mg-floor-group .mg-card + .mg-card { margin-left: -24px; }
-.mg-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 76px; padding-top: 4px; }
+.gs-pile-col { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+.gs-pile { position: relative; }
+.gs-pile-count { position: absolute; bottom: -8px; right: -8px; background: #fde047; color: #713f12; font-size: .66rem; font-weight: 800; border-radius: 999px; padding: 1px 6px; }
+.gs-last-play { display: flex; align-items: center; gap: 3px; font-size: .62rem; color: #bbf7d0; }
+.gs-floor { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; align-content: center; }
+.gs-floor-group { display: flex; }
+.gs-floor-group .gs-card + .gs-card { margin-left: -24px; }
+.gs-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 76px; padding-top: 4px; }
 
 /* ── 화투 카드 ───────────────────────────────────────────────────── */
-.mg-card {
+.gs-card {
     --mc: #166534;
     position: relative;
     display: inline-flex;
@@ -379,40 +382,40 @@
     flex-shrink: 0;
     user-select: none;
 }
-.mg-card::before {
+.gs-card::before {
     content: '';
     position: absolute; top: 0; left: 0; right: 0;
     height: 9px;
     background: var(--mc);
 }
-.mg-card-month { position: absolute; top: 0; left: 3px; font-size: .5rem; font-weight: 800; color: #fff; line-height: 9px; }
-.mg-card-plant { font-size: 1.05rem; line-height: 1; }
-.mg-card-mark { font-size: .95rem; line-height: 1; }
-.mg-card-gwang {
+.gs-card-month { position: absolute; top: 0; left: 3px; font-size: .5rem; font-weight: 800; color: #fff; line-height: 9px; }
+.gs-card-plant { font-size: 1.05rem; line-height: 1; }
+.gs-card-mark { font-size: .95rem; line-height: 1; }
+.gs-card-gwang {
     display: inline-flex; align-items: center; justify-content: center;
     width: 18px; height: 18px; border-radius: 999px;
     background: #dc2626; color: #fff;
     font-size: .64rem; font-weight: 800;
 }
-.mg-card-ribbon { width: 100%; height: 11px; font-size: .48rem; font-weight: 800; color: #fff; text-align: center; line-height: 11px; background: #dc2626; }
-.mg-ribbon-cheong { background: #1d4ed8; }
-.mg-ribbon-cho { background: #ea580c; }
-.mg-card-double { font-size: .62rem; font-weight: 800; color: #b91c1c; }
-.mg-card-label { font-size: .5rem; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
-.mg-k-g .mg-card-label { color: #dc2626; }
+.gs-card-ribbon { width: 100%; height: 11px; font-size: .48rem; font-weight: 800; color: #fff; text-align: center; line-height: 11px; background: #dc2626; }
+.gs-ribbon-cheong { background: #1d4ed8; }
+.gs-ribbon-cho { background: #ea580c; }
+.gs-card-double { font-size: .62rem; font-weight: 800; color: #b91c1c; }
+.gs-card-label { font-size: .5rem; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
+.gs-k-g .gs-card-label { color: #dc2626; }
 
-.mg-m1 { --mc: #166534; } .mg-m2 { --mc: #db2777; } .mg-m3 { --mc: #ec4899; }
-.mg-m4 { --mc: #1f2937; } .mg-m5 { --mc: #7c3aed; } .mg-m6 { --mc: #be123c; }
-.mg-m7 { --mc: #b91c1c; } .mg-m8 { --mc: #334155; } .mg-m9 { --mc: #ca8a04; }
-.mg-m10 { --mc: #ea580c; } .mg-m11 { --mc: #4d7c0f; } .mg-m12 { --mc: #1d4ed8; }
+.gs-m1 { --mc: #166534; } .gs-m2 { --mc: #db2777; } .gs-m3 { --mc: #ec4899; }
+.gs-m4 { --mc: #1f2937; } .gs-m5 { --mc: #7c3aed; } .gs-m6 { --mc: #be123c; }
+.gs-m7 { --mc: #b91c1c; } .gs-m8 { --mc: #334155; } .gs-m9 { --mc: #ca8a04; }
+.gs-m10 { --mc: #ea580c; } .gs-m11 { --mc: #4d7c0f; } .gs-m12 { --mc: #1d4ed8; }
 
-.mg-card--back {
+.gs-card--back {
     padding: 0;
     background: repeating-linear-gradient(45deg, #b91c1c 0 6px, #991b1b 6px 12px);
     border-color: #450a0a;
 }
-.mg-card--back::before { display: none; }
-.mg-card--bomb {
+.gs-card--back::before { display: none; }
+.gs-card--bomb {
     justify-content: center;
     padding: 0;
     background: #1c1917;
@@ -420,24 +423,24 @@
     font-size: .6rem;
     font-weight: 800;
 }
-.mg-card--bomb::before { display: none; }
-.mg-card--sm { width: 36px; height: 54px; padding-top: 10px; }
-.mg-card--xs { width: 26px; height: 38px; padding: 9px 1px 1px; }
-.mg-card--xs .mg-card-plant, .mg-card--xs .mg-card-label { display: none; }
-.mg-card--xs .mg-card-mark { font-size: .7rem; }
-.mg-card--xs .mg-card-gwang { width: 14px; height: 14px; font-size: .5rem; }
-.mg-card--xs .mg-card-ribbon { height: 8px; font-size: 0; }
+.gs-card--bomb::before { display: none; }
+.gs-card--sm { width: 36px; height: 54px; padding-top: 10px; }
+.gs-card--xs { width: 26px; height: 38px; padding: 9px 1px 1px; }
+.gs-card--xs .gs-card-plant, .gs-card--xs .gs-card-label { display: none; }
+.gs-card--xs .gs-card-mark { font-size: .7rem; }
+.gs-card--xs .gs-card-gwang { width: 14px; height: 14px; font-size: .5rem; }
+.gs-card--xs .gs-card-ribbon { height: 8px; font-size: 0; }
 
-.mg-card--playable { cursor: pointer; transition: transform .12s; }
-.mg-card--playable:hover { transform: translateY(-6px); }
-.mg-card--match { box-shadow: 0 0 0 2px #fde047, 0 2px 4px rgba(0,0,0,.35); }
-.mg-card--selected { transform: translateY(-10px); box-shadow: 0 0 0 3px #22d3ee, 0 6px 14px rgba(0,0,0,.4); }
-.mg-card--pick { cursor: pointer; box-shadow: 0 0 0 3px #22d3ee, 0 2px 4px rgba(0,0,0,.35); animation: mg-pulse 1s infinite; z-index: 2; }
-.mg-card--dim { opacity: .45; }
-@keyframes mg-pulse { 50% { transform: translateY(-4px); } }
+.gs-card--playable { cursor: pointer; transition: transform .12s; }
+.gs-card--playable:hover { transform: translateY(-6px); }
+.gs-card--match { box-shadow: 0 0 0 2px #fde047, 0 2px 4px rgba(0,0,0,.35); }
+.gs-card--selected { transform: translateY(-10px); box-shadow: 0 0 0 3px #22d3ee, 0 6px 14px rgba(0,0,0,.4); }
+.gs-card--pick { cursor: pointer; box-shadow: 0 0 0 3px #22d3ee, 0 2px 4px rgba(0,0,0,.35); animation: gs-pulse 1s infinite; z-index: 2; }
+.gs-card--dim { opacity: .45; }
+@keyframes gs-pulse { 50% { transform: translateY(-4px); } }
 
 /* ── 중앙 메시지 / 이벤트 ─────────────────────────────────────────── */
-.mg-center-msg {
+.gs-center-msg {
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
@@ -451,11 +454,11 @@
     text-align: center;
     box-shadow: 0 12px 32px rgba(0,0,0,.45);
 }
-.mg-center-title { font-size: 1.2rem; font-weight: 800; }
-.mg-center-sub { margin-top: 6px; font-size: .82rem; color: #e2e8f0; }
-.mg-center-detail { margin-top: 4px; font-size: .72rem; color: #94a3b8; }
-.mg-center-next { margin-top: 10px; font-size: .75rem; color: #fde68a; font-weight: 700; }
-.mg-event-pop {
+.gs-center-title { font-size: 1.2rem; font-weight: 800; }
+.gs-center-sub { margin-top: 6px; font-size: .82rem; color: #e2e8f0; }
+.gs-center-detail { margin-top: 4px; font-size: .72rem; color: #94a3b8; }
+.gs-center-next { margin-top: 10px; font-size: .75rem; color: #fde68a; font-weight: 700; }
+.gs-event-pop {
     position: absolute;
     top: 42%; left: 50%;
     transform: translate(-50%, -50%);
@@ -465,16 +468,16 @@
     color: #fde047;
     text-shadow: 0 3px 0 #7f1d1d, 0 6px 18px rgba(0,0,0,.6);
     pointer-events: none;
-    animation: mg-pop 1.6s ease-out forwards;
+    animation: gs-pop 1.6s ease-out forwards;
     white-space: nowrap;
 }
-@keyframes mg-pop {
+@keyframes gs-pop {
     0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; }
     15% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
     75% { opacity: 1; }
     100% { transform: translate(-50%, -70%) scale(1); opacity: 0; }
 }
-.mg-toast {
+.gs-toast {
     position: absolute;
     bottom: 12px; left: 50%;
     transform: translateX(-50%);
@@ -489,7 +492,7 @@
 }
 
 /* ── 버튼 / 액션 바 ──────────────────────────────────────────────── */
-.mg-btn {
+.gs-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -505,15 +508,15 @@
     transition: transform 0.15s, box-shadow 0.15s;
     box-shadow: 0 6px 16px rgba(153,27,27,0.35);
 }
-.mg-btn:hover { transform: translateY(-1px); }
-.mg-btn:active { transform: scale(0.97); }
-.mg-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-.mg-btn-ghost { background: #fff; color: #475569; box-shadow: none; border: 1px solid #cbd5e1; }
-.mg-btn-ghost:hover { background: #f1f5f9; }
-.mg-btn-call { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 6px 16px rgba(5,150,105,.35); }
-.mg-btn-raise { background: linear-gradient(135deg, #b45309, #92400e); box-shadow: 0 6px 16px rgba(180,83,9,.35); }
-.mg-btn-sm { padding: 6px 14px; font-size: .74rem; border-radius: 10px; }
-.mg-action-bar {
+.gs-btn:hover { transform: translateY(-1px); }
+.gs-btn:active { transform: scale(0.97); }
+.gs-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.gs-btn-ghost { background: #fff; color: #475569; box-shadow: none; border: 1px solid #cbd5e1; }
+.gs-btn-ghost:hover { background: #f1f5f9; }
+.gs-btn-call { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 6px 16px rgba(5,150,105,.35); }
+.gs-btn-raise { background: linear-gradient(135deg, #b45309, #92400e); box-shadow: 0 6px 16px rgba(180,83,9,.35); }
+.gs-btn-sm { padding: 6px 14px; font-size: .74rem; border-radius: 10px; }
+.gs-action-bar {
     padding: 14px 20px;
     border-top: 1px solid #e2e8f0;
     background: #f8fafc;
@@ -524,10 +527,10 @@
     gap: 10px;
     min-height: 64px;
 }
-.mg-hint { color: #94a3b8; font-size: .8rem; text-align: center; }
-.mg-hint strong { color: #1e293b; }
-.mg-turn-countdown { font-weight: 800; color: #dc2626; font-variant-numeric: tabular-nums; font-size: .85rem; }
-.mg-bet-input {
+.gs-hint { color: #94a3b8; font-size: .8rem; text-align: center; }
+.gs-hint strong { color: #1e293b; }
+.gs-turn-countdown { font-weight: 800; color: #dc2626; font-variant-numeric: tabular-nums; font-size: .85rem; }
+.gs-bet-input {
     width: 90px;
     padding: 8px 10px;
     border: 1px solid #cbd5e1;
@@ -536,48 +539,48 @@
     font-weight: 700;
     text-align: center;
 }
-.mg-chip-panel { padding: .9rem 1rem; display: flex; flex-direction: column; gap: 10px; }
-.mg-chip-rate {
+.gs-chip-panel { padding: .9rem 1rem; display: flex; flex-direction: column; gap: 10px; }
+.gs-chip-rate {
     display: flex; align-items: center; gap: 6px;
     font-size: .72rem; font-weight: 700; color: #64748b;
     background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
     padding: 6px 10px;
 }
-.mg-chip-row { display: flex; align-items: center; justify-content: space-between; font-size: .82rem; color: #475569; padding: 4px 2px; }
-.mg-chip-row strong { color: #1e293b; font-variant-numeric: tabular-nums; }
-.mg-chip-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-.mg-chip-actions.hidden { display: none; }
-.mg-chip-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-top: 6px; }
-.mg-chip-input-row { display: flex; gap: 6px; }
-.mg-chip-input-row .mg-bet-input { flex: 1; width: auto; }
-.mg-chip-input-row .mg-btn { padding: 8px 14px; font-size: .76rem; }
-.mg-chip-btn-row { display: flex; gap: 6px; margin-top: 4px; }
-.mg-chip-btn-row .mg-btn { flex: 1; padding: 8px 4px; font-size: .76rem; white-space: nowrap; }
-.mg-chip-hint { color: #94a3b8; font-size: .74rem; text-align: center; padding: 8px 0; }
+.gs-chip-row { display: flex; align-items: center; justify-content: space-between; font-size: .82rem; color: #475569; padding: 4px 2px; }
+.gs-chip-row strong { color: #1e293b; font-variant-numeric: tabular-nums; }
+.gs-chip-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.gs-chip-actions.hidden { display: none; }
+.gs-chip-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-top: 6px; }
+.gs-chip-input-row { display: flex; gap: 6px; }
+.gs-chip-input-row .gs-bet-input { flex: 1; width: auto; }
+.gs-chip-input-row .gs-btn { padding: 8px 14px; font-size: .76rem; }
+.gs-chip-btn-row { display: flex; gap: 6px; margin-top: 4px; }
+.gs-chip-btn-row .gs-btn { flex: 1; padding: 8px 4px; font-size: .76rem; white-space: nowrap; }
+.gs-chip-hint { color: #94a3b8; font-size: .74rem; text-align: center; padding: 8px 0; }
 
 /* ── 모바일 최적화 ───────────────────────────────────────────────── */
 @media (max-width: 640px) {
     section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    .mg-felt { padding: 10px 8px; min-height: 460px; }
-    .mg-card { width: 36px; height: 54px; padding-top: 10px; }
-    .mg-card--sm { width: 30px; height: 45px; }
-    .mg-card--xs { width: 22px; height: 33px; }
-    .mg-card-plant { font-size: .85rem; }
-    .mg-floor-group .mg-card + .mg-card { margin-left: -20px; }
-    .mg-board { gap: 10px; padding: 8px; min-height: 120px; }
-    .mg-hand { gap: 4px; }
-    .mg-stat-bar { font-size: .7rem; padding: 6px 10px; }
-    .mg-action-bar { padding: 10px 12px; }
-    .mg-player { font-size: .72rem; gap: 6px; }
+    .gs-felt { padding: 10px 8px; min-height: 460px; }
+    .gs-card { width: 36px; height: 54px; padding-top: 10px; }
+    .gs-card--sm { width: 30px; height: 45px; }
+    .gs-card--xs { width: 22px; height: 33px; }
+    .gs-card-plant { font-size: .85rem; }
+    .gs-floor-group .gs-card + .gs-card { margin-left: -20px; }
+    .gs-board { gap: 10px; padding: 8px; min-height: 120px; }
+    .gs-hand { gap: 4px; }
+    .gs-stat-bar { font-size: .7rem; padding: 6px 10px; }
+    .gs-action-bar { padding: 10px 12px; }
+    .gs-player { font-size: .72rem; gap: 6px; }
 }
-body.mg-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
-body.mg-landscape .mg-outer { border: none; border-radius: 0; box-shadow: none; }
-body.mg-landscape .mg-stat-bar { display: none; }
-body.mg-landscape .mg-felt { min-height: 0; }
+body.gs-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.gs-landscape .gs-outer { border: none; border-radius: 0; box-shadow: none; }
+body.gs-landscape .gs-stat-bar { display: none; }
+body.gs-landscape .gs-felt { min-height: 0; }
 
 /* ── 모바일 채팅/대기열 패널 (< 1024px) ────────────────────────── */
 @media (max-width: 1023px) {
-    #mg-side-col {
+    #gs-side-col {
         position: fixed !important;
         bottom: 88px !important;
         right: 24px !important;
@@ -591,12 +594,12 @@ body.mg-landscape .mg-felt { min-height: 0; }
         border-radius: 1rem !important;
         overflow: hidden !important;
     }
-    #mg-side-col .game-side-panel { height: 100% !important; }
-    #mg-side-col.mobile-hidden { display: none !important; }
+    #gs-side-col .game-side-panel { height: 100% !important; }
+    #gs-side-col.mobile-hidden { display: none !important; }
 }
 /* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ──────── */
 @media (max-width: 1023px) {
-    body:not(.mg-landscape) section.max-w-7xl {
+    body:not(.gs-landscape) section.max-w-7xl {
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -609,35 +612,34 @@ body.mg-landscape .mg-felt { min-height: 0; }
 /* 게임 페이지에서는 사이트 푸터 숨김 */
 footer { display: none !important; }
 @media (max-width: 1023px) {
-    .mg-outer { overscroll-behavior: none; }
+    .gs-outer { overscroll-behavior: none; }
 }
 </style>
 
-{{ matgo_cards|json_script:"mg-cards-data" }}
+{{ gostop_cards|json_script:"gs-cards-data" }}
 <script src="{% static 'js/game-sound.js' %}"></script>
 <script>
 (function () {
-    const CARDS = JSON.parse(document.getElementById('mg-cards-data').textContent);
+    const CARDS = JSON.parse(document.getElementById('gs-cards-data').textContent);
     const MONTH_NAMES = ['', '송학', '매조', '벚꽃', '흑싸리', '난초', '모란', '홍싸리', '공산', '국화', '단풍', '오동', '비'];
     const PLANTS = ['', '🌲', '🌼', '🌸', '🌿', '🌱', '🌺', '🍂', '🌕', '🏵️', '🍁', '🍃', '☔'];
     const ANIMALS = { 2: '🐦', 4: '🐦', 5: '🌉', 6: '🦋', 7: '🐗', 8: '🦆', 9: '🍶', 10: '🦌', 12: '🐦' };
     const RIBBON_TEXT = { hong: '홍단', cheong: '청단', cho: '' };
     const REASON_LABELS = { stop: '스톱', forfeit: '기권승', chongtong: '총통', '3ppeok': '3뻑' };
 
-    const lobbyViewEl = document.getElementById('mg-lobby-view');
-    const gameViewEl = document.getElementById('mg-game-view');
-    const oppRowEl = document.getElementById('mg-opp-row');
-    const meRowEl = document.getElementById('mg-me-row');
-    const oppCapEl = document.getElementById('mg-opp-captured');
-    const myCapEl = document.getElementById('mg-my-captured');
-    const pileEl = document.getElementById('mg-pile');
-    const lastPlayEl = document.getElementById('mg-last-play');
-    const floorEl = document.getElementById('mg-floor');
-    const handEl = document.getElementById('mg-hand');
-    const centerMsgEl = document.getElementById('mg-center-msg');
-    const eventPopEl = document.getElementById('mg-event-pop');
-    const actionBarEl = document.getElementById('mg-action-bar');
-    const feltEl = document.getElementById('mg-felt');
+    const lobbyViewEl = document.getElementById('gs-lobby-view');
+    const gameViewEl = document.getElementById('gs-game-view');
+    const oppsEl = document.getElementById('gs-opps');
+    const meRowEl = document.getElementById('gs-me-row');
+    const myCapEl = document.getElementById('gs-my-captured');
+    const pileEl = document.getElementById('gs-pile');
+    const lastPlayEl = document.getElementById('gs-last-play');
+    const floorEl = document.getElementById('gs-floor');
+    const handEl = document.getElementById('gs-hand');
+    const centerMsgEl = document.getElementById('gs-center-msg');
+    const eventPopEl = document.getElementById('gs-event-pop');
+    const actionBarEl = document.getElementById('gs-action-bar');
+    const feltEl = document.getElementById('gs-felt');
 
     let socket = null;
     let heartbeatTimer = null;
@@ -668,23 +670,23 @@ footer { display: none !important; }
 
     function cardHtml(id, opts) {
         opts = opts || {};
-        const size = opts.size ? ` mg-card--${opts.size}` : '';
+        const size = opts.size ? ` gs-card--${opts.size}` : '';
         const extra = opts.cls ? ` ${opts.cls}` : '';
         const data = opts.data || '';
-        if (id === 'back') return `<span class="mg-card mg-card--back${size}${extra}"></span>`;
-        if (id === 'bomb') return `<span class="mg-card mg-card--bomb${size}${extra}" ${data}>폭탄</span>`;
+        if (id === 'back') return `<span class="gs-card gs-card--back${size}${extra}"></span>`;
+        if (id === 'bomb') return `<span class="gs-card gs-card--bomb${size}${extra}" ${data}>폭탄</span>`;
         const c = CARDS[id];
         let mark;
-        if (c.k === 'g') mark = '<span class="mg-card-gwang">光</span>';
-        else if (c.k === 'y') mark = `<span class="mg-card-mark">${ANIMALS[c.m] || '🐦'}</span>`;
-        else if (c.k === 't') mark = `<span class="mg-card-ribbon mg-ribbon-${c.t || 'plain'}">${RIBBON_TEXT[c.t] || ''}</span>`;
-        else if (c.k === 'pp') mark = '<span class="mg-card-double">×2</span>';
+        if (c.k === 'g') mark = '<span class="gs-card-gwang">光</span>';
+        else if (c.k === 'y') mark = `<span class="gs-card-mark">${ANIMALS[c.m] || '🐦'}</span>`;
+        else if (c.k === 't') mark = `<span class="gs-card-ribbon gs-ribbon-${c.t || 'plain'}">${RIBBON_TEXT[c.t] || ''}</span>`;
+        else if (c.k === 'pp') mark = '<span class="gs-card-double">×2</span>';
         else mark = '';
-        return `<span class="mg-card mg-m${c.m} mg-k-${c.k}${size}${extra}" title="${c.m}월 ${MONTH_NAMES[c.m]} ${cardLabel(c)}" ${data}>
-            <span class="mg-card-month">${c.m}</span>
-            <span class="mg-card-plant">${PLANTS[c.m]}</span>
+        return `<span class="gs-card gs-m${c.m} gs-k-${c.k}${size}${extra}" title="${c.m}월 ${MONTH_NAMES[c.m]} ${cardLabel(c)}" ${data}>
+            <span class="gs-card-month">${c.m}</span>
+            <span class="gs-card-plant">${PLANTS[c.m]}</span>
             ${mark}
-            <span class="mg-card-label">${cardLabel(c)}</span>
+            <span class="gs-card-label">${cardLabel(c)}</span>
         </span>`;
     }
 
@@ -713,73 +715,82 @@ footer { display: none !important; }
     function renderLobby(state) {
         const canBuyIn = state.wallet_chips >= state.buy_in;
         const rooms = state.rooms.map(r => {
-            const host = r.host ? `<span class="mg-room-player">${avatar(r.host)}${esc(r.host.display_name)}</span>` : '';
-            const guest = r.guest
-                ? `<span class="mg-room-vs">VS</span><span class="mg-room-player">${avatar(r.guest)}${esc(r.guest.display_name)}</span>`
-                : '<span class="mg-room-empty">상대 기다리는 중</span>';
-            const status = r.status === 'playing' ? '진행 중' : r.guest ? '곧 시작' : '대기 중';
-            const joinBtn = !r.guest
-                ? `<button type="button" class="mg-btn mg-btn-call mg-btn-sm" data-join="${r.id}" ${canBuyIn ? '' : 'disabled'}>입장</button>`
+            const players = r.players.map(p => `<span class="gs-room-player">${avatar(p)}${esc(p.display_name)}</span>`)
+                .join('<span class="gs-room-vs">VS</span>');
+            const open = r.players.length < r.capacity;
+            const status = r.status === 'playing' ? '진행 중' : open ? `${r.players.length}/${r.capacity}명` : '곧 시작';
+            const joinBtn = open
+                ? `<button type="button" class="gs-btn gs-btn-call gs-btn-sm" data-join="${r.id}" ${canBuyIn ? '' : 'disabled'}>입장</button>`
                 : '';
-            return `<div class="mg-room">
-                <span class="mg-room-no">#${r.id}</span>
-                <span class="mg-room-players">${host}${guest}</span>
-                <span class="mg-room-status">${status}</span>
+            return `<div class="gs-room">
+                <span class="gs-room-no">#${r.id}</span>
+                <span class="gs-room-mode gs-room-mode--${r.mode}">${esc(r.mode_label)} ${r.capacity}인</span>
+                <span class="gs-room-players">${players}</span>
+                <span class="gs-room-status">${status}</span>
                 ${joinBtn}
             </div>`;
         }).join('');
+        const dis = canBuyIn ? '' : 'disabled';
         lobbyViewEl.innerHTML = `
-            <div class="mg-lobby-head">
+            <div class="gs-lobby-head">
                 <div>
-                    <h3>맞고 방 목록</h3>
+                    <h3>고스톱 방 목록</h3>
                     <p>바이인 ${fmt(state.buy_in)}칩 · 점당 ${fmt(state.chips_per_point)}칩</p>
                 </div>
-                <button type="button" class="mg-btn mg-btn-raise" data-create ${canBuyIn ? '' : 'disabled'}>방 만들기</button>
+                <div class="gs-lobby-create">
+                    <button type="button" class="gs-btn gs-btn-raise gs-btn-sm" data-create="matgo" ${dis}>맞고 (2인)</button>
+                    <button type="button" class="gs-btn gs-btn-raise gs-btn-sm" data-create="gostop" ${dis}>고스톱 (3인)</button>
+                </div>
             </div>
-            <div class="mg-room-list">${rooms || '<div class="mg-lobby-empty">열린 방이 없습니다. 방을 만들어보세요!</div>'}</div>
-            ${canBuyIn ? '' : `<div class="mg-lobby-warn">방에 들어가려면 보관 칩이 ${fmt(state.buy_in)}칩 이상 필요합니다.
-                <button type="button" class="mg-btn mg-btn-call mg-btn-sm" onclick="openMgChipTab()">칩 충전하기</button></div>`}
-            <details class="mg-rules">
+            <div class="gs-room-list">${rooms || '<div class="gs-lobby-empty">열린 방이 없습니다. 방을 만들어보세요!</div>'}</div>
+            ${canBuyIn ? '' : `<div class="gs-lobby-warn">방에 들어가려면 보관 칩이 ${fmt(state.buy_in)}칩 이상 필요합니다.
+                <button type="button" class="gs-btn gs-btn-call gs-btn-sm" onclick="openGsChipTab()">칩 충전하기</button></div>`}
+            <details class="gs-rules">
                 <summary>룰 요약</summary>
                 <ul>
-                    <li>손패 10장씩, 바닥 8장. 7점 이상이면 고/스톱을 선택합니다.</li>
+                    <li>맞고(2인): 손패 10장, 바닥 8장, 7점부터 고/스톱. 고스톱(3인): 손패 7장, 바닥 6장, 3점부터 고/스톱.</li>
                     <li>광: 3광 3점(비광 포함 2점), 4광 4점, 5광 15점 · 고도리/홍단/청단/초단 각 5·3·3·3점</li>
                     <li>열끗·띠 5장 1점, 피 10장 1점부터 한 장마다 +1점 (쌍피는 2장)</li>
-                    <li>1·2고 +1·+2점, 3고부터 ×2씩. 피박(상대 피 7장 이하)·광박·멍박·흔들기·폭탄 각 ×2</li>
-                    <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 상대 피 1장(자뻑 2장)을 가져옵니다.</li>
+                    <li>1·2고 +1·+2점, 3고부터 ×2씩. 피박(맞고 7장·고스톱 5장 이하)·광박·멍박·흔들기·폭탄 각 ×2</li>
+                    <li>고박: 고를 불렀던 사람이 지면 다른 패자 몫까지 혼자 냅니다. (3인)</li>
+                    <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
-                    <li>차례 제한시간 20초, 시간초과 3번 연속 또는 진행 중 퇴장은 기권(최소 7점 패배)입니다.</li>
+                    <li>차례 제한시간 20초. 시간초과 3번 연속 또는 진행 중 퇴장은 기권으로, 남은 사람 각자에게 최소 난 점수만큼 냅니다.</li>
                 </ul>
             </details>`;
     }
 
     // ── 게임판 ─────────────────────────────────────────────────────
-    function playerRow(p, stack, idx, game, room, isMe) {
-        const g = game;
-        const isTurn = g && g.phase !== 'over' && room.status === 'playing' && (isMe ? g.my_turn : !g.my_turn);
+    function seatName(room, side) {
+        const s = room.seats.find(x => x.side === side);
+        return side === room.me ? '나' : s ? s.display_name : '?';
+    }
+
+    function playerRow(seat, room, isMe) {
+        const g = room.game;
+        const side = seat.side;
+        const isTurn = !!(g && g.phase !== 'over' && room.status === 'playing' && g.turn === side);
         const badges = [];
         if (g) {
-            badges.push(`<span class="mg-player-score">${g.scores[idx]}점</span>`);
-            if (g.go[idx]) badges.push(`<span class="mg-badge mg-badge--go">${g.go[idx]}고</span>`);
-            if (g.shakes[idx]) badges.push(`<span class="mg-badge">흔들 ${g.shakes[idx]}</span>`);
-            if (g.ppeok[idx]) badges.push(`<span class="mg-badge">뻑 ${g.ppeok[idx]}</span>`);
+            badges.push(`<span class="gs-player-score">${g.scores[side]}점</span>`);
+            if (g.go[side]) badges.push(`<span class="gs-badge gs-badge--go">${g.go[side]}고</span>`);
+            if (g.shakes[side]) badges.push(`<span class="gs-badge">흔들 ${g.shakes[side]}</span>`);
+            if (g.ppeok[side]) badges.push(`<span class="gs-badge">뻑 ${g.ppeok[side]}</span>`);
         }
         let right = '';
         if (!isMe && g) {
-            const cards = g.opp_hand
-                ? g.opp_hand.map(c => cardHtml(c, { size: 'xs' })).join('')
-                : Array.from({ length: g.opp_hand_count }, () => cardHtml('back', { size: 'xs' })).join('');
-            right = `<span class="mg-opp-hand">${cards}</span>`;
+            const cards = g.hands
+                ? g.hands[side].map(c => cardHtml(c, { size: 'xs' })).join('')
+                : Array.from({ length: g.hand_counts[side] }, () => cardHtml('back', { size: 'xs' })).join('');
+            right = `<span class="gs-opp-hand">${cards}</span>`;
         }
         const timer = isTurn && g.turn_seconds_left != null
-            ? `<span class="mg-player-timer"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
-        if (!p) return `<span class="mg-player-name">상대를 기다리는 중...</span>`;
-        return {
-            html: `${avatar(p)}<span class="mg-player-name">${esc(p.display_name)}${isMe ? ' (나)' : ''}</span>
-                <span class="mg-player-stack"><i class="fa-solid fa-coins"></i> ${fmt(stack)}</span>
-                ${badges.join('')}${timer}${right}`,
-            turn: isTurn,
-        };
+            ? `<span class="gs-player-timer"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
+        return `<div class="gs-player${isMe ? ' gs-player--me' : ''}${isTurn ? ' gs-player--turn' : ''}">
+            ${avatar(seat)}<span class="gs-player-name">${esc(seat.display_name)}${isMe ? ' (나)' : ''}</span>
+            <span class="gs-player-stack"><i class="fa-solid fa-coins"></i> ${fmt(seat.stack)}</span>
+            ${badges.join('')}${timer}${right}
+        </div>`;
     }
 
     function capturedHtml(cards) {
@@ -791,9 +802,9 @@ footer { display: none !important; }
                 cards.reduce((n, c) => n + (CARDS[c].k === 'p' ? 1 : CARDS[c].k === 'pp' ? 2 : 0), 0)],
         ];
         return groups.filter(([, list]) => list.length).map(([label, list, count]) =>
-            `<div class="mg-cap-group">
-                <div class="mg-cap-cards">${list.map(c => cardHtml(c, { size: 'xs' })).join('')}</div>
-                <span class="mg-cap-count">${label} ${count != null ? count : list.length}</span>
+            `<div class="gs-cap-group">
+                <div class="gs-cap-cards">${list.map(c => cardHtml(c, { size: 'xs' })).join('')}</div>
+                <span class="gs-cap-count">${label} ${count != null ? count : list.length}</span>
             </div>`).join('');
     }
 
@@ -807,22 +818,27 @@ footer { display: none !important; }
     function renderGame(state) {
         const room = state.room;
         const g = room.game;
-        const opp = playerRow(room.opp, room.opp_stack, 1, g, room, false);
-        const me = playerRow(room.me, room.my_stack, 0, g, room, true);
-        oppRowEl.innerHTML = typeof opp === 'string' ? opp : opp.html;
-        oppRowEl.classList.toggle('mg-player--turn', !!(opp && opp.turn));
-        meRowEl.innerHTML = me.html;
-        meRowEl.classList.toggle('mg-player--turn', !!me.turn);
+        const mySeat = room.seats.find(s => s.side === room.me);
+        // 상대는 내 다음 차례부터 순서대로
+        const others = [];
+        for (let i = 1; i < room.capacity; i++) {
+            const side = (room.me + i) % room.capacity;
+            const seat = room.seats.find(s => s.side === side);
+            others.push(seat
+                ? playerRow(seat, room, false) + `<div class="gs-captured">${g ? capturedHtml(g.captured[side]) : ''}</div>`
+                : `<div class="gs-player"><span class="gs-player-name">빈 자리 — 기다리는 중...</span></div>`);
+        }
+        oppsEl.innerHTML = others.join('');
+        meRowEl.innerHTML = playerRow(mySeat, room, true);
 
         if (!g) {
-            oppCapEl.innerHTML = myCapEl.innerHTML = floorEl.innerHTML = handEl.innerHTML = pileEl.innerHTML = lastPlayEl.innerHTML = '';
+            myCapEl.innerHTML = floorEl.innerHTML = handEl.innerHTML = pileEl.innerHTML = lastPlayEl.innerHTML = '';
             return;
         }
-        oppCapEl.innerHTML = capturedHtml(g.captured[1]);
-        myCapEl.innerHTML = capturedHtml(g.captured[0]);
+        myCapEl.innerHTML = capturedHtml(g.captured[room.me]);
 
         pileEl.innerHTML = g.pile_count
-            ? `<div class="mg-pile">${cardHtml('back', { size: 'sm' })}<span class="mg-pile-count">${g.pile_count}</span></div>`
+            ? `<div class="gs-pile">${cardHtml('back', { size: 'sm' })}<span class="gs-pile-count">${g.pile_count}</span></div>`
             : '';
         if (g.phase === 'choose_flip' && g.pending_card != null) {
             lastPlayEl.innerHTML = `<span>뒤집은 패</span>${cardHtml(g.pending_card, { size: 'xs' })}`;
@@ -830,7 +846,7 @@ footer { display: none !important; }
             const lp = g.last_play;
             const played = lp.card === 'bomb' ? '' : cardHtml(lp.card, { size: 'xs' });
             const flip = lp.flip != null ? cardHtml(lp.flip, { size: 'xs' }) : '';
-            lastPlayEl.innerHTML = `<span>${lp.mine ? '나' : '상대'}</span>${played}${flip ? '→' + flip : ''}`;
+            lastPlayEl.innerHTML = `<span>${esc(seatName(room, lp.side))}</span>${played}${flip ? '→' + flip : ''}`;
         } else {
             lastPlayEl.innerHTML = '';
         }
@@ -846,23 +862,23 @@ footer { display: none !important; }
             if (!byMonth[m]) { byMonth[m] = []; groups.push(byMonth[m]); }
             byMonth[m].push(c);
         });
-        floorEl.innerHTML = groups.map(list => `<div class="mg-floor-group">${list.map(c => {
+        floorEl.innerHTML = groups.map(list => `<div class="gs-floor-group">${list.map(c => {
             let cls = '';
-            if (pickable) cls = pickable.includes(c) ? 'mg-card--pick' : 'mg-card--dim';
-            else if (myPlayTurn && handMonths.has(month(c))) cls = 'mg-card--match';
+            if (pickable) cls = pickable.includes(c) ? 'gs-card--pick' : 'gs-card--dim';
+            else if (myPlayTurn && handMonths.has(month(c))) cls = 'gs-card--match';
             return cardHtml(c, { cls, data: pickable && pickable.includes(c) ? `data-pick="${c}"` : '' });
         }).join('')}</div>`).join('');
 
         // 손패
         const floorMonths = new Set(g.floor.map(month));
         const hand = g.my_hand.map(c => {
-            let cls = myPlayTurn ? 'mg-card--playable' : '';
-            if (myPlayTurn && floorMonths.has(month(c))) cls += ' mg-card--match';
-            if (sel && sel.card === c) cls += ' mg-card--selected';
+            let cls = myPlayTurn ? 'gs-card--playable' : '';
+            if (myPlayTurn && floorMonths.has(month(c))) cls += ' gs-card--match';
+            if (sel && sel.card === c) cls += ' gs-card--selected';
             return cardHtml(c, { cls, data: myPlayTurn ? `data-hand="${c}"` : '' });
         });
         for (let i = 0; i < g.my_bombs; i++) {
-            hand.push(cardHtml('bomb', { cls: myPlayTurn ? 'mg-card--playable' : '', data: myPlayTurn ? 'data-hand="bomb"' : '' }));
+            hand.push(cardHtml('bomb', { cls: myPlayTurn ? 'gs-card--playable' : '', data: myPlayTurn ? 'data-hand="bomb"' : '' }));
         }
         handEl.innerHTML = hand.join('');
     }
@@ -871,16 +887,23 @@ footer { display: none !important; }
         if (r.nagari) {
             return { title: '나가리!', sub: `다음 판은 점수 ×${r.carry}`, detail: '' };
         }
-        const parts = [REASON_LABELS[r.reason] || r.reason];
+        const title = r.reason === 'forfeit'
+            ? `${esc(r.forfeit_name)} 기권`
+            : `${esc(r.winner_name)} 승리 (${REASON_LABELS[r.reason] || r.reason})`;
+        const parts = [];
         if (r.base != null) parts.push(`기본 ${r.base}점`);
         if (r.go) parts.push(`${r.go}고`);
-        if (r.baks && r.baks.length) parts.push(r.baks.join('·'));
         if (r.shakes) parts.push(`흔들기/폭탄 ×${2 ** r.shakes}`);
         if (r.carry > 1) parts.push(`나가리 ×${r.carry}`);
+        const lines = (r.transfers || []).filter(t => t.points > 0).map(t => {
+            const tags = [...(t.baks || []), ...(t.gobak ? ['고박'] : [])];
+            return `${esc(t.from_name)} → ${esc(t.to_name)} ${t.points}점 · ${fmt(t.chips)}칩${tags.length ? ` (${tags.join('·')})` : ''}`;
+        });
+        const net = r.my_net || 0;
         return {
-            title: r.i_won ? '🎉 승리!' : '패배',
-            sub: `${esc(r.winner_name)} ${r.points}점 → ${fmt(r.chips)}칩 획득`,
-            detail: parts.join(' · '),
+            title: `${net > 0 ? '🎉 ' : ''}${title}`,
+            sub: `내 칩 ${net >= 0 ? '+' : ''}${fmt(net)}`,
+            detail: [parts.join(' · '), ...lines].filter(Boolean).join('<br>'),
         };
     }
 
@@ -891,17 +914,19 @@ footer { display: none !important; }
             centerMsgEl.classList.add('hidden');
             return;
         }
+        const hasResult = r && Object.keys(r).length;
         const next = room.next_game_seconds_left != null
-            ? `<div class="mg-center-next"><span data-countdown="next">${fmtSecondsLeft(room.next_game_seconds_left)}</span>초 후 ${r && Object.keys(r).length ? '다음 판' : '첫 판'} 시작</div>` : '';
-        if (r && Object.keys(r).length) {
+            ? `<div class="gs-center-next"><span data-countdown="next">${fmtSecondsLeft(room.next_game_seconds_left)}</span>초 후 ${hasResult ? '다음 판' : '첫 판'} 시작</div>` : '';
+        const waiting = room.seats.length < room.capacity
+            ? `<div class="gs-center-next">${room.seats.length}/${room.capacity}명 — 인원이 모이면 시작합니다.</div>` : '';
+        if (hasResult) {
             const t = resultText(r);
-            centerMsgEl.innerHTML = `<div class="mg-center-title">${t.title}</div><div class="mg-center-sub">${t.sub}</div>
-                <div class="mg-center-detail">${t.detail}</div>${next}`;
-        } else if (!room.opp) {
-            centerMsgEl.innerHTML = `<div class="mg-center-title">상대를 기다리는 중</div>
-                <div class="mg-center-sub">방 목록에서 누군가 입장하면 바로 시작합니다.</div>`;
+            centerMsgEl.innerHTML = `<div class="gs-center-title">${t.title}</div><div class="gs-center-sub">${t.sub}</div>
+                <div class="gs-center-detail">${t.detail}</div>${next}${waiting}`;
+        } else if (waiting) {
+            centerMsgEl.innerHTML = `<div class="gs-center-title">${esc(room.mode_label)} 참가자를 기다리는 중</div>${waiting}`;
         } else {
-            centerMsgEl.innerHTML = `<div class="mg-center-title">곧 시작합니다</div>${next}`;
+            centerMsgEl.innerHTML = `<div class="gs-center-title">곧 시작합니다</div>${next}`;
         }
         centerMsgEl.classList.remove('hidden');
     }
@@ -909,54 +934,55 @@ footer { display: none !important; }
     function renderActionBar(state) {
         const room = state.room;
         if (!room) {
-            actionBarEl.innerHTML = `<div class="mg-hint">방을 만들거나 열린 방에 입장하세요.</div>`;
+            actionBarEl.innerHTML = `<div class="gs-hint">방을 만들거나 열린 방에 입장하세요.</div>`;
             return;
         }
         const g = room.game;
-        const leave = `<button type="button" class="mg-btn mg-btn-ghost" data-leave>나가기</button>`;
+        const leave = `<button type="button" class="gs-btn gs-btn-ghost" data-leave>나가기</button>`;
         const timer = g && g.turn_seconds_left != null
-            ? `<span class="mg-turn-countdown"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
+            ? `<span class="gs-turn-countdown"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
         const rows = [leave];
         if (room.status !== 'playing' || !g) {
-            rows.push(`<div class="mg-hint">${room.opp ? '다음 판을 기다리는 중입니다.' : '상대를 기다리는 중입니다.'}</div>`);
+            rows.push(`<div class="gs-hint">${room.seats.length < room.capacity ? '참가자를 기다리는 중입니다.' : '다음 판을 기다리는 중입니다.'}</div>`);
         } else if (!g.my_turn) {
-            rows.push(`<div class="mg-hint">상대 차례입니다.</div>`);
+            rows.push(`<div class="gs-hint">${esc(seatName(room, g.turn))} 차례입니다.</div>`);
         } else if (g.phase === 'go_stop') {
-            rows.push(timer, `<div class="mg-hint"><strong>${g.scores[0]}점</strong> 났습니다!</div>`,
-                `<button type="button" class="mg-btn mg-btn-raise" data-go="1">고 (${g.go[0] + 1}고)</button>`,
-                `<button type="button" class="mg-btn mg-btn-call" data-go="0">스톱</button>`);
+            rows.push(timer, `<div class="gs-hint"><strong>${g.scores[room.me]}점</strong> 났습니다!</div>`,
+                `<button type="button" class="gs-btn gs-btn-raise" data-go="1">고 (${g.go[room.me] + 1}고)</button>`,
+                `<button type="button" class="gs-btn gs-btn-call" data-go="0">스톱</button>`);
         } else if (g.phase === 'choose_flip') {
-            rows.push(timer, `<div class="mg-hint">뒤집은 패로 먹을 바닥 패를 선택하세요.</div>`);
+            rows.push(timer, `<div class="gs-hint">뒤집은 패로 먹을 바닥 패를 선택하세요.</div>`);
         } else if (sel && sel.need === 'mode') {
             const special = sel.options[0] === 'bomb'
-                ? `<button type="button" class="mg-btn mg-btn-raise" data-mode="bomb">💣 폭탄 (3장 한 번에)</button>`
-                : `<button type="button" class="mg-btn mg-btn-raise" data-mode="shake">흔들기 (×2)</button>`;
-            rows.push(timer, special, `<button type="button" class="mg-btn mg-btn-call" data-mode="">그냥 내기</button>`,
-                `<button type="button" class="mg-btn mg-btn-ghost" data-cancel>취소</button>`);
+                ? `<button type="button" class="gs-btn gs-btn-raise" data-mode="bomb">💣 폭탄 (3장 한 번에)</button>`
+                : `<button type="button" class="gs-btn gs-btn-raise" data-mode="shake">흔들기 (×2)</button>`;
+            rows.push(timer, special, `<button type="button" class="gs-btn gs-btn-call" data-mode="">그냥 내기</button>`,
+                `<button type="button" class="gs-btn gs-btn-ghost" data-cancel>취소</button>`);
         } else if (sel && sel.need === 'target') {
-            rows.push(timer, `<div class="mg-hint">먹을 바닥 패를 선택하세요.</div>`,
-                `<button type="button" class="mg-btn mg-btn-ghost" data-cancel>취소</button>`);
+            rows.push(timer, `<div class="gs-hint">먹을 바닥 패를 선택하세요.</div>`,
+                `<button type="button" class="gs-btn gs-btn-ghost" data-cancel>취소</button>`);
         } else {
-            rows.push(timer, `<div class="mg-hint">낼 패를 선택하세요.</div>`);
+            rows.push(timer, `<div class="gs-hint">낼 패를 선택하세요.</div>`);
         }
         actionBarEl.innerHTML = rows.join('');
     }
 
     function renderChipPanel(state) {
-        document.getElementById('mg-chip-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
-        document.getElementById('mg-chip-rate-num').textContent = fmt(state.chips_per_leaf);
-        document.getElementById('mg-chip-sell-unit').textContent = fmt(state.chips_per_leaf);
-        document.getElementById('mg-chip-my-stack').textContent = state.room ? fmt(state.room.my_stack) : '-';
-        document.getElementById('mg-chip-my-wallet').textContent = fmt(state.wallet_chips);
-        const amountEl = document.getElementById('mg-cash-out-amount');
+        document.getElementById('gs-chip-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
+        document.getElementById('gs-chip-rate-num').textContent = fmt(state.chips_per_leaf);
+        document.getElementById('gs-chip-sell-unit').textContent = fmt(state.chips_per_leaf);
+        const mySeat = state.room && state.room.seats.find(s => s.side === state.room.me);
+        document.getElementById('gs-chip-my-stack').textContent = mySeat ? fmt(mySeat.stack) : '-';
+        document.getElementById('gs-chip-my-wallet').textContent = fmt(state.wallet_chips);
+        const amountEl = document.getElementById('gs-cash-out-amount');
         amountEl.min = state.chips_per_leaf;
         amountEl.step = state.chips_per_leaf;
         if (!chipsPerLeafShown) {
             amountEl.value = state.chips_per_leaf;
             chipsPerLeafShown = true;
         }
-        document.getElementById('mg-chip-sell').classList.toggle('hidden', !state.wallet_chips);
-        document.getElementById('mg-chip-hint').textContent = state.wallet_chips < state.buy_in
+        document.getElementById('gs-chip-sell').classList.toggle('hidden', !state.wallet_chips);
+        document.getElementById('gs-chip-hint').textContent = state.wallet_chips < state.buy_in
             ? `방에 들어가려면 보관 칩이 ${fmt(state.buy_in)}칩 이상 필요합니다. 낙엽을 칩으로 충전해주세요.`
             : '방 스택은 방에서 나가면 보관 칩으로 돌아옵니다.';
     }
@@ -990,16 +1016,16 @@ footer { display: none !important; }
         const r = room && room.last_result;
         const key = r && Object.keys(r).length ? JSON.stringify(r) : null;
         if (key && key !== lastResultKey && lastResultKey !== undefined) {
-            window.GameSound.play(r.nagari ? 'tap' : r.i_won ? 'winSmall' : 'lose');
+            window.GameSound.play(r.nagari ? 'tap' : r.my_net > 0 ? 'winSmall' : 'lose');
         }
         lastResultKey = key;
     }
 
     function render(state) {
         const room = state.room;
-        document.getElementById('mg-room-label').textContent = room ? `${room.id}번 방` : '방 목록';
-        document.getElementById('mg-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
-        document.getElementById('mg-my-wallet-top').textContent = fmt(state.wallet_chips);
+        document.getElementById('gs-room-label').textContent = room ? `${room.id}번 방` : '방 목록';
+        document.getElementById('gs-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
+        document.getElementById('gs-my-wallet-top').textContent = fmt(state.wallet_chips);
 
         const g = room && room.game;
         if (!(g && g.my_turn && g.phase === 'play' && room.status === 'playing')) sel = null;
@@ -1023,7 +1049,7 @@ footer { display: none !important; }
     function showToast(message) {
         if (window.GameSound) window.GameSound.play('error');
         const el = document.createElement('div');
-        el.className = 'mg-toast';
+        el.className = 'gs-toast';
         el.textContent = message;
         feltEl.appendChild(el);
         setTimeout(() => el.remove(), 3200);
@@ -1075,7 +1101,7 @@ footer { display: none !important; }
 
     feltEl.addEventListener('click', (e) => {
         const createBtn = e.target.closest('[data-create]');
-        if (createBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'create' }); return; }
+        if (createBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'create', mode: createBtn.dataset.create }); return; }
         const joinBtn = e.target.closest('[data-join]');
         if (joinBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'join', room_id: Number(joinBtn.dataset.join) }); return; }
         const handCard = e.target.closest('[data-hand]');
@@ -1113,24 +1139,24 @@ footer { display: none !important; }
         if (e.target.closest('[data-cancel]')) { sel = null; render(lastState); }
     });
 
-    document.getElementById('mg-buy-chips-btn').addEventListener('click', () => {
+    document.getElementById('gs-buy-chips-btn').addEventListener('click', () => {
         if (window.GameSound) window.GameSound.play('click');
-        send({ type: 'buy_chips', leaves: Number(document.getElementById('mg-buy-chips-amount').value) });
+        send({ type: 'buy_chips', leaves: Number(document.getElementById('gs-buy-chips-amount').value) });
     });
-    document.getElementById('mg-cash-out-btn').addEventListener('click', () => {
+    document.getElementById('gs-cash-out-btn').addEventListener('click', () => {
         if (window.GameSound) window.GameSound.play('click');
-        send({ type: 'cash_out_chips', chips: Number(document.getElementById('mg-cash-out-amount').value) });
+        send({ type: 'cash_out_chips', chips: Number(document.getElementById('gs-cash-out-amount').value) });
     });
-    document.getElementById('mg-cash-out-all-btn').addEventListener('click', () => {
+    document.getElementById('gs-cash-out-all-btn').addEventListener('click', () => {
         if (window.GameSound) window.GameSound.play('click');
         const chips = (lastState && lastState.wallet_chips) || 0;
-        document.getElementById('mg-cash-out-amount').value = chips;
+        document.getElementById('gs-cash-out-amount').value = chips;
         send({ type: 'cash_out_chips', chips });
     });
 
     // ── 모바일 가로모드 여부를 body 클래스로 반영 ──
     function applyLandscapeMode() {
-        document.body.classList.toggle('mg-landscape', window.innerWidth < 1024 && window.innerWidth > window.innerHeight);
+        document.body.classList.toggle('gs-landscape', window.innerWidth < 1024 && window.innerWidth > window.innerHeight);
     }
     applyLandscapeMode();
     window.addEventListener('resize', applyLandscapeMode);
@@ -1138,7 +1164,7 @@ footer { display: none !important; }
 
     // ── 사운드 음소거 토글 ────────────────────────────────────────
     (function () {
-        const btn = document.getElementById('mg-sound-toggle');
+        const btn = document.getElementById('gs-sound-toggle');
         const icon = btn.querySelector('i');
         function renderMute() {
             const isMuted = window.GameSound && window.GameSound.isMuted();
@@ -1152,9 +1178,9 @@ footer { display: none !important; }
         renderMute();
     })();
 
-    // ── 맞고 WebSocket ────────────────────────────────────────────
+    // ── 고스톱 WebSocket ────────────────────────────────────────────
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${wsProto}://${location.host}/ws/matgo/`;
+    const wsUrl = `${wsProto}://${location.host}/ws/gostop/`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     // 포커와 동일: pong이 두 번 이상 안 오면 좀비 연결로 보고 직접 끊고 재연결한다.
     const CONNECTION_STALE_MS = HEARTBEAT_INTERVAL_MS * 2 + 10000;
@@ -1192,20 +1218,20 @@ function gspSwitch(btn, paneId) {
     document.getElementById(paneId).style.display = '';
 }
 
-function openMgChipTab() {
-    const chipsTabBtn = document.querySelector('.gsp-tab[onclick*="mg-tab-chips"]');
-    if (chipsTabBtn) gspSwitch(chipsTabBtn, 'mg-tab-chips');
-    const col = document.getElementById('mg-side-col');
-    if (col && col.classList.contains('mobile-hidden')) toggleMgChat();
+function openGsChipTab() {
+    const chipsTabBtn = document.querySelector('.gsp-tab[onclick*="gs-tab-chips"]');
+    if (chipsTabBtn) gspSwitch(chipsTabBtn, 'gs-tab-chips');
+    const col = document.getElementById('gs-side-col');
+    if (col && col.classList.contains('mobile-hidden')) toggleGsChat();
 }
 
-function toggleMgChat() {
-    const col  = document.getElementById('mg-side-col');
-    const icon = document.getElementById('mg-fab-icon');
+function toggleGsChat() {
+    const col  = document.getElementById('gs-side-col');
+    const icon = document.getElementById('gs-fab-icon');
     const hidden = col.classList.toggle('mobile-hidden');
     icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
     if (!hidden) {
-        const msgs = document.getElementById('mg-chat-messages');
+        const msgs = document.getElementById('gs-chat-messages');
         if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
     }
 }
@@ -1214,10 +1240,10 @@ function toggleMgChat() {
 <script>
 // ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
 (function () {
-    const box   = document.getElementById('mg-chat-messages');
-    const input = document.getElementById('mg-chat-input');
-    const btn   = document.getElementById('mg-chat-send');
-    const badge = document.getElementById('mg-chat-status');
+    const box   = document.getElementById('gs-chat-messages');
+    const input = document.getElementById('gs-chat-input');
+    const btn   = document.getElementById('gs-chat-send');
+    const badge = document.getElementById('gs-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
     const HEARTBEAT_INTERVAL_MS = 25000;
@@ -1288,8 +1314,8 @@ function toggleMgChat() {
     }
 
     // ─── 실시간 접속자 탭 ───
-    const onlineList  = document.getElementById('mg-online-list');
-    const onlineCount = document.getElementById('mg-online-count');
+    const onlineList  = document.getElementById('gs-online-list');
+    const onlineCount = document.getElementById('gs-online-count');
     const MY_USER_ID  = {{ request.user.id }};
     function renderOnlineUsers(users) {
         onlineCount.textContent = users.length;

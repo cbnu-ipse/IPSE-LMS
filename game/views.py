@@ -11,7 +11,7 @@ from .models import (
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
     PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable,
 )
-from . import matgo_engine, poker_engine
+from . import gostop_engine, poker_engine
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -381,12 +381,12 @@ def poker_view(request):
 
 
 @login_required
-def matgo_view(request):
+def gostop_view(request):
     latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
-    return render(request, "game/matgo.html", {
-        "title": "맞고",
+    return render(request, "game/gostop.html", {
+        "title": "고스톱",
         "chat_messages": list(latest)[::-1],
-        "matgo_cards": matgo_engine.CARDS,
+        "gostop_cards": gostop_engine.CARDS,
     })
 
 
