@@ -19,6 +19,11 @@
     - 뻑/따닥/쪽/쓸/뻑 먹기(자뻑은 2장)/폭탄 시 다른 모든 사람에게서 피를 가져온다.
     - 총통(손패 같은 월 4장)·3뻑은 즉시 10점 승리. 나가리는 다음 판 ×2 누적.
     - 국진(9월 열끗)은 열끗/쌍피 중 유리한 쪽을 자동 선택한다.
+    - 맞고 전용: 보너스피 2장(쌍피·쓰리피). 손에서 내면 바로 먹고 상대 피 1장을 가져온 뒤
+      더미에서 1장을 보충하고 다시 낸다. 더미에서 뒤집히면 바로 먹고 한 장 더 뒤집는다.
+      바닥에 깔리면 선이 가져가고 더미에서 채운다.
+      고박은 ×2. 첫뻑(자기 첫 턴 뻑)·연뻑(두 턴 연속 뻑)·첫따닥은 승패와 무관하게 상대에게서
+      7점어치를 판 끝에 받는다 (나가리 배수 미적용).
 
 공개 함수(뷰/컨슈머에서 호출):
     create_room(user, mode) / join_room(user, room_id) / leave_room(user)
@@ -46,8 +51,12 @@ GOSTOP_NEXT_GAME_DELAY = 8     # 판 종료 후 결과를 보여주고 다음 �
 GOSTOP_MEONGBAK_MIN = 7        # 승자 열끗이 이 장수 이상이면 멍박
 GOSTOP_SPECIAL_WIN_POINTS = 10  # 총통·3뻑 즉시 승리 점수
 
+BONUS_CARDS = [48, 49]  # 보너스 쌍피, 보너스 쓰리피 (맞고 전용)
 MODES = {
-    "matgo": {"label": "맞고", "players": 2, "hand": 10, "floor": 8, "win_score": 7, "pibak_max": 7},
+    "matgo": {
+        "label": "맞고", "players": 2, "hand": 10, "floor": 8, "win_score": 7, "pibak_max": 7,
+        "bonus_cards": BONUS_CARDS, "first_bonus_points": 7, "gobak_double": True,
+    },
     "gostop": {"label": "고스톱", "players": 3, "hand": 7, "floor": 6, "win_score": 3, "pibak_max": 5},
 }
 
@@ -73,11 +82,16 @@ _MONTHS = [
     [_c("g", bi=True), _c("y"), _c("t"), _c("pp")],                       # 12 비
 ]
 CARDS = [dict(card, id=m * 4 + i, m=m + 1) for m, month in enumerate(_MONTHS) for i, card in enumerate(month)]
-_KIND_VALUE = {"g": 5, "y": 4, "t": 3, "pp": 2, "p": 1}
+CARDS += [{"k": "bonus", "t": None, "pi": 2, "id": 48, "m": 0}, {"k": "bonus", "t": None, "pi": 3, "id": 49, "m": 0}]
+_KIND_VALUE = {"g": 5, "y": 4, "t": 3, "bonus": 2, "pp": 2, "p": 1}
 
 
 def month(card):
-    return card // 4 + 1
+    return card // 4 + 1  # 보너스패(48, 49)는 13 — 어떤 월과도 맞지 않는다
+
+
+def is_bonus(card):
+    return isinstance(card, int) and card >= 48
 
 
 def _signature(card):
@@ -97,7 +111,7 @@ def score_breakdown(captured, gukjin_as_pi=False):
     yeol = [c for c in cards if c["k"] == "y" and not (c.get("gukjin") and gukjin_as_pi)]
     tti = [c for c in cards if c["k"] == "t"]
     pi_count = sum(
-        1 if c["k"] == "p" else 2 if c["k"] == "pp" or (c.get("gukjin") and gukjin_as_pi) else 0
+        1 if c["k"] == "p" else 2 if c["k"] == "pp" or (c.get("gukjin") and gukjin_as_pi) else c.get("pi", 0)
         for c in cards
     )
 
@@ -166,7 +180,11 @@ def settle(st, winner, reason):
         }
     payments = [{"side": l, "points": pays[l][0], "baks": pays[l][1], "gobak": False} for l in losers]
     goers = [l for l in losers if st["go"][l] > 0]
-    if goers and len(losers) > 1 and reason == "stop":
+    if goers and len(losers) == 1 and reason == "stop" and st.get("gobak_double"):
+        # 맞고 고박: 고를 불렀다가 진 사람은 2배
+        payments[0]["points"] *= 2
+        payments[0]["gobak"] = True
+    elif goers and len(losers) > 1 and reason == "stop":
         payer = st.get("last_go") if st.get("last_go") in goers else goers[0]
         total = sum(p["points"] for p in payments)
         for p in payments:
@@ -193,18 +211,33 @@ def new_game(mode, first, rng=random):
     cfg = MODES[mode]
     n, h, f = cfg["players"], cfg["hand"], cfg["floor"]
     while True:
-        deck = list(range(48))
+        deck = list(range(48)) + cfg.get("bonus_cards", [])
         rng.shuffle(deck)
         floor = deck[n * h:n * h + f]
+        pile = deck[n * h + f:]
+        first_captured = []
+        # 바닥에 깔린 보너스패는 선이 가져가고 더미에서 채운다
+        while any(is_bonus(c) for c in floor):
+            b = next(c for c in floor if is_bonus(c))
+            floor.remove(b)
+            first_captured.append(b)
+            floor.append(pile.pop(0))
         if all(sum(1 for c in floor if month(c) == m) < 4 for m in range(1, 13)):
             break
+    captured = [[] for _ in range(n)]
+    captured[first] = first_captured
     st = {
         "win_score": cfg["win_score"],
         "pibak_max": cfg["pibak_max"],
+        "first_bonus_points": cfg.get("first_bonus_points", 0),
+        "gobak_double": cfg.get("gobak_double", False),
         "hands": [sorted(deck[i * h:(i + 1) * h]) for i in range(n)],
         "floor": floor,
-        "pile": deck[n * h + f:],
-        "captured": [[] for _ in range(n)],
+        "pile": pile,
+        "captured": captured,
+        "firsts": [True] * n,      # 아직 자기 첫 턴을 안 둔 사람 (첫뻑/첫따닥 판정)
+        "prev_ppeok": [False] * n,  # 직전 자기 턴에 뻑을 했는지 (연뻑 판정)
+        "bonus_pay": [],            # [{side, points, reason}] 첫뻑·연뻑·첫따닥 — 판 끝에 정산
         "bombs": [0] * n,
         "turn": first,
         "phase": "play",
@@ -246,6 +279,8 @@ def _steal_pi(st, s, n):
             victim = next((c for c in opp if CARDS[c]["k"] == "p"), None)
             if victim is None:
                 victim = next((c for c in opp if CARDS[c]["k"] == "pp"), None)
+            if victim is None:
+                victim = next((c for c in opp if CARDS[c]["k"] == "bonus"), None)
             if victim is None:
                 break
             opp.remove(victim)
@@ -290,6 +325,8 @@ def play_card(st, s, card, target=None, mode=None):
             raise ValueError("잘못된 패입니다.")
         if card not in hand:
             raise ValueError("손에 없는 패입니다.")
+        if is_bonus(card):
+            return _play_bonus(st, s, card)
         m = month(card)
         floor_m = [c for c in floor if month(c) == m]
         same = [c for c in hand if month(c) == m]
@@ -341,7 +378,13 @@ def play_card(st, s, card, target=None, mode=None):
 
     # ── 더미 뒤집기 ──
     flip = st["pile"].pop(0) if st["pile"] else None
-    st["last_play"] = {"side": s, "card": card, "flip": flip}
+    bonus_flips = []
+    while flip is not None and is_bonus(flip):  # 더미에서 나온 보너스패는 바로 먹고 한 장 더
+        st["captured"][s].append(flip)
+        bonus_flips.append(flip)
+        events.append("보너스")
+        flip = st["pile"].pop(0) if st["pile"] else None
+    st["last_play"] = {"side": s, "card": card, "flip": flip, "bonus_flips": bonus_flips}
     if flip is not None and hand_case and month(flip) == m:
         if hand_case[0] == "alone":
             _capture(st, s, [card, flip])
@@ -352,6 +395,10 @@ def play_card(st, s, card, target=None, mode=None):
             st["ppeok_months"][str(m)] = s
             st["ppeok"][s] += 1
             events.append("뻑")
+            if st["firsts"][s]:
+                _special_bonus(st, s, "첫뻑", events)
+            elif st["prev_ppeok"][s]:
+                _special_bonus(st, s, "연뻑", events)
             if st["ppeok"][s] >= 3:
                 st["events"] = events + ["3뻑"]
                 st["phase"] = "over"
@@ -360,6 +407,8 @@ def play_card(st, s, card, target=None, mode=None):
             _capture(st, s, [card, hand_case[1], hand_case[2], flip])
             steals += 1
             events.append("따닥")
+            if st["firsts"][s]:
+                _special_bonus(st, s, "첫따닥", events)
         return _finish_turn(st, s, steals, events)
 
     if hand_case:
@@ -387,6 +436,27 @@ def play_card(st, s, card, target=None, mode=None):
     return _finish_turn(st, s, steals, events)
 
 
+def _play_bonus(st, s, card):
+    """손의 보너스패: 바로 먹고 상대 피 1장, 더미에서 1장 보충 후 같은 사람이 다시 낸다."""
+    st["hands"][s].remove(card)
+    st["captured"][s].append(card)
+    _steal_pi(st, s, 1)
+    if st["pile"]:
+        st["hands"][s].append(st["pile"].pop(0))
+        st["hands"][s].sort()
+    st["events"] = ["보너스"]
+    st["last_play"] = {"side": s, "card": card, "flip": None, "bonus_flips": [], "bonus": True}
+    if not st["hands"][s] and not st["bombs"][s]:  # 방어: 보충할 패가 없으면 턴 종료
+        return _finish_turn(st, s, 0, ["보너스"])
+    return None
+
+
+def _special_bonus(st, s, reason, events):
+    if st.get("first_bonus_points"):
+        st["bonus_pay"].append({"side": s, "points": st["first_bonus_points"], "reason": reason})
+        events.append(reason)
+
+
 def choose_flip_card(st, s, target):
     """뒤집은 패가 바닥 두 장과 맞을 때 먹을 패를 고른다."""
     _check_turn(st, s)
@@ -406,6 +476,8 @@ def choose_flip_card(st, s, target):
 
 
 def _finish_turn(st, s, steals, events):
+    st["firsts"][s] = False
+    st["prev_ppeok"][s] = "뻑" in events
     last = not any(st["hands"]) and not any(st["bombs"])
     if not st["floor"] and not last:
         steals += 1
@@ -452,6 +524,9 @@ def auto_act(st, s):
     hand = st["hands"][s]
     if not hand:
         return play_card(st, s, "bomb")
+    bonus = next((c for c in hand if is_bonus(c)), None)
+    if bonus is not None:
+        return play_card(st, s, bonus)
     floor_months = {month(c) for c in st["floor"]}
     card = next((c for c in hand if month(c) in floor_months), hand[0])
     floor_m = [c for c in st["floor"] if month(c) == month(card)]
@@ -579,40 +654,46 @@ def _end_game(room, outcome):
     names = [s.user.display_name for s in seats]
     carry = room.carry_multiplier
     now = timezone.now()
+    nagari = outcome.get("winner") is None and "forfeit" not in outcome
+    winner = None
+    transfers = []  # (payer, receiver, points, baks, gobak, label)
 
-    if outcome.get("winner") is None and "forfeit" not in outcome:
+    if nagari:
         room.carry_multiplier = min(carry * 2, 64)
-        room.last_result = {"nagari": True, "carry": room.carry_multiplier}
-        GostopGameLog.objects.create(room_number=room.pk, mode=room.mode, detail={"reason": "nagari"})
+        detail = {"reason": "nagari"}
     else:
         if "forfeit" in outcome:
             f = outcome["forfeit"]
-            transfers = [(f, p["side"], p["points"] * carry, p["baks"], False) for p in forfeit_payments(st, f)]
+            transfers = [(f, p["side"], p["points"] * carry, p["baks"], False, None) for p in forfeit_payments(st, f)]
             detail = {"reason": "forfeit", "forfeit_side": f, "forfeit_name": names[f]}
             winner = transfers[0][1] if len(transfers) == 1 else None  # 3인 기권은 받는 사람이 둘이라 기록상 승자 없음
         else:
             winner = outcome["winner"]
             payments, detail = settle(st, winner, outcome["reason"])
-            transfers = [(p["side"], winner, p["points"] * carry, p["baks"], p["gobak"]) for p in payments]
+            transfers = [(p["side"], winner, p["points"] * carry, p["baks"], p["gobak"], None) for p in payments]
             detail.update(winner_side=winner, winner_name=names[winner])
             room.next_first = winner
-        rows = []
-        for payer, receiver, points, baks, gobak in transfers:
-            chips = min(points * GOSTOP_CHIPS_PER_POINT, seats[payer].stack)
-            seats[payer].stack -= chips
-            seats[receiver].stack += chips
-            rows.append({
-                "from_side": payer, "from_name": names[payer], "to_side": receiver, "to_name": names[receiver],
-                "points": points, "chips": chips, "baks": baks, "gobak": gobak,
-            })
-        for s in seats:
-            s.save(update_fields=["stack"])
         room.carry_multiplier = 1
-        room.last_result = dict(detail, nagari=False, carry=carry, transfers=rows)
-        GostopGameLog.objects.create(
-            room_number=room.pk, mode=room.mode, winner=seats[winner].user if winner is not None else None,
-            chips=sum(r["chips"] for r in rows), detail=room.last_result,
-        )
+    # 첫뻑·연뻑·첫따닥은 승패/나가리와 무관하게 다른 사람 모두에게서 받는다 (나가리 배수 미적용)
+    for b in st.get("bonus_pay", []):
+        transfers += [(o, b["side"], b["points"], [], False, b["reason"]) for o in range(len(seats)) if o != b["side"]]
+
+    rows = []
+    for payer, receiver, points, baks, gobak, label in transfers:
+        chips = min(points * GOSTOP_CHIPS_PER_POINT, seats[payer].stack)
+        seats[payer].stack -= chips
+        seats[receiver].stack += chips
+        rows.append({
+            "from_side": payer, "from_name": names[payer], "to_side": receiver, "to_name": names[receiver],
+            "points": points, "chips": chips, "baks": baks, "gobak": gobak, "label": label,
+        })
+    for s in seats:
+        s.save(update_fields=["stack"])
+    room.last_result = dict(detail, nagari=nagari, carry=room.carry_multiplier if nagari else carry, transfers=rows)
+    GostopGameLog.objects.create(
+        room_number=room.pk, mode=room.mode, winner=seats[winner].user if winner is not None else None,
+        chips=sum(r["chips"] for r in rows if r["to_side"] == winner), detail=room.last_result,
+    )
     room.status = "waiting"
     room.turn_deadline = None
     room.next_game_at = now + timedelta(seconds=GOSTOP_NEXT_GAME_DELAY)

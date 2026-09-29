@@ -65,8 +65,9 @@ class GostopTurnTestCase(TestCase):
     def test_ppeok_then_eaten_by_opponent(self):
         st = blank_state(hands=[[0, 20], [3, 21]], floor=[1, 36, 44], pile=[2, 38, 39],
                          captured=[[6], [7]])
-        eng.play_card(st, 0, 0)  # 1월 광 + 바닥 1월 홍단, 뒤집은 1월 피 → 뻑
-        self.assertEqual(st["events"], ["뻑"])
+        eng.play_card(st, 0, 0)  # 1월 광 + 바닥 1월 홍단, 뒤집은 1월 피 → 뻑 (맞고 첫 턴이라 첫뻑)
+        self.assertEqual(st["events"], ["뻑", "첫뻑"])
+        self.assertEqual(st["bonus_pay"], [{"side": 0, "points": 7, "reason": "첫뻑"}])
         self.assertCountEqual(st["floor"], [0, 1, 2, 36, 44])
         eng.play_card(st, 1, 3)  # 상대가 남은 1월로 뻑 먹기
         self.assertEqual(st["events"], ["뻑 먹기"])
@@ -75,7 +76,7 @@ class GostopTurnTestCase(TestCase):
     def test_ttadak(self):
         st = blank_state(hands=[[0, 20], [21]], floor=[1, 2], pile=[3, 38], captured=[[], [6]])
         eng.play_card(st, 0, 0, target=1)
-        self.assertEqual(st["events"], ["따닥", "쓸"])
+        self.assertEqual(st["events"], ["따닥", "첫따닥", "쓸"])
         self.assertCountEqual(st["captured"][0], [0, 1, 2, 3, 6])
 
     def test_choice_required_for_different_cards(self):
@@ -129,13 +130,49 @@ class GostopTurnTestCase(TestCase):
                 steps = 0
                 while outcome is None:
                     outcome = eng.auto_act(st, st["turn"])
-                    self.assertCountEqual(all_cards(st), range(48))
+                    self.assertCountEqual(all_cards(st), range(48) if mode == "gostop" else range(50))
                     steps += 1
                     self.assertLess(steps, 60)
                 if outcome["winner"] is not None:
                     payments, _ = eng.settle(st, outcome["winner"], outcome["reason"])
                     self.assertEqual(len(payments), n - 1)
                     self.assertGreaterEqual(sum(p["points"] for p in payments), st["win_score"])
+
+
+class GostopMatgoOnlyRulesTestCase(TestCase):
+    def test_bonus_from_hand_steals_draws_and_keeps_turn(self):
+        st = blank_state(hands=[[48, 20], [21]], floor=[36], pile=[0, 38], captured=[[], [6]])
+        eng.play_card(st, 0, 48)
+        self.assertEqual((st["turn"], st["phase"]), (0, "play"))
+        self.assertEqual(st["hands"][0], [0, 20])  # 더미에서 1장 보충
+        self.assertCountEqual(st["captured"][0], [48, 6])
+        self.assertEqual(eng.score_breakdown([48, 49])["pi_count"], 5)
+
+    def test_bonus_flipped_from_pile_is_taken_and_flips_again(self):
+        st = blank_state(hands=[[20, 22], [23]], floor=[36], pile=[49, 38, 39])
+        eng.play_card(st, 0, 20)
+        self.assertIn(49, st["captured"][0])
+        self.assertEqual(st["last_play"]["flip"], 38)
+        self.assertCountEqual(st["captured"][0], [49, 38, 36])
+
+    def test_floor_bonus_goes_to_first_player(self):
+        for seed in range(200):
+            st, _ = eng.new_game("matgo", 1, random.Random(seed))
+            self.assertFalse(any(eng.is_bonus(c) for c in st["floor"]))
+            self.assertEqual(len(st["floor"]), 8)
+            self.assertFalse(any(eng.is_bonus(c) for c in st["captured"][0]))
+        self.assertFalse(any(eng.is_bonus(c) for c in eng.new_game("gostop", 0, random.Random(1))[0]["pile"]))
+
+    def test_matgo_gobak_doubles(self):
+        st = blank_state(captured=[[0, 8, 28, 4, 12, 29], [2, 40]], go=[0, 1])
+        payments, _ = eng.settle(st, 0, "stop")
+        self.assertEqual((payments[0]["points"], payments[0]["gobak"]), (16, True))  # 8점 × 고박 2
+
+    def test_consecutive_ppeok(self):
+        st = blank_state(firsts=[False, False], prev_ppeok=[True, False],
+                         hands=[[0, 20], [21]], floor=[1, 36], pile=[2, 38])
+        eng.play_card(st, 0, 0)
+        self.assertEqual(st["events"], ["뻑", "연뻑"])
 
 
 class GostopThreePlayerTestCase(TestCase):
@@ -221,6 +258,20 @@ class GostopRoomTestCase(TestCase):
             list(GostopSeat.objects.filter(room=room).order_by("seat").values_list("user__username", "seat")),
             [("b", 0), ("c", 1)],
         )
+
+    def test_first_ppeok_is_paid_even_on_nagari(self):
+        _, room_id = eng.create_room(self.a, "matgo")
+        eng.join_room(self.b, room_id)
+        room = GostopRoom.objects.get(pk=room_id)
+        st, _ = eng.new_game("matgo", 0, random.Random(3))
+        st["bonus_pay"] = [{"side": 1, "points": 7, "reason": "첫뻑"}]
+        room.state, room.status = st, "playing"
+        room.save()
+        eng._end_game(room, {"winner": None, "reason": "nagari"})
+        stacks = dict(GostopSeat.objects.filter(room=room).values_list("user__username", "stack"))
+        self.assertEqual(stacks, {"a": GOSTOP_BUY_IN - 700, "b": GOSTOP_BUY_IN + 700})
+        room.refresh_from_db()
+        self.assertEqual((room.last_result["nagari"], room.carry_multiplier), (True, 2))
 
     def test_timeouts_finish_game(self):
         _, room_id = eng.create_room(self.a, "matgo")
