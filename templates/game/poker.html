@@ -27,8 +27,11 @@
                 <div class="pk-table-wrap" id="pk-table-wrap">
                     <div class="pk-table">
                         <div class="pk-community">
-                            <div class="pk-pot">POT <span id="pk-pot">0</span></div>
+                            <!-- 핸드 결과 / 다음 핸드 카운트다운 — 표시 중엔 POT 자리를 대신한다 (항상 한 번에 하나만 표시) -->
+                            <div id="pk-center-msg" class="pk-center-msg hidden"></div>
+                            <div class="pk-pot" id="pk-pot-line">POT <span id="pk-pot">0</span></div>
                             <div class="pk-board-cards" id="pk-community-cards"></div>
+                            <div class="pk-my-cards hidden" id="pk-my-cards"></div>
                         </div>
                         <div class="pk-seats" id="pk-seats">
                             <div class="pk-seat" data-seat="0"></div>
@@ -37,9 +40,9 @@
                             <div class="pk-seat" data-seat="3"></div>
                             <div class="pk-seat" data-seat="4"></div>
                             <div class="pk-seat" data-seat="5"></div>
+                            <div class="pk-seat" data-seat="6"></div>
+                            <div class="pk-seat" data-seat="7"></div>
                         </div>
-                        <!-- 핸드 결과(5초) / 다음 핸드 카운트다운 — 항상 한 번에 하나만 표시 -->
-                        <div id="pk-center-msg" class="pk-center-msg hidden"></div>
                     </div>
                 </div>
 
@@ -376,22 +379,44 @@
     to { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; }
 }
 
-/* 내 카드 공개/비공개 토글 (어깨너머 훔쳐보기 방지) */
-.pk-eye-btn {
-    width: 30px; height: 30px;
-    border-radius: 999px;
-    border: 1px dashed rgba(255,255,255,.5);
-    background: rgba(15,23,42,.7);
-    color: #fff;
-    font-size: .75rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    align-self: center;
+/* 앞뒤가 있는 카드: 기본은 뒷면, .pk-flip-inner를 180도 돌리면 앞면.
+   공동 카드는 새로 깔릴 때 한 장씩 뒤집히고(pk-flip--dealing), 다 뒤집힌 뒤엔 pk-flip--up. */
+.pk-flip { display: inline-block; width: 34px; height: 48px; perspective: 600px; flex-shrink: 0; }
+.pk-flip-inner {
+    position: relative;
+    display: block;
+    width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    transition: transform .45s ease;
 }
-.pk-eye-btn:hover { background: rgba(15,23,42,.9); }
+.pk-flip-face { position: absolute; inset: 0; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.pk-flip-front { transform: rotateY(180deg); }
+.pk-flip--up .pk-flip-inner { transform: rotateY(180deg); }
+.pk-flip--dealing .pk-flip-inner { animation: pk-flip-in .6s ease-out both; }
+@keyframes pk-flip-in {
+    from { transform: rotateY(0deg) translateY(-6px); }
+    to { transform: rotateY(180deg); }
+}
+
+/* 내 카드 (공동 카드 아래) — 어깨너머 훔쳐보기 방지로 기본은 뒷면.
+   마우스가 있는 기기는 올리면, 터치 기기는 탭하면 뒤집힌다. */
+.pk-my-cards {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.pk-my-cards.hidden { display: none; }
+.pk-my-cards-row { display: flex; gap: 5px; }
+.pk-my-cards-hint { font-size: .6rem; font-weight: 700; color: rgba(255,255,255,.55); max-width: 52px; line-height: 1.25; }
+.pk-my-cards.revealed .pk-flip-inner { transform: rotateY(180deg); }
+@media (hover: hover) {
+    .pk-my-cards:hover .pk-flip-inner { transform: rotateY(180deg); }
+}
+.pk-my-cards--folded { opacity: .45; }
 
 /* 좌석 */
 .pk-seats { position: absolute; inset: 0; }
@@ -403,16 +428,27 @@
     align-items: center;
     gap: 2px;
 }
+/* 8자리: 아래 줄 7·0·1, 오른쪽 2, 위 줄 3·4·5, 왼쪽 6 (번호 순서대로 테이블을 한 바퀴 돈다) */
 .pk-seat[data-seat="0"] { bottom: -8%; left: 50%; transform: translateX(-50%); }
-.pk-seat[data-seat="1"] { bottom: 6%; right: -6%; }
-.pk-seat[data-seat="2"] { top: 6%; right: -6%; }
-.pk-seat[data-seat="3"] { top: -8%; left: 50%; transform: translateX(-50%); }
-.pk-seat[data-seat="4"] { top: 6%; left: -6%; }
-.pk-seat[data-seat="5"] { bottom: 6%; left: -6%; }
-/* 위쪽 자리(2/3/4)는 앵커가 top이라 기본 방향(column)이면 카드→박스 순서로
+.pk-seat[data-seat="1"] { bottom: -6%; right: 8%; }
+.pk-seat[data-seat="2"] { top: 50%; right: -10%; transform: translateY(-50%); }
+.pk-seat[data-seat="3"] { top: -6%; right: 8%; }
+.pk-seat[data-seat="4"] { top: -8%; left: 50%; transform: translateX(-50%); }
+.pk-seat[data-seat="5"] { top: -6%; left: 8%; }
+.pk-seat[data-seat="6"] { top: 50%; left: -10%; transform: translateY(-50%); }
+.pk-seat[data-seat="7"] { bottom: -6%; left: 8%; }
+/* 위쪽 자리(3/4/5)는 앵커가 top이라 기본 방향(column)이면 카드→박스 순서로
    테이블 중앙 쪽으로 쭉 밀려 내려온다. 박스가 위쪽 가장자리에 붙도록 뒤집는다. */
-.pk-seat[data-seat="2"], .pk-seat[data-seat="3"], .pk-seat[data-seat="4"] {
+.pk-seat[data-seat="3"], .pk-seat[data-seat="4"], .pk-seat[data-seat="5"] {
     flex-direction: column-reverse;
+}
+/* 가운데 자리(0·4번)는 카드를 테이블 중앙 쪽에 두면 공동 카드/POT를 가리므로 아바타 오른쪽에
+   붙인다. 나머지 자리는 가로로 공동 카드와 안 겹쳐서 그대로 둔다. */
+.pk-seat[data-seat="0"] .pk-seat-cards,
+.pk-seat[data-seat="4"] .pk-seat-cards {
+    position: absolute;
+    top: 12px;
+    left: calc(50% + 32px);
 }
 
 .pk-empty-btn {
@@ -547,29 +583,27 @@
 }
 .pk-result-banner.hidden { display: none; }
 
-/* ── 핸드 결과(5초) / 다음 핸드 카운트다운 ─────────────────────────
-   같은 자리에서 순서대로 교체 표시한다 — 동시에 겹쳐 뜨지 않는다. */
+/* ── 핸드 결과 / 다음 핸드 카운트다운 ─────────────────────────────
+   같은 자리(POT 줄)에서 순서대로 교체 표시한다 — 공동 카드/내 카드를 가리지 않는다. */
 .pk-center-msg {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
     z-index: 6;
     background: rgba(15,23,42,.9);
     color: #fef9c3;
-    font-size: .78rem;
+    font-size: .74rem;
     font-weight: 800;
-    padding: 10px 18px;
+    padding: 4px 14px;
     border-radius: 999px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    box-shadow: 0 4px 14px rgba(0,0,0,.4);
     text-align: center;
-    max-width: 85%;
+    max-width: min(420px, 80vw);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .pk-center-msg.hidden { display: none; }
+.pk-center-msg:not(.hidden) + .pk-pot { display: none; }
 .pk-center-msg-num {
-    font-size: 1.3rem;
+    font-size: 1rem;
     font-variant-numeric: tabular-nums;
 }
 
@@ -723,7 +757,9 @@
     .pk-seat-circle { width: 44px; height: 44px; }
     .pk-card { width: 27px; height: 38px; font-size: .7rem; }
     .pk-card--sm { width: 23px; height: 32px; font-size: .64rem; }
-    .pk-eye-btn { width: 24px; height: 24px; font-size: .62rem; }
+    .pk-flip { width: 27px; height: 38px; }
+    .pk-community { gap: 5px; }
+    .pk-my-cards { margin-top: 0; }
     .pk-stat-bar { font-size: .7rem; padding: 6px 10px; }
     .pk-action-bar { padding: 10px 12px; }
 }
@@ -778,7 +814,7 @@ footer { display: none !important; }
 <script src="{% static 'js/game-sound.js' %}"></script>
 <script>
 (function () {
-    const SEAT_COUNT = 6;
+    const SEAT_COUNT = 8;
     const seatsEl = Array.from({length: SEAT_COUNT}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
     const communityEl = document.getElementById('pk-community-cards');
     const potEl = document.getElementById('pk-pot');
@@ -817,8 +853,19 @@ footer { display: none !important; }
     let centerMsgResultFor = null;
     let centerMsgResultActive = false;
     let centerMsgResultTimer = null;
-    let activeResultWinnerSeats = new Set(); // 결과 5초 창 동안 테두리 하이라이트할 좌석들
-    let myCardsRevealed = false; // 내 카드는 기본적으로 가려져 있다(어깨너머 훔쳐보기 방지)
+    let activeResultWinnerSeats = new Set(); // 결과 표시 창 동안 테두리 하이라이트할 좌석들
+    let myCardsRevealed = false; // 터치 기기에서 탭으로 내 카드를 뒤집어 둔 상태 (새 핸드마다 다시 가림)
+    const IS_TOUCH = window.matchMedia('(hover: none)').matches;
+    const myCardsEl = document.getElementById('pk-my-cards');
+
+    // 공동 카드 순차 뒤집기: 카드별 뒤집기 시작 시각을 기억해 두고, 상태가 다시 와서 다시
+    // 그려도 animation-delay를 (시작 시각 - 지금)으로 줘서 애니메이션이 끊기지 않게 이어간다.
+    const FLIP_STAGGER_MS = 700;
+    const FLIP_MS = 600;
+    let flipHand = null;
+    let flipStarts = {};       // card -> 뒤집기 시작 시각(ms)
+    let communityFlipEndsAt = 0;
+    let flipRerenderTimer = null;
 
     function esc(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -834,10 +881,60 @@ footer { display: none !important; }
         return `<span class="${cls}${red ? ' pk-card--red' : ''}">${rank}${SUIT_SYMBOLS[suit] || ''}</span>`;
     }
 
-    function renderCommunity(cards) {
+    function flipCardHtml(card, cls, style) {
+        return `<span class="pk-flip ${cls || ''}" style="${style || ''}"><span class="pk-flip-inner">`
+            + `<span class="pk-flip-face pk-card pk-card--back"></span>`
+            + cardHtml(card).replace('class="pk-card', 'class="pk-flip-face pk-flip-front pk-card')
+            + `</span></span>`;
+    }
+
+    function renderCommunity(cards, handNumber) {
+        const now = Date.now();
+        const firstRender = flipHand === null;
+        if (handNumber !== flipHand) {
+            flipHand = handNumber;
+            flipStarts = {};
+        }
+        let lastStart = Math.max(0, ...Object.values(flipStarts));
+        cards.forEach(c => {
+            if (c in flipStarts) return;
+            // 페이지를 막 열었을 때 이미 깔려 있던 카드는 애니메이션 없이 보여준다
+            flipStarts[c] = firstRender ? 0 : Math.max(now, lastStart + FLIP_STAGGER_MS);
+            lastStart = flipStarts[c];
+        });
+        communityFlipEndsAt = cards.length ? Math.max(...cards.map(c => flipStarts[c])) + FLIP_MS : 0;
+
         const slots = [];
-        for (let i = 0; i < 5; i++) slots.push(cardHtml(cards[i] || null));
+        for (let i = 0; i < 5; i++) {
+            const c = cards[i];
+            if (!c) { slots.push(cardHtml(null)); continue; }
+            const delay = flipStarts[c] - now;
+            slots.push(delay + FLIP_MS <= 0
+                ? flipCardHtml(c, 'pk-flip--up')
+                : flipCardHtml(c, 'pk-flip--dealing').replace(
+                    'class="pk-flip-inner"', `class="pk-flip-inner" style="animation-delay:${delay}ms"`));
+        }
         communityEl.innerHTML = slots.join('');
+
+        // 뒤집기가 끝나면 결과/공개 패를 보여주기 위해 한 번 더 그린다
+        clearTimeout(flipRerenderTimer);
+        if (communityFlipEndsAt > now) {
+            flipRerenderTimer = setTimeout(() => { if (lastState) render(lastState); }, communityFlipEndsAt - now + 30);
+        }
+    }
+
+    function renderMyCards(state) {
+        const me = state.seats.find(s => s.is_me);
+        const cards = me && me.hole_cards;
+        if (!cards || !cards.length) {
+            myCardsEl.classList.add('hidden');
+            return;
+        }
+        myCardsEl.classList.remove('hidden');
+        myCardsEl.classList.toggle('revealed', myCardsRevealed);
+        myCardsEl.classList.toggle('pk-my-cards--folded', me.status === 'folded');
+        myCardsEl.innerHTML = `<div class="pk-my-cards-row">${cards.map(c => flipCardHtml(c)).join('')}</div>
+            <div class="pk-my-cards-hint">${IS_TOUCH ? (myCardsRevealed ? '탭해서 가리기' : '탭해서 보기') : '올려서 보기'}</div>`;
     }
 
     function renderSeat(el, seat) {
@@ -850,11 +947,10 @@ footer { display: none !important; }
         if (seat.status === 'folded') el.classList.add('pk-seat--folded');
         if (activeResultWinnerSeats.has(seat.seat_number)) el.classList.add('pk-seat--winner');
 
-        const hideOwnCards = seat.is_me && !myCardsRevealed;
-        const cardsHtml = (seat.hole_cards || []).map(c => cardHtml(hideOwnCards ? '??' : c, true)).join('');
-        const eyeBtn = seat.is_me && seat.hole_cards && seat.hole_cards.length
-            ? `<button type="button" class="pk-eye-btn" data-eye-toggle title="${myCardsRevealed ? '내 카드 가리기' : '내 카드 보기'}"><i class="fa-solid ${myCardsRevealed ? 'fa-eye-slash' : 'fa-eye'}"></i></button>`
-            : '';
+        // 좌석에는 핸드가 끝나고 공개된 남의 패만 그린다 (내 카드는 공동 카드 아래).
+        // 공동 카드가 다 뒤집히기 전엔 결과를 스포일하지 않도록 기다린다.
+        const showCards = !seat.is_me && Date.now() >= communityFlipEndsAt;
+        const cardsHtml = showCards ? (seat.hole_cards || []).map(c => cardHtml(c, true)).join('') : '';
         const tag = seat.status === 'folded' ? '<div class="pk-seat-tag">폴드</div>'
             : seat.status === 'all_in' ? '<div class="pk-seat-tag pk-seat-tag--allin">올인</div>'
             : seat.status === 'out' ? '<div class="pk-seat-tag">대기</div>' : '';
@@ -865,7 +961,7 @@ footer { display: none !important; }
         // 이어받는다 — 배팅액/딜러 배지도 원 모서리에 붙이고, 이모티콘 말풍선도
         // 이 원을 기준으로 오른쪽에 띄운다(showEmojiBubble 참고).
         el.innerHTML = `
-            <div class="pk-seat-cards">${cardsHtml}${eyeBtn}</div>
+            <div class="pk-seat-cards">${cardsHtml}</div>
             <div class="pk-seat-box">
                 <div class="pk-seat-circle">
                     ${seat.current_bet > 0 ? `<span class="pk-seat-bet">${seat.current_bet}</span>` : ''}
@@ -916,6 +1012,9 @@ footer { display: none !important; }
 
         const mySeat = state.seats.find(s => s.seat_number === state.my_seat_number);
         const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">일어나기</button>`];
+        if (state.can_reveal) {
+            rows.push(`<button type="button" class="pk-btn pk-btn-raise" data-reveal><i class="fa-solid fa-eye"></i> 내 패 공개</button>`);
+        }
 
         if (state.turn_seat === state.my_seat_number && mySeat && mySeat.status === 'active') {
             rows.push(`<span class="pk-turn-countdown"><span data-countdown="turn">${state.turn_seconds_left}</span>초</span>`);
@@ -981,6 +1080,14 @@ footer { display: none !important; }
         const resultIsCurrent = hasResult
             && !(state.table_status === 'playing' && state.round === 'preflop' && state.hand_number !== result.hand_number);
 
+        // 올인 런아웃 등으로 공동 카드가 아직 뒤집히는 중이면 결과를 미리 보여주지 않는다
+        // (뒤집기가 끝나면 renderCommunity가 예약한 재렌더에서 표시된다)
+        if (resultIsCurrent && Date.now() < communityFlipEndsAt) {
+            activeResultWinnerSeats = new Set();
+            centerMsgEl.classList.add('hidden');
+            return;
+        }
+
         if (resultIsCurrent && result.hand_number !== centerMsgResultFor) {
             centerMsgResultFor = result.hand_number;
             centerMsgResultActive = true;
@@ -988,7 +1095,7 @@ footer { display: none !important; }
             centerMsgResultTimer = setTimeout(() => {
                 centerMsgResultActive = false;
                 if (lastState) render(lastState);
-            }, 5000);
+            }, (state.result_display_seconds || 10) * 1000);
         } else if (!resultIsCurrent) {
             centerMsgResultFor = null;
             centerMsgResultActive = false;
@@ -1026,10 +1133,11 @@ footer { display: none !important; }
         const isNewHand = state.hand_number !== lastHandNumber;
         if (isNewHand) myCardsRevealed = false; // 새 핸드마다 다시 가림
 
-        // renderCenterMsg가 activeResultWinnerSeats를 채우므로, 좌석 하이라이트가
-        // 반영되도록 좌석을 그리기 전에 먼저 호출한다.
+        // renderCommunity가 뒤집기 종료 시각을 정하고, renderCenterMsg가 그걸 보고
+        // activeResultWinnerSeats를 채우므로 좌석을 그리기 전에 이 순서로 호출한다.
+        renderCommunity(state.community_cards || [], state.hand_number);
         renderCenterMsg(state);
-        renderCommunity(state.community_cards || []);
+        renderMyCards(state);
         state.seats.forEach(seat => renderSeat(seatsEl[seat.seat_number], seat));
         renderActionBar(state);
         renderChipPanel(state);
@@ -1130,11 +1238,12 @@ footer { display: none !important; }
     });
 
     // ── 클릭 위임 ────────────────────────────────────────────────
-    document.getElementById('pk-seats').addEventListener('click', (e) => {
-        if (!e.target.closest('[data-eye-toggle]')) return;
+    // 터치 기기는 탭으로 내 카드를 뒤집는다 (마우스 기기는 CSS :hover)
+    myCardsEl.addEventListener('click', () => {
+        if (!IS_TOUCH) return;
         myCardsRevealed = !myCardsRevealed;
         if (window.GameSound) window.GameSound.play('tap');
-        if (lastState) render(lastState);
+        if (lastState) renderMyCards(lastState);
     });
     document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
         const sitBtn = e.target.closest('[data-sit]');
@@ -1143,6 +1252,11 @@ footer { display: none !important; }
         send({ type: 'sit', seat_number: Number(sitBtn.dataset.sit) });
     });
     actionBarEl.addEventListener('click', (e) => {
+        if (e.target.closest('[data-reveal]')) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'reveal' });
+            return;
+        }
         if (e.target.id === 'pk-stand-btn') {
             if (window.GameSound) window.GameSound.play('tap');
             send({ type: 'stand' });

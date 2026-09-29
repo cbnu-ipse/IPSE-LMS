@@ -1,5 +1,5 @@
 """
-온라인 포커 (텍사스 홀덤, 6인 고정 테이블 1개) 상태머신.
+온라인 포커 (텍사스 홀덤, 8인 고정 테이블 1개) 상태머신.
 
 테이블은 싱글턴(PokerTable.get_solo())이고, 모든 상태 변경 함수는
 `transaction.atomic()` + `select_for_update()` 로 테이블 전체를 잠그고 동작한다.
@@ -25,6 +25,7 @@ select_for_update로 자리를 잠그므로 동시 클릭이 와도 한 명만 �
     cash_out_chips(user, chips) — 칩 지갑을 낙엽으로 환전. 자리에 앉아있는 동안은
                                    불가 — 일어난 뒤에만 가능.
     player_action(user, action, amount) — fold/check/call/bet/raise
+    reveal_hand(user)           — 모두 폴드해 혼자 이긴 승자가 결과 표시 중 자기 패 공개
     send_emoji(user, emoji)     — 착석 중인 좌석 위에 띄울 이모티콘 반응 (좌석 번호 반환)
     next_deadline_at()          — 다음에 깨어나야 할 시각 (워치독용)
     process_due_deadlines()     — 마감시각이 지난 턴/다음 핸드를 처리 (워치독용)
@@ -43,11 +44,12 @@ from .models import (
     POKER_BUY_IN_LEAVES, POKER_CHIPS_PER_LEAF,
 )
 
-POKER_TURN_TIMEOUT = 15          # 턴당 제한시간(초)
-POKER_RESULT_DISPLAY_SECONDS = 5  # 결과를 중앙에 띄워두는 시간(초) — 프론트 renderCenterMsg와 동일해야 함
+POKER_TURN_TIMEOUT = 20          # 턴당 제한시간(초)
+POKER_RESULT_DISPLAY_SECONDS = 10  # 결과를 중앙에 띄워두는 시간(초) — 상태로 프론트에 내려보낸다
+                                   # (혼자 이긴 승자가 패 공개 여부를 고를 시간도 포함)
 POKER_NEXT_HAND_DELAY = POKER_RESULT_DISPLAY_SECONDS + 5  # 핸드 종료 후 다음 핸드까지 대기(초):
                                                            # 결과 표시 5초 + 실제로 보이는 카운트다운 5초
-POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 강제 폴드 + 퇴장 예약 (15초 * 4 ≈ 1분)
+POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 강제 폴드 + 퇴장 예약 (20초 * 4 ≈ 1분 20초)
 
 POKER_EMOJI_CHOICES = {"👍", "😂", "😮", "😡", "🔥", "❤️"}  # 이모티콘 반응 화이트리스트
 
@@ -500,9 +502,14 @@ def _finish_hand(table, seats_by_number):
     non_folded = [s for s in in_hand if s.status != "folded"]
     total_pot = sum(s.contributed_total for s in in_hand)
     winners_info = []
+    # 공개된 패 {좌석 번호(str): 카드}. 쇼다운은 남은 사람 전원 자동 공개, 혼자 이긴
+    # 경우엔 승자가 reveal_hand()로 직접 공개할 때만 추가된다 (그때까지 승자 카드 유지).
+    shown = {}
+    reveal_seat = None
 
     if len(non_folded) == 1:
         winner = non_folded[0]
+        reveal_seat = winner.seat_number
         winner.stack += total_pot
         winner.save(update_fields=["stack"])
         winners_info.append({
@@ -513,6 +520,7 @@ def _finish_hand(table, seats_by_number):
             "hand_desc": None,
         })
     else:
+        shown = {str(s.seat_number): s.hole_cards for s in non_folded}
         pots = _build_side_pots(in_hand)
         hand_values = {s.id: evaluate_best_of_7(s.hole_cards + table.community_cards) for s in non_folded}
         for pot_info in pots:
@@ -544,7 +552,10 @@ def _finish_hand(table, seats_by_number):
         community_cards=table.community_cards, winners=winners_info,
     )
     table.pot = 0
-    table.last_result = {"hand_number": table.hand_number, "pot": total_pot, "winners": winners_info}
+    table.last_result = {
+        "hand_number": table.hand_number, "pot": total_pot, "winners": winners_info,
+        "shown": shown, "reveal_seat": reveal_seat,
+    }
 
     for s in list(seats_by_number.values()):
         if s.user_id and (s.stack <= 0 or s.leaving_after_hand):
@@ -553,7 +564,8 @@ def _finish_hand(table, seats_by_number):
             s.status = "out"
             s.current_bet = 0
             s.contributed_total = 0
-            s.hole_cards = []
+            if s.seat_number != reveal_seat:
+                s.hole_cards = []
             s.has_acted_this_street = False
             s.save()
 
@@ -598,6 +610,25 @@ def player_action(user, action, amount=0):
         seat.consecutive_timeouts = 0
         seat.save(update_fields=["consecutive_timeouts"])
         _resolve_turn(table, seats_by_number, seat.seat_number)
+    return True, None
+
+
+def reveal_hand(user):
+    """쇼다운 없이(모두 폴드) 이긴 승자가 결과 표시 중에 자기 패를 공개한다."""
+    with transaction.atomic():
+        PokerTable.get_solo()
+        table = PokerTable.objects.select_for_update().get(pk=1)
+        seat = PokerSeat.objects.select_for_update().filter(table=table, user=user).first()
+        result = table.last_result or {}
+        if (
+            not seat or table.status != "waiting" or result.get("reveal_seat") != seat.seat_number
+            or result.get("hand_number") != table.hand_number or not seat.hole_cards
+        ):
+            return False, "공개할 수 있는 패가 없습니다."
+        result.setdefault("shown", {})[str(seat.seat_number)] = seat.hole_cards
+        result["reveal_seat"] = None
+        table.last_result = result
+        table.save(update_fields=["last_result"])
     return True, None
 
 
@@ -647,6 +678,8 @@ def _deal_new_hand(table):
     eligible_numbers = sorted(s.seat_number for s in eligible)
     dealer_num = _rotate_dealer(eligible_numbers, table.dealer_seat)
 
+    for s in seats_by_number.values():
+        s.hole_cards = []  # 지난 핸드에 공개 대기로 남겨둔 승자 카드 정리
     deck = list(FULL_DECK)
     random.SystemRandom().shuffle(deck)
     for s in eligible:
@@ -755,17 +788,19 @@ def get_state_for(user):
     my_seat = next((s for s in seats if s.user_id == getattr(user, "id", None)), None)
     now = timezone.now()
 
+    result = table.last_result or {}
+    shown = result.get("shown", {}) if result.get("hand_number") == table.hand_number and table.status == "waiting" else {}
+
     def seat_view(s):
         if not s.user_id:
             return {"seat_number": s.seat_number, "empty": True}
         is_owner = my_seat is not None and my_seat.seat_number == s.seat_number
-        revealed_at_showdown = table.round == "showdown" and s.status in ("active", "all_in")
-        if is_owner or revealed_at_showdown:
+        # 남의 카드는 핸드가 끝나고 공개된 패(last_result.shown)만 보낸다 — 뒷면 두 장을
+        # 그리면 공동 카드를 가려서 뺐다. 내 카드는 테이블 중앙 아래에 따로 그린다.
+        if is_owner:
             hole_cards = s.hole_cards
-        elif s.status in ("active", "all_in", "folded"):
-            hole_cards = ["??", "??"]
         else:
-            hole_cards = []
+            hole_cards = shown.get(str(s.seat_number), [])
         return {
             "seat_number": s.seat_number,
             "empty": False,
@@ -835,4 +870,9 @@ def get_state_for(user):
         "my_leaves": my_leaves,
         "my_wallet_chips": wallet_chips,
         "open_seats": sum(1 for s in seats if not s.user_id),
+        "result_display_seconds": POKER_RESULT_DISPLAY_SECONDS,
+        "can_reveal": bool(
+            my_seat and table.status == "waiting" and result.get("hand_number") == table.hand_number
+            and result.get("reveal_seat") == my_seat.seat_number and my_seat.hole_cards
+        ),
     }
