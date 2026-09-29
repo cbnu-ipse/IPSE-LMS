@@ -30,15 +30,8 @@
                     <!-- 게임판 -->
                     <div id="gs-game-view" class="gs-game hidden">
                         <div id="gs-opps" class="gs-opps"></div>
-                        <div class="gs-board">
-                            <div class="gs-pile-col">
-                                <div id="gs-pile"></div>
-                                <div id="gs-last-play" class="gs-last-play"></div>
-                            </div>
-                            <div class="gs-floor" id="gs-floor"></div>
-                        </div>
-                        <div class="gs-captured" id="gs-my-captured"></div>
-                        <div id="gs-me-row"></div>
+                        <div class="gs-board" id="gs-board"></div>
+                        <div id="gs-me" class="gs-panel"></div>
                         <div class="gs-hand" id="gs-hand"></div>
                         <div id="gs-center-msg" class="gs-center-msg hidden"></div>
                         <div id="gs-event-pop" class="gs-event-pop hidden"></div>
@@ -304,7 +297,6 @@
 .gs-room-mode { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: #b91c1c; white-space: nowrap; }
 .gs-room-mode--gostop { background: #7c3aed; }
 .gs-lobby-create { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.gs-opps { display: flex; flex-direction: column; gap: 8px; }
 .gs-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .gs-room-player { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
 .gs-room-player img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; }
@@ -317,124 +309,101 @@
 .gs-rules summary { cursor: pointer; font-weight: 800; color: #fff; }
 .gs-rules ul { margin-top: 8px; padding-left: 16px; list-style: disc; display: flex; flex-direction: column; gap: 3px; }
 
-/* ── 게임판 ──────────────────────────────────────────────────────── */
-.gs-game { display: flex; flex-direction: column; gap: 10px; }
-.gs-player {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 6px 10px;
+/* ── 게임판 — 온라인 맞고 배치를 따른다: 위 상대 / 가운데 바닥(더미 중심 12칸) / 아래 나 ── */
+.gs-game { display: flex; flex-direction: column; gap: 8px; }
+.gs-opps { display: flex; gap: 8px; }
+.gs-opps > .gs-panel { flex: 1; min-width: 0; }
+.gs-panel {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 6px 8px;
     border-radius: 12px;
-    background: rgba(0,0,0,.18);
+    background: rgba(0,0,0,.2);
     border: 2px solid transparent;
-    font-size: .8rem;
+    transition: border-color .2s, box-shadow .2s;
 }
-.gs-player--turn { border-color: #fde047; box-shadow: 0 0 0 3px rgba(253,224,71,.2); }
-.gs-player img { width: 32px; height: 32px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,.6); }
-.gs-player-name { font-weight: 800; }
-.gs-player-stack { color: #fde68a; font-weight: 700; font-variant-numeric: tabular-nums; }
-.gs-player-score { background: #fef3c7; color: #92400e; font-weight: 800; border-radius: 999px; padding: 2px 9px; font-size: .74rem; }
-.gs-badge { background: rgba(255,255,255,.14); border-radius: 999px; padding: 2px 8px; font-size: .68rem; font-weight: 800; }
+.gs-panel--turn { border-color: #fde047; box-shadow: 0 0 0 3px rgba(253,224,71,.18); }
+.gs-info { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: .78rem; }
+.gs-info img { width: 28px; height: 28px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,.6); }
+.gs-name { font-weight: 800; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-stack { color: #fde68a; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gs-badge { background: rgba(255,255,255,.14); border-radius: 999px; padding: 2px 8px; font-size: .66rem; font-weight: 800; }
 .gs-badge--go { background: #dc2626; }
-.gs-player-timer { margin-left: auto; font-weight: 800; color: #fde047; font-variant-numeric: tabular-nums; }
-.gs-opp-hand { display: flex; margin-left: auto; }
-.gs-opp-hand .gs-card { margin-left: -18px; }
-.gs-opp-hand .gs-card:first-child { margin-left: 0; }
+.gs-timer { font-weight: 800; color: #fde047; font-variant-numeric: tabular-nums; }
+.gs-score {
+    margin-left: auto;
+    display: inline-flex; align-items: baseline; gap: 2px;
+    background: #fef3c7; color: #92400e;
+    border-radius: 10px; padding: 1px 10px;
+    font-size: .7rem; font-weight: 800;
+}
+.gs-score b { font-size: 1.15rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.gs-opp-hand { display: flex; }
+.gs-opp-hand .gs-card + .gs-card { margin-left: -24px; }
 
-.gs-captured { display: flex; gap: 14px; flex-wrap: wrap; min-height: 44px; padding: 0 4px; }
-.gs-cap-group { display: flex; align-items: flex-end; gap: 4px; }
-.gs-cap-cards { display: flex; }
-.gs-cap-cards .gs-card { margin-left: -14px; }
-.gs-cap-cards .gs-card:first-child { margin-left: 0; }
-.gs-cap-count { font-size: .68rem; font-weight: 800; color: #bbf7d0; white-space: nowrap; }
+/* 먹은 패: 광 / 열끗 / 띠 / 피 네 칸 */
+.gs-cap { display: grid; grid-template-columns: 1fr 1.25fr 1.25fr 2fr; gap: 5px; }
+.gs-zone { min-width: 0; min-height: 66px; padding: 3px 5px 5px; border-radius: 8px; background: rgba(0,0,0,.18); }
+.gs-zone-head { display: flex; justify-content: space-between; font-size: .62rem; font-weight: 800; color: #bbf7d0; }
+.gs-zone-head b { color: #fff; font-size: .72rem; }
+.gs-zone-cards { display: flex; flex-wrap: wrap; row-gap: 2px; padding-right: 20px; margin-top: 2px; }
+.gs-zone-cards .gs-card { margin-right: -20px; }
 
 .gs-board {
-    display: flex; align-items: center; gap: 16px;
-    min-height: 150px;
-    padding: 12px;
-    border-radius: 16px;
-    background: rgba(0,0,0,.12);
-    border: 1px dashed rgba(255,255,255,.18);
-}
-.gs-pile-col { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
-.gs-pile { position: relative; }
-.gs-pile-count { position: absolute; bottom: -8px; right: -8px; background: #fde047; color: #713f12; font-size: .66rem; font-weight: 800; border-radius: 999px; padding: 1px 6px; }
-.gs-last-play { display: flex; align-items: center; gap: 3px; font-size: .62rem; color: #bbf7d0; }
-.gs-floor { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; align-content: center; }
-.gs-floor-group { display: flex; }
-.gs-floor-group .gs-card + .gs-card { margin-left: -24px; }
-.gs-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 76px; padding-top: 4px; }
-
-/* ── 화투 카드 ───────────────────────────────────────────────────── */
-.gs-card {
-    --mc: #166534;
-    position: relative;
-    display: inline-flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr) auto repeat(3, 1fr);
+    grid-template-rows: repeat(2, minmax(92px, auto));
+    gap: 6px 8px;
     align-items: center;
-    justify-content: space-between;
-    width: 44px; height: 66px;
-    padding: 12px 2px 3px;
-    border-radius: 5px;
-    background: #fffbeb;
-    border: 1px solid #1c1917;
-    box-shadow: 0 2px 4px rgba(0,0,0,.35);
-    color: #1c1917;
-    overflow: hidden;
+    justify-items: center;
+    padding: 10px;
+    border-radius: 16px;
+    background: rgba(0,0,0,.14);
+    border: 1px dashed rgba(255,255,255,.16);
+}
+.gs-pile-cell { grid-column: 4; grid-row: 1 / span 2; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 10px; }
+.gs-pile { position: relative; }
+.gs-pile .gs-card { box-shadow: 2px 2px 0 #7f1d1d, 4px 4px 0 #450a0a, 0 6px 12px rgba(0,0,0,.4); }
+.gs-pile-count { position: absolute; bottom: -8px; right: -10px; background: #fde047; color: #713f12; font-size: .66rem; font-weight: 800; border-radius: 999px; padding: 1px 6px; }
+.gs-pending { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: .6rem; color: #fde68a; font-weight: 800; }
+.gs-last-play { display: flex; align-items: center; gap: 3px; font-size: .6rem; color: #bbf7d0; white-space: nowrap; }
+.gs-slot { display: flex; align-items: flex-start; }
+.gs-slot .gs-card + .gs-card { margin-left: -34px; margin-top: 8px; }
+.gs-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 84px; padding-top: 6px; }
+
+/* ── 화투 카드 (static/img/gostop/hwatu.webp 스프라이트, 10열 × 5행) ── */
+.gs-card {
+    position: relative;
+    display: inline-block;
     flex-shrink: 0;
+    width: 50px; height: 75px;
+    border-radius: 5px;
+    background: #fff url("{% static 'img/gostop/hwatu.webp' %}") no-repeat;
+    background-size: 1000% 500%;
+    box-shadow: 0 2px 5px rgba(0,0,0,.45);
+    transform-origin: top left;
     user-select: none;
 }
-.gs-card::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0;
-    height: 9px;
-    background: var(--mc);
-}
-.gs-card-month { position: absolute; top: 0; left: 3px; font-size: .5rem; font-weight: 800; color: #fff; line-height: 9px; }
-.gs-card-plant { font-size: 1.05rem; line-height: 1; }
-.gs-card-mark { font-size: .95rem; line-height: 1; }
-.gs-card-gwang {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 18px; height: 18px; border-radius: 999px;
-    background: #dc2626; color: #fff;
-    font-size: .64rem; font-weight: 800;
-}
-.gs-card-ribbon { width: 100%; height: 11px; font-size: .48rem; font-weight: 800; color: #fff; text-align: center; line-height: 11px; background: #dc2626; }
-.gs-ribbon-cheong { background: #1d4ed8; }
-.gs-ribbon-cho { background: #ea580c; }
-.gs-card-double { font-size: .62rem; font-weight: 800; color: #b91c1c; }
-.gs-card-label { font-size: .5rem; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
-.gs-k-g .gs-card-label { color: #dc2626; }
-
-.gs-m1 { --mc: #166534; } .gs-m2 { --mc: #db2777; } .gs-m3 { --mc: #ec4899; }
-.gs-m4 { --mc: #1f2937; } .gs-m5 { --mc: #7c3aed; } .gs-m6 { --mc: #be123c; }
-.gs-m7 { --mc: #b91c1c; } .gs-m8 { --mc: #334155; } .gs-m9 { --mc: #ca8a04; }
-.gs-m10 { --mc: #ea580c; } .gs-m11 { --mc: #4d7c0f; } .gs-m12 { --mc: #1d4ed8; }
-
-.gs-card--back {
-    padding: 0;
-    background: repeating-linear-gradient(45deg, #b91c1c 0 6px, #991b1b 6px 12px);
-    border-color: #450a0a;
-}
-.gs-card--back::before { display: none; }
+.gs-card--hand { width: 54px; height: 81px; border-radius: 6px; }
+.gs-card--sm { width: 36px; height: 54px; }
+.gs-card--xs { width: 32px; height: 48px; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.gs-card--back { background: repeating-linear-gradient(45deg, #b91c1c 0 5px, #991b1b 5px 10px); border: 1px solid #450a0a; }
 .gs-card--bomb {
-    justify-content: center;
-    padding: 0;
-    background: #1c1917;
-    color: #fde047;
-    font-size: .6rem;
-    font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #1c1917; color: #fde047; font-size: .62rem; font-weight: 800;
 }
-.gs-card--bomb::before { display: none; }
-.gs-card--sm { width: 36px; height: 54px; padding-top: 10px; }
-.gs-card--xs { width: 26px; height: 38px; padding: 9px 1px 1px; }
-.gs-card--xs .gs-card-plant, .gs-card--xs .gs-card-label { display: none; }
-.gs-card--xs .gs-card-mark { font-size: .7rem; }
-.gs-card--xs .gs-card-gwang { width: 14px; height: 14px; font-size: .5rem; }
-.gs-card--xs .gs-card-ribbon { height: 8px; font-size: 0; }
+.gs-bonus-tag {
+    position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+    padding: 0 3px; border-radius: 3px;
+    background: #7c3aed; color: #fff;
+    font-size: .5rem; font-weight: 900; white-space: nowrap;
+}
+.gs-card--xs .gs-bonus-tag { font-size: .4rem; bottom: 1px; }
 
-.gs-card--playable { cursor: pointer; transition: transform .12s; }
-.gs-card--playable:hover { transform: translateY(-6px); }
-.gs-card--match { box-shadow: 0 0 0 2px #fde047, 0 2px 4px rgba(0,0,0,.35); }
-.gs-card--selected { transform: translateY(-10px); box-shadow: 0 0 0 3px #22d3ee, 0 6px 14px rgba(0,0,0,.4); }
+.gs-card--playable { cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.gs-card--playable:hover { transform: translateY(-8px); }
+.gs-card--match { box-shadow: 0 0 0 2px #fde047, 0 2px 6px rgba(0,0,0,.45); }
+.gs-card--hl { box-shadow: 0 0 0 3px #22d3ee, 0 2px 6px rgba(0,0,0,.45); z-index: 2; }
+.gs-card--selected { transform: translateY(-12px); box-shadow: 0 0 0 3px #22d3ee, 0 6px 14px rgba(0,0,0,.4); }
 .gs-card--pick { cursor: pointer; box-shadow: 0 0 0 3px #22d3ee, 0 2px 4px rgba(0,0,0,.35); animation: gs-pulse 1s infinite; z-index: 2; }
 .gs-card--dim { opacity: .45; }
 @keyframes gs-pulse { 50% { transform: translateY(-4px); } }
@@ -561,17 +530,24 @@
 /* ── 모바일 최적화 ───────────────────────────────────────────────── */
 @media (max-width: 640px) {
     section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    .gs-felt { padding: 10px 8px; min-height: 460px; }
-    .gs-card { width: 36px; height: 54px; padding-top: 10px; }
+    .gs-felt { padding: 8px 6px; min-height: 460px; }
+    .gs-card { width: 32px; height: 48px; border-radius: 4px; }
+    .gs-card--hand { width: 40px; height: 60px; }
     .gs-card--sm { width: 30px; height: 45px; }
-    .gs-card--xs { width: 22px; height: 33px; }
-    .gs-card-plant { font-size: .85rem; }
-    .gs-floor-group .gs-card + .gs-card { margin-left: -20px; }
-    .gs-board { gap: 10px; padding: 8px; min-height: 120px; }
-    .gs-hand { gap: 4px; }
+    .gs-card--xs { width: 22px; height: 33px; border-radius: 2px; }
+    .gs-zone-cards { padding-right: 14px; }
+    .gs-zone-cards .gs-card { margin-right: -14px; }
+    .gs-opp-hand .gs-card + .gs-card { margin-left: -16px; }
+    .gs-slot .gs-card + .gs-card { margin-left: -22px; margin-top: 5px; }
+    .gs-board { gap: 4px; padding: 6px 4px; grid-template-rows: repeat(2, minmax(62px, auto)); }
+    .gs-pile-cell { padding: 0 4px; }
+    .gs-opps { flex-direction: column; }
+    .gs-cap { gap: 3px; }
+    .gs-zone { min-height: 48px; padding: 2px 3px 3px; }
+    .gs-hand { gap: 3px; min-height: 64px; }
     .gs-stat-bar { font-size: .7rem; padding: 6px 10px; }
     .gs-action-bar { padding: 10px 12px; }
-    .gs-player { font-size: .72rem; gap: 6px; }
+    .gs-info { font-size: .7rem; gap: 5px; }
 }
 body.gs-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
 body.gs-landscape .gs-outer { border: none; border-radius: 0; box-shadow: none; }
@@ -622,19 +598,17 @@ footer { display: none !important; }
 (function () {
     const CARDS = JSON.parse(document.getElementById('gs-cards-data').textContent);
     const MONTH_NAMES = ['', '송학', '매조', '벚꽃', '흑싸리', '난초', '모란', '홍싸리', '공산', '국화', '단풍', '오동', '비'];
-    const PLANTS = ['', '🌲', '🌼', '🌸', '🌿', '🌱', '🌺', '🍂', '🌕', '🏵️', '🍁', '🍃', '☔'];
-    const ANIMALS = { 2: '🐦', 4: '🐦', 5: '🌉', 6: '🦋', 7: '🐗', 8: '🦆', 9: '🍶', 10: '🦌', 12: '🐦' };
-    const RIBBON_TEXT = { hong: '홍단', cheong: '청단', cho: '' };
     const REASON_LABELS = { stop: '스톱', forfeit: '기권승', chongtong: '총통', '3ppeok': '3뻑' };
+    // 바닥 12칸 (가운데 더미 기준): 채우는 순서대로 [행, 열] — 더미 가까운 칸부터
+    const SLOT_POS = [[1, 3], [2, 5], [1, 5], [2, 3], [1, 2], [2, 6], [1, 6], [2, 2], [1, 1], [2, 7], [1, 7], [2, 1]];
+    const ANIM_MS = 380;
+    const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const lobbyViewEl = document.getElementById('gs-lobby-view');
     const gameViewEl = document.getElementById('gs-game-view');
     const oppsEl = document.getElementById('gs-opps');
-    const meRowEl = document.getElementById('gs-me-row');
-    const myCapEl = document.getElementById('gs-my-captured');
-    const pileEl = document.getElementById('gs-pile');
-    const lastPlayEl = document.getElementById('gs-last-play');
-    const floorEl = document.getElementById('gs-floor');
+    const boardEl = document.getElementById('gs-board');
+    const meEl = document.getElementById('gs-me');
     const handEl = document.getElementById('gs-hand');
     const centerMsgEl = document.getElementById('gs-center-msg');
     const eventPopEl = document.getElementById('gs-event-pop');
@@ -650,18 +624,23 @@ footer { display: none !important; }
     let lastResultKey;  // undefined = 아직 첫 상태를 받기 전 (첫 로드 때 지난 결과 효과음 방지)
     let wasMyTurn = false;
     let chipsPerLeafShown = false;
+    let slotOf = {};    // 월 -> 바닥 칸 번호. 카드가 판 위에서 제자리를 지키도록 판 동안 유지한다
 
     function esc(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
     function month(id) { return Math.floor(id / 4) + 1; }
+    function isBonus(id) { return typeof id === 'number' && id >= 48; }
     function sig(id) {
         const c = CARDS[id];
         return [c.k, c.t, !!c.godori, !!c.gukjin, !!c.bi].join('|');
     }
     function fmt(n) { return Number(n || 0).toLocaleString(); }
+    function clone(o) { return JSON.parse(JSON.stringify(o)); }
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
     function cardLabel(c) {
+        if (c.k === 'bonus') return `보너스 ${c.pi}피`;
         if (c.k === 'g') return c.bi ? '비광' : '광';
         if (c.k === 'y') return c.godori ? '고도리' : c.gukjin ? '국진' : '열끗';
         if (c.k === 't') return c.t === 'hong' ? '홍단' : c.t === 'cheong' ? '청단' : c.t === 'cho' ? '초단' : '띠';
@@ -673,21 +652,14 @@ footer { display: none !important; }
         const size = opts.size ? ` gs-card--${opts.size}` : '';
         const extra = opts.cls ? ` ${opts.cls}` : '';
         const data = opts.data || '';
-        if (id === 'back') return `<span class="gs-card gs-card--back${size}${extra}"></span>`;
+        if (id === 'back') return `<span class="gs-card gs-card--back${size}${extra}" ${data}></span>`;
         if (id === 'bomb') return `<span class="gs-card gs-card--bomb${size}${extra}" ${data}>폭탄</span>`;
         const c = CARDS[id];
-        let mark;
-        if (c.k === 'g') mark = '<span class="gs-card-gwang">光</span>';
-        else if (c.k === 'y') mark = `<span class="gs-card-mark">${ANIMALS[c.m] || '🐦'}</span>`;
-        else if (c.k === 't') mark = `<span class="gs-card-ribbon gs-ribbon-${c.t || 'plain'}">${RIBBON_TEXT[c.t] || ''}</span>`;
-        else if (c.k === 'pp') mark = '<span class="gs-card-double">×2</span>';
-        else mark = '';
-        return `<span class="gs-card gs-m${c.m} gs-k-${c.k}${size}${extra}" title="${c.m}월 ${MONTH_NAMES[c.m]} ${cardLabel(c)}" ${data}>
-            <span class="gs-card-month">${c.m}</span>
-            <span class="gs-card-plant">${PLANTS[c.m]}</span>
-            ${mark}
-            <span class="gs-card-label">${cardLabel(c)}</span>
-        </span>`;
+        // 스프라이트 10열 × 5행, 카드 id 순서대로
+        const x = (id % 10) * 100 / 9, y = Math.floor(id / 10) * 100 / 4;
+        const title = c.k === 'bonus' ? cardLabel(c) : `${c.m}월 ${MONTH_NAMES[c.m]} ${cardLabel(c)}`;
+        const tag = c.k === 'bonus' ? `<span class="gs-bonus-tag">+${c.pi}피</span>` : '';
+        return `<span class="gs-card${size}${extra}" style="background-position:${x}% ${y}%" title="${title}" data-cid="${id}" ${data}>${tag}</span>`;
     }
 
     function avatar(p) {
@@ -752,9 +724,10 @@ footer { display: none !important; }
                     <li>광: 3광 3점(비광 포함 2점), 4광 4점, 5광 15점 · 고도리/홍단/청단/초단 각 5·3·3·3점</li>
                     <li>열끗·띠 5장 1점, 피 10장 1점부터 한 장마다 +1점 (쌍피는 2장)</li>
                     <li>1·2고 +1·+2점, 3고부터 ×2씩. 피박(맞고 7장·고스톱 5장 이하)·광박·멍박·흔들기·폭탄 각 ×2</li>
-                    <li>고박: 고를 불렀던 사람이 지면 다른 패자 몫까지 혼자 냅니다. (3인)</li>
+                    <li>고박: 고를 불렀던 사람이 지면 3인은 다른 패자 몫까지 혼자, 맞고는 2배로 냅니다.</li>
                     <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
+                    <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
                     <li>차례 제한시간 20초. 시간초과 3번 연속 또는 진행 중 퇴장은 기권으로, 남은 사람 각자에게 최소 난 점수만큼 냅니다.</li>
                 </ul>
             </details>`;
@@ -766,46 +739,42 @@ footer { display: none !important; }
         return side === room.me ? '나' : s ? s.display_name : '?';
     }
 
-    function playerRow(seat, room, isMe) {
+    function capHtml(cards) {
+        const zone = (label, list, count) => `<div class="gs-zone">
+                <div class="gs-zone-head"><span>${label}</span><b>${count}</b></div>
+                <div class="gs-zone-cards">${list.map(c => cardHtml(c, { size: 'xs' })).join('')}</div>
+            </div>`;
+        const kind = k => cards.filter(c => CARDS[c].k === k);
+        const pis = cards.filter(c => ['p', 'pp', 'bonus'].includes(CARDS[c].k));
+        const piCount = pis.reduce((n, c) => n + (CARDS[c].k === 'p' ? 1 : CARDS[c].k === 'pp' ? 2 : CARDS[c].pi), 0);
+        return `<div class="gs-cap">${zone('광', kind('g'), kind('g').length)}${zone('열끗', kind('y'), kind('y').length)}`
+            + `${zone('띠', kind('t'), kind('t').length)}${zone('피', pis, piCount)}</div>`;
+    }
+
+    function panelHtml(seat, room, isMe) {
         const g = room.game;
         const side = seat.side;
         const isTurn = !!(g && g.phase !== 'over' && room.status === 'playing' && g.turn === side);
         const badges = [];
         if (g) {
-            badges.push(`<span class="gs-player-score">${g.scores[side]}점</span>`);
             if (g.go[side]) badges.push(`<span class="gs-badge gs-badge--go">${g.go[side]}고</span>`);
-            if (g.shakes[side]) badges.push(`<span class="gs-badge">흔들 ${g.shakes[side]}</span>`);
+            if (g.shakes[side]) badges.push(`<span class="gs-badge">흔들·폭탄 ×${2 ** g.shakes[side]}</span>`);
             if (g.ppeok[side]) badges.push(`<span class="gs-badge">뻑 ${g.ppeok[side]}</span>`);
         }
-        let right = '';
+        const timer = isTurn && g.turn_seconds_left != null
+            ? `<span class="gs-timer"><i class="fa-regular fa-clock"></i> <span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
+        const score = g ? `<span class="gs-score"><b>${g.scores[side]}</b>점</span>` : '';
+        let oppHand = '';
         if (!isMe && g) {
             const cards = g.hands
                 ? g.hands[side].map(c => cardHtml(c, { size: 'xs' })).join('')
                 : Array.from({ length: g.hand_counts[side] }, () => cardHtml('back', { size: 'xs' })).join('');
-            right = `<span class="gs-opp-hand">${cards}</span>`;
+            oppHand = `<span class="gs-opp-hand" data-opp-hand="${side}">${cards}</span>`;
         }
-        const timer = isTurn && g.turn_seconds_left != null
-            ? `<span class="gs-player-timer"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
-        return `<div class="gs-player${isMe ? ' gs-player--me' : ''}${isTurn ? ' gs-player--turn' : ''}">
-            ${avatar(seat)}<span class="gs-player-name">${esc(seat.display_name)}${isMe ? ' (나)' : ''}</span>
-            <span class="gs-player-stack"><i class="fa-solid fa-coins"></i> ${fmt(seat.stack)}</span>
-            ${badges.join('')}${timer}${right}
-        </div>`;
-    }
-
-    function capturedHtml(cards) {
-        const groups = [
-            ['광', cards.filter(c => CARDS[c].k === 'g'), null],
-            ['열끗', cards.filter(c => CARDS[c].k === 'y'), null],
-            ['띠', cards.filter(c => CARDS[c].k === 't'), null],
-            ['피', cards.filter(c => CARDS[c].k === 'p' || CARDS[c].k === 'pp'),
-                cards.reduce((n, c) => n + (CARDS[c].k === 'p' ? 1 : CARDS[c].k === 'pp' ? 2 : 0), 0)],
-        ];
-        return groups.filter(([, list]) => list.length).map(([label, list, count]) =>
-            `<div class="gs-cap-group">
-                <div class="gs-cap-cards">${list.map(c => cardHtml(c, { size: 'xs' })).join('')}</div>
-                <span class="gs-cap-count">${label} ${count != null ? count : list.length}</span>
-            </div>`).join('');
+        const info = `<div class="gs-info">${avatar(seat)}<span class="gs-name">${esc(seat.display_name)}${isMe ? ' (나)' : ''}</span>
+            <span class="gs-stack"><i class="fa-solid fa-coins"></i> ${fmt(seat.stack)}</span>${badges.join('')}${timer}${oppHand}${score}</div>`;
+        const cap = g ? capHtml(g.captured[side]) : '';
+        return { html: isMe ? cap + info : info + cap, turn: isTurn };
     }
 
     function floorPickable(g) {
@@ -813,6 +782,16 @@ footer { display: none !important; }
         if (g.phase === 'choose_flip' && g.pending_options) return g.pending_options;
         if (sel && sel.need === 'target') return sel.options;
         return null;
+    }
+
+    function assignSlots(floor) {
+        const months = [...new Set(floor.map(month))];
+        Object.keys(slotOf).forEach(m => { if (!months.includes(Number(m))) delete slotOf[m]; });
+        months.forEach(m => {
+            if (slotOf[m] != null) return;
+            const used = new Set(Object.values(slotOf));
+            slotOf[m] = SLOT_POS.findIndex((_, i) => !used.has(i));
+        });
     }
 
     function renderGame(state) {
@@ -824,68 +803,87 @@ footer { display: none !important; }
         for (let i = 1; i < room.capacity; i++) {
             const side = (room.me + i) % room.capacity;
             const seat = room.seats.find(s => s.side === side);
-            others.push(seat
-                ? playerRow(seat, room, false) + `<div class="gs-captured">${g ? capturedHtml(g.captured[side]) : ''}</div>`
-                : `<div class="gs-player"><span class="gs-player-name">빈 자리 — 기다리는 중...</span></div>`);
+            if (!seat) {
+                others.push(`<div class="gs-panel"><div class="gs-info"><span class="gs-name">빈 자리 — 기다리는 중...</span></div></div>`);
+                continue;
+            }
+            const p = panelHtml(seat, room, false);
+            others.push(`<div class="gs-panel${p.turn ? ' gs-panel--turn' : ''}">${p.html}</div>`);
         }
         oppsEl.innerHTML = others.join('');
-        meRowEl.innerHTML = playerRow(mySeat, room, true);
+        const me = panelHtml(mySeat, room, true);
+        meEl.innerHTML = me.html;
+        meEl.classList.toggle('gs-panel--turn', me.turn);
 
         if (!g) {
-            myCapEl.innerHTML = floorEl.innerHTML = handEl.innerHTML = pileEl.innerHTML = lastPlayEl.innerHTML = '';
+            boardEl.innerHTML = handEl.innerHTML = '';
             return;
         }
-        myCapEl.innerHTML = capturedHtml(g.captured[room.me]);
 
-        pileEl.innerHTML = g.pile_count
-            ? `<div class="gs-pile">${cardHtml('back', { size: 'sm' })}<span class="gs-pile-count">${g.pile_count}</span></div>`
-            : '';
+        // 가운데: 더미 + 뒤집은 패(선택 대기) + 직전 수
+        let pileCell = g.pile_count
+            ? `<div class="gs-pile" id="gs-pile">${cardHtml('back', { size: 'sm' })}<span class="gs-pile-count">${g.pile_count}</span></div>`
+            : '<div class="gs-pile" id="gs-pile"></div>';
         if (g.phase === 'choose_flip' && g.pending_card != null) {
-            lastPlayEl.innerHTML = `<span>뒤집은 패</span>${cardHtml(g.pending_card, { size: 'xs' })}`;
-        } else if (g.last_play) {
+            pileCell += `<div class="gs-pending">뒤집은 패${cardHtml(g.pending_card, { size: 'sm', cls: 'gs-card--hl' })}</div>`;
+        } else if (g.last_play && g.last_play.card !== undefined) {
             const lp = g.last_play;
-            const played = lp.card === 'bomb' ? '' : cardHtml(lp.card, { size: 'xs' });
-            const flip = lp.flip != null ? cardHtml(lp.flip, { size: 'xs' }) : '';
-            lastPlayEl.innerHTML = `<span>${esc(seatName(room, lp.side))}</span>${played}${flip ? '→' + flip : ''}`;
-        } else {
-            lastPlayEl.innerHTML = '';
+            pileCell += `<div class="gs-last-play">직전: ${esc(seatName(room, lp.side))}</div>`;
         }
 
-        // 바닥: 같은 월끼리 겹쳐서 표시
+        // 바닥: 월마다 고정 칸에 겹쳐서
         const pickable = floorPickable(g);
         const myPlayTurn = g.my_turn && g.phase === 'play' && room.status === 'playing';
         const handMonths = new Set(g.my_hand.map(month));
-        const groups = [];
-        const byMonth = {};
-        g.floor.forEach(c => {
-            const m = month(c);
-            if (!byMonth[m]) { byMonth[m] = []; groups.push(byMonth[m]); }
-            byMonth[m].push(c);
-        });
-        floorEl.innerHTML = groups.map(list => `<div class="gs-floor-group">${list.map(c => {
+        assignSlots(g.floor);
+        const bySlot = {};
+        g.floor.forEach(c => { (bySlot[slotOf[month(c)]] = bySlot[slotOf[month(c)]] || []).push(c); });
+        const slots = SLOT_POS.map(([r, col], i) => `<div class="gs-slot" style="grid-row:${r};grid-column:${col}">${(bySlot[i] || []).map(c => {
             let cls = '';
             if (pickable) cls = pickable.includes(c) ? 'gs-card--pick' : 'gs-card--dim';
             else if (myPlayTurn && handMonths.has(month(c))) cls = 'gs-card--match';
             return cardHtml(c, { cls, data: pickable && pickable.includes(c) ? `data-pick="${c}"` : '' });
         }).join('')}</div>`).join('');
+        boardEl.innerHTML = `${slots}<div class="gs-pile-cell">${pileCell}</div>`;
 
         // 손패
         const floorMonths = new Set(g.floor.map(month));
         const hand = g.my_hand.map(c => {
             let cls = myPlayTurn ? 'gs-card--playable' : '';
-            if (myPlayTurn && floorMonths.has(month(c))) cls += ' gs-card--match';
+            if (myPlayTurn && (floorMonths.has(month(c)) || isBonus(c))) cls += ' gs-card--match';
             if (sel && sel.card === c) cls += ' gs-card--selected';
-            return cardHtml(c, { cls, data: myPlayTurn ? `data-hand="${c}"` : '' });
+            return cardHtml(c, { size: 'hand', cls, data: myPlayTurn ? `data-hand="${c}"` : '' });
         });
         for (let i = 0; i < g.my_bombs; i++) {
-            hand.push(cardHtml('bomb', { cls: myPlayTurn ? 'gs-card--playable' : '', data: myPlayTurn ? 'data-hand="bomb"' : '' }));
+            hand.push(cardHtml('bomb', { size: 'hand', cls: myPlayTurn ? 'gs-card--playable' : '', data: myPlayTurn ? 'data-hand="bomb"' : '' }));
         }
         handEl.innerHTML = hand.join('');
     }
 
+    // 손패에 마우스를 올리면 같은 월 바닥 패를 강조 (PC)
+    handEl.addEventListener('mouseover', (e) => {
+        const card = e.target.closest('[data-hand]');
+        boardEl.querySelectorAll('.gs-card--hl').forEach(el => el.classList.remove('gs-card--hl'));
+        if (!card || card.dataset.hand === 'bomb') return;
+        const m = month(Number(card.dataset.hand));
+        boardEl.querySelectorAll('.gs-slot [data-cid]').forEach(el => {
+            if (month(Number(el.dataset.cid)) === m) el.classList.add('gs-card--hl');
+        });
+    });
+    handEl.addEventListener('mouseleave', () => {
+        boardEl.querySelectorAll('.gs-card--hl').forEach(el => el.classList.remove('gs-card--hl'));
+    });
+
+    function transferLines(r) {
+        return (r.transfers || []).filter(t => t.points > 0).map(t => {
+            const tags = [...(t.baks || []), ...(t.gobak ? ['고박'] : []), ...(t.label ? [t.label] : [])];
+            return `${esc(t.from_name)} → ${esc(t.to_name)} ${t.points}점 · ${fmt(t.chips)}칩${tags.length ? ` (${tags.join('·')})` : ''}`;
+        });
+    }
+
     function resultText(r) {
         if (r.nagari) {
-            return { title: '나가리!', sub: `다음 판은 점수 ×${r.carry}`, detail: '' };
+            return { title: '나가리!', sub: `다음 판은 점수 ×${r.carry}`, detail: transferLines(r).join('<br>') };
         }
         const title = r.reason === 'forfeit'
             ? `${esc(r.forfeit_name)} 기권`
@@ -895,10 +893,7 @@ footer { display: none !important; }
         if (r.go) parts.push(`${r.go}고`);
         if (r.shakes) parts.push(`흔들기/폭탄 ×${2 ** r.shakes}`);
         if (r.carry > 1) parts.push(`나가리 ×${r.carry}`);
-        const lines = (r.transfers || []).filter(t => t.points > 0).map(t => {
-            const tags = [...(t.baks || []), ...(t.gobak ? ['고박'] : [])];
-            return `${esc(t.from_name)} → ${esc(t.to_name)} ${t.points}점 · ${fmt(t.chips)}칩${tags.length ? ` (${tags.join('·')})` : ''}`;
-        });
+        const lines = transferLines(r);
         const net = r.my_net || 0;
         return {
             title: `${net > 0 ? '🎉 ' : ''}${title}`,
@@ -1021,9 +1016,9 @@ footer { display: none !important; }
         lastResultKey = key;
     }
 
-    function render(state) {
+    function render(state, intermediate) {
         const room = state.room;
-        document.getElementById('gs-room-label').textContent = room ? `${room.id}번 방` : '방 목록';
+        document.getElementById('gs-room-label').textContent = room ? `${room.id}번 방 · ${room.mode_label}` : '방 목록';
         document.getElementById('gs-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
         document.getElementById('gs-my-wallet-top').textContent = fmt(state.wallet_chips);
 
@@ -1036,14 +1031,124 @@ footer { display: none !important; }
         renderCenter(state);
         renderActionBar(state);
         renderChipPanel(state);
-        showEvents(state);
-        playSounds(state);
+        if (!intermediate) {
+            showEvents(state);
+            playSounds(state);
+        }
+    }
+
+    // ── 카드 이동 애니메이션 (FLIP) ─────────────────────────────────
+    // 다시 그리기 전 카드(data-cid)별 위치를 기억해 두고, 다시 그린 뒤 같은 카드를 이전
+    // 위치에서 새 위치로 날려 보낸다. 새로 나타난 카드는 더미(또는 낸 상대의 손패)에서 온다.
+    function snapshot() {
+        const rects = new Map();
+        gameViewEl.querySelectorAll('[data-cid]').forEach(el => rects.set(el.dataset.cid, el.getBoundingClientRect()));
+        const pile = document.getElementById('gs-pile');
+        const opp = {};
+        gameViewEl.querySelectorAll('[data-opp-hand]').forEach(el => { opp[el.dataset.oppHand] = el.getBoundingClientRect(); });
+        return { rects, pile: pile && pile.getBoundingClientRect(), opp };
+    }
+
+    function fly(el, from, delay) {
+        const to = el.getBoundingClientRect();
+        if (!from || !to.width) return;
+        const dx = from.left - to.left, dy = from.top - to.top, s = from.width / to.width;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(s - 1) < .02) return;
+        el.style.zIndex = 30;
+        const anim = el.animate(
+            [{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }],
+            { duration: ANIM_MS, delay: delay || 0, easing: 'cubic-bezier(.2,.75,.3,1)', fill: 'backwards' },
+        );
+        anim.onfinish = anim.oncancel = () => { el.style.zIndex = ''; };
+    }
+
+    function animateFrom(before, playedBy) {
+        if (REDUCED_MOTION) return;
+        gameViewEl.querySelectorAll('[data-cid]').forEach(el => {
+            const cid = el.dataset.cid;
+            let from = before.rects.get(cid);
+            if (!from) from = (playedBy && playedBy.card === Number(cid) && before.opp[playedBy.side]) || before.pile;
+            fly(el, from);
+        });
+    }
+
+    function animateDeal() {
+        // 새 판의 더미 위치에서 출발 (대기 화면이나 지난 판 끝엔 더미가 없거나 비어 있다)
+        const pile = document.getElementById('gs-pile');
+        if (REDUCED_MOTION || !pile) return 0;
+        const from = pile.getBoundingClientRect();
+        const els = [...handEl.querySelectorAll('.gs-card'), ...oppsEl.querySelectorAll('.gs-opp-hand .gs-card'),
+            ...boardEl.querySelectorAll('.gs-slot .gs-card')];
+        els.forEach((el, i) => fly(el, from, i * 40));
+        return els.length * 40 + ANIM_MS;
+    }
+
+    // 한 턴(낸 패 → 뒤집은 패 → 먹기)을 단계별 상태로 쪼갠다. 서버는 턴 결과만 보내므로
+    // 직전 상태에 낸 패/뒤집은 패를 바닥에 올린 중간 상태를 만들어 차례로 그린다.
+    function buildSteps(prev, next) {
+        const pg = prev && prev.room && prev.room.game;
+        const ng = next.room && next.room.game;
+        // 방에 있다가 판이 시작될 때만 배분 연출 (새로고침으로 진행 중인 판을 받을 땐 생략)
+        if (!pg || !ng || prev.room.id !== next.room.id) return [{ state: next, deal: !!(prev && prev.room && ng && !pg && prev.room.id === next.room.id) }];
+        if (ng.pile_count > pg.pile_count) return [{ state: next, deal: true }];  // 새 판
+        const lp = ng.last_play;
+        if (!lp || JSON.stringify(lp) === JSON.stringify(pg.last_play)
+            || lp.bonus || typeof lp.card !== 'number' || isBonus(lp.card)) {
+            return [{ state: next }];
+        }
+        const me = prev.room.me;
+        const s1 = clone(prev);
+        const g1 = s1.room.game;
+        g1.my_turn = false;
+        g1.events = [];
+        if (lp.side === me) g1.my_hand = g1.my_hand.filter(c => c !== lp.card);
+        else g1.hand_counts[lp.side] -= 1;
+        if (!g1.floor.includes(lp.card)) g1.floor.push(lp.card);
+        const steps = [{ state: s1, playedBy: lp, wait: ANIM_MS + 120 }];
+        if (lp.flip != null && !(ng.phase === 'choose_flip' && ng.pending_card === lp.flip)) {
+            const s2 = clone(s1);
+            const g2 = s2.room.game;
+            g2.floor.push(lp.flip);
+            g2.pile_count = Math.max(0, g2.pile_count - 1 - (lp.bonus_flips || []).length);
+            g2.captured[lp.side] = g2.captured[lp.side].concat(lp.bonus_flips || []);
+            steps.push({ state: s2, wait: ANIM_MS + 160 });
+        }
+        steps.push({ state: next });
+        return steps;
+    }
+
+    const queue = [];
+    let pumping = false;
+    async function pump() {
+        pumping = true;
+        while (queue.length) {
+            const { state, receivedAt } = queue.shift();
+            // 밀려 있으면(백그라운드 탭 등) 애니메이션 없이 따라잡는다
+            const steps = queue.length ? [{ state }] : buildSteps(lastState, state);
+            for (const step of steps) {
+                const final = step.state === state;
+                const before = snapshot();
+                if (final) {
+                    lastState = state;
+                    lastStateAt = receivedAt;
+                }
+                if (step.deal) slotOf = {};
+                render(step.state, !final);
+                if (step.deal) {
+                    await sleep(animateDeal());
+                } else {
+                    animateFrom(before, step.playedBy);
+                    if (!final && window.GameSound) window.GameSound.play('tap');
+                    if (step.wait) await sleep(step.wait);
+                }
+            }
+        }
+        pumping = false;
     }
 
     function applyState(state) {
-        lastState = state;
-        lastStateAt = Date.now();
-        render(state);
+        queue.push({ state, receivedAt: Date.now() });
+        if (!pumping) pump();
     }
 
     function showToast(message) {
