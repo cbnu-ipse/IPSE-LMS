@@ -194,10 +194,10 @@ def community_ranking(request):
     ranking_rows = []
 
     if board == "leaves":
-        # 보유 칩(지갑 + 포커 좌석 스택)도 낙엽으로 환전했다고 가정해 합산한다.
+        # 보유 칩(지갑 + 포커 좌석 스택 + 맞고 방 스택)도 낙엽으로 환전했다고 가정해 합산한다.
         # 실제 환전(cash_out_chips)과 같이 1낙엽 미만 칩은 버린다.
         from django.db.models import Sum
-        from game.models import POKER_CHIPS_PER_LEAF, PokerChipWallet, PokerSeat
+        from game.models import POKER_CHIPS_PER_LEAF, MatgoRoom, PokerChipWallet, PokerSeat
 
         chips_by_user = {}
         for uid, chips in PokerChipWallet.objects.filter(chips__gt=0).values_list("user_id", "chips"):
@@ -208,6 +208,10 @@ def community_ranking(request):
         )
         for row in seat_stacks:
             chips_by_user[row["user_id"]] = chips_by_user.get(row["user_id"], 0) + row["total"]
+        for room in MatgoRoom.objects.values("host_id", "host_stack", "guest_id", "guest_stack"):
+            for uid, stack in ((room["host_id"], room["host_stack"]), (room["guest_id"], room["guest_stack"])):
+                if uid and stack:
+                    chips_by_user[uid] = chips_by_user.get(uid, 0) + stack
 
         qs = (
             User.objects.filter(is_active=True)

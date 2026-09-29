@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    HighLowSession, HighLowPlayLog,
+    HighLowSession, HighLowPlayLog, MatgoRoom, MatgoGameLog,
 )
 
 
@@ -106,3 +106,17 @@ class HighLowPlayLogAdmin(admin.ModelAdmin):
     list_filter = ("result",)
     search_fields = ("user__username",)
     ordering = ("-created_at",)
+
+
+@admin.register(MatgoRoom)
+class MatgoRoomAdmin(admin.ModelAdmin):
+    list_display = ("id", "host", "host_stack", "guest", "guest_stack", "status", "carry_multiplier", "updated_at")
+    list_filter = ("status",)
+    search_fields = ("host__username", "guest__username")
+
+
+@admin.register(MatgoGameLog)
+class MatgoGameLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "room_number", "winner", "loser", "points", "chips", "ended_at")
+    search_fields = ("winner__username", "loser__username")
+    ordering = ("-ended_at",)

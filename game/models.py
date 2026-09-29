@@ -530,3 +530,73 @@ class HighLowPlayLog(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.streak}연속 ({self.get_result_display()})"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 맞고(2인 고스톱) — 방 여러 개, 판돈은 포커와 같은 칩 지갑(PokerChipWallet).
+#
+# 입장 시 바이인만큼 지갑에서 방 스택으로 옮기고, 판마다 점수 × 점당 칩을
+# 스택끼리 정산한다. 퇴장 시 남은 스택은 지갑으로 돌아간다. 한 판의 진행
+# 상태(덱/손패/바닥/먹은 패 등)는 전부 MatgoRoom.state JSON 하나에 담는다.
+# 실제 규칙/상태머신은 game/matgo_engine.py 에 있다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+MATGO_BUY_IN = 5 * POKER_CHIPS_PER_LEAF  # 입장 시 지갑에서 옮기는 칩 (5낙엽)
+MATGO_CHIPS_PER_POINT = 100  # 점당 칩 (1낙엽 = 10점)
+
+
+class MatgoRoom(models.Model):
+    STATUS_CHOICES = [("waiting", "대기 중"), ("playing", "진행 중")]
+
+    host = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="matgo_host_rooms", verbose_name="방장"
+    )
+    guest = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="matgo_guest_rooms", verbose_name="상대"
+    )
+    host_stack = models.PositiveIntegerField(default=0, verbose_name="방장 스택")
+    guest_stack = models.PositiveIntegerField(default=0, verbose_name="상대 스택")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="waiting")
+    state = models.JSONField(default=dict, blank=True, verbose_name="판 진행 상태 (서버 전용)")
+    turn_deadline = models.DateTimeField(null=True, blank=True, verbose_name="현재 차례 제한시각")
+    next_game_at = models.DateTimeField(null=True, blank=True, verbose_name="다음 판 시작 예정시각")
+    carry_multiplier = models.PositiveSmallIntegerField(default=1, verbose_name="나가리 누적 배수")
+    next_first = models.PositiveSmallIntegerField(default=0, verbose_name="다음 판 선 (0=방장, 1=상대)")
+    last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 판 결과 요약")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "맞고 방"
+        verbose_name_plural = "맞고 방 목록"
+
+    def __str__(self):
+        return f"맞고 {self.pk}번 방 ({self.get_status_display()})"
+
+
+class MatgoGameLog(models.Model):
+    """칩 이동 결과만 남긴다. 나가리 판은 winner/loser가 비어 있다."""
+    room_number = models.PositiveIntegerField(verbose_name="방 번호")
+    winner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="matgo_wins", verbose_name="승자"
+    )
+    loser = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="matgo_losses", verbose_name="패자"
+    )
+    points = models.PositiveIntegerField(default=0, verbose_name="최종 점수")
+    chips = models.PositiveIntegerField(default=0, verbose_name="이동한 칩")
+    detail = models.JSONField(default=dict, blank=True, verbose_name="점수 내역")
+    ended_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ended_at"]
+        verbose_name = "맞고 판 기록"
+        verbose_name_plural = "맞고 판 기록 목록"
+
+    def __str__(self):
+        return f"{self.room_number}번 방 - {self.points}점 / {self.chips}칩"
