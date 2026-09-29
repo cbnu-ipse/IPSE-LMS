@@ -413,3 +413,27 @@ class PokerWatchdogResilienceTestCase(TestCase):
         self.assertGreaterEqual(call_count["n"], 2)  # 첫 실패 후 재시도가 실제로 일어났다
         await database_sync_to_async(self.table.refresh_from_db)()
         self.assertEqual(self.table.hand_number, 1)  # 재시도에서 다음 핸드가 정상적으로 시작됐다
+
+
+class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
+    def test_existing_six_seat_table_is_filled_to_eight(self):
+        table = PokerTable.get_solo()
+        table.seats.filter(seat_number__gte=6).delete()  # 배포 전 6좌석 테이블 흉내
+        PokerTable.get_solo()
+        self.assertEqual(list(table.seats.values_list("seat_number", flat=True)), list(range(8)))
+
+    def test_other_players_cards_are_not_sent_before_showdown(self):
+        table = PokerTable.get_solo()
+        me = User.objects.create_user(username="me", password="x")
+        other = User.objects.create_user(username="other", password="x")
+        for n, u, cards in ((0, me, ["AS", "KS"]), (7, other, ["2H", "3D"])):
+            PokerSeat.objects.filter(table=table, seat_number=n).update(user=u, status="active", stack=100, hole_cards=cards)
+        table.status, table.round = "playing", "flop"
+        table.save()
+        seats = {s["seat_number"]: s for s in poker_engine.get_state_for(me)["seats"]}
+        self.assertEqual(seats[0]["hole_cards"], ["AS", "KS"])
+        self.assertEqual(seats[7]["hole_cards"], [])
+        table.round = "showdown"
+        table.save()
+        seats = {s["seat_number"]: s for s in poker_engine.get_state_for(me)["seats"]}
+        self.assertEqual(seats[7]["hole_cards"], ["2H", "3D"])

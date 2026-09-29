@@ -351,14 +351,14 @@ class PatternRecallScore(models.Model):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 온라인 포커 (텍사스 홀덤, 6인 고정 테이블 1개)
+# 온라인 포커 (텍사스 홀덤, 8인 고정 테이블 1개)
 #
 # 다른 미니게임과 달리 플레이어끼리 낙엽을 걸고 뺏고 따는 제로섬 베팅이라
 # 별도의 시즌 랭킹/점수 모델이 아닌, 실시간 테이블 상태를 DB에 영속화하는
 # 구조로 만든다. 실제 상태머신 로직은 game/poker_engine.py 에 있다.
 # ─────────────────────────────────────────────────────────────────────────────
 
-POKER_SEATS = 6
+POKER_SEATS = 8
 POKER_CHIPS_PER_LEAF = 1000  # 1낙엽 = 1000칩 환전 비율
 POKER_BUY_IN_LEAVES = 5  # 바이인 시 차감되는 낙엽 수 (5낙엽 = 5000칩)
 # 블라인드는 전체 재화 스코프를 낮추기 위해 낙엽 환전 비율과 무관하게
@@ -399,7 +399,7 @@ class PokerTable(models.Model):
 
     @classmethod
     def get_solo(cls):
-        """싱글턴 테이블과 6개 좌석을 보장해서 반환한다."""
+        """싱글턴 테이블과 POKER_SEATS개 좌석을 보장해서 반환한다 (좌석 수를 늘리면 부족한 좌석을 여기서 채운다)."""
         table, _ = cls.objects.get_or_create(pk=1)
         existing = set(table.seats.values_list("seat_number", flat=True))
         missing = [n for n in range(POKER_SEATS) if n not in existing]

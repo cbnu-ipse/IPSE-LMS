@@ -37,6 +37,8 @@
                             <div class="pk-seat" data-seat="3"></div>
                             <div class="pk-seat" data-seat="4"></div>
                             <div class="pk-seat" data-seat="5"></div>
+                            <div class="pk-seat" data-seat="6"></div>
+                            <div class="pk-seat" data-seat="7"></div>
                         </div>
                         <!-- 핸드 결과(5초) / 다음 핸드 카운트다운 — 항상 한 번에 하나만 표시 -->
                         <div id="pk-center-msg" class="pk-center-msg hidden"></div>
@@ -403,16 +405,27 @@
     align-items: center;
     gap: 2px;
 }
+/* 8자리: 아래 줄 7·0·1, 오른쪽 2, 위 줄 3·4·5, 왼쪽 6 (번호 순서대로 테이블을 한 바퀴 돈다) */
 .pk-seat[data-seat="0"] { bottom: -8%; left: 50%; transform: translateX(-50%); }
-.pk-seat[data-seat="1"] { bottom: 6%; right: -6%; }
-.pk-seat[data-seat="2"] { top: 6%; right: -6%; }
-.pk-seat[data-seat="3"] { top: -8%; left: 50%; transform: translateX(-50%); }
-.pk-seat[data-seat="4"] { top: 6%; left: -6%; }
-.pk-seat[data-seat="5"] { bottom: 6%; left: -6%; }
-/* 위쪽 자리(2/3/4)는 앵커가 top이라 기본 방향(column)이면 카드→박스 순서로
+.pk-seat[data-seat="1"] { bottom: -6%; right: 8%; }
+.pk-seat[data-seat="2"] { top: 50%; right: -10%; transform: translateY(-50%); }
+.pk-seat[data-seat="3"] { top: -6%; right: 8%; }
+.pk-seat[data-seat="4"] { top: -8%; left: 50%; transform: translateX(-50%); }
+.pk-seat[data-seat="5"] { top: -6%; left: 8%; }
+.pk-seat[data-seat="6"] { top: 50%; left: -10%; transform: translateY(-50%); }
+.pk-seat[data-seat="7"] { bottom: -6%; left: 8%; }
+/* 위쪽 자리(3/4/5)는 앵커가 top이라 기본 방향(column)이면 카드→박스 순서로
    테이블 중앙 쪽으로 쭉 밀려 내려온다. 박스가 위쪽 가장자리에 붙도록 뒤집는다. */
-.pk-seat[data-seat="2"], .pk-seat[data-seat="3"], .pk-seat[data-seat="4"] {
+.pk-seat[data-seat="3"], .pk-seat[data-seat="4"], .pk-seat[data-seat="5"] {
     flex-direction: column-reverse;
+}
+/* 가운데 자리(0·4번)는 카드를 테이블 중앙 쪽에 두면 공동 카드/POT를 가리므로 아바타 오른쪽에
+   붙인다. 나머지 자리는 가로로 공동 카드와 안 겹쳐서 그대로 둔다. */
+.pk-seat[data-seat="0"] .pk-seat-cards,
+.pk-seat[data-seat="4"] .pk-seat-cards {
+    position: absolute;
+    top: 12px;
+    left: calc(50% + 32px);
 }
 
 .pk-empty-btn {
@@ -778,7 +791,7 @@ footer { display: none !important; }
 <script src="{% static 'js/game-sound.js' %}"></script>
 <script>
 (function () {
-    const SEAT_COUNT = 6;
+    const SEAT_COUNT = 8;
     const seatsEl = Array.from({length: SEAT_COUNT}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
     const communityEl = document.getElementById('pk-community-cards');
     const potEl = document.getElementById('pk-pot');

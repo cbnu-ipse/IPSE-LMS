@@ -1,5 +1,5 @@
 """
-온라인 포커 (텍사스 홀덤, 6인 고정 테이블 1개) 상태머신.
+온라인 포커 (텍사스 홀덤, 8인 고정 테이블 1개) 상태머신.
 
 테이블은 싱글턴(PokerTable.get_solo())이고, 모든 상태 변경 함수는
 `transaction.atomic()` + `select_for_update()` 로 테이블 전체를 잠그고 동작한다.
@@ -760,12 +760,8 @@ def get_state_for(user):
             return {"seat_number": s.seat_number, "empty": True}
         is_owner = my_seat is not None and my_seat.seat_number == s.seat_number
         revealed_at_showdown = table.round == "showdown" and s.status in ("active", "all_in")
-        if is_owner or revealed_at_showdown:
-            hole_cards = s.hole_cards
-        elif s.status in ("active", "all_in", "folded"):
-            hole_cards = ["??", "??"]
-        else:
-            hole_cards = []
+        # 남의 카드는 쇼다운 공개 때만 보낸다 — 뒷면 두 장을 그리면 공동 카드를 가려서 뺐다
+        hole_cards = s.hole_cards if is_owner or revealed_at_showdown else []
         return {
             "seat_number": s.seat_number,
             "empty": False,
