@@ -469,3 +469,17 @@ class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
         seen, _ = self._cards_seen_by(other)
         self.assertEqual(seen[0], ["AS", "AH"])
         self.assertFalse(self._cards_seen_by(me)[1]["can_reveal"])
+
+
+class PokerSitWithAllChipsTestCase(TestCase):
+    def test_sit_brings_whole_wallet_and_requires_minimum(self):
+        PokerTable.get_solo()
+        rich = User.objects.create_user(username="rich", password="x")
+        poor = User.objects.create_user(username="poor", password="x")
+        PokerChipWallet.objects.create(user=rich, chips=poker_engine.POKER_BUY_IN * 3 + 123)
+        PokerChipWallet.objects.create(user=poor, chips=poker_engine.POKER_BUY_IN - 1)
+        self.assertEqual(poker_engine.sit_down(rich, 0), (True, None))
+        self.assertEqual(PokerSeat.objects.get(seat_number=0).stack, poker_engine.POKER_BUY_IN * 3 + 123)
+        self.assertEqual(PokerChipWallet.objects.get(user=rich).chips, 0)
+        self.assertFalse(poker_engine.sit_down(poor, 1)[0])
+        self.assertEqual(PokerChipWallet.objects.get(user=poor).chips, poker_engine.POKER_BUY_IN - 1)

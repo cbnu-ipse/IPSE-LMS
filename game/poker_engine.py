@@ -17,8 +17,8 @@ select_for_update로 자리를 잠그므로 동시 클릭이 와도 한 명만 �
 
 공개 함수(뷰/컨슈머에서 호출):
     get_state_for(user)         — 접속자 시점의 테이블 상태 스냅샷
-    sit_down(user, seat_number) — 착석. 칩 지갑에서 바이인만큼 차감해 스택으로
-                                   옮긴다. 지갑 잔액이 바이인 미만이면 착석 불가.
+    sit_down(user, seat_number) — 착석. 칩 지갑 전부를 스택으로 옮긴다.
+                                   지갑 잔액이 최소 바이인 미만이면 착석 불가.
     stand_up(user)              — 퇴장 (남은 칩 → 개인 칩 지갑으로 보관)
     buy_chips(user, leaves)     — 낙엽을 칩으로 전환해 칩 지갑에 채운다. 자리에
                                    앉아있는 동안은 불가 — 일어난 뒤에만 가능.
@@ -230,12 +230,14 @@ def sit_down(user, seat_number):
 
         wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
         if not wallet or wallet.chips < POKER_BUY_IN:
-            return False, f"칩이 부족합니다. 먼저 낙엽을 칩으로 충전해주세요. (필요 칩: {POKER_BUY_IN})"
-        wallet.chips -= POKER_BUY_IN
+            return False, f"칩이 부족합니다. 먼저 낙엽을 칩으로 충전해주세요. (최소 칩: {POKER_BUY_IN})"
+        # 최소 바이인 이상이면 보관 칩 전부를 들고 앉는다
+        stack = wallet.chips
+        wallet.chips = 0
         wallet.save(update_fields=["chips"])
 
         seat.user = user
-        seat.stack = POKER_BUY_IN
+        seat.stack = stack
         seat.status = "out" if table.status == "playing" else "active"
         seat.current_bet = 0
         seat.contributed_total = 0
@@ -871,6 +873,7 @@ def get_state_for(user):
         "my_wallet_chips": wallet_chips,
         "open_seats": sum(1 for s in seats if not s.user_id),
         "result_display_seconds": POKER_RESULT_DISPLAY_SECONDS,
+        "turn_timeout": POKER_TURN_TIMEOUT,
         "can_reveal": bool(
             my_seat and table.status == "waiting" and result.get("hand_number") == table.hand_number
             and result.get("reveal_seat") == my_seat.seat_number and my_seat.hole_cards
