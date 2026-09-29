@@ -410,10 +410,10 @@ async def _gostop_watchdog_loop():
 
 
 async def _gostop_disconnect_grace(user):
-    """유예 시간 안에 재접속하지 않으면 방에서 내보낸다 (진행 중이면 기권)."""
+    """유예 시간 안에 재접속하지 않으면 방에서 내보낸다 (진행 중이면 자리 비움 + 판 끝나고 퇴장)."""
     try:
         await asyncio.sleep(GOSTOP_DISCONNECT_GRACE_SECONDS)
-        ok, _ = await database_sync_to_async(gostop_engine.leave_room)(user)
+        ok, _ = await database_sync_to_async(gostop_engine.leave_room)(user, away=True)
         if ok:
             await _broadcast_gostop_state()
     except asyncio.CancelledError:
@@ -434,7 +434,11 @@ class GostopConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(GOSTOP_GROUP, self.channel_name)
         await self.accept()
         _ensure_gostop_watchdog()
-        await self._send_state()
+        back, _ = await database_sync_to_async(gostop_engine.mark_back)(user)
+        if back:
+            await _broadcast_gostop_state()
+        else:
+            await self._send_state()
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(GOSTOP_GROUP, self.channel_name)

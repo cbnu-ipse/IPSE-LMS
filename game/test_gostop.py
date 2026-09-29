@@ -215,27 +215,42 @@ class GostopRoomTestCase(TestCase):
         self.assertFalse(eng.create_room(c, "matgo")[0])
         self.assertFalse(eng.create_room(self.a, "poker")[0])
 
-    def test_forfeit_moves_chips_and_room_is_deleted(self):
-        ok, room_id = eng.create_room(self.a, "matgo")
-        self.assertTrue(ok)
-        self.assertFalse(eng.create_room(self.a, "matgo")[0])
-        eng.join_room(self.b, room_id)
+    def _start(self, mode, *users):
+        _, room_id = eng.create_room(users[0], mode)
+        for u in users[1:]:
+            eng.join_room(u, room_id)
         GostopRoom.objects.filter(pk=room_id).update(next_game_at=timezone.now() - timedelta(seconds=1))
         eng.process_due_deadlines()
         room = GostopRoom.objects.get(pk=room_id)
-        if room.status != "playing":  # 총통으로 바로 끝난 경우
-            return
-        eng.leave_room(self.a)  # 진행 중 퇴장 = 기권 (최소 7점)
-        lost = GOSTOP_CHIPS_PER_POINT * eng.MODES["matgo"]["win_score"]
-        self.assertEqual(self.chips(self.a), GOSTOP_BUY_IN * 2 - lost)
-        seat = GostopSeat.objects.get(room_id=room_id)
-        self.assertEqual((seat.user, seat.seat, seat.stack), (self.b, 0, GOSTOP_BUY_IN + lost))  # 상대가 방장 승계
-        eng.leave_room(self.b)
-        self.assertFalse(GostopRoom.objects.exists())
-        self.assertEqual(self.chips(self.a) + self.chips(self.b), GOSTOP_BUY_IN * 4)
-        self.assertEqual(GostopGameLog.objects.get().winner, self.b)
+        return room if room.status == "playing" else None  # 총통으로 바로 끝나면 None
 
-    def test_three_player_forfeit_pays_each_and_room_waits(self):
+    def _run_until_game_ends(self, room_id):
+        for _ in range(300):
+            GostopRoom.objects.filter(pk=room_id, status="playing").update(turn_deadline=timezone.now() - timedelta(seconds=1))
+            eng.process_due_deadlines()
+            if GostopGameLog.objects.exists():
+                return
+        self.fail("판이 끝나지 않음")
+
+    def test_leave_during_game_is_reserved_until_game_ends(self):
+        room = self._start("matgo", self.a, self.b)
+        if not room:
+            return
+        self.assertFalse(eng.create_room(self.a, "matgo")[0])  # 이미 방에 있음
+        eng.leave_room(self.a)  # 판 중 나가기 = 예약 (기권 정산 없음)
+        eng.leave_room(self.a)  # 다시 누르면 취소
+        eng.leave_room(self.a)
+        room.refresh_from_db()
+        self.assertEqual((room.status, room.state["leaving"]), ("playing", [0]))
+        self.assertEqual(GostopSeat.objects.filter(room=room).count(), 2)
+        self.assertEqual(self.chips(self.a), GOSTOP_BUY_IN)  # 아직 방 스택 그대로
+
+        eng._end_game(GostopRoom.objects.get(pk=room.pk), {"winner": 1, "reason": "stop"})
+        seat = GostopSeat.objects.get(room=room)
+        self.assertEqual((seat.user, seat.seat), (self.b, 0))  # 판 끝나고 퇴장, 상대가 방장 승계
+        self.assertEqual(self.chips(self.a) + self.chips(self.b) + seat.stack, GOSTOP_BUY_IN * 4)
+
+    def test_three_player_reserved_leave_after_game(self):
         c = User.objects.create_user(username="c", password="x")
         PokerChipWallet.objects.create(user=c, chips=GOSTOP_BUY_IN * 2)
         _, room_id = eng.create_room(self.a, "gostop")
@@ -247,17 +262,38 @@ class GostopRoomTestCase(TestCase):
         self.assertFalse(eng.join_room(d, room_id)[0])  # 정원 초과
         GostopRoom.objects.filter(pk=room_id).update(next_game_at=timezone.now() - timedelta(seconds=1))
         eng.process_due_deadlines()
-        if GostopRoom.objects.get(pk=room_id).status != "playing":  # 총통
+        room = GostopRoom.objects.get(pk=room_id)
+        if room.status != "playing":  # 총통
             return
-        eng.leave_room(self.a)  # 방장이 기권 → b, c 각각 최소 3점씩
-        lost = 2 * GOSTOP_CHIPS_PER_POINT * eng.MODES["gostop"]["win_score"]
-        self.assertEqual(self.chips(self.a), GOSTOP_BUY_IN * 2 - lost)
+        eng.leave_room(self.a)
+        eng._end_game(GostopRoom.objects.get(pk=room_id), {"winner": None, "reason": "nagari"})
         room = GostopRoom.objects.get(pk=room_id)
         self.assertEqual((room.status, room.next_game_at), ("waiting", None))
         self.assertEqual(
             list(GostopSeat.objects.filter(room=room).order_by("seat").values_list("user__username", "seat")),
             [("b", 0), ("c", 1)],
         )
+
+    def test_disconnect_marks_away_and_reconnect_restores(self):
+        room = self._start("matgo", self.a, self.b)
+        if not room:
+            return
+        away_side = room.state["turn"]
+        away_user = self.a if away_side == 0 else self.b
+        eng.leave_room(away_user, away=True)
+        room.refresh_from_db()
+        self.assertEqual((room.state["away"], room.state["leaving"]), ([away_side], [away_side]))
+        # 자리 비운 사람 차례는 짧게 자동 진행
+        GostopRoom.objects.filter(pk=room.pk).update(turn_deadline=timezone.now() - timedelta(seconds=1))
+        eng.process_due_deadlines()
+        room.refresh_from_db()
+        if room.status == "playing" and room.state["turn"] == away_side:
+            left = (room.turn_deadline - timezone.now()).total_seconds()
+            self.assertLessEqual(left, eng.GOSTOP_AWAY_TURN_TIMEOUT)
+        self.assertEqual(eng.mark_back(away_user)[0], room.status == "playing")
+        room.refresh_from_db()
+        if room.status == "playing":
+            self.assertEqual((room.state["away"], room.state["leaving"]), ([], []))
 
     def test_first_ppeok_is_paid_even_on_nagari(self):
         _, room_id = eng.create_room(self.a, "matgo")
@@ -273,18 +309,13 @@ class GostopRoomTestCase(TestCase):
         room.refresh_from_db()
         self.assertEqual((room.last_result["nagari"], room.carry_multiplier), (True, 2))
 
-    def test_timeouts_finish_game(self):
-        _, room_id = eng.create_room(self.a, "matgo")
-        eng.join_room(self.b, room_id)
-        for _ in range(200):
-            GostopRoom.objects.filter(pk=room_id).update(
-                next_game_at=timezone.now() - timedelta(seconds=1),
-                turn_deadline=timezone.now() - timedelta(seconds=1),
-            )
-            eng.process_due_deadlines()
-            if GostopGameLog.objects.exists():
-                break
-        self.assertTrue(GostopGameLog.objects.exists())
+    def test_timeouts_play_on_instead_of_forfeit(self):
+        room = self._start("matgo", self.a, self.b)
+        if not room:
+            return
+        self._run_until_game_ends(room.id)  # 시간초과만으로도 판이 끝까지 진행된다 (기권 없음)
+        self.assertNotEqual(GostopGameLog.objects.get().detail.get("reason"), "forfeit")
+        self.assertFalse(GostopRoom.objects.exists())  # 둘 다 시간초과 3번 → 판 끝나고 퇴장
         total = sum(PokerChipWallet.objects.values_list("chips", flat=True))
         total += sum(GostopSeat.objects.values_list("stack", flat=True))
         self.assertEqual(total, GOSTOP_BUY_IN * 4)
