@@ -422,18 +422,50 @@ class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
         PokerTable.get_solo()
         self.assertEqual(list(table.seats.values_list("seat_number", flat=True)), list(range(8)))
 
-    def test_other_players_cards_are_not_sent_before_showdown(self):
+    def _two_players_in_hand(self, other_status="active"):
         table = PokerTable.get_solo()
         me = User.objects.create_user(username="me", password="x")
         other = User.objects.create_user(username="other", password="x")
-        for n, u, cards in ((0, me, ["AS", "KS"]), (7, other, ["2H", "3D"])):
-            PokerSeat.objects.filter(table=table, seat_number=n).update(user=u, status="active", stack=100, hole_cards=cards)
-        table.status, table.round = "playing", "flop"
+        for n, u, cards, status in ((0, me, ["AS", "AH"], "active"), (7, other, ["2H", "7D"], other_status)):
+            PokerSeat.objects.filter(table=table, seat_number=n).update(
+                user=u, status=status, stack=100, hole_cards=cards, contributed_total=10)
+        table.status, table.round, table.hand_number = "playing", "river", 1
+        table.community_cards = ["KC", "QD", "9S", "4C", "3H"]
         table.save()
-        seats = {s["seat_number"]: s for s in poker_engine.get_state_for(me)["seats"]}
-        self.assertEqual(seats[0]["hole_cards"], ["AS", "KS"])
-        self.assertEqual(seats[7]["hole_cards"], [])
-        table.round = "showdown"
-        table.save()
-        seats = {s["seat_number"]: s for s in poker_engine.get_state_for(me)["seats"]}
-        self.assertEqual(seats[7]["hole_cards"], ["2H", "3D"])
+        return table, me, other
+
+    def _finish(self, table):
+        from django.db import transaction
+        with transaction.atomic():
+            seats = {s.seat_number: s for s in PokerSeat.objects.filter(table=table).select_related("user")}
+            poker_engine._finish_hand(table, seats)
+
+    def _cards_seen_by(self, user):
+        state = poker_engine.get_state_for(user)
+        return {s["seat_number"]: s.get("hole_cards") for s in state["seats"] if not s["empty"]}, state
+
+    def test_other_players_cards_are_not_sent_during_hand(self):
+        table, me, other = self._two_players_in_hand()
+        seen, _ = self._cards_seen_by(me)
+        self.assertEqual(seen, {0: ["AS", "AH"], 7: []})
+
+    def test_showdown_reveals_remaining_hands(self):
+        table, me, other = self._two_players_in_hand()
+        self._finish(table)
+        seen, state = self._cards_seen_by(other)
+        self.assertEqual(seen[0], ["AS", "AH"])
+        self.assertFalse(state["can_reveal"])
+
+    def test_fold_winner_chooses_to_reveal(self):
+        table, me, other = self._two_players_in_hand(other_status="folded")
+        self._finish(table)
+        seen, _ = self._cards_seen_by(other)
+        self.assertEqual(seen[0], [])  # 혼자 이긴 승자 패는 기본 비공개
+        _, my_state = self._cards_seen_by(me)
+        self.assertTrue(my_state["can_reveal"])
+        self.assertFalse(poker_engine.reveal_hand(other)[0])  # 패자는 공개 불가
+
+        self.assertEqual(poker_engine.reveal_hand(me), (True, None))
+        seen, _ = self._cards_seen_by(other)
+        self.assertEqual(seen[0], ["AS", "AH"])
+        self.assertFalse(self._cards_seen_by(me)[1]["can_reveal"])

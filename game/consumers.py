@@ -317,6 +317,8 @@ class PokerConsumer(AsyncWebsocketConsumer):
             handler = lambda: poker_engine.cash_out_chips(user, data.get("chips", 0))
         elif msg_type == "emoji":
             handler = lambda: poker_engine.send_emoji(user, data.get("emoji"))
+        elif msg_type == "reveal":
+            handler = lambda: poker_engine.reveal_hand(user)
         else:
             return
 
