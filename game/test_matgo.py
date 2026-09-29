@@ -1,11 +1,14 @@
 import random
 from datetime import timedelta
+from unittest.mock import patch
 
+from channels.db import database_sync_to_async
+from channels.testing import WebsocketCommunicator
 from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import User
-from . import matgo_engine as eng
+from . import consumers as game_consumers, matgo_engine as eng
 from .models import MatgoGameLog, MatgoRoom, PokerChipWallet, MATGO_BUY_IN, MATGO_CHIPS_PER_POINT
 
 # 카드 id = (월-1)*4 + 월 안 순번. 예) 1월 광=0, 1월 홍단=1, 12월 비광=44
@@ -182,3 +185,64 @@ class MatgoRoomTestCase(TestCase):
         total = sum(PokerChipWallet.objects.values_list("chips", flat=True))
         total += sum(r.host_stack + r.guest_stack for r in MatgoRoom.objects.all())
         self.assertEqual(total, MATGO_BUY_IN * 4)
+
+
+class MatgoConsumerTestCase(TestCase):
+    """소켓으로 방 만들기/입장 후 각자 자기 시점의 상태를 받는지 (상대 손패는 비공개)."""
+
+    async def _connect(self, user):
+        comm = WebsocketCommunicator(game_consumers.MatgoConsumer.as_asgi(), "/ws/matgo/")
+        comm.scope["user"] = user
+        connected, _ = await comm.connect()
+        self.assertTrue(connected)
+        state = await comm.receive_json_from()
+        self.assertEqual(state["type"], "state")
+        return comm
+
+    @patch.object(game_consumers, "_ensure_matgo_watchdog", lambda: None)
+    async def test_create_join_and_hidden_hands(self):
+        def setup():
+            users = [User.objects.create_user(username=n, password="x") for n in ("s1", "s2")]
+            for u in users:
+                PokerChipWallet.objects.create(user=u, chips=MATGO_BUY_IN)
+            return users
+        u1, u2 = await database_sync_to_async(setup)()
+        c1, c2 = await self._connect(u1), await self._connect(u2)
+
+        await c1.send_json_to({"type": "create"})
+        s1 = await c1.receive_json_from()
+        await c2.receive_json_from()
+        room_id = s1["room"]["id"]
+        self.assertEqual(s1["wallet_chips"], 0)
+
+        await c2.send_json_to({"type": "join", "room_id": room_id})
+        await c1.receive_json_from()
+        await c2.receive_json_from()
+
+        def start():
+            MatgoRoom.objects.filter(pk=room_id).update(next_game_at=timezone.now() - timedelta(seconds=1))
+            eng.process_due_deadlines()
+        await database_sync_to_async(start)()
+        await game_consumers._broadcast_matgo_state()
+        s1, s2 = await c1.receive_json_from(), await c2.receive_json_from()
+        g1, g2 = s1["room"]["game"], s2["room"]["game"]
+        if g1["phase"] != "over":  # 총통이 아니면 진행 중, 상대 손패는 개수만 보인다
+            self.assertEqual(len(g1["my_hand"]), 10)
+            self.assertIsNone(g1["opp_hand"])
+            self.assertEqual(g1["opp_hand_count"], 10)
+            self.assertNotEqual(g1["my_turn"], g2["my_turn"])
+
+        await c1.disconnect()
+        await c2.disconnect()
+        for task in list(game_consumers._matgo_disconnect_tasks.values()):
+            task.cancel()
+
+
+class MatgoPageTestCase(TestCase):
+    def test_page_renders(self):
+        self.client.force_login(User.objects.create_user(username="p", password="x"))
+        res = self.client.get("/game/matgo/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "mg-cards-data")
+        self.assertContains(res, "/ws/matgo/")
+        self.assertContains(res, "?presence=1")
