@@ -598,7 +598,7 @@ footer { display: none !important; }
 (function () {
     const CARDS = JSON.parse(document.getElementById('gs-cards-data').textContent);
     const MONTH_NAMES = ['', '송학', '매조', '벚꽃', '흑싸리', '난초', '모란', '홍싸리', '공산', '국화', '단풍', '오동', '비'];
-    const REASON_LABELS = { stop: '스톱', forfeit: '기권승', chongtong: '총통', '3ppeok': '3뻑' };
+    const REASON_LABELS = { stop: '스톱', chongtong: '총통', '3ppeok': '3뻑' };
     // 바닥 12칸 (가운데 더미 기준): 채우는 순서대로 [행, 열] — 더미 가까운 칸부터
     const SLOT_POS = [[1, 3], [2, 5], [1, 5], [2, 3], [1, 2], [2, 6], [1, 6], [2, 2], [1, 1], [2, 7], [1, 7], [2, 1]];
     const ANIM_MS = 380;
@@ -728,7 +728,7 @@ footer { display: none !important; }
                     <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
                     <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
-                    <li>차례 제한시간 20초. 시간초과 3번 연속 또는 진행 중 퇴장은 기권으로, 남은 사람 각자에게 최소 난 점수만큼 냅니다.</li>
+                    <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 연결이 끊기거나 시간초과가 3번 이어지면 자리 비움으로 자동 진행하고 판이 끝나면 퇴장합니다.</li>
                 </ul>
             </details>`;
     }
@@ -760,6 +760,8 @@ footer { display: none !important; }
             if (g.go[side]) badges.push(`<span class="gs-badge gs-badge--go">${g.go[side]}고</span>`);
             if (g.shakes[side]) badges.push(`<span class="gs-badge">흔들·폭탄 ×${2 ** g.shakes[side]}</span>`);
             if (g.ppeok[side]) badges.push(`<span class="gs-badge">뻑 ${g.ppeok[side]}</span>`);
+            if ((g.away || []).includes(side)) badges.push(`<span class="gs-badge">자리 비움</span>`);
+            else if ((g.leaving || []).includes(side)) badges.push(`<span class="gs-badge">퇴장 예약</span>`);
         }
         const timer = isTurn && g.turn_seconds_left != null
             ? `<span class="gs-timer"><i class="fa-regular fa-clock"></i> <span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
@@ -885,9 +887,7 @@ footer { display: none !important; }
         if (r.nagari) {
             return { title: '나가리!', sub: `다음 판은 점수 ×${r.carry}`, detail: transferLines(r).join('<br>') };
         }
-        const title = r.reason === 'forfeit'
-            ? `${esc(r.forfeit_name)} 기권`
-            : `${esc(r.winner_name)} 승리 (${REASON_LABELS[r.reason] || r.reason})`;
+        const title = `${esc(r.winner_name)} 승리 (${REASON_LABELS[r.reason] || r.reason})`;
         const parts = [];
         if (r.base != null) parts.push(`기본 ${r.base}점`);
         if (r.go) parts.push(`${r.go}고`);
@@ -933,7 +933,12 @@ footer { display: none !important; }
             return;
         }
         const g = room.game;
-        const leave = `<button type="button" class="gs-btn gs-btn-ghost" data-leave>나가기</button>`;
+        // 판 도중엔 빠져나갈 수 없고 판이 끝난 뒤 퇴장하도록 예약만 한다 (다시 누르면 취소)
+        const reserved = !!(g && room.status === 'playing' && (g.leaving || []).includes(room.me));
+        const leave = room.status === 'playing'
+            ? `<button type="button" class="gs-btn gs-btn-ghost" data-leave>${reserved ? '퇴장 예약 취소' : '나가기 예약'}</button>`
+              + (reserved ? `<div class="gs-hint">이번 판이 끝나면 나갑니다.</div>` : '')
+            : `<button type="button" class="gs-btn gs-btn-ghost" data-leave>나가기</button>`;
         const timer = g && g.turn_seconds_left != null
             ? `<span class="gs-turn-countdown"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
         const rows = [leave];
@@ -1226,9 +1231,6 @@ footer { display: none !important; }
 
     actionBarEl.addEventListener('click', (e) => {
         if (e.target.closest('[data-leave]')) {
-            const room = lastState && lastState.room;
-            if (room && room.status === 'playing'
-                && !confirm('지금 나가면 기권 처리되어 최소 7점을 잃습니다. 나갈까요?')) return;
             if (window.GameSound) window.GameSound.play('tap');
             send({ type: 'leave' });
             return;

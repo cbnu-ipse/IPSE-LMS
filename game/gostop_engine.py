@@ -19,6 +19,9 @@
     - 뻑/따닥/쪽/쓸/뻑 먹기(자뻑은 2장)/폭탄 시 다른 모든 사람에게서 피를 가져온다.
     - 총통(손패 같은 월 4장)·3뻑은 즉시 10점 승리. 나가리는 다음 판 ×2 누적.
     - 국진(9월 열끗)은 열끗/쌍피 중 유리한 쪽을 자동 선택한다.
+    - 판 도중엔 빠져나갈 수 없다: 나가기는 판이 끝난 뒤 퇴장 예약(state["leaving"])이고,
+      연결 끊김·연속 시간초과는 자리 비움(state["away"])으로 짧은 시간 뒤 자동으로 두며 판을 끝낸다.
+      (예전엔 즉시 기권 정산이라 상대가 고를 부른 뒤 나가서 손해를 줄이는 도망이 가능했다)
     - 맞고 전용: 보너스피 2장(쌍피·쓰리피). 손에서 내면 바로 먹고 상대 피 1장을 가져온 뒤
       더미에서 1장을 보충하고 다시 낸다. 더미에서 뒤집히면 바로 먹고 한 장 더 뒤집는다.
       바닥에 깔리면 선이 가져가고 더미에서 채운다.
@@ -26,7 +29,7 @@
       7점어치를 판 끝에 받는다 (나가리 배수 미적용).
 
 공개 함수(뷰/컨슈머에서 호출):
-    create_room(user, mode) / join_room(user, room_id) / leave_room(user)
+    create_room(user, mode) / join_room(user, room_id) / leave_room(user, away) / mark_back(user)
     play(user, card, target, mode) / choose_flip(user, target) / declare(user, go)
     next_deadline_at() / process_due_deadlines()   — 워치독용
     get_state_for(user)                             — 접속자 시점 상태 스냅샷
@@ -45,7 +48,8 @@ from .models import (
 )
 
 GOSTOP_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
-GOSTOP_MAX_TIMEOUTS = 3        # 연속 시간초과 이 횟수면 기권 처리 후 퇴장
+GOSTOP_AWAY_TURN_TIMEOUT = 3   # 자리 비움(연결 끊김·연속 시간초과) 플레이어는 이 시간 뒤 자동으로 둔다
+GOSTOP_MAX_TIMEOUTS = 3        # 연속 시간초과 이 횟수면 자리 비움 + 판 끝나고 퇴장
 GOSTOP_START_DELAY = 3         # 인원이 다 차고 첫 판 시작까지(초)
 GOSTOP_NEXT_GAME_DELAY = 8     # 판 종료 후 결과를 보여주고 다음 판까지(초)
 GOSTOP_MEONGBAK_MIN = 7        # 승자 열끗이 이 장수 이상이면 멍박
@@ -190,18 +194,6 @@ def settle(st, winner, reason):
         for p in payments:
             p["points"], p["gobak"] = (total, True) if p["side"] == payer else (0, False)
     return payments, detail
-
-
-def forfeit_payments(st, forfeiter):
-    """기권: 기권자 혼자, 남은 사람 각자에게 그 시점에 났다고 치고(최소 난 점수) 낸다."""
-    n = len(st["hands"])
-    result = []
-    for w in range(n):
-        if w == forfeiter:
-            continue
-        pts, baks = _best_pays(st, w, [forfeiter])[forfeiter]
-        result.append({"side": w, "points": max(pts, st["win_score"]), "baks": baks})
-    return result
 
 
 # ── 판 진행 (순수 함수: state dict를 직접 변경) ───────────────────────────────
@@ -634,17 +626,57 @@ def _remove_seat(room, seat):
     return True
 
 
-def leave_room(user):
-    """퇴장. 판 진행 중이면 기권 처리 후 나간다."""
+def leave_room(user, away=False):
+    """퇴장. 판 진행 중이면 즉시 나가지 않고 판이 끝난 뒤 퇴장하도록 예약/취소(토글)한다.
+    away=True(연결 끊김)는 예약 + 자리 비움으로 표시해 차례를 빠르게 자동 진행한다."""
     with transaction.atomic():
         room, seat = _lock_my_room(user)
         if not room:
             return False, "참여 중인 방이 없습니다."
-        if room.status == "playing":
-            _end_game(room, {"forfeit": seat.seat})
-            seat.refresh_from_db()
-        _remove_seat(room, seat)
+        if room.status != "playing":
+            _remove_seat(room, seat)
+            return True, None
+        st = room.state
+        leaving = st.setdefault("leaving", [])
+        if away:
+            if seat.seat not in leaving:
+                leaving.append(seat.seat)
+            _mark_away(st, seat.seat)
+        elif seat.seat in leaving:
+            leaving.remove(seat.seat)
+        else:
+            leaving.append(seat.seat)
+        room.state = st
+        room.save(update_fields=["state"])
     return True, None
+
+
+def mark_back(user):
+    """재접속: 자리 비움과 (끊김으로 걸린) 퇴장 예약을 푼다."""
+    with transaction.atomic():
+        room, seat = _lock_my_room(user)
+        if not room or room.status != "playing":
+            return False, None
+        st = room.state
+        if seat.seat not in st.get("away", []):
+            return False, None
+        st["away"].remove(seat.seat)
+        if seat.seat in st.get("leaving", []):
+            st["leaving"].remove(seat.seat)
+        room.state = st
+        room.save(update_fields=["state"])
+    return True, None
+
+
+def _mark_away(st, side):
+    away = st.setdefault("away", [])
+    if side not in away:
+        away.append(side)
+
+
+def _turn_deadline(st, now=None):
+    secs = GOSTOP_AWAY_TURN_TIMEOUT if st["turn"] in st.get("away", []) else GOSTOP_TURN_TIMEOUT
+    return (now or timezone.now()) + timedelta(seconds=secs)
 
 
 def _end_game(room, outcome):
@@ -654,7 +686,7 @@ def _end_game(room, outcome):
     names = [s.user.display_name for s in seats]
     carry = room.carry_multiplier
     now = timezone.now()
-    nagari = outcome.get("winner") is None and "forfeit" not in outcome
+    nagari = outcome.get("winner") is None
     winner = None
     transfers = []  # (payer, receiver, points, baks, gobak, label)
 
@@ -662,17 +694,11 @@ def _end_game(room, outcome):
         room.carry_multiplier = min(carry * 2, 64)
         detail = {"reason": "nagari"}
     else:
-        if "forfeit" in outcome:
-            f = outcome["forfeit"]
-            transfers = [(f, p["side"], p["points"] * carry, p["baks"], False, None) for p in forfeit_payments(st, f)]
-            detail = {"reason": "forfeit", "forfeit_side": f, "forfeit_name": names[f]}
-            winner = transfers[0][1] if len(transfers) == 1 else None  # 3인 기권은 받는 사람이 둘이라 기록상 승자 없음
-        else:
-            winner = outcome["winner"]
-            payments, detail = settle(st, winner, outcome["reason"])
-            transfers = [(p["side"], winner, p["points"] * carry, p["baks"], p["gobak"], None) for p in payments]
-            detail.update(winner_side=winner, winner_name=names[winner])
-            room.next_first = winner
+        winner = outcome["winner"]
+        payments, detail = settle(st, winner, outcome["reason"])
+        transfers = [(p["side"], winner, p["points"] * carry, p["baks"], p["gobak"], None) for p in payments]
+        detail.update(winner_side=winner, winner_name=names[winner])
+        room.next_first = winner
         room.carry_multiplier = 1
     # 첫뻑·연뻑·첫따닥은 승패/나가리와 무관하게 다른 사람 모두에게서 받는다 (나가리 배수 미적용)
     for b in st.get("bonus_pay", []):
@@ -699,6 +725,10 @@ def _end_game(room, outcome):
     room.next_game_at = now + timedelta(seconds=GOSTOP_NEXT_GAME_DELAY)
     room.state = st
     room.save()
+    # 퇴장 예약자는 정산이 끝난 뒤 내보낸다 (뒷자리부터 빼야 앞자리 번호가 안 밀린다)
+    for side in sorted(st.get("leaving", []), reverse=True):
+        if not _remove_seat(room, GostopSeat.objects.select_for_update().get(room=room, seat=side)):
+            return
 
 
 def _start_game(room):
@@ -719,7 +749,7 @@ def _start_game(room):
     room.status = "playing"
     room.next_game_at = None
     room.last_result = {}
-    room.turn_deadline = timezone.now() + timedelta(seconds=GOSTOP_TURN_TIMEOUT)
+    room.turn_deadline = _turn_deadline(st)
     room.save()
     if outcome:
         _end_game(room, outcome)
@@ -736,11 +766,13 @@ def _act(user, fn):
         except ValueError as e:
             return False, str(e)
         st["timeouts"][seat.seat] = 0
+        if seat.seat in st.get("away", []):  # 직접 뒀으면 돌아온 것
+            st["away"].remove(seat.seat)
         room.state = st
         if outcome:
             _end_game(room, outcome)
         else:
-            room.turn_deadline = timezone.now() + timedelta(seconds=GOSTOP_TURN_TIMEOUT)
+            room.turn_deadline = _turn_deadline(st)
             room.save()
     return True, None
 
@@ -783,15 +815,16 @@ def process_due_deadlines():
                 side = st["turn"]
                 st["timeouts"][side] += 1
                 if st["timeouts"][side] >= GOSTOP_MAX_TIMEOUTS:
-                    _end_game(room, {"forfeit": side})
-                    _remove_seat(room, GostopSeat.objects.select_for_update().get(room=room, seat=side))
-                    continue
+                    _mark_away(st, side)
+                    leaving = st.setdefault("leaving", [])
+                    if side not in leaving:
+                        leaving.append(side)
                 outcome = auto_act(st, side)
                 room.state = st
                 if outcome:
                     _end_game(room, outcome)
                 else:
-                    room.turn_deadline = now + timedelta(seconds=GOSTOP_TURN_TIMEOUT)
+                    room.turn_deadline = _turn_deadline(st, now)
                     room.save()
             elif room.status == "waiting" and room.next_game_at and room.next_game_at <= now:
                 _start_game(room)
@@ -834,6 +867,8 @@ def _game_view(room, st, me):
         "pending_card": pending["card"] if pending else None,
         "events": st["events"],
         "last_play": st["last_play"],
+        "leaving": st.get("leaving", []),
+        "away": st.get("away", []),
         "turn_seconds_left": turn_left,
     }
 
