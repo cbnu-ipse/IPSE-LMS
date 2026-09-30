@@ -590,6 +590,20 @@ def _refund(seat):
     wallet.save(update_fields=["chips"])
 
 
+def _leave_poker_table(user):
+    """포커 테이블에 앉아 있으면 먼저 일어나 칩을 지갑으로 돌린다 (포커에 앉은 채 고스톱으로 오면
+    칩이 테이블에 묶여 '칩 없음'으로 막혔다). 핸드 진행 중이면 안내 문구를 반환."""
+    from . import poker_engine
+    from .models import PokerSeat
+    seat = PokerSeat.objects.filter(user=user).select_related("table").first()
+    if not seat:
+        return None
+    if seat.table.status == "playing" and seat.status in ("active", "all_in", "folded"):
+        return "포커 테이블에서 진행 중인 핸드가 끝난 뒤 입장해주세요."
+    poker_engine.stand_up(user)
+    return None
+
+
 def _need_buy_in_msg():
     return f"칩 지갑에 최소 {GOSTOP_BUY_IN:,}칩({GOSTOP_BUY_IN // POKER_CHIPS_PER_LEAF}낙엽)이 있어야 입장할 수 있습니다."
 
@@ -601,6 +615,9 @@ def create_room(user, mode):
         User.objects.select_for_update().get(id=user.id)  # 같은 유저의 동시 입장 직렬화
         if GostopSeat.objects.filter(user=user).exists():
             return False, "이미 참여 중인 방이 있습니다."
+        err = _leave_poker_table(user)
+        if err:
+            return False, err
         chips = _take_buy_in(user)
         if not chips:
             return False, _need_buy_in_msg()
@@ -617,6 +634,9 @@ def join_room(user, room_id):
         room = GostopRoom.objects.select_for_update().filter(pk=room_id).first()
         if not room:
             return False, "입장할 수 없는 방입니다."
+        err = _leave_poker_table(user)
+        if err:
+            return False, err
         count = GostopSeat.objects.filter(room=room).count()
         if count >= _capacity(room):
             # AI가 앉아 있으면 사람에게 자리를 비켜준다 (판 중이면 판이 끝난 뒤)
@@ -736,6 +756,19 @@ def leave_room(user, away=False):
     return True, None
 
 
+def cancel_leave(user):
+    """판이 끝난 뒤 결과를 보는 동안 퇴장 예약을 취소한다 (판 진행 중엔 leave_room 토글)."""
+    with transaction.atomic():
+        room, seat = _lock_my_room(user)
+        if not room:
+            return False, "참여 중인 방이 없습니다."
+        leaving = (room.state or {}).get("leaving", [])
+        if seat.seat in leaving:
+            leaving.remove(seat.seat)
+            room.save(update_fields=["state"])
+    return True, None
+
+
 def mark_back(user):
     """재접속: 자리 비움과 (끊김으로 걸린) 퇴장 예약을 푼다."""
     with transaction.atomic():
@@ -822,13 +855,16 @@ def _end_game(room, outcome):
     room.next_game_at = now + timedelta(seconds=GOSTOP_NEXT_GAME_DELAY)
     room.state = st
     room.save()
-    # 퇴장 예약자는 정산이 끝난 뒤 내보낸다 (뒷자리부터 빼야 앞자리 번호가 안 밀린다)
-    for side in sorted(st.get("leaving", []), reverse=True):
-        if not _remove_seat(room, GostopSeat.objects.select_for_update().get(room=room, seat=side)):
-            return
+    # 퇴장 예약자는 여기서 바로 내보내지 않는다 — 결과를 보고 다음 판 시작 때(_start_game) 나간다
 
 
 def _start_game(room):
+    # 퇴장 예약자는 지난 판 결과 표시가 끝난 이 시점에 내보낸다
+    # (뒷자리부터 빼야 앞자리 번호가 안 밀린다)
+    for side in sorted((room.state or {}).get("leaving", []), reverse=True):
+        seat = GostopSeat.objects.select_for_update().filter(room=room, seat=side).first()
+        if seat and not _remove_seat(room, seat):
+            return
     # 칩을 다 잃은 사람은 다음 판 전에 내보낸다 (다시 입장하면 새로 바이인)
     while True:
         busted = GostopSeat.objects.select_for_update().filter(room=room, stack=0).first()

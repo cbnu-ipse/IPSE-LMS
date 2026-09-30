@@ -232,6 +232,14 @@ def sit_down(user, seat_number):
         }
         if any(s.user_id == user.id for s in seats_by_number.values()):
             return False, "이미 테이블에 앉아있습니다."
+        # 고스톱 방에 있으면 대기 중일 땐 나가고(칩을 지갑으로), 판 중이면 막는다
+        from . import gostop_engine
+        from .models import GostopSeat
+        gseat = GostopSeat.objects.filter(user=user).select_related("room").first()
+        if gseat:
+            if gseat.room.status == "playing":
+                return False, "고스톱 판이 끝난 뒤 앉을 수 있습니다."
+            gostop_engine.leave_room(user)
         seat = seats_by_number.get(seat_number)
         if seat is None or seat.user_id:
             return False, "이미 다른 사람이 앉은 자리입니다."
