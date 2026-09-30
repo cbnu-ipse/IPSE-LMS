@@ -116,6 +116,14 @@ def evaluate_best_of_7(cards):
     return max(_evaluate_5(c) for c in combinations(cards, 5))
 
 
+def hand_desc(hole_cards, community_cards):
+    """지금 내 족보 이름 (내 패 영역 표시용). 공동 카드가 3장 미만이면 포켓 페어/하이카드만 본다."""
+    cards = list(hole_cards) + list(community_cards)
+    if len(cards) >= 5:
+        return CATEGORY_NAMES[evaluate_best_of_7(cards)[0]]
+    return "원페어" if len(hole_cards) == 2 and hole_cards[0][0] == hole_cards[1][0] else "하이카드"
+
+
 # ── 좌석 순회 헬퍼 ────────────────────────────────────────────────────────────
 
 def _next_seat(seats_by_number, from_seat, statuses):
@@ -874,6 +882,10 @@ def get_state_for(user):
         "open_seats": sum(1 for s in seats if not s.user_id),
         "result_display_seconds": POKER_RESULT_DISPLAY_SECONDS,
         "turn_timeout": POKER_TURN_TIMEOUT,
+        "my_hand_desc": (
+            hand_desc(my_seat.hole_cards, table.community_cards)
+            if my_seat and my_seat.hole_cards and my_seat.status != "folded" else None
+        ),
         "can_reveal": bool(
             my_seat and table.status == "waiting" and result.get("hand_number") == table.hand_number
             and result.get("reveal_seat") == my_seat.seat_number and my_seat.hole_cards

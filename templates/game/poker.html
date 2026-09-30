@@ -31,7 +31,6 @@
                             <div id="pk-center-msg" class="pk-center-msg hidden"></div>
                             <div class="pk-pot" id="pk-pot-line">POT <span id="pk-pot-chips"></span><span id="pk-pot">0</span></div>
                             <div class="pk-board-cards" id="pk-community-cards"></div>
-                            <div class="pk-my-cards hidden" id="pk-my-cards"></div>
                         </div>
                         <div class="pk-seats" id="pk-seats">
                             <div class="pk-seat" data-seat="0"></div>
@@ -45,6 +44,9 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- 내 패 (프로미넌스 포커처럼 테이블 아래에 항상 앞면으로 + 지금 족보) -->
+                <div class="pk-hand-dock hidden" id="pk-my-cards"></div>
 
                 <!-- 하단 액션 바 -->
                 <div class="pk-action-bar" id="pk-action-bar">
@@ -385,7 +387,6 @@
 .pk-flip--dealing .pk-flip-inner { animation: pk-flip-squash .6s ease-in-out var(--d, 0ms) both; }
 .pk-flip--dealing .pk-flip-front { animation: pk-flip-show .6s linear var(--d, 0ms) both; }
 .pk-flip--dealing .pk-flip-back { animation: pk-flip-hide .6s linear var(--d, 0ms) both; }
-.pk-flip--turning .pk-flip-inner { animation: pk-flip-squash .3s ease-in-out; }
 @keyframes pk-flip-squash {
     0% { transform: translateY(-6px) scaleX(1); }
     50% { transform: translateY(-3px) scaleX(0); }
@@ -394,29 +395,42 @@
 @keyframes pk-flip-show { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
 @keyframes pk-flip-hide { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
 
-/* 내 카드 (공동 카드 아래) — 어깨너머 훔쳐보기 방지로 기본은 뒷면.
-   어떤 기기든 클릭/탭하면 뒤집히고, 마우스 기기는 올려도 뒤집힌다. */
-.pk-my-cards {
+/* 내 패 영역 — 프로미넌스 포커처럼 내 홀카드를 테이블 아래에 항상 앞면으로 크게, 부채꼴로.
+   ponytail: 예전엔 공동 카드 아래에 뒷면으로 두고 클릭/호버로 뒤집게 했는데, 테이블 전체를 덮는
+   좌석 레이어(.pk-seats)가 클릭과 호버를 가로채 어떤 기기에서도 앞면이 안 보였다. */
+.pk-hand-dock {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-top: 4px;
-    cursor: pointer;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
+    justify-content: center;
+    gap: 18px;
+    min-height: 104px;
+    padding: 10px 16px 14px;
+    background: linear-gradient(180deg, #0b3320, #061c10);
+    border-top: 1px solid rgba(255,255,255,.08);
 }
-.pk-my-cards.hidden { display: none; }
-.pk-my-cards-row { display: flex; gap: 5px; }
-.pk-my-cards-hint { font-size: .6rem; font-weight: 700; color: rgba(255,255,255,.55); max-width: 64px; line-height: 1.25; }
-.pk-my-cards.revealed .pk-flip-front { opacity: 1; }
-.pk-my-cards.revealed .pk-flip-back { opacity: 0; }
-/* 터치인데 hover를 지원한다고 보고하는 기기는 탭 후 :hover가 달라붙어 다시 가릴 수 없으므로
-   정밀한 포인터(마우스)일 때만 호버로 뒤집는다 */
-@media (hover: hover) and (pointer: fine) {
-    .pk-my-cards:hover .pk-flip-front { opacity: 1; }
-    .pk-my-cards:hover .pk-flip-back { opacity: 0; }
+.pk-hand-dock.hidden { display: none; }
+.pk-hand-cards { display: flex; align-items: flex-end; }
+.pk-hand-card {
+    position: relative;
+    width: 58px; height: 82px;
+    border-radius: 8px;
+    background: linear-gradient(160deg, #ffffff, #f1f5f9);
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 10px 22px rgba(0,0,0,.5);
+    color: #0f172a;
+    font-weight: 900;
 }
-.pk-my-cards--folded { opacity: .45; }
+.pk-hand-card:first-child { transform: rotate(-8deg) translateY(4px); margin-right: -12px; z-index: 1; }
+.pk-hand-card:last-child { transform: rotate(7deg) translateY(4px); z-index: 2; }
+.pk-hand-card--red { color: #dc2626; }
+.pk-hand-card b { position: absolute; top: 5px; left: 7px; font-size: 1.05rem; line-height: 1; }
+.pk-hand-card i { position: absolute; top: 22px; left: 7px; font-size: .8rem; font-style: normal; line-height: 1; }
+.pk-hand-card em { position: absolute; right: 8px; bottom: 6px; font-size: 1.9rem; font-style: normal; line-height: 1; }
+.pk-hand-info { display: flex; flex-direction: column; gap: 3px; min-width: 90px; }
+.pk-hand-label { font-size: .62rem; font-weight: 800; letter-spacing: .12em; color: #6ee7b7; }
+.pk-hand-name { font-size: 1.15rem; font-weight: 900; color: #fde047; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+.pk-hand-dock--folded .pk-hand-cards { opacity: .4; filter: grayscale(.7); }
+.pk-hand-dock--folded .pk-hand-name { color: #94a3b8; }
 
 /* 좌석 */
 .pk-seats { position: absolute; inset: 0; }
@@ -808,7 +822,9 @@
     .pk-card--sm { width: 23px; height: 32px; font-size: .64rem; }
     .pk-flip { width: 27px; height: 38px; }
     .pk-community { gap: 5px; }
-    .pk-my-cards { margin-top: 0; }
+    .pk-hand-dock { min-height: 88px; gap: 14px; padding: 8px 12px 10px; }
+    .pk-hand-card { width: 48px; height: 68px; }
+    .pk-hand-card em { font-size: 1.5rem; }
     .pk-stat-bar { font-size: .7rem; padding: 6px 10px; }
     .pk-action-bar { padding: 10px 12px; }
 }
@@ -903,11 +919,6 @@ footer { display: none !important; }
     let centerMsgResultActive = false;
     let centerMsgResultTimer = null;
     let activeResultWinnerSeats = new Set(); // 결과 표시 창 동안 테두리 하이라이트할 좌석들
-    let myCardsRevealed = false; // 클릭/탭으로 내 카드를 뒤집어 둔 상태 (새 핸드마다 다시 가림)
-    // 안내 문구용일 뿐 — 뒤집기 자체는 기기 판별 없이 클릭/탭으로 항상 동작한다.
-    // (예전엔 (hover: none) 판별 기기만 탭이 먹어서, hover를 지원한다고 보고하는 터치 기기에선
-    //  탭도 호버도 안 돼 카드가 뒷면만 보였다)
-    const HAS_MOUSE = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
     const myCardsEl = document.getElementById('pk-my-cards');
 
     // 공동 카드 순차 뒤집기: 카드별 뒤집기 시작 시각을 기억해 두고, 상태가 다시 와서 다시
@@ -981,11 +992,19 @@ footer { display: none !important; }
             myCardsEl.classList.add('hidden');
             return;
         }
+        const folded = me.status === 'folded';
         myCardsEl.classList.remove('hidden');
-        myCardsEl.classList.toggle('revealed', myCardsRevealed);
-        myCardsEl.classList.toggle('pk-my-cards--folded', me.status === 'folded');
-        myCardsEl.innerHTML = `<div class="pk-my-cards-row">${cards.map(c => flipCardHtml(c)).join('')}</div>
-            <div class="pk-my-cards-hint">${myCardsRevealed ? (HAS_MOUSE ? '클릭해서 가리기' : '탭해서 가리기') : (HAS_MOUSE ? '올리거나 클릭해서 보기' : '탭해서 보기')}</div>`;
+        myCardsEl.classList.toggle('pk-hand-dock--folded', folded);
+        const face = c => {
+            const rank = RANK_LABELS[c[0]] || c[0], suit = SUIT_SYMBOLS[c[1]] || '';
+            const red = c[1] === 'H' || c[1] === 'D';
+            return `<span class="pk-hand-card${red ? ' pk-hand-card--red' : ''}"><b>${rank}</b><i>${suit}</i><em>${suit}</em></span>`;
+        };
+        myCardsEl.innerHTML = `<div class="pk-hand-cards">${cards.map(face).join('')}</div>
+            <div class="pk-hand-info">
+                <span class="pk-hand-label">내 패</span>
+                <span class="pk-hand-name">${folded ? '폴드' : esc(state.my_hand_desc || '')}</span>
+            </div>`;
     }
 
     // 액면가별로 쪼개 큰 단위부터 최대 maxCols개 기둥, 기둥당 최대 maxPer개
@@ -1315,7 +1334,6 @@ footer { display: none !important; }
         document.getElementById('pk-pot-chips').innerHTML = state.pot > 0 ? chipsHtml(state.pot, 3, 6) : '';
 
         const isNewHand = state.hand_number !== lastHandNumber;
-        if (isNewHand) myCardsRevealed = false; // 새 핸드마다 다시 가림
 
         // renderCommunity가 뒤집기 종료 시각을 정하고, renderCenterMsg가 그걸 보고
         // activeResultWinnerSeats를 채우므로 좌석을 그리기 전에 이 순서로 호출한다.
@@ -1432,19 +1450,6 @@ footer { display: none !important; }
     });
 
     // ── 클릭 위임 ────────────────────────────────────────────────
-    // 클릭/탭으로 내 카드를 뒤집는다 (마우스 기기는 CSS :hover로도)
-    myCardsEl.addEventListener('click', () => {
-        myCardsRevealed = !myCardsRevealed;
-        if (window.GameSound) window.GameSound.play('tap');
-        // 가로로 좁혀지는 중간(150ms)에 면을 바꾼다 — 다시 그리면 애니메이션이 끊겨서 클래스만 바꾼다
-        const flips = myCardsEl.querySelectorAll('.pk-flip');
-        flips.forEach(f => { f.classList.remove('pk-flip--turning'); void f.offsetWidth; f.classList.add('pk-flip--turning'); });
-        setTimeout(() => {
-            myCardsEl.classList.toggle('revealed', myCardsRevealed);
-            const hint = myCardsEl.querySelector('.pk-my-cards-hint');
-            if (hint) hint.textContent = myCardsRevealed ? (HAS_MOUSE ? '클릭해서 가리기' : '탭해서 가리기') : (HAS_MOUSE ? '올리거나 클릭해서 보기' : '탭해서 보기');
-        }, 150);
-    });
     document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
         const sitBtn = e.target.closest('[data-sit]');
         if (!sitBtn) return;

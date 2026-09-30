@@ -483,3 +483,11 @@ class PokerSitWithAllChipsTestCase(TestCase):
         self.assertEqual(PokerChipWallet.objects.get(user=rich).chips, 0)
         self.assertFalse(poker_engine.sit_down(poor, 1)[0])
         self.assertEqual(PokerChipWallet.objects.get(user=poor).chips, poker_engine.POKER_BUY_IN - 1)
+
+
+class PokerHandDescTestCase(TestCase):
+    def test_hand_desc(self):
+        self.assertEqual(poker_engine.hand_desc(["AS", "AH"], []), "원페어")
+        self.assertEqual(poker_engine.hand_desc(["AS", "KH"], []), "하이카드")
+        self.assertEqual(poker_engine.hand_desc(["AS", "KH"], ["AD", "KC", "2S"]), "투페어")
+        self.assertEqual(poker_engine.hand_desc(["AS", "KS"], ["QS", "JS", "TS", "2H"]), "스트레이트 플러시")
