@@ -1,4 +1,5 @@
 import os
+import time
 from decouple import config, Csv
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -153,6 +154,7 @@ TEMPLATES = [
                 "core.context_processors.vapid_settings",
                 "core.context_processors.site_section",
                 "game.context_processors.pending_season_reward",
+                "game.context_processors.static_version",
             ],
         },
     },
@@ -234,6 +236,9 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# 정적 파일 이름에 해시가 붙지 않아(아래 STORAGES가 일반 StaticFilesStorage) 배포 후에도 브라우저가
+# 예전 JS를 캐시해 쓰는 일이 있다. 서버가 시작될 때마다 바뀌는 값을 ?v=로 붙여 새로 받게 한다.
+STATIC_VERSION = str(int(time.time()))
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
