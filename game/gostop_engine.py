@@ -43,6 +43,7 @@ from django.db.models import Min, Q
 from django.utils import timezone
 
 from accounts.models import User
+from .bots import free_bot
 from .models import (
     GostopRoom, GostopSeat, GostopGameLog, HouseBank, PokerChipWallet,
     GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT, POKER_CHIPS_PER_LEAF,
@@ -665,18 +666,6 @@ def join_room(user, room_id):
     return True, room.id
 
 
-def _bot_user():
-    """아직 어느 고스톱 방에도 앉지 않은 AI 계정 (없으면 만든다)."""
-    bot = User.objects.filter(is_bot=True, gostop_seat__isnull=True).order_by("id").first()
-    if bot:
-        return bot
-    n = User.objects.filter(is_bot=True).count() + 1
-    bot = User(username=f"AI-{n}", is_bot=True, is_active=False)
-    bot.set_unusable_password()
-    bot.save()
-    return bot
-
-
 def add_bots(user):
     """내 방의 빈자리를 AI로 채운다. AI는 방에서 가장 많은 스택만큼(최소 바이인) 하우스 칩을 들고 앉는다."""
     with transaction.atomic():
@@ -695,7 +684,7 @@ def add_bots(user):
             return False, "하우스 칩이 부족해 AI를 부를 수 없습니다."
         stack = min(stack, house.chips // empty)
         for i in range(empty):
-            GostopSeat.objects.create(room=room, user=_bot_user(), seat=len(seats) + i, stack=stack)
+            GostopSeat.objects.create(room=room, user=free_bot(), seat=len(seats) + i, stack=stack)
         house.chips -= stack * empty
         house.save(update_fields=["chips"])
         room.next_first = random.randrange(_capacity(room))
