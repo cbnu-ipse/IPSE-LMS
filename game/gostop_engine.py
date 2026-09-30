@@ -142,6 +142,16 @@ def score_breakdown(captured, gukjin_as_pi=False):
     }
 
 
+def combos(captured):
+    """완성된 족보 중 화면 연출 대상 (홍단·청단·초단·고도리)."""
+    cards = [CARDS[c] for c in captured]
+    done = [name for kind, name in (("hong", "홍단"), ("cheong", "청단"), ("cho", "초단"))
+            if sum(1 for c in cards if c["k"] == "t" and c["t"] == kind) == 3]
+    if sum(1 for c in cards if c["k"] == "y" and c.get("godori")) == 3:
+        done.append("고도리")
+    return done
+
+
 def best_score(captured):
     return max(score_breakdown(captured, o)["total"] for o in (False, True))
 
@@ -477,6 +487,12 @@ def _finish_turn(st, s, steals, events):
         steals += 1
         events.append("쓸")
     _steal_pi(st, s, steals)
+    # 이번 턴에 새로 완성된 족보 → 이벤트로 알려 화면 연출 (판마다 한 번)
+    done = st.setdefault("combos", [[] for _ in st["hands"]])
+    for name in combos(st["captured"][s]):
+        if name not in done[s]:
+            done[s].append(name)
+            events.append(name)
     st["events"] = events
     score = best_score(st["captured"][s])
     if score >= st["win_score"] and score > st["go_score"][s]:
