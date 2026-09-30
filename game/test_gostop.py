@@ -4,12 +4,15 @@ from unittest.mock import patch
 
 from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
+from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import User
-from . import consumers as game_consumers, gostop_engine as eng, poker_engine
-from .models import GostopGameLog, GostopRoom, GostopSeat, PokerChipWallet, PokerSeat, GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT
+from . import consumers as game_consumers, gostop_ai, gostop_engine as eng, poker_engine
+from .models import (
+    GostopGameLog, GostopRoom, GostopSeat, HouseBank, PokerChipWallet, PokerSeat, GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT,
+)
 
 # 카드 id = (월-1)*4 + 월 안 순번. 예) 1월 광=0, 1월 홍단=1, 12월 비광=44
 GWANG = [0, 8, 28, 40, 44]
@@ -432,11 +435,15 @@ class GostopChipConservationTestCase(TestCase):
 
     def total(self):
         return (sum(PokerChipWallet.objects.values_list("chips", flat=True))
+                + sum(HouseBank.objects.values_list("chips", flat=True))
                 + sum(GostopSeat.objects.values_list("stack", flat=True))
                 + sum(PokerSeat.objects.values_list("stack", flat=True)))
 
+    @patch.object(gostop_ai, "AI_TIME_BUDGET", 0)
     def test_random_operations_conserve_chips(self):
         rng = random.Random(7)
+        with transaction.atomic():
+            HouseBank.locked()
         users = [User.objects.create_user(username=f"u{i}", password="x") for i in range(6)]
         poker_engine.PokerTable.get_solo()
         for i, u in enumerate(users):
@@ -457,6 +464,8 @@ class GostopChipConservationTestCase(TestCase):
                 eng.leave_room(u, away=True)
             elif op < .46:
                 eng.mark_back(u)
+            elif op < .47:
+                eng.add_bots(u)
             elif op < .5:
                 poker_engine.sit_down(u, rng.randrange(8))
             elif op < .54:
@@ -474,3 +483,67 @@ class GostopChipConservationTestCase(TestCase):
             self.assertEqual(self.total(), start, f"step {step}")
             # 5000칩 미만으로 방 스택을 가진 사람은 없어야 한다 (입장 시점 기준)
         self.assertFalse(GostopSeat.objects.filter(user=users[0]).exists())  # 0칩 유저는 입장 불가
+
+
+@patch.object(gostop_ai, "AI_TIME_BUDGET", 0)  # 테스트에선 시뮬레이션 1회만
+class GostopBotTestCase(TestCase):
+    def setUp(self):
+        self.a = User.objects.create_user(username="a", password="x")
+        self.b = User.objects.create_user(username="b", password="x")
+        PokerChipWallet.objects.create(user=self.a, chips=12000)
+        PokerChipWallet.objects.create(user=self.b, chips=GOSTOP_BUY_IN)
+
+    def house(self):
+        return HouseBank.objects.get(pk=1).chips
+
+    def test_add_bots_plays_full_game_and_returns_chips_to_house(self):
+        _, room_id = eng.create_room(self.a, "gostop")
+        self.assertEqual(eng.add_bots(self.a), (True, None))
+        seats = list(GostopSeat.objects.filter(room_id=room_id).order_by("seat").select_related("user"))
+        self.assertEqual([(s.user.is_bot, s.stack) for s in seats], [(False, 12000), (True, 12000), (True, 12000)])
+        start_total = 12000 * 3 + self.house()
+        for _ in range(400):  # 사람 차례는 시간초과로, AI 차례는 AI가 둔다
+            GostopRoom.objects.filter(pk=room_id).update(
+                next_game_at=timezone.now() - timedelta(seconds=1),
+                turn_deadline=timezone.now() - timedelta(seconds=1),
+            )
+            eng.process_due_deadlines()
+            if GostopGameLog.objects.exists():
+                break
+        self.assertTrue(GostopGameLog.objects.exists())
+        eng.leave_room(self.a)  # 사람이 다 나가면 AI도 정리, 칩은 하우스로
+        self.assertFalse(GostopRoom.objects.exists())
+        self.assertEqual(PokerChipWallet.objects.get(user=self.a).chips + self.house(), start_total)
+
+    def test_human_takes_bot_seat(self):
+        _, room_id = eng.create_room(self.a, "matgo")
+        eng.add_bots(self.a)
+        self.assertEqual(eng.join_room(self.b, room_id), (True, room_id))  # 대기 중이면 AI가 바로 비켜줌
+        users = list(GostopSeat.objects.filter(room_id=room_id).order_by("seat").values_list("user__username", flat=True))
+        self.assertEqual(users, ["a", "b"])
+
+    def test_bot_yields_after_game_when_playing(self):
+        _, room_id = eng.create_room(self.a, "matgo")
+        eng.add_bots(self.a)
+        GostopRoom.objects.filter(pk=room_id).update(next_game_at=timezone.now() - timedelta(seconds=1))
+        eng.process_due_deadlines()
+        if GostopRoom.objects.get(pk=room_id).status != "playing":
+            return
+        ok, msg = eng.join_room(self.b, room_id)
+        self.assertFalse(ok)
+        self.assertEqual(GostopRoom.objects.get(pk=room_id).state["leaving"], [1])  # 판 끝나면 AI 퇴장
+
+    def test_bots_hidden_from_leaves_ranking(self):
+        _, room_id = eng.create_room(self.a, "matgo")
+        eng.add_bots(self.a)
+        self.client.force_login(self.a)
+        rows = self.client.get("/ranking/community/?board=leaves").context["ranking_rows"]
+        self.assertFalse(any(r["user"].is_bot for r in rows))
+
+    def test_ai_moves_are_always_legal(self):
+        rng = random.Random(5)
+        for mode in ("matgo", "gostop"):
+            for _ in range(15):
+                st, out = eng.new_game(mode, 0, rng)
+                while out is None:
+                    out = gostop_ai.act(st, st["turn"], 0, rng)  # 모든 자리를 AI가 둬도 규칙 위반 없이 끝난다
