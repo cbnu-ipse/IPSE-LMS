@@ -79,7 +79,7 @@
         gain.gain.setValueAtTime(0.0001, startTime);
         gain.gain.exponentialRampToValueAtTime(peak, startTime + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-        osc.connect(gain).connect(c.destination);
+        osc.connect(gain).connect(opts.dest || c.destination);
         osc.start(startTime);
         osc.stop(startTime + duration + 0.02);
     }
@@ -101,7 +101,28 @@
         },
         error: (c, t0) => tone(c, 220, t0, 0.14, { type: 'square', slideTo: 110, volume: 0.16 }),
         pop: (c, t0) => tone(c, 500, t0, 0.09, { type: 'sine', slideTo: 120, volume: 0.2 }),
+        // 고스톱 족보(홍단·청단·초단): 가야금 글리산도로 올라가 화음으로 마무리
+        fanfare: (c, t0) => {
+            [293.66, 349.23, 392.0, 440.0, 523.25, 587.33, 698.46, 783.99].forEach((f, i) =>
+                pluck(c, f, t0 + i * 0.045, 0.5, 0.22));
+            [587.33, 739.99, 880.0].forEach(f => tone(c, f, t0 + 0.42, 0.9, { type: 'triangle', volume: 0.16 }));
+        },
+        // 고도리: 새 세 마리가 짹짹
+        birds: (c, t0) => {
+            for (let i = 0; i < 6; i++) {
+                const f = 2400 + (i % 3) * 350;
+                tone(c, f, t0 + i * 0.12, 0.07, { type: 'sine', slideTo: f * 1.6, volume: 0.14 });
+                tone(c, f * 1.3, t0 + i * 0.12 + 0.05, 0.05, { type: 'sine', slideTo: f * .9, volume: 0.1 });
+            }
+            [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(c, f, t0 + 0.75 + i * 0.07, 0.35, { type: 'triangle', volume: 0.16 }));
+        },
     };
+
+    // 현을 튕긴 듯한 소리 (가야금 느낌): 빠른 어택 + 긴 감쇠, 배음을 살짝 섞는다
+    function pluck(c, freq, t, dur, vol, dest) {
+        tone(c, freq, t, dur, { type: 'triangle', volume: vol, dest });
+        tone(c, freq * 2, t, dur * .5, { type: 'sine', volume: vol * .25, dest });
+    }
 
     // AudioContext가 아직 suspended 상태일 때 예약한 소리는, 이후 context가
     // running으로 전환돼도 재생되지 않고 그냥 버려지는 경우가 있다(특히 사용자
@@ -191,6 +212,9 @@
     function toggleMute() {
         muted = !muted;
         localStorage.setItem(STORAGE_KEY, muted ? '1' : '0');
+        // 음소거는 배경음악도 멈추고, 풀면 틀던 곡을 다시 튼다
+        if (muted) stopBgm();
+        else if (lastBgm) startBgm(lastBgm);
         return muted;
     }
 
@@ -198,5 +222,112 @@
         return muted;
     }
 
-    window.GameSound = { play, startLoop, stopLoop, toggleMute, isMuted };
+    // ── 배경음악 (합성, 음원 파일 없음) ─────────────────────────────────────
+    // 곡은 8분음표 단위 스텝 배열. 100ms마다 0.4초 앞까지 미리 예약하는 방식이라
+    // 탭 전환 등으로 타이머가 늦어도 박자가 흐트러지지 않는다.
+    const BGM_KEY = 'ipse_game_bgm_off';
+    const N = { A2: 110, C3: 130.81, D3: 146.83, F3: 174.61, G3: 196, A3: 220, C4: 261.63, D4: 293.66,
+        F4: 349.23, G4: 392, A4: 440, C5: 523.25, D5: 587.33, F5: 698.46 };
+    const BGM_SONGS = {
+        // 고스톱: D 계면조 느낌의 5음계 가야금 멜로디 + 장구(덩·쿵·덕) — 64스텝(약 23초) 반복
+        gostop: {
+            bpm: 84,
+            volume: 0.35,
+            melody: [
+                'A4', 0, 'C5', 0, 'D5', 0, 'C5', 'A4', 'G4', 0, 'A4', 0, 0, 0, 0, 0,
+                'F4', 0, 'G4', 0, 'A4', 0, 'C5', 0, 'A4', 'G4', 'F4', 0, 'D4', 0, 0, 0,
+                'D5', 0, 'C5', 'A4', 'G4', 0, 'A4', 0, 'C5', 0, 'D5', 0, 'F5', 0, 'D5', 0,
+                'C5', 'A4', 'G4', 0, 'F4', 0, 'G4', 0, 'A4', 0, 0, 0, 0, 0, 0, 0,
+            ],
+            bass: ['D3', 'D3', 'F3', 'A2', 'D3', 'C3', 'A2', 'D3'],
+            drum: ['deong', 0, 0, 'deok', 'kung', 0, 'deok', 0],
+        },
+    };
+    let bgm = null;
+    let lastBgm = null;  // 음소거를 풀 때 다시 틀 곡
+
+    function drum(c, kind, t, dest) {
+        if (kind === 'deong' || kind === 'kung') {  // 북편: 낮은 울림
+            tone(c, kind === 'deong' ? 90 : 120, t, 0.25, { type: 'sine', slideTo: 60, volume: kind === 'deong' ? .5 : .32, dest });
+        }
+        if (kind === 'deong' || kind === 'deok') {  // 채편: 짧은 딱
+            const src = c.createBufferSource();
+            src.buffer = getNoiseBuffer(c);
+            const bp = c.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.value = 1800;
+            const g = c.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(kind === 'deok' ? .35 : .22, t + 0.003);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+            src.connect(bp).connect(g).connect(dest);
+            src.start(t);
+            src.stop(t + 0.08);
+        }
+    }
+
+    function scheduleBgm() {
+        if (!bgm) return;
+        const { c, song, master } = bgm;
+        const step = 60 / song.bpm / 2;
+        while (bgm.next < c.currentTime + 0.4) {
+            const i = bgm.step % song.melody.length;
+            const note = song.melody[i];
+            if (note) pluck(c, N[note], bgm.next, step * 2.6, .5, master);
+            if (i % 8 === 0) tone(c, N[song.bass[(i / 8) % song.bass.length]], bgm.next, step * 7, { type: 'sine', volume: .35, dest: master });
+            const d = song.drum[i % song.drum.length];
+            if (d) drum(c, d, bgm.next, master);
+            bgm.next += step;
+            bgm.step++;
+        }
+    }
+
+    function isBgmOn() {
+        return localStorage.getItem(BGM_KEY) !== '1';
+    }
+
+    function startBgm(name) {
+        lastBgm = name;
+        if (muted || bgm || !isBgmOn()) return;
+        const song = BGM_SONGS[name];
+        const c = getCtx();
+        if (!song || !c) return;
+        whenRunning(c, () => {
+            if (muted || bgm || !isBgmOn()) return;
+            const master = c.createGain();
+            master.gain.setValueAtTime(0.0001, c.currentTime);
+            master.gain.exponentialRampToValueAtTime(song.volume, c.currentTime + 1.5);
+            master.connect(c.destination);
+            bgm = { c, song, master, name, step: 0, next: c.currentTime + 0.1 };
+            bgm.timer = setInterval(scheduleBgm, 100);
+            scheduleBgm();
+        });
+    }
+
+    function stopBgm() {
+        if (!bgm) return;
+        const { c, master, timer } = bgm;
+        clearInterval(timer);
+        master.gain.cancelScheduledValues(c.currentTime);
+        master.gain.setTargetAtTime(0.0001, c.currentTime, 0.15);
+        setTimeout(() => master.disconnect(), 800);
+        bgm = null;
+    }
+
+    // 효과음이 잘 들리게 잠깐 배경음악을 줄였다가 되돌린다
+    function duckBgm(ms) {
+        if (!bgm) return;
+        const { c, master, song } = bgm;
+        master.gain.cancelScheduledValues(c.currentTime);
+        master.gain.setTargetAtTime(song.volume * 0.2, c.currentTime, 0.05);
+        master.gain.setTargetAtTime(song.volume, c.currentTime + ms / 1000, 0.3);
+    }
+
+    function setBgmOn(on, name) {
+        localStorage.setItem(BGM_KEY, on ? '0' : '1');
+        if (on) startBgm(name);
+        else stopBgm();
+    }
+
+    window.GameSound = { play, startLoop, stopLoop, toggleMute, isMuted, startBgm, stopBgm, duckBgm, isBgmOn, setBgmOn };
 })();
