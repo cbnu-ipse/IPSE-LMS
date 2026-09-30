@@ -7,3 +7,9 @@ def pending_season_reward(request):
     GameSeason.get_or_create_current()
     claim = SeasonRewardClaim.objects.filter(user=request.user, shown=False).first()
     return {"pending_season_reward": claim}
+
+
+def static_version(request):
+    """정적 파일 캐시 무효화용 버전 (서버 시작마다 바뀜) — {% static '...' %}?v={{ static_version }}"""
+    from django.conf import settings
+    return {"static_version": settings.STATIC_VERSION}

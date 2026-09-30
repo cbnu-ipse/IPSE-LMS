@@ -630,7 +630,7 @@ footer { display: none !important; }
 </style>
 
 {{ gostop_cards|json_script:"gs-cards-data" }}
-<script src="{% static 'js/game-sound.js' %}"></script>
+<script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
 <script>
 (function () {
     const CARDS = JSON.parse(document.getElementById('gs-cards-data').textContent);
@@ -1062,7 +1062,7 @@ footer { display: none !important; }
         void comboEl.offsetWidth;
         comboEl.style.animation = '';
         if (window.GameSound) {
-            window.GameSound.duckBgm(2600);
+            if (window.GameSound.duckBgm) window.GameSound.duckBgm(2600);
             window.GameSound.play(cfg.sound);
         }
         setTimeout(() => {
@@ -1392,7 +1392,9 @@ footer { display: none !important; }
     // ── 배경음악: 브라우저 자동재생 제한 때문에 첫 클릭/터치 때 시작 ──
     (function () {
         const btn = document.getElementById('gs-bgm-toggle');
-        if (!window.GameSound) return;
+        // 예전 game-sound.js가 캐시돼 있으면 배경음악 함수가 없다 — 여기서 오류가 나면 아래 소켓 연결까지
+        // 멈춰 "연결 중..."에서 멈췄으므로, 없으면 버튼만 숨기고 넘어간다
+        if (!window.GameSound || !window.GameSound.isBgmOn) { btn.style.display = 'none'; return; }
         function renderBgm() { btn.classList.toggle('muted', !window.GameSound.isBgmOn()); }
         btn.addEventListener('click', (e) => {
             e.stopPropagation();

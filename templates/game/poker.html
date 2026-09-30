@@ -902,7 +902,7 @@ footer { display: none !important; }
 }
 </style>
 
-<script src="{% static 'js/game-sound.js' %}"></script>
+<script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
 <script>
 (function () {
     const SEAT_COUNT = 8;
