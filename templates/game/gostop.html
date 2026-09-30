@@ -302,6 +302,7 @@
 .gs-room-player img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; }
 .gs-room-vs { color: #86efac; font-size: .7rem; font-weight: 800; }
 .gs-room-empty { color: #86efac; font-size: .75rem; }
+.gs-ai-badge { margin-left: 4px; padding: 0 5px; border-radius: 4px; background: #7c3aed; color: #fff; font-size: .58rem; font-weight: 900; }
 .gs-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
 .gs-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
 .gs-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
@@ -687,9 +688,10 @@ footer { display: none !important; }
     function renderLobby(state) {
         const canBuyIn = state.wallet_chips >= state.buy_in;
         const rooms = state.rooms.map(r => {
-            const players = r.players.map(p => `<span class="gs-room-player">${avatar(p)}${esc(p.display_name)}</span>`)
+            const players = r.players.map(p => `<span class="gs-room-player">${avatar(p)}${esc(p.display_name)}${p.is_bot ? '<span class="gs-ai-badge">AI</span>' : ''}</span>`)
                 .join('<span class="gs-room-vs">VS</span>');
-            const open = r.players.length < r.capacity;
+            // 빈자리가 있거나 AI가 앉아 있으면 입장 가능 (AI가 자리를 비켜준다)
+            const open = r.players.length < r.capacity || r.players.some(p => p.is_bot);
             const status = r.status === 'playing' ? '진행 중' : open ? `${r.players.length}/${r.capacity}명` : '곧 시작';
             const joinBtn = open
                 ? `<button type="button" class="gs-btn gs-btn-call gs-btn-sm" data-join="${r.id}" ${canBuyIn ? '' : 'disabled'}>입장</button>`
@@ -728,6 +730,7 @@ footer { display: none !important; }
                     <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
                     <li>한 판에서 받을 수 있는 칩은 판 시작 때 내 칩까지입니다. (가진 것보다 많이 따올 수 없음)</li>
+                    <li>사람이 부족하면 방에서 "AI로 빈자리 채우기"를 누르세요. AI는 하우스 칩으로 앉고, 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
                     <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 연결이 끊기거나 시간초과가 3번 이어지면 자리 비움으로 자동 진행하고 판이 끝나면 퇴장합니다.</li>
                 </ul>
@@ -774,7 +777,7 @@ footer { display: none !important; }
                 : Array.from({ length: g.hand_counts[side] }, () => cardHtml('back', { size: 'xs' })).join('');
             oppHand = `<span class="gs-opp-hand" data-opp-hand="${side}">${cards}</span>`;
         }
-        const info = `<div class="gs-info">${avatar(seat)}<span class="gs-name">${esc(seat.display_name)}${isMe ? ' (나)' : ''}</span>
+        const info = `<div class="gs-info">${avatar(seat)}<span class="gs-name">${esc(seat.display_name)}${isMe ? ' (나)' : ''}</span>${seat.is_bot ? '<span class="gs-ai-badge">AI</span>' : ''}
             <span class="gs-stack"><i class="fa-solid fa-coins"></i> ${fmt(seat.stack)}</span>${badges.join('')}${timer}${oppHand}${score}</div>`;
         const cap = g ? capHtml(g.captured[side]) : '';
         return { html: isMe ? cap + info : info + cap, turn: isTurn };
@@ -944,7 +947,9 @@ footer { display: none !important; }
             ? `<span class="gs-turn-countdown"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
         const rows = [leave];
         if (room.status !== 'playing' || !g) {
-            rows.push(`<div class="gs-hint">${room.seats.length < room.capacity ? '참가자를 기다리는 중입니다.' : '다음 판을 기다리는 중입니다.'}</div>`);
+            const empty = room.seats.length < room.capacity;
+            rows.push(`<div class="gs-hint">${empty ? '참가자를 기다리는 중입니다.' : '다음 판을 기다리는 중입니다.'}</div>`);
+            if (empty) rows.push(`<button type="button" class="gs-btn gs-btn-call" data-add-bots><i class="fa-solid fa-robot"></i> AI로 빈자리 채우기</button>`);
         } else if (!g.my_turn) {
             rows.push(`<div class="gs-hint">${esc(seatName(room, g.turn))} 차례입니다.</div>`);
         } else if (g.phase === 'go_stop') {
@@ -1234,6 +1239,11 @@ footer { display: none !important; }
         if (e.target.closest('[data-leave]')) {
             if (window.GameSound) window.GameSound.play('tap');
             send({ type: 'leave' });
+            return;
+        }
+        if (e.target.closest('[data-add-bots]')) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'add_bots' });
             return;
         }
         const goBtn = e.target.closest('[data-go]');

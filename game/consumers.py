@@ -463,6 +463,7 @@ class GostopConsumer(AsyncWebsocketConsumer):
             "create": lambda: gostop_engine.create_room(user, data.get("mode")),
             "join": lambda: gostop_engine.join_room(user, data.get("room_id")),
             "leave": lambda: gostop_engine.leave_room(user),
+            "add_bots": lambda: gostop_engine.add_bots(user),
             "play": lambda: gostop_engine.play(user, data.get("card"), data.get("target"), data.get("mode")),
             "choose": lambda: gostop_engine.choose_flip(user, data.get("target")),
             "go_stop": lambda: gostop_engine.declare(user, data.get("go")),

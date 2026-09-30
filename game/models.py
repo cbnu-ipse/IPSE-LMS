@@ -533,6 +533,33 @@ class HighLowPlayLog(models.Model):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 하우스 계좌 — AI(봇) 플레이어가 쓰는 칩. 봇은 여기서 칩을 가지고 앉고, 자리를 떠나면
+# 남은 칩이 여기로 돌아온다. 그래서 봇이 따고 잃은 칩까지 전체 칩 총량이 보존된다.
+# 잔고가 모자라면 봇을 부를 수 없다 (관리자 페이지에서 잔고 조정).
+# ─────────────────────────────────────────────────────────────────────────────
+
+HOUSE_INITIAL_CHIPS = 500 * POKER_CHIPS_PER_LEAF  # 처음 만들어질 때 잔고 (500낙엽어치)
+
+
+class HouseBank(models.Model):
+    chips = models.BigIntegerField(default=0, verbose_name="하우스 칩")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "하우스 계좌"
+        verbose_name_plural = "하우스 계좌"
+
+    def __str__(self):
+        return f"하우스 {self.chips:,}칩"
+
+    @classmethod
+    def locked(cls):
+        """싱글턴(pk=1)을 보장하고 행 잠금으로 가져온다. transaction.atomic() 안에서 호출."""
+        cls.objects.get_or_create(pk=1, defaults={"chips": HOUSE_INITIAL_CHIPS})
+        return cls.objects.select_for_update().get(pk=1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 고스톱 — 방 여러 개, 방마다 맞고(2인) 또는 고스톱(3인) 모드. 판돈은 포커와
 # 같은 칩 지갑(PokerChipWallet).
 #

@@ -30,6 +30,7 @@
 
 공개 함수(뷰/컨슈머에서 호출):
     create_room(user, mode) / join_room(user, room_id) / leave_room(user, away) / mark_back(user)
+    add_bots(user)                                  — 빈자리를 AI로 채운다 (칩은 하우스 계좌)
     play(user, card, target, mode) / choose_flip(user, target) / declare(user, go)
     next_deadline_at() / process_due_deadlines()   — 워치독용
     get_state_for(user)                             — 접속자 시점 상태 스냅샷
@@ -43,13 +44,14 @@ from django.utils import timezone
 
 from accounts.models import User
 from .models import (
-    GostopRoom, GostopSeat, GostopGameLog, PokerChipWallet,
+    GostopRoom, GostopSeat, GostopGameLog, HouseBank, PokerChipWallet,
     GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT, POKER_CHIPS_PER_LEAF,
 )
 
 GOSTOP_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
 GOSTOP_AWAY_TURN_TIMEOUT = 3   # 자리 비움(연결 끊김·연속 시간초과) 플레이어는 이 시간 뒤 자동으로 둔다
 GOSTOP_MAX_TIMEOUTS = 3        # 연속 시간초과 이 횟수면 자리 비움 + 판 끝나고 퇴장
+GOSTOP_BOT_THINK = 1           # AI 차례는 이 시간 뒤 워치독이 둔다 (+ AI 계산 시간)
 GOSTOP_START_DELAY = 3         # 인원이 다 차고 첫 판 시작까지(초)
 GOSTOP_NEXT_GAME_DELAY = 8     # 판 종료 후 결과를 보여주고 다음 판까지(초)
 GOSTOP_MEONGBAK_MIN = 7        # 승자 열끗이 이 장수 이상이면 멍박
@@ -558,11 +560,17 @@ def _take_buy_in(user):
     return chips
 
 
-def _refund(user_id, chips):
-    if chips <= 0:
+def _refund(seat):
+    """좌석 스택을 돌려준다: 사람은 칩 지갑, AI는 하우스 계좌."""
+    if seat.stack <= 0:
         return
-    wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user_id=user_id)
-    wallet.chips += chips
+    if seat.user.is_bot:
+        house = HouseBank.locked()
+        house.chips += seat.stack
+        house.save(update_fields=["chips"])
+        return
+    wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user_id=seat.user_id)
+    wallet.chips += seat.stack
     wallet.save(update_fields=["chips"])
 
 
@@ -595,7 +603,20 @@ def join_room(user, room_id):
             return False, "입장할 수 없는 방입니다."
         count = GostopSeat.objects.filter(room=room).count()
         if count >= _capacity(room):
-            return False, "방이 가득 찼습니다."
+            # AI가 앉아 있으면 사람에게 자리를 비켜준다 (판 중이면 판이 끝난 뒤)
+            bot = GostopSeat.objects.filter(room=room, user__is_bot=True).select_related("user").order_by("-seat").first()
+            if not bot:
+                return False, "방이 가득 찼습니다."
+            if room.status == "playing":
+                leaving = room.state.setdefault("leaving", [])
+                if bot.seat not in leaving:
+                    leaving.append(bot.seat)
+                room.save(update_fields=["state"])
+                return False, "판이 끝나면 AI가 자리를 비켜줍니다. 판이 끝난 뒤 다시 입장해주세요."
+            if not PokerChipWallet.objects.filter(user=user, chips__gte=GOSTOP_BUY_IN).exists():
+                return False, _need_buy_in_msg()
+            _remove_seat(room, bot)
+            count -= 1
         chips = _take_buy_in(user)
         if not chips:
             return False, _need_buy_in_msg()
@@ -608,16 +629,60 @@ def join_room(user, room_id):
     return True, room.id
 
 
+def _bot_user():
+    """아직 어느 고스톱 방에도 앉지 않은 AI 계정 (없으면 만든다)."""
+    bot = User.objects.filter(is_bot=True, gostop_seat__isnull=True).order_by("id").first()
+    if bot:
+        return bot
+    n = User.objects.filter(is_bot=True).count() + 1
+    bot = User(username=f"AI-{n}", is_bot=True, is_active=False)
+    bot.set_unusable_password()
+    bot.save()
+    return bot
+
+
+def add_bots(user):
+    """내 방의 빈자리를 AI로 채운다. AI는 방에서 가장 많은 스택만큼(최소 바이인) 하우스 칩을 들고 앉는다."""
+    with transaction.atomic():
+        room, seat = _lock_my_room(user)
+        if not room:
+            return False, "참여 중인 방이 없습니다."
+        if room.status != "waiting":
+            return False, "대기 중일 때만 AI를 부를 수 있습니다."
+        seats = _seats(room)
+        empty = _capacity(room) - len(seats)
+        if empty <= 0:
+            return False, "빈자리가 없습니다."
+        stack = max([GOSTOP_BUY_IN] + [s.stack for s in seats if not s.user.is_bot])
+        house = HouseBank.locked()
+        if house.chips < GOSTOP_BUY_IN * empty:
+            return False, "하우스 칩이 부족해 AI를 부를 수 없습니다."
+        stack = min(stack, house.chips // empty)
+        for i in range(empty):
+            GostopSeat.objects.create(room=room, user=_bot_user(), seat=len(seats) + i, stack=stack)
+        house.chips -= stack * empty
+        house.save(update_fields=["chips"])
+        room.next_first = random.randrange(_capacity(room))
+        room.carry_multiplier = 1
+        room.next_game_at = timezone.now() + timedelta(seconds=GOSTOP_START_DELAY)
+        room.save()
+    return True, None
+
+
 def _remove_seat(room, seat):
-    """스택을 지갑으로 돌려주고 좌석을 비운 뒤 번호를 앞으로 당긴다. 방이 비면 삭제하고 False."""
-    _refund(seat.user_id, seat.stack)
+    """스택을 돌려주고 좌석을 비운 뒤 번호를 앞으로 당긴다. 사람이 아무도 안 남으면
+    AI도 정리하고 방을 삭제한 뒤 False."""
+    _refund(seat)
     removed = seat.seat
     seat.delete()
     # 오름차순으로 한 칸씩 당기면 unique(room, seat) 충돌이 없다
     for s in GostopSeat.objects.filter(room=room, seat__gt=removed).order_by("seat"):
         s.seat -= 1
         s.save(update_fields=["seat"])
-    if not GostopSeat.objects.filter(room=room).exists():
+    if not GostopSeat.objects.filter(room=room, user__is_bot=False).exists():
+        for bot_seat in GostopSeat.objects.select_for_update(of=("self",)).filter(room=room).select_related("user"):
+            _refund(bot_seat)
+            bot_seat.delete()
         room.delete()
         return False
     room.status = "waiting"
@@ -679,7 +744,12 @@ def _mark_away(st, side):
 
 
 def _turn_deadline(st, now=None):
-    secs = GOSTOP_AWAY_TURN_TIMEOUT if st["turn"] in st.get("away", []) else GOSTOP_TURN_TIMEOUT
+    if st["turn"] in st.get("bots", []):
+        secs = GOSTOP_BOT_THINK
+    elif st["turn"] in st.get("away", []):
+        secs = GOSTOP_AWAY_TURN_TIMEOUT
+    else:
+        secs = GOSTOP_TURN_TIMEOUT
     return (now or timezone.now()) + timedelta(seconds=secs)
 
 
@@ -756,6 +826,7 @@ def _start_game(room):
         room.save(update_fields=["next_game_at"])
         return
     st, outcome = new_game(room.mode, room.next_first % len(seats))
+    st["bots"] = [s.seat for s in seats if s.user.is_bot]
     room.state = st
     room.status = "playing"
     room.next_game_at = None
@@ -824,13 +895,17 @@ def process_due_deadlines():
             if room.status == "playing" and room.turn_deadline and room.turn_deadline <= now:
                 st = room.state
                 side = st["turn"]
-                st["timeouts"][side] += 1
-                if st["timeouts"][side] >= GOSTOP_MAX_TIMEOUTS:
-                    _mark_away(st, side)
-                    leaving = st.setdefault("leaving", [])
-                    if side not in leaving:
-                        leaving.append(side)
-                outcome = auto_act(st, side)
+                if side in st.get("bots", []):
+                    from . import gostop_ai
+                    outcome = gostop_ai.act(st, side)
+                else:
+                    st["timeouts"][side] += 1
+                    if st["timeouts"][side] >= GOSTOP_MAX_TIMEOUTS:
+                        _mark_away(st, side)
+                        leaving = st.setdefault("leaving", [])
+                        if side not in leaving:
+                            leaving.append(side)
+                    outcome = auto_act(st, side)
                 room.state = st
                 if outcome:
                     _end_game(room, outcome)
@@ -845,7 +920,7 @@ def process_due_deadlines():
 # ── 상태 스냅샷 ───────────────────────────────────────────────────────────────
 
 def _player_view(u):
-    return {"user_id": u.id, "display_name": u.display_name, "picture": u.get_picture()}
+    return {"user_id": u.id, "display_name": u.display_name, "picture": u.get_picture(), "is_bot": u.is_bot}
 
 
 def _game_view(room, st, me):
