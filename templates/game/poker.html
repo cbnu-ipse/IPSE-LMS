@@ -31,6 +31,8 @@
                             <div id="pk-center-msg" class="pk-center-msg hidden"></div>
                             <div class="pk-pot" id="pk-pot-line">POT <span id="pk-pot-chips"></span><span id="pk-pot">0</span></div>
                             <div class="pk-board-cards" id="pk-community-cards"></div>
+                            <!-- 내 패: 프로미넌스 포커처럼 눈 버튼을 누르고 있는 동안만 앞면 -->
+                            <div class="pk-my-hand hidden" id="pk-my-cards"></div>
                         </div>
                         <div class="pk-seats" id="pk-seats">
                             <div class="pk-seat" data-seat="0"></div>
@@ -44,9 +46,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- 내 패 (프로미넌스 포커처럼 테이블 아래에 항상 앞면으로 + 지금 족보) -->
-                <div class="pk-hand-dock hidden" id="pk-my-cards"></div>
 
                 <!-- 하단 액션 바 -->
                 <div class="pk-action-bar" id="pk-action-bar">
@@ -395,45 +394,69 @@
 @keyframes pk-flip-show { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
 @keyframes pk-flip-hide { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
 
-/* 내 패 영역 — 프로미넌스 포커처럼 내 홀카드를 테이블 아래에 항상 앞면으로 크게, 부채꼴로.
-   ponytail: 예전엔 공동 카드 아래에 뒷면으로 두고 클릭/호버로 뒤집게 했는데, 테이블 전체를 덮는
-   좌석 레이어(.pk-seats)가 클릭과 호버를 가로채 어떤 기기에서도 앞면이 안 보였다. */
-.pk-hand-dock {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    min-height: 104px;
-    padding: 10px 16px 14px;
-    background: linear-gradient(180deg, #0b3320, #061c10);
-    border-top: 1px solid rgba(255,255,255,.08);
+/* 내 패 (공동 카드 아래) — 프로미넌스 포커처럼 평소엔 뒷면, 눈 버튼(또는 카드)을 누르고 있는
+   동안만 앞면과 지금 족보가 보이고 손을 떼면 다시 가려진다 (어깨너머 훔쳐보기 방지). */
+.pk-my-hand {
+    position: relative;
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 6px;
+    cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
 }
-.pk-hand-dock.hidden { display: none; }
-.pk-hand-cards { display: flex; align-items: flex-end; }
+.pk-my-hand.hidden { display: none; }
+.pk-hand-cards { position: relative; display: flex; align-items: flex-end; }
 .pk-hand-card {
     position: relative;
-    width: 58px; height: 82px;
-    border-radius: 8px;
+    width: 40px; height: 56px;
+    border-radius: 6px;
     background: linear-gradient(160deg, #ffffff, #f1f5f9);
     border: 1px solid #cbd5e1;
-    box-shadow: 0 10px 22px rgba(0,0,0,.5);
+    box-shadow: 0 6px 14px rgba(0,0,0,.45);
     color: #0f172a;
     font-weight: 900;
+    overflow: hidden;
 }
-.pk-hand-card:first-child { transform: rotate(-8deg) translateY(4px); margin-right: -12px; z-index: 1; }
-.pk-hand-card:last-child { transform: rotate(7deg) translateY(4px); z-index: 2; }
+.pk-hand-card:first-child { transform: rotate(-8deg) translateY(3px); margin-right: -8px; z-index: 1; }
+.pk-hand-card:last-child { transform: rotate(7deg) translateY(3px); z-index: 2; }
 .pk-hand-card--red { color: #dc2626; }
-.pk-hand-card b { position: absolute; top: 5px; left: 7px; font-size: 1.05rem; line-height: 1; }
-.pk-hand-card i { position: absolute; top: 22px; left: 7px; font-size: .8rem; font-style: normal; line-height: 1; }
-.pk-hand-card em { position: absolute; right: 8px; bottom: 6px; font-size: 1.9rem; font-style: normal; line-height: 1; }
-.pk-hand-info { display: flex; flex-direction: column; gap: 3px; min-width: 90px; }
-.pk-hand-label { font-size: .62rem; font-weight: 800; letter-spacing: .12em; color: #6ee7b7; }
-.pk-hand-name { font-size: 1.15rem; font-weight: 900; color: #fde047; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
-.pk-hand-dock--folded .pk-hand-cards { opacity: .4; filter: grayscale(.7); }
-.pk-hand-dock--folded .pk-hand-name { color: #94a3b8; }
+.pk-hand-card b { position: absolute; top: 4px; left: 5px; font-size: .8rem; line-height: 1; }
+.pk-hand-card i { position: absolute; top: 17px; left: 5px; font-size: .62rem; font-style: normal; line-height: 1; }
+.pk-hand-card em { position: absolute; right: 5px; bottom: 4px; font-size: 1.35rem; font-style: normal; line-height: 1; }
+.pk-hand-back {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(135deg, #4338ca, #4338ca 4px, #3730a3 4px, #3730a3 8px);
+    border: 2px solid #fff;
+    border-radius: 6px;
+    transition: opacity .12s;
+}
+.pk-peek-btn {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    width: 30px; height: 30px;
+    border-radius: 999px;
+    border: 2px solid rgba(255,255,255,.85);
+    background: rgba(15,23,42,.78);
+    color: #fff; font-size: .75rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 10px rgba(0,0,0,.4);
+    pointer-events: none;   /* 누르기는 내 패 영역 전체가 받는다 */
+    transition: opacity .12s;
+}
+.pk-hand-name { font-size: .8rem; font-weight: 900; color: #fde047; text-shadow: 0 2px 6px rgba(0,0,0,.6); white-space: nowrap; opacity: 0; transition: opacity .12s; min-width: 52px; }
+.pk-my-hand.peek .pk-hand-back { opacity: 0; }
+.pk-my-hand.peek .pk-peek-btn { opacity: .25; }
+.pk-my-hand.peek .pk-hand-name { opacity: 1; }
+.pk-my-hand--folded .pk-hand-cards { opacity: .45; filter: grayscale(.7); }
 
 /* 좌석 */
-.pk-seats { position: absolute; inset: 0; }
+/* 좌석 레이어는 테이블 전체를 덮으므로 클릭은 통과시키고 좌석만 받는다
+   (안 그러면 가운데 공동 카드/내 패 위의 클릭·탭·호버를 전부 가로챈다) */
+.pk-seats { position: absolute; inset: 0; pointer-events: none; }
+.pk-seats .pk-seat { pointer-events: auto; }
 .pk-seat {
     position: absolute;
     width: 118px;
@@ -822,9 +845,12 @@
     .pk-card--sm { width: 23px; height: 32px; font-size: .64rem; }
     .pk-flip { width: 27px; height: 38px; }
     .pk-community { gap: 5px; }
-    .pk-hand-dock { min-height: 88px; gap: 14px; padding: 8px 12px 10px; }
-    .pk-hand-card { width: 48px; height: 68px; }
-    .pk-hand-card em { font-size: 1.5rem; }
+    .pk-hand-card { width: 32px; height: 45px; }
+    .pk-hand-card b { font-size: .68rem; }
+    .pk-hand-card i { top: 14px; font-size: .52rem; }
+    .pk-hand-card em { font-size: 1.05rem; }
+    .pk-peek-btn { width: 26px; height: 26px; font-size: .66rem; }
+    .pk-my-hand { margin-top: 2px; }
     .pk-stat-bar { font-size: .7rem; padding: 6px 10px; }
     .pk-action-bar { padding: 10px 12px; }
 }
@@ -985,6 +1011,7 @@ footer { display: none !important; }
         }
     }
 
+    let peeking = false;  // 내 패를 누르고 있는 중
     function renderMyCards(state) {
         const me = state.seats.find(s => s.is_me);
         const cards = me && me.hole_cards;
@@ -994,18 +1021,34 @@ footer { display: none !important; }
         }
         const folded = me.status === 'folded';
         myCardsEl.classList.remove('hidden');
-        myCardsEl.classList.toggle('pk-hand-dock--folded', folded);
+        myCardsEl.classList.toggle('peek', peeking);
+        myCardsEl.classList.toggle('pk-my-hand--folded', folded);
         const face = c => {
             const rank = RANK_LABELS[c[0]] || c[0], suit = SUIT_SYMBOLS[c[1]] || '';
             const red = c[1] === 'H' || c[1] === 'D';
-            return `<span class="pk-hand-card${red ? ' pk-hand-card--red' : ''}"><b>${rank}</b><i>${suit}</i><em>${suit}</em></span>`;
+            return `<span class="pk-hand-card${red ? ' pk-hand-card--red' : ''}"><b>${rank}</b><i>${suit}</i><em>${suit}</em><span class="pk-hand-back"></span></span>`;
         };
-        myCardsEl.innerHTML = `<div class="pk-hand-cards">${cards.map(face).join('')}</div>
-            <div class="pk-hand-info">
-                <span class="pk-hand-label">내 패</span>
-                <span class="pk-hand-name">${folded ? '폴드' : esc(state.my_hand_desc || '')}</span>
-            </div>`;
+        myCardsEl.innerHTML = `<div class="pk-hand-cards">${cards.map(face).join('')}
+                <span class="pk-peek-btn" aria-hidden="true"><i class="fa-solid fa-eye"></i></span>
+            </div>
+            <span class="pk-hand-name">${folded ? '폴드' : esc(state.my_hand_desc || '')}</span>`;
     }
+
+    // 누르고 있는 동안만 앞면 (마우스·터치·펜 공통 pointer 이벤트). 떼는 건 어디서 떼든 인정
+    function setPeek(on) {
+        if (peeking === on) return;
+        peeking = on;
+        myCardsEl.classList.toggle('peek', on);
+    }
+    myCardsEl.setAttribute('role', 'button');
+    myCardsEl.setAttribute('tabindex', '0');
+    myCardsEl.setAttribute('aria-label', '누르고 있는 동안 내 패 보기');
+    myCardsEl.addEventListener('pointerdown', (e) => { e.preventDefault(); setPeek(true); });
+    ['pointerup', 'pointercancel', 'blur'].forEach(ev => window.addEventListener(ev, () => setPeek(false)));
+    document.addEventListener('visibilitychange', () => setPeek(false));
+    myCardsEl.addEventListener('contextmenu', (e) => e.preventDefault());  // 모바일 길게 누르기 메뉴 방지
+    myCardsEl.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setPeek(true); } });
+    myCardsEl.addEventListener('keyup', () => setPeek(false));
 
     // 액면가별로 쪼개 큰 단위부터 최대 maxCols개 기둥, 기둥당 최대 maxPer개
     const CHIP_DENOMS = [[10000, '#eab308'], [1000, '#1f2937'], [100, '#16a34a'], [10, '#2563eb'], [1, '#e2e8f0']];
