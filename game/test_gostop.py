@@ -274,6 +274,8 @@ class GostopRoomTestCase(TestCase):
         self.assertEqual(self.chips(self.a), 0)  # 보관 칩 전부 들고 들어가 있고, 판 중엔 정산 없음
 
         eng._end_game(GostopRoom.objects.get(pk=room.pk), {"winner": 1, "reason": "stop"})
+        self.assertEqual(GostopSeat.objects.filter(room=room).count(), 2)  # 결과 보는 동안은 자리 유지
+        eng._start_game(GostopRoom.objects.get(pk=room.pk))  # 다음 판 시작 시점에 퇴장
         seat = GostopSeat.objects.get(room=room)
         self.assertEqual((seat.user, seat.seat), (self.b, 0))  # 판 끝나고 퇴장, 상대가 방장 승계
         self.assertEqual(self.chips(self.a) + self.chips(self.b) + seat.stack, GOSTOP_BUY_IN * 4)
@@ -295,6 +297,7 @@ class GostopRoomTestCase(TestCase):
             return
         eng.leave_room(self.a)
         eng._end_game(GostopRoom.objects.get(pk=room_id), {"winner": None, "reason": "nagari"})
+        eng._start_game(GostopRoom.objects.get(pk=room_id))
         room = GostopRoom.objects.get(pk=room_id)
         self.assertEqual((room.status, room.next_game_at), ("waiting", None))
         self.assertEqual(
@@ -351,6 +354,7 @@ class GostopRoomTestCase(TestCase):
         room.state["leaving"] = [0]  # 패자(0번)가 퇴장 예약 → 판 끝나고 빠지면 승자가 0번으로 당겨짐
         room.save()
         eng._end_game(room, {"winner": 1, "reason": "stop"})
+        eng._start_game(GostopRoom.objects.get(pk=room.pk))
         seat = GostopSeat.objects.get(room=room)
         self.assertEqual((seat.user, seat.seat), (self.b, 0))
         self.assertEqual(eng.get_state_for(self.b)["room"]["last_result"]["my_net"], 3000)
@@ -375,7 +379,9 @@ class GostopRoomTestCase(TestCase):
             return
         self._run_until_game_ends(room.id)  # 시간초과만으로도 판이 끝까지 진행된다 (기권 없음)
         self.assertNotEqual(GostopGameLog.objects.get().detail.get("reason"), "forfeit")
-        self.assertFalse(GostopRoom.objects.exists())  # 둘 다 시간초과 3번 → 판 끝나고 퇴장
+        GostopRoom.objects.update(next_game_at=timezone.now() - timedelta(seconds=1))
+        eng.process_due_deadlines()
+        self.assertFalse(GostopRoom.objects.exists())  # 둘 다 시간초과 3번 → 결과 뒤 다음 판 시작 때 퇴장
         total = sum(PokerChipWallet.objects.values_list("chips", flat=True))
         total += sum(GostopSeat.objects.values_list("stack", flat=True))
         self.assertEqual(total, GOSTOP_BUY_IN * 4)
@@ -560,3 +566,64 @@ class GostopBotTestCase(TestCase):
                 st, out = eng.new_game(mode, 0, rng)
                 while out is None:
                     out = gostop_ai.act(st, st["turn"], 0, rng)  # 모든 자리를 AI가 둬도 규칙 위반 없이 끝난다
+
+
+class CrossGameSeatTestCase(TestCase):
+    """포커에 앉은 채 고스톱으로 가거나 그 반대여도 칩이 묶이지 않는다."""
+
+    def setUp(self):
+        poker_engine.PokerTable.get_solo()
+        self.u = User.objects.create_user(username="u", password="x")
+        self.v = User.objects.create_user(username="v", password="x")
+        PokerChipWallet.objects.create(user=self.u, chips=GOSTOP_BUY_IN * 2)
+        PokerChipWallet.objects.create(user=self.v, chips=GOSTOP_BUY_IN * 2)
+
+    def test_gostop_entry_stands_up_from_idle_poker_seat(self):
+        poker_engine.sit_down(self.u, 0)
+        self.assertEqual(PokerChipWallet.objects.get(user=self.u).chips, 0)
+        ok, room_id = eng.create_room(self.u, "matgo")
+        self.assertTrue(ok)
+        self.assertFalse(PokerSeat.objects.filter(user=self.u).exists())
+        self.assertEqual(GostopSeat.objects.get(user=self.u).stack, GOSTOP_BUY_IN * 2)
+
+    def test_poker_sit_leaves_waiting_gostop_room(self):
+        eng.create_room(self.u, "matgo")
+        self.assertEqual(poker_engine.sit_down(self.u, 0), (True, None))
+        self.assertFalse(GostopRoom.objects.exists())
+        self.assertEqual(PokerSeat.objects.get(user=self.u).stack, GOSTOP_BUY_IN * 2)
+
+    def test_cancel_leave_while_viewing_result(self):
+        _, room_id = eng.create_room(self.u, "matgo")
+        eng.join_room(self.v, room_id)
+        room = GostopRoom.objects.get(pk=room_id)
+        st, _ = eng.new_game("matgo", 0, random.Random(3))
+        st["leaving"] = [0]
+        room.state, room.status = st, "playing"
+        room.save()
+        eng._end_game(room, {"winner": None, "reason": "nagari"})
+        eng.cancel_leave(self.u)
+        eng._start_game(GostopRoom.objects.get(pk=room_id))
+        self.assertEqual(GostopSeat.objects.filter(room_id=room_id).count(), 2)
+
+
+class PageLeaveGraceTestCase(TestCase):
+    """페이지를 떠나며 page_leave를 보낸 연결은 짧은 유예 뒤 바로 일어난다."""
+
+    async def test_page_leave_stands_up_quickly(self):
+        def setup():
+            poker_engine.PokerTable.get_solo()
+            u = User.objects.create_user(username="pl", password="x")
+            PokerChipWallet.objects.create(user=u, chips=GOSTOP_BUY_IN)
+            poker_engine.sit_down(u, 0)
+            return u
+        u = await database_sync_to_async(setup)()
+        comm = WebsocketCommunicator(game_consumers.PokerConsumer.as_asgi(), "/ws/poker/")
+        comm.scope["user"] = u
+        with patch.object(game_consumers, "_ensure_poker_watchdog", lambda: None), \
+                patch.object(game_consumers, "PAGE_LEAVE_GRACE_SECONDS", 0):
+            await comm.connect()
+            await comm.receive_json_from()
+            await comm.send_json_to({"type": "page_leave"})
+            await comm.disconnect()
+            await game_consumers._disconnect_grace_tasks[u.id]
+        self.assertFalse(await database_sync_to_async(PokerSeat.objects.filter(user=u).exists)())

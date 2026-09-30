@@ -974,11 +974,19 @@ footer { display: none !important; }
         }
         const g = room.game;
         // 판 도중엔 빠져나갈 수 없고 판이 끝난 뒤 퇴장하도록 예약만 한다 (다시 누르면 취소)
-        const reserved = !!(g && room.status === 'playing' && (g.leaving || []).includes(room.me));
-        const leave = room.status === 'playing'
-            ? `<button type="button" class="gs-btn gs-btn-ghost" data-leave>${reserved ? '퇴장 예약 취소' : '나가기 예약'}</button>`
-              + (reserved ? `<div class="gs-hint">이번 판이 끝나면 나갑니다.</div>` : '')
-            : `<button type="button" class="gs-btn gs-btn-ghost" data-leave>나가기</button>`;
+        const reserved = !!(g && (g.leaving || []).includes(room.me));
+        let leave;
+        if (room.status === 'playing') {
+            leave = `<button type="button" class="gs-btn gs-btn-ghost" data-leave>${reserved ? '퇴장 예약 취소' : '나가기 예약'}</button>`
+                + (reserved ? `<div class="gs-hint">이번 판이 끝나면 나갑니다.</div>` : '');
+        } else if (reserved) {
+            // 판이 끝나고 결과를 보는 중: 다음 판 시작 때 나간다. 지금 나가거나 예약을 취소할 수 있다
+            leave = `<button type="button" class="gs-btn gs-btn-ghost" data-leave>지금 나가기</button>`
+                + `<button type="button" class="gs-btn gs-btn-ghost" data-cancel-leave>퇴장 취소</button>`
+                + `<div class="gs-hint">결과 확인 후 나갑니다.</div>`;
+        } else {
+            leave = `<button type="button" class="gs-btn gs-btn-ghost" data-leave>나가기</button>`;
+        }
         const timer = g && g.turn_seconds_left != null
             ? `<span class="gs-turn-countdown"><span data-countdown="turn">${fmtSecondsLeft(g.turn_seconds_left)}</span>초</span>` : '';
         const rows = [leave];
@@ -1321,6 +1329,11 @@ footer { display: none !important; }
             send({ type: 'leave' });
             return;
         }
+        if (e.target.closest('[data-cancel-leave]')) {
+            if (window.GameSound) window.GameSound.play('tap');
+            send({ type: 'cancel_leave' });
+            return;
+        }
         if (e.target.closest('[data-add-bots]')) {
             if (window.GameSound) window.GameSound.play('click');
             send({ type: 'add_bots' });
@@ -1415,6 +1428,9 @@ footer { display: none !important; }
         socket.onerror = () => socket.close();
     }
     connect();
+    // 나가기/뒤로가기/다른 페이지로 이동하면 서버가 곧바로 일어나기(포커)·퇴장 예약(고스톱)을
+    // 처리하도록 알린다. 새로고침도 이 신호를 보내지만 금방 다시 접속하면 자리가 유지된다.
+    window.addEventListener('pagehide', () => send({ type: 'page_leave' }));
     setInterval(() => {
         if (socket && socket.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > CONNECTION_STALE_MS) {
             socket.close();

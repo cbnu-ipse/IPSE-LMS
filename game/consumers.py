@@ -193,6 +193,10 @@ POKER_WATCHDOG_ERROR_RETRY_SECONDS = 2
 # 일어난 것으로 간주해 stand_up()을 그대로 재사용한다 — 핸드 진행 중이면
 # stand_up() 자체가 즉시 비우지 않고 핸드 종료 후 퇴장을 예약하므로 안전하다.
 POKER_DISCONNECT_GRACE_SECONDS = 20
+# 나가기/뒤로가기 등 페이지를 떠나면서 끊긴 연결(클라이언트가 pagehide 때 "page_leave"를
+# 보냄)은 곧바로 일어나기/퇴장 처리한다. 새로고침도 pagehide를 보내지만 보통 이 시간
+# 안에 다시 접속하므로 자리가 유지된다. (포커·고스톱 공통)
+PAGE_LEAVE_GRACE_SECONDS = 3
 _disconnect_grace_tasks = {}  # user_id -> asyncio.Task
 
 
@@ -215,11 +219,11 @@ def _cancel_disconnect_grace(user_id):
         task.cancel()
 
 
-async def _schedule_disconnect_grace(user):
+async def _schedule_disconnect_grace(user, seconds=None):
     """연결이 끊긴 유저를 유예 시간 뒤에도 재접속하지 않으면 자리에서 내보낸다.
     (같은 유저가 여러 탭을 열어둔 경우는 드문 예외로 두고 신경 쓰지 않는다.)"""
     try:
-        await asyncio.sleep(POKER_DISCONNECT_GRACE_SECONDS)
+        await asyncio.sleep(POKER_DISCONNECT_GRACE_SECONDS if seconds is None else seconds)
         ok, _ = await database_sync_to_async(poker_engine.stand_up)(user)
         if ok:
             await _broadcast_poker_state()
@@ -279,7 +283,8 @@ class PokerConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard(POKER_GROUP, self.channel_name)
         user = self.scope.get("user")
         if user and user.is_authenticated and user.id not in _disconnect_grace_tasks:
-            _disconnect_grace_tasks[user.id] = asyncio.create_task(_schedule_disconnect_grace(user))
+            seconds = PAGE_LEAVE_GRACE_SECONDS if getattr(self, "page_left", False) else None
+            _disconnect_grace_tasks[user.id] = asyncio.create_task(_schedule_disconnect_grace(user, seconds))
 
     async def receive(self, text_data):
         try:
@@ -305,6 +310,9 @@ class PokerConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({"type": "pong"}))
             return
 
+        if msg_type == "page_leave":
+            self.page_left = True
+            return
         if msg_type == "sit":
             handler = lambda: poker_engine.sit_down(user, data.get("seat_number"))
         elif msg_type == "stand":
@@ -409,10 +417,10 @@ async def _gostop_watchdog_loop():
         _gostop_watchdog_task = None
 
 
-async def _gostop_disconnect_grace(user):
+async def _gostop_disconnect_grace(user, seconds=None):
     """유예 시간 안에 재접속하지 않으면 방에서 내보낸다 (진행 중이면 자리 비움 + 판 끝나고 퇴장)."""
     try:
-        await asyncio.sleep(GOSTOP_DISCONNECT_GRACE_SECONDS)
+        await asyncio.sleep(GOSTOP_DISCONNECT_GRACE_SECONDS if seconds is None else seconds)
         ok, _ = await database_sync_to_async(gostop_engine.leave_room)(user, away=True)
         if ok:
             await _broadcast_gostop_state()
@@ -444,7 +452,8 @@ class GostopConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard(GOSTOP_GROUP, self.channel_name)
         user = self.scope.get("user")
         if user and user.is_authenticated and user.id not in _gostop_disconnect_tasks:
-            _gostop_disconnect_tasks[user.id] = asyncio.create_task(_gostop_disconnect_grace(user))
+            seconds = PAGE_LEAVE_GRACE_SECONDS if getattr(self, "page_left", False) else None
+            _gostop_disconnect_tasks[user.id] = asyncio.create_task(_gostop_disconnect_grace(user, seconds))
 
     async def receive(self, text_data):
         try:
@@ -458,12 +467,16 @@ class GostopConsumer(AsyncWebsocketConsumer):
         if msg_type == "__ping__":
             await self.send(text_data=json.dumps({"type": "pong"}))
             return
+        if msg_type == "page_leave":
+            self.page_left = True
+            return
 
         handlers = {
             "create": lambda: gostop_engine.create_room(user, data.get("mode")),
             "join": lambda: gostop_engine.join_room(user, data.get("room_id")),
             "leave": lambda: gostop_engine.leave_room(user),
             "add_bots": lambda: gostop_engine.add_bots(user),
+            "cancel_leave": lambda: gostop_engine.cancel_leave(user),
             "play": lambda: gostop_engine.play(user, data.get("card"), data.get("target"), data.get("mode")),
             "choose": lambda: gostop_engine.choose_flip(user, data.get("target")),
             "go_stop": lambda: gostop_engine.declare(user, data.get("go")),

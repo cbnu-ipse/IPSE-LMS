@@ -1599,6 +1599,9 @@ footer { display: none !important; }
         socket.onerror = () => socket.close();
     }
     connect();
+    // 나가기/뒤로가기/다른 페이지로 이동하면 서버가 곧바로 일어나기(포커)·퇴장 예약(고스톱)을
+    // 처리하도록 알린다. 새로고침도 이 신호를 보내지만 금방 다시 접속하면 자리가 유지된다.
+    window.addEventListener('pagehide', () => send({ type: 'page_leave' }));
     clearInterval(staleCheckTimer);
     staleCheckTimer = setInterval(() => {
         if (socket && socket.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > CONNECTION_STALE_MS) {
