@@ -372,24 +372,27 @@
     pointer-events: none;
 }
 
-/* 앞뒤가 있는 카드: 기본은 뒷면, .pk-flip-inner를 180도 돌리면 앞면.
-   공동 카드는 새로 깔릴 때 한 장씩 뒤집히고(pk-flip--dealing), 다 뒤집힌 뒤엔 pk-flip--up. */
-.pk-flip { display: inline-block; width: 34px; height: 48px; perspective: 600px; flex-shrink: 0; }
-.pk-flip-inner {
-    position: relative;
-    display: block;
-    width: 100%; height: 100%;
-    transform-style: preserve-3d;
-    transition: transform .45s ease;
+/* 앞뒤가 있는 카드: 기본은 뒷면, 앞면을 보일 땐 뒷면을 숨기고 앞면을 드러낸다.
+   공동 카드는 새로 깔릴 때 한 장씩 뒤집히고(pk-flip--dealing, 카드별 지연은 --d), 다 뒤집힌 뒤엔 pk-flip--up.
+   ponytail: 3D(rotateY + backface-visibility)로 돌리면 사파리/일부 모바일 브라우저가 뒷면을 안 숨겨
+   앞면이 안 보였다 — 가로로 좁혀졌다 펴지면서 중간에 면을 바꾸는 2D 방식으로 모든 브라우저에서 같게 보인다. */
+.pk-flip { display: inline-block; width: 34px; height: 48px; flex-shrink: 0; }
+.pk-flip-inner { position: relative; display: block; width: 100%; height: 100%; }
+.pk-flip-face { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s; }
+.pk-flip-front { opacity: 0; }
+.pk-flip--up .pk-flip-front { opacity: 1; }
+.pk-flip--up .pk-flip-back { opacity: 0; }
+.pk-flip--dealing .pk-flip-inner { animation: pk-flip-squash .6s ease-in-out var(--d, 0ms) both; }
+.pk-flip--dealing .pk-flip-front { animation: pk-flip-show .6s linear var(--d, 0ms) both; }
+.pk-flip--dealing .pk-flip-back { animation: pk-flip-hide .6s linear var(--d, 0ms) both; }
+.pk-flip--turning .pk-flip-inner { animation: pk-flip-squash .3s ease-in-out; }
+@keyframes pk-flip-squash {
+    0% { transform: translateY(-6px) scaleX(1); }
+    50% { transform: translateY(-3px) scaleX(0); }
+    100% { transform: none; }
 }
-.pk-flip-face { position: absolute; inset: 0; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.pk-flip-front { transform: rotateY(180deg); }
-.pk-flip--up .pk-flip-inner { transform: rotateY(180deg); }
-.pk-flip--dealing .pk-flip-inner { animation: pk-flip-in .6s ease-out both; }
-@keyframes pk-flip-in {
-    from { transform: rotateY(0deg) translateY(-6px); }
-    to { transform: rotateY(180deg); }
-}
+@keyframes pk-flip-show { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
+@keyframes pk-flip-hide { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
 
 /* 내 카드 (공동 카드 아래) — 어깨너머 훔쳐보기 방지로 기본은 뒷면.
    어떤 기기든 클릭/탭하면 뒤집히고, 마우스 기기는 올려도 뒤집힌다. */
@@ -405,11 +408,13 @@
 .pk-my-cards.hidden { display: none; }
 .pk-my-cards-row { display: flex; gap: 5px; }
 .pk-my-cards-hint { font-size: .6rem; font-weight: 700; color: rgba(255,255,255,.55); max-width: 64px; line-height: 1.25; }
-.pk-my-cards.revealed .pk-flip-inner { transform: rotateY(180deg); }
+.pk-my-cards.revealed .pk-flip-front { opacity: 1; }
+.pk-my-cards.revealed .pk-flip-back { opacity: 0; }
 /* 터치인데 hover를 지원한다고 보고하는 기기는 탭 후 :hover가 달라붙어 다시 가릴 수 없으므로
    정밀한 포인터(마우스)일 때만 호버로 뒤집는다 */
 @media (hover: hover) and (pointer: fine) {
-    .pk-my-cards:hover .pk-flip-inner { transform: rotateY(180deg); }
+    .pk-my-cards:hover .pk-flip-front { opacity: 1; }
+    .pk-my-cards:hover .pk-flip-back { opacity: 0; }
 }
 .pk-my-cards--folded { opacity: .45; }
 
@@ -930,7 +935,7 @@ footer { display: none !important; }
 
     function flipCardHtml(card, cls, style) {
         return `<span class="pk-flip ${cls || ''}" style="${style || ''}"><span class="pk-flip-inner">`
-            + `<span class="pk-flip-face pk-card pk-card--back"></span>`
+            + `<span class="pk-flip-face pk-flip-back pk-card pk-card--back"></span>`
             + cardHtml(card).replace('class="pk-card', 'class="pk-flip-face pk-flip-front pk-card')
             + `</span></span>`;
     }
@@ -958,8 +963,7 @@ footer { display: none !important; }
             const delay = flipStarts[c] - now;
             slots.push(delay + FLIP_MS <= 0
                 ? flipCardHtml(c, 'pk-flip--up')
-                : flipCardHtml(c, 'pk-flip--dealing').replace(
-                    'class="pk-flip-inner"', `class="pk-flip-inner" style="animation-delay:${delay}ms"`));
+                : flipCardHtml(c, 'pk-flip--dealing', `--d:${delay}ms`));
         }
         communityEl.innerHTML = slots.join('');
 
@@ -1432,7 +1436,14 @@ footer { display: none !important; }
     myCardsEl.addEventListener('click', () => {
         myCardsRevealed = !myCardsRevealed;
         if (window.GameSound) window.GameSound.play('tap');
-        if (lastState) renderMyCards(lastState);
+        // 가로로 좁혀지는 중간(150ms)에 면을 바꾼다 — 다시 그리면 애니메이션이 끊겨서 클래스만 바꾼다
+        const flips = myCardsEl.querySelectorAll('.pk-flip');
+        flips.forEach(f => { f.classList.remove('pk-flip--turning'); void f.offsetWidth; f.classList.add('pk-flip--turning'); });
+        setTimeout(() => {
+            myCardsEl.classList.toggle('revealed', myCardsRevealed);
+            const hint = myCardsEl.querySelector('.pk-my-cards-hint');
+            if (hint) hint.textContent = myCardsRevealed ? (HAS_MOUSE ? '클릭해서 가리기' : '탭해서 가리기') : (HAS_MOUSE ? '올리거나 클릭해서 보기' : '탭해서 보기');
+        }, 150);
     });
     document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
         const sitBtn = e.target.closest('[data-sit]');
