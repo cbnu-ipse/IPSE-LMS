@@ -39,7 +39,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from .models import (
-    PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
+    HouseBank, PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
     POKER_SEATS, POKER_SMALL_BLIND, POKER_BIG_BLIND, POKER_BUY_IN,
     POKER_BUY_IN_LEAVES, POKER_CHIPS_PER_LEAF,
 )
@@ -50,6 +50,9 @@ POKER_RESULT_DISPLAY_SECONDS = 10  # 결과를 중앙에 띄워두는 시간(초
 POKER_NEXT_HAND_DELAY = POKER_RESULT_DISPLAY_SECONDS + 5  # 핸드 종료 후 다음 핸드까지 대기(초):
                                                            # 결과 표시 5초 + 실제로 보이는 카운트다운 5초
 POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 강제 폴드 + 퇴장 예약 (20초 * 4 ≈ 1분 20초)
+
+POKER_BOT_TARGET_PLAYERS = 3   # 사람이 이보다 적으면 AI로 채운다 (사람이 1명 이상일 때만)
+POKER_BOT_THINK = 1            # AI 차례는 이 시간 뒤 워치독이 둔다 (+ 승률 계산 시간)
 
 POKER_EMOJI_CHOICES = {"👍", "😂", "😮", "😡", "🔥", "❤️"}  # 이모티콘 반응 화이트리스트
 
@@ -183,9 +186,14 @@ def _vacate_seat(seat, table):
     """자리를 비우고 남은 칩을 개인 칩 지갑으로 옮긴다 (강제 환급 없음 —
     앉아있지 않아도 cash_out_chips로 언제든 낙엽으로 환전할 수 있다)."""
     if seat.stack > 0 and seat.user_id:
-        wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user_id=seat.user_id)
-        wallet.chips += seat.stack
-        wallet.save(update_fields=["chips"])
+        if seat.user.is_bot:  # AI 칩은 하우스 계좌로
+            house = HouseBank.locked()
+            house.chips += seat.stack
+            house.save(update_fields=["chips"])
+        else:
+            wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user_id=seat.user_id)
+            wallet.chips += seat.stack
+            wallet.save(update_fields=["chips"])
     seat.user = None
     seat.stack = 0
     seat.current_bet = 0
@@ -217,6 +225,57 @@ def _maybe_reset_empty_table(table):
     table.hand_number = 0
     table.last_result = {}
     table.save()
+
+
+def _sync_bots(table, seats_by_number):
+    """사람 수에 맞춰 AI를 앉히거나 뺀다: 사람이 있고 POKER_BOT_TARGET_PLAYERS보다 적으면 그만큼
+    AI로 채우고, 사람이 늘거나 모두 떠나면 AI를 뺀다(핸드 중인 AI는 핸드가 끝난 뒤).
+    AI는 테이블에서 가장 큰 사람 스택만큼(최소 바이인, 하우스 잔고 한도) 하우스 칩을 들고 앉는다."""
+    from .bots import free_bot
+    seats = [seats_by_number[n] for n in sorted(seats_by_number)]
+    humans = [s for s in seats if s.user_id and not s.user.is_bot]
+    bots = [s for s in seats if s.user_id and s.user.is_bot and not s.leaving_after_hand]
+    want = max(0, POKER_BOT_TARGET_PLAYERS - len(humans)) if humans else 0
+    in_hand = table.status == "playing"
+    for seat in bots[want:]:
+        if in_hand and seat.status in ("active", "all_in", "folded"):
+            seat.leaving_after_hand = True
+            seat.save(update_fields=["leaving_after_hand"])
+        else:
+            _vacate_seat(seat, table)
+    missing = want - len(bots)
+    empty = [s for s in reversed(seats) if not s.user_id]  # 뒷번호 자리부터 (사람이 앞자리를 고르기 쉽게)
+    if missing <= 0 or not empty:
+        return
+    house = HouseBank.locked()
+    stack = max([POKER_BUY_IN] + [s.stack for s in humans])
+    for seat in empty[:missing]:
+        chips = min(stack, house.chips)
+        if chips < POKER_BUY_IN:
+            break
+        house.chips -= chips
+        seat.user = free_bot()
+        seat.stack = chips
+        seat.status = "out" if in_hand else "active"
+        seat.current_bet = seat.contributed_total = 0
+        seat.hole_cards = []
+        seat.has_acted_this_street = False
+        seat.consecutive_timeouts = 0
+        seat.leaving_after_hand = False
+        seat.joined_at = timezone.now()
+        seat.save()
+    house.save(update_fields=["chips"])
+
+
+def _bot_act(table, seats_by_number, seat):
+    from . import poker_ai
+    action, amount = poker_ai.decide(table, seats_by_number, seat)
+    try:
+        _apply_action_locked(table, seats_by_number, seat, action, amount)
+    except ValueError:
+        fallback = "check" if seat.current_bet == table.current_bet else "fold"
+        _apply_action_locked(table, seats_by_number, seat, fallback, 0)
+    _resolve_turn(table, seats_by_number, seat.seat_number)
 
 
 def sit_down(user, seat_number):
@@ -264,6 +323,7 @@ def sit_down(user, seat_number):
         seat.joined_at = timezone.now()
         seat.save()
 
+        _sync_bots(table, seats_by_number)
         if table.status == "waiting":
             eligible = sum(1 for s in seats_by_number.values() if s.user_id and s.stack > 0)
             if eligible >= 2 and table.next_hand_at is None:
@@ -301,6 +361,7 @@ def stand_up(user):
                 seat.save()
         else:
             _vacate_seat(seat, table)
+            _sync_bots(table, seats_by_number)
             _maybe_reset_empty_table(table)
     return True, None
 
@@ -500,7 +561,8 @@ def _resolve_turn(table, seats_by_number, search_from):
     if not round_complete:
         nxt = _next_seat(seats_by_number, search_from, {"active"})
         table.current_turn_seat = nxt.seat_number
-        table.turn_deadline = timezone.now() + timedelta(seconds=POKER_TURN_TIMEOUT)
+        think = POKER_BOT_THINK if nxt.user_id and nxt.user.is_bot else POKER_TURN_TIMEOUT
+        table.turn_deadline = timezone.now() + timedelta(seconds=think)
         table.save()
         return
 
@@ -587,6 +649,7 @@ def _finish_hand(table, seats_by_number):
             s.has_acted_this_street = False
             s.save()
 
+    _sync_bots(table, seats_by_number)
     remaining = PokerSeat.objects.filter(table=table, user__isnull=False, stack__gt=0).count()
     if remaining >= 2:
         # ponytail: status를 "waiting"으로 바꿔야 next_deadline_at()/process_due_deadlines()가
@@ -787,7 +850,9 @@ def process_due_deadlines():
 
         if table.status == "playing" and table.turn_deadline and now >= table.turn_deadline:
             seat = seats_by_number.get(table.current_turn_seat)
-            if seat and seat.status == "active":
+            if seat and seat.status == "active" and seat.user.is_bot:
+                _bot_act(table, seats_by_number, seat)
+            elif seat and seat.status == "active":
                 _handle_turn_timeout(table, seats_by_number, seat)
             else:
                 # 턴을 가진 좌석이 (관리자가 자리를 강제로 비우는 등) 도중에
@@ -832,6 +897,7 @@ def get_state_for(user):
             "is_turn": table.current_turn_seat == s.seat_number,
             "hole_cards": hole_cards,
             "is_me": is_owner,
+            "is_bot": s.user.is_bot,
         }
 
     turn_seconds_left = None

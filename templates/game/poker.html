@@ -554,6 +554,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.pk-ai-badge { margin-left: 3px; padding: 0 4px; border-radius: 4px; background: #7c3aed; color: #fff; font-size: .55rem; font-weight: 900; }
 .pk-seat-stack {
     color: #a7f3d0;
     font-size: .68rem;
@@ -1109,7 +1110,7 @@ footer { display: none !important; }
                     <img class="pk-seat-avatar" src="${esc(seat.picture)}" alt="">
                 </div>
                 <div class="pk-seat-label">
-                    <span class="pk-seat-name">${esc(seat.display_name)}${seat.is_me ? ' (나)' : ''}</span>
+                    <span class="pk-seat-name">${esc(seat.display_name)}${seat.is_me ? ' (나)' : ''}${seat.is_bot ? '<span class="pk-ai-badge">AI</span>' : ''}</span>
                     <span class="pk-seat-stack">${seat.stack}</span>
                     ${tag}
                     ${turnTimer}
