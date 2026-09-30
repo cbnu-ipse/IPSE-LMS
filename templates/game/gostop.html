@@ -727,6 +727,7 @@ footer { display: none !important; }
                     <li>고박: 고를 불렀던 사람이 지면 3인은 다른 패자 몫까지 혼자, 맞고는 2배로 냅니다.</li>
                     <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
+                    <li>한 판에서 받을 수 있는 칩은 판 시작 때 내 칩까지입니다. (가진 것보다 많이 따올 수 없음)</li>
                     <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
                     <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 연결이 끊기거나 시간초과가 3번 이어지면 자리 비움으로 자동 진행하고 판이 끝나면 퇴장합니다.</li>
                 </ul>
@@ -878,7 +879,7 @@ footer { display: none !important; }
 
     function transferLines(r) {
         return (r.transfers || []).filter(t => t.points > 0).map(t => {
-            const tags = [...(t.baks || []), ...(t.gobak ? ['고박'] : []), ...(t.label ? [t.label] : [])];
+            const tags = [...(t.baks || []), ...(t.gobak ? ['고박'] : []), ...(t.label ? [t.label] : []), ...(t.capped ? ['한도'] : [])];
             return `${esc(t.from_name)} → ${esc(t.to_name)} ${t.points}점 · ${fmt(t.chips)}칩${tags.length ? ` (${tags.join('·')})` : ''}`;
         });
     }
