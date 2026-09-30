@@ -178,6 +178,19 @@ class GostopMatgoOnlyRulesTestCase(TestCase):
         self.assertEqual(st["events"], ["뻑", "연뻑"])
 
 
+class GostopComboEventTestCase(TestCase):
+    def test_new_combo_is_announced_once(self):
+        # 홍단 두 장을 가진 상태에서 3월 홍단을 먹으면 "홍단" 이벤트, 다음 턴엔 다시 안 나온다
+        st = blank_state(hands=[[8, 20], [21, 22]], floor=[9, 36], pile=[38, 39, 2],
+                         captured=[[1, 5], []])
+        eng.play_card(st, 0, 8)
+        self.assertIn("홍단", st["events"])
+        eng.play_card(st, 1, 21)
+        eng.play_card(st, 0, 20)
+        self.assertNotIn("홍단", st["events"])
+        self.assertEqual(eng.combos([4, 12, 29, 13, 17, 25]), ["초단", "고도리"])
+
+
 class GostopThreePlayerTestCase(TestCase):
     def test_jjok_steals_from_everyone(self):
         st = blank_state("gostop", hands=[[0, 20], [21], [22]], floor=[36], pile=[2, 38],
