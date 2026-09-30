@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog,
+    HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog, HouseBank,
 )
 
 
@@ -127,3 +127,8 @@ class GostopGameLogAdmin(admin.ModelAdmin):
     list_filter = ("mode",)
     search_fields = ("winner__username",)
     ordering = ("-ended_at",)
+
+
+@admin.register(HouseBank)
+class HouseBankAdmin(admin.ModelAdmin):
+    list_display = ("id", "chips", "updated_at")

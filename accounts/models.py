@@ -48,6 +48,8 @@ class User(AbstractUser):
     is_vice_president = models.BooleanField(default=False, verbose_name="부회장")
     is_executive = models.BooleanField(default=False, verbose_name="임원진")
     leaves = models.PositiveIntegerField(default=0, verbose_name="낙엽")
+    # 놀이터 게임의 AI 플레이어 계정 (is_active=False로 만들어 로그인·랭킹·목록에서 빠진다)
+    is_bot = models.BooleanField(default=False, verbose_name="AI 봇")
     class Meta:
         ordering = ("-date_joined",)
 
