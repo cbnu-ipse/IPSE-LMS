@@ -709,13 +709,20 @@ def _end_game(room, outcome):
         transfers += [(o, b["side"], b["points"], [], False, b["reason"]) for o in range(len(seats)) if o != b["side"]]
 
     rows = []
+    # 한 판에서 받을 수 있는 칩은 판 시작 때 내 스택까지 (포커의 올인처럼 — 칩이 많은 쪽이
+    # 불리해지지 않도록). 3인이면 두 패자에게서 받는 합계, 첫뻑 등 보너스도 포함
+    can_take = [s.stack for s in seats]
     for payer, receiver, points, baks, gobak, label in transfers:
-        chips = min(points * GOSTOP_CHIPS_PER_POINT, seats[payer].stack)
+        owed = points * GOSTOP_CHIPS_PER_POINT
+        chips = min(owed, seats[payer].stack, can_take[receiver])
+        can_take[receiver] -= chips
         seats[payer].stack -= chips
         seats[receiver].stack += chips
         rows.append({
-            "from_side": payer, "from_name": names[payer], "to_side": receiver, "to_name": names[receiver],
-            "points": points, "chips": chips, "baks": baks, "gobak": gobak, "label": label,
+            "from_side": payer, "from_name": names[payer], "from_user": seats[payer].user_id,
+            "to_side": receiver, "to_name": names[receiver], "to_user": seats[receiver].user_id,
+            "points": points, "chips": chips, "capped": chips < owed,
+            "baks": baks, "gobak": gobak, "label": label,
         })
     for s in seats:
         s.save(update_fields=["stack"])
@@ -894,8 +901,10 @@ def get_state_for(user):
             next_left = max(0, round((my_room.next_game_at - timezone.now()).total_seconds()))
         last = dict(my_room.last_result)
         if last.get("transfers") is not None:
+            # 좌석 번호가 아니라 유저로 계산한다 — 판이 끝나고 퇴장/파산자가 빠지면 남은 사람의
+            # 좌석 번호가 당겨져서, 좌석 기준이면 승자 화면에 패자 몫(-)이 찍혔다
             last["my_net"] = sum(
-                t["chips"] if t["to_side"] == me else -t["chips"] if t["from_side"] == me else 0
+                t["chips"] if t.get("to_user") == user.id else -t["chips"] if t.get("from_user") == user.id else 0
                 for t in last["transfers"]
             )
         room_view = {

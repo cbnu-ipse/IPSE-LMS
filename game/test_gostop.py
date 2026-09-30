@@ -307,6 +307,38 @@ class GostopRoomTestCase(TestCase):
         if room.status == "playing":
             self.assertEqual((room.state["away"], room.state["leaving"]), ([], []))
 
+    def _room_with_game(self, stacks):
+        _, room_id = eng.create_room(self.a, "matgo")
+        eng.join_room(self.b, room_id)
+        room = GostopRoom.objects.get(pk=room_id)
+        for side, stack in enumerate(stacks):
+            GostopSeat.objects.filter(room=room, seat=side).update(stack=stack)
+        st, _ = eng.new_game("matgo", 0, random.Random(3))
+        st.update(captured=[[], []], bonus_pay=[])
+        room.state, room.status = st, "playing"
+        room.save()
+        return room
+
+    def test_winner_cannot_take_more_than_own_stack(self):
+        room = self._room_with_game([1000, 50000])
+        room.state["captured"][0] = GWANG  # 5광 15점 × 광박 2 = 30점 = 3,000칩
+        room.save()
+        eng._end_game(room, {"winner": 0, "reason": "stop"})
+        stacks = dict(GostopSeat.objects.filter(room=room).values_list("user__username", "stack"))
+        self.assertEqual(stacks, {"a": 2000, "b": 49000})  # 가진 1,000칩까지만
+        room.refresh_from_db()
+        self.assertTrue(room.last_result["transfers"][0]["capped"])
+
+    def test_result_net_uses_user_not_shifted_seat(self):
+        room = self._room_with_game([5000, 5000])
+        room.state["captured"][1] = GWANG
+        room.state["leaving"] = [0]  # 패자(0번)가 퇴장 예약 → 판 끝나고 빠지면 승자가 0번으로 당겨짐
+        room.save()
+        eng._end_game(room, {"winner": 1, "reason": "stop"})
+        seat = GostopSeat.objects.get(room=room)
+        self.assertEqual((seat.user, seat.seat), (self.b, 0))
+        self.assertEqual(eng.get_state_for(self.b)["room"]["last_result"]["my_net"], 3000)
+
     def test_first_ppeok_is_paid_even_on_nagari(self):
         _, room_id = eng.create_room(self.a, "matgo")
         eng.join_room(self.b, room_id)
