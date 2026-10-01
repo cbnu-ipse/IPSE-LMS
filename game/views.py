@@ -9,7 +9,7 @@ from django.db import transaction
 from .models import (
     SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
-    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable,
+    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank,
 )
 from . import gostop_engine, poker_engine
 from accounts.models import User
@@ -721,6 +721,10 @@ def highlow_guess(request):
             HighLowPlayLog.objects.create(
                 user=user, bet=session.bet, streak=session.streak, payout=0, result="busted",
             )
+            # 잃은 베팅액은 하우스 계좌로 들어간다
+            house = HouseBank.locked()
+            house.chips += session.bet
+            house.save(update_fields=["chips"])
             prev_rank = session.current_rank
             session.delete()
             return JsonResponse({
