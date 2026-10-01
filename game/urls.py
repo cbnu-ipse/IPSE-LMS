@@ -21,6 +21,7 @@ urlpatterns = [
     path("pattern-recall/ranking/", views.pattern_recall_ranking, name="pattern_recall_ranking"),
     path("poker/", views.poker_view, name="poker"),
     path("gostop/", views.gostop_view, name="gostop"),
+    path("yacht/", views.yacht_view, name="yacht"),
     path("highlow/", views.highlow_view, name="highlow"),
     path("highlow/start/", views.highlow_start, name="highlow_start"),
     path("highlow/guess/", views.highlow_guess, name="highlow_guess"),

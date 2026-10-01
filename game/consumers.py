@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gostop_engine, poker_engine
+from . import gostop_engine, poker_engine, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -509,4 +509,143 @@ class GostopConsumer(AsyncWebsocketConsumer):
 
     async def _send_state(self):
         state = await database_sync_to_async(gostop_engine.get_state_for)(self.scope["user"])
+        await self.send(text_data=json.dumps(state, ensure_ascii=False))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 요트 다이스 — 고스톱과 같은 구조 (방 목록 + 내 방 상태를 한 소켓/그룹, 신호만 보내고
+# 각 연결이 자기 시점으로 다시 만든다). 워치독/재접속 유예도 단일 프로세스 asyncio 태스크.
+# ─────────────────────────────────────────────────────────────────────────────
+
+YACHT_GROUP = "yacht"
+YACHT_DISCONNECT_GRACE_SECONDS = 20
+_yacht_watchdog_task = None
+_yacht_disconnect_tasks = {}  # user_id -> asyncio.Task
+
+
+async def _broadcast_yacht_state():
+    channel_layer = get_channel_layer()
+    if channel_layer is not None:
+        await channel_layer.group_send(YACHT_GROUP, {"type": "broadcast_state"})
+
+
+def _ensure_yacht_watchdog():
+    global _yacht_watchdog_task
+    if _yacht_watchdog_task is None or _yacht_watchdog_task.done():
+        _yacht_watchdog_task = asyncio.create_task(_yacht_watchdog_loop())
+
+
+async def _yacht_watchdog_loop():
+    global _yacht_watchdog_task
+    try:
+        while True:
+            try:
+                deadline = await database_sync_to_async(yacht_engine.next_deadline_at)()
+                if deadline is None:
+                    return
+                wait = (deadline - timezone.now()).total_seconds()
+                if wait > 0:
+                    await asyncio.sleep(min(wait, 2))
+                    continue
+                await database_sync_to_async(yacht_engine.process_due_deadlines)()
+                await _broadcast_yacht_state()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("yacht watchdog tick failed, retrying")
+                await database_sync_to_async(close_old_connections)()
+                await asyncio.sleep(POKER_WATCHDOG_ERROR_RETRY_SECONDS)
+    finally:
+        _yacht_watchdog_task = None
+
+
+async def _yacht_disconnect_grace(user, seconds=None):
+    """유예 시간 안에 재접속하지 않으면 방에서 내보낸다 (판 중이면 대신 두기 + 판 끝나고 퇴장)."""
+    try:
+        await asyncio.sleep(YACHT_DISCONNECT_GRACE_SECONDS if seconds is None else seconds)
+        ok, _ = await database_sync_to_async(yacht_engine.leave_room)(user, away=True)
+        if ok:
+            await _broadcast_yacht_state()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _yacht_disconnect_tasks.pop(user.id, None)
+
+
+class YachtConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+        task = _yacht_disconnect_tasks.pop(user.id, None)
+        if task and not task.done():
+            task.cancel()
+        await self.channel_layer.group_add(YACHT_GROUP, self.channel_name)
+        await self.accept()
+        _ensure_yacht_watchdog()
+        back, _ = await database_sync_to_async(yacht_engine.mark_back)(user)
+        if back:
+            await _broadcast_yacht_state()
+        else:
+            await self._send_state()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(YACHT_GROUP, self.channel_name)
+        user = self.scope.get("user")
+        if user and user.is_authenticated and user.id not in _yacht_disconnect_tasks:
+            seconds = PAGE_LEAVE_GRACE_SECONDS if getattr(self, "page_left", False) else None
+            _yacht_disconnect_tasks[user.id] = asyncio.create_task(_yacht_disconnect_grace(user, seconds))
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        user = self.scope["user"]
+        msg_type = data.get("type")
+        _ensure_yacht_watchdog()
+        if msg_type == "__ping__":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+        if msg_type == "page_leave":
+            self.page_left = True
+            return
+        handlers = {
+            "create": lambda: yacht_engine.create_room(user, data.get("capacity"), data.get("stake")),
+            "join": lambda: yacht_engine.join_room(user, data.get("room_id")),
+            "leave": lambda: yacht_engine.leave_room(user),
+            "cancel_leave": lambda: yacht_engine.cancel_leave(user),
+            "add_bots": lambda: yacht_engine.add_bots(user),
+            "roll": lambda: yacht_engine.roll(user, data.get("held")),
+            "score": lambda: yacht_engine.score(user, data.get("category")),
+            "buy_chips": lambda: poker_engine.buy_chips(user, data.get("leaves", 0)),
+            "cash_out_chips": lambda: poker_engine.cash_out_chips(user, data.get("chips", 0)),
+        }
+        handler = handlers.get(msg_type)
+        if handler is None:
+            return
+        try:
+            ok, result = await database_sync_to_async(handler)()
+        except Exception:
+            logger.exception("yacht action failed: type=%s user=%s", msg_type, getattr(user, "id", None))
+            await database_sync_to_async(close_old_connections)()
+            await self.send(text_data=json.dumps(
+                {"type": "error", "message": "처리 중 오류가 발생했습니다. 새로고침 후 다시 시도해주세요."},
+                ensure_ascii=False,
+            ))
+            return
+        if not ok:
+            await self.send(text_data=json.dumps({"type": "error", "message": result}, ensure_ascii=False))
+            return
+        if msg_type in ("buy_chips", "cash_out_chips"):
+            await self._send_state()
+        else:
+            await _broadcast_yacht_state()
+
+    async def broadcast_state(self, event):
+        await self._send_state()
+
+    async def _send_state(self):
+        state = await database_sync_to_async(yacht_engine.get_state_for)(self.scope["user"])
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
