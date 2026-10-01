@@ -627,3 +627,29 @@ class PageLeaveGraceTestCase(TestCase):
             await comm.disconnect()
             await game_consumers._disconnect_grace_tasks[u.id]
         self.assertFalse(await database_sync_to_async(PokerSeat.objects.filter(user=u).exists)())
+
+
+class GostopAiFairnessTestCase(TestCase):
+    """AI는 숨은 카드(상대 손패·더미 순서)를 보지 않는다: 같은 난수로 결정하게 하면 숨은 카드
+    배치를 아무리 바꿔도 결정이 같아야 한다."""
+
+    def test_ai_decision_ignores_hidden_cards(self):
+        rng = random.Random(11)
+        checked = 0
+        for g in range(40):
+            st, out = eng.new_game("matgo", g % 2, rng)
+            while out is None:
+                s = st["turn"]
+                if s == 0:
+                    alt = gostop_ai._clone(st)
+                    pool = alt["pile"] + alt["hands"][1]
+                    random.Random(g).shuffle(pool)
+                    k = len(alt["hands"][1])
+                    alt["hands"][1], alt["pile"] = sorted(pool[:k]), pool[k:]
+                    decision = gostop_ai.choose(st, 0, budget=0, rng=random.Random(5))
+                    self.assertEqual(decision, gostop_ai.choose(alt, 0, budget=0, rng=random.Random(5)))
+                    checked += 1
+                    out = gostop_ai.apply(st, 0, decision)
+                else:
+                    out = gostop_ai.apply(st, s, gostop_ai._policy(st, s))
+        self.assertGreater(checked, 200)
