@@ -678,6 +678,7 @@ function togglePrChat() {
 }
 </script>
 
+<script src="{% static 'js/chat-unread.js' %}?v={{ static_version }}"></script>
 <script>
 // ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
 (function () {
@@ -686,6 +687,7 @@ function togglePrChat() {
     const btn   = document.getElementById('pr-chat-send');
     const badge = document.getElementById('pr-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ChatUnread.setup({ panel: document.getElementById('pr-side-col'), fab: document.getElementById('pr-toggle-chat-fab'), chatPane: document.getElementById('pr-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
     const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
@@ -748,6 +750,7 @@ function togglePrChat() {
                 append('SYSTEM', data.message, '', true, '');
             } else {
                 append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+                ChatUnread.bump(data.username);
             }
         };
         socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };

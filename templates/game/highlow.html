@@ -911,6 +911,7 @@ function toggleHlChat() {
 }
 </script>
 
+<script src="{% static 'js/chat-unread.js' %}?v={{ static_version }}"></script>
 <script>
 // ─── 로비 채팅 WebSocket ─────────────────────────────────────────────────────
 (function () {
@@ -919,6 +920,7 @@ function toggleHlChat() {
     const btn    = document.getElementById('hl-chat-send');
     const badge  = document.getElementById('hl-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ChatUnread.setup({ panel: document.getElementById('hl-side-col'), fab: document.getElementById('hl-toggle-chat-fab'), chatPane: document.getElementById('hl-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
     const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket   = null;
@@ -977,7 +979,7 @@ function toggleHlChat() {
             const data = JSON.parse(e.data);
             if (data.type === 'presence') renderOnlineUsers(data.users);
             else if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
-            else append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+            else { append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || ''); ChatUnread.bump(data.username); }
         };
         socket.onclose   = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror   = () => socket.close();
