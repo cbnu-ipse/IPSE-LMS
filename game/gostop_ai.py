@@ -147,6 +147,9 @@ def _determinize(st, me, rng):
     for o in range(n):
         if o != me:
             pool += sim["hands"][o]
+    # 정렬한 뒤 섞는다: 실제 더미 순서·상대 손패 배치가 결과에 전혀 영향을 주지 않게 해서
+    # "AI는 숨은 카드를 보지 않는다"를 테스트로 증명할 수 있게 한다
+    pool.sort()
     rng.shuffle(pool)
     i = 0
     for o in range(n):
