@@ -247,7 +247,9 @@ async def _poker_watchdog_loop():
                 if wait > 0:
                     await asyncio.sleep(min(wait, 2))
                     continue
-                await database_sync_to_async(poker_engine.process_due_deadlines)()
+                # AI가 생각하는 동안(최대 약 1초) 공용 동기 스레드를 붙잡으면 모든 접속자의 요청이 밀린다 —
+                # 별도 스레드에서 처리한다 (DB 정합성은 방/테이블 행 잠금으로 보장)
+                await database_sync_to_async(poker_engine.process_due_deadlines, thread_sensitive=False)()
                 await _broadcast_poker_state()
             except asyncio.CancelledError:
                 raise
@@ -405,7 +407,7 @@ async def _gostop_watchdog_loop():
                 if wait > 0:
                     await asyncio.sleep(min(wait, 2))
                     continue
-                await database_sync_to_async(gostop_engine.process_due_deadlines)()
+                await database_sync_to_async(gostop_engine.process_due_deadlines, thread_sensitive=False)()  # AI 계산이 다른 요청을 막지 않게
                 await _broadcast_gostop_state()
             except asyncio.CancelledError:
                 raise
@@ -547,7 +549,7 @@ async def _yacht_watchdog_loop():
                 if wait > 0:
                     await asyncio.sleep(min(wait, 2))
                     continue
-                await database_sync_to_async(yacht_engine.process_due_deadlines)()
+                await database_sync_to_async(yacht_engine.process_due_deadlines, thread_sensitive=False)()  # AI 계산이 다른 요청을 막지 않게
                 await _broadcast_yacht_state()
             except asyncio.CancelledError:
                 raise
