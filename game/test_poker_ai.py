@@ -75,6 +75,8 @@ class PokerBotSeatingTestCase(TestCase):
                 next_hand_at=timezone.now() - timedelta(seconds=1),
                 turn_deadline=timezone.now() - timedelta(seconds=1),
             )
+            # 사람은 연속 시간초과로 퇴장되지 않게 한다 (퇴장하면 AI도 떠나 핸드가 멈춤)
+            PokerSeat.objects.filter(user=self.a).update(consecutive_timeouts=0)
             poker_engine.process_due_deadlines()  # 사람 차례는 시간초과(체크/폴드), AI 차례는 AI가 둔다
             self.assertEqual(self.total(), start)
             if PokerHandLog.objects.count() >= 3:
