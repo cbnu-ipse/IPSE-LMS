@@ -754,6 +754,10 @@ def highlow_cashout(request):
         wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user=user)
         wallet.chips += session.potential_payout
         wallet.save(update_fields=["chips"])
+        # 지급액은 하우스 계좌에서 나간다 (잔액이 모자라면 음수로 내려간다)
+        house = HouseBank.locked()
+        house.chips -= session.potential_payout
+        house.save(update_fields=["chips"])
         HighLowPlayLog.objects.create(
             user=user, bet=session.bet, streak=session.streak, payout=session.potential_payout, result="cashed_out",
         )

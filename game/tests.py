@@ -240,6 +240,15 @@ class HighLowGameTestCase(TestCase):
         log = HighLowPlayLog.objects.get(user=self.user, result="cashed_out")
         self.assertEqual(log.streak, 1)
 
+    def test_cashout_is_paid_from_house_and_can_go_negative(self):
+        HouseBank.objects.update_or_create(pk=1, defaults={"chips": 0})
+        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+            self._post("start", {"bet": 10})
+        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+            self._post("guess", {"guess": "higher"})
+        payout = self._post("cashout").json()["payout"]
+        self.assertEqual(HouseBank.objects.get(pk=1).chips, -payout)  # 잔액이 없어도 지급하고 음수로
+
     def test_cashout_without_any_correct_guess_is_rejected(self):
         with patch.object(game_views, "_highlow_draw_rank", return_value=8):
             self._post("start", {"bet": 10})
