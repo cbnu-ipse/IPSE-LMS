@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog, HouseBank,
+    HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog, HouseBank, YachtRoom, YachtSeat, YachtGameLog,
 )
 
 
@@ -132,3 +132,21 @@ class GostopGameLogAdmin(admin.ModelAdmin):
 @admin.register(HouseBank)
 class HouseBankAdmin(admin.ModelAdmin):
     list_display = ("id", "chips", "updated_at")
+
+
+@admin.register(YachtRoom)
+class YachtRoomAdmin(admin.ModelAdmin):
+    list_display = ("id", "capacity", "stake", "status", "pot", "updated_at")
+    list_filter = ("status",)
+
+
+@admin.register(YachtSeat)
+class YachtSeatAdmin(admin.ModelAdmin):
+    list_display = ("room", "seat", "user")
+    search_fields = ("user__username",)
+
+
+@admin.register(YachtGameLog)
+class YachtGameLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "room_number", "pot", "ended_at")
+    ordering = ("-ended_at",)

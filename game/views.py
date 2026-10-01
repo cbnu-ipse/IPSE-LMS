@@ -391,6 +391,12 @@ def gostop_view(request):
 
 
 @login_required
+def yacht_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    return render(request, "game/yacht.html", {"title": "요트 다이스", "chat_messages": list(latest)[::-1]})
+
+
+@login_required
 def game_ranking_view(request):
     """게임 서브도메인 전용 랭킹 페이지."""
     board = request.GET.get("board", "slot_game").strip()

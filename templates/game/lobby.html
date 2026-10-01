@@ -244,7 +244,33 @@
                         </div>
                     </a>
 
-                    <!-- 9. 컬러 리액션 (준비 중) — COMING SOON 카드는 항상 목록 맨 뒤에 배치 -->
+                    <!-- 9. 요트 다이스 -->
+                    <a href="{% url 'yacht' %}" class="game-card">
+                        <div class="game-thumbnail yacht">
+                            <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
+                            <div class="thumbnail-decor"></div>
+                            <div class="thumbnail-content">
+                                <i class="fa-solid fa-dice text-4xl drop-shadow-md" style="animation: bounce 2s infinite 1s;"></i>
+                                <div class="text-[10px] font-bold tracking-widest uppercase mt-2 text-sky-200">YACHT</div>
+                            </div>
+                            <span class="game-badge playable">PLAYABLE</span>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-sm card-title">요트 다이스</h4>
+                                <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                    참가비를 걸고 2~4명이 겨루는 주사위 게임. 1등이 판돈을 가져갑니다.
+                                </p>
+                            </div>
+                            <div class="flex items-center justify-end border-t border-slate-100 pt-3 mt-3">
+                                <span class="w-7 h-7 rounded-full bg-sky-50 card-play-btn flex items-center justify-center text-sky-600 text-xs transition">
+                                    <i class="fa-solid fa-play"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+
+                    <!-- 10. 컬러 리액션 (준비 중) — COMING SOON 카드는 항상 목록 맨 뒤에 배치 -->
                     <div class="game-card opacity-75 cursor-not-allowed">
                         <div class="game-thumbnail colorreaction">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -276,7 +302,7 @@
                         </div>
                     </div>
 
-                    <!-- 10. 중심잡기 (준비 중) — COMING SOON 카드는 항상 목록 맨 뒤에 배치 -->
+                    <!-- 11. 중심잡기 (준비 중) — COMING SOON 카드는 항상 목록 맨 뒤에 배치 -->
                     <div class="game-card opacity-75 cursor-not-allowed">
                         <div class="game-thumbnail balance">
                             <div style="position: absolute; inset: 0; opacity: 0.15; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 16px 16px;"></div>
@@ -429,6 +455,9 @@
 }
 .game-thumbnail.gostop {
     background: linear-gradient(135deg, #14532d, #b91c1c, #7f1d1d);
+}
+.game-thumbnail.yacht {
+    background: linear-gradient(135deg, #0c4a6e, #0369a1, #0ea5e9);
 }
 .game-badge {
     position: absolute;

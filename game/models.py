@@ -635,3 +635,68 @@ class GostopGameLog(models.Model):
 
     def __str__(self):
         return f"{self.room_number}번 방 - {self.chips}칩"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 요트 다이스 — 2~4인 방, 판 시작 때 각자 참가비(칩 지갑, AI는 하우스 계좌)를 내고
+# 1등이 판돈을 가져간다(동점이면 나눔). 판 진행 상태는 YachtRoom.state JSON 하나에,
+# 규칙/상태머신은 game/yacht_engine.py, AI는 game/yacht_ai.py.
+# ─────────────────────────────────────────────────────────────────────────────
+
+YACHT_STAKES = (1000, 5000, 10000)  # 방장이 고를 수 있는 참가비(칩)
+
+
+class YachtRoom(models.Model):
+    STATUS_CHOICES = [("waiting", "대기 중"), ("playing", "진행 중")]
+
+    capacity = models.PositiveSmallIntegerField(default=2, verbose_name="정원 (2~4)")
+    stake = models.PositiveIntegerField(default=YACHT_STAKES[0], verbose_name="참가비(칩)")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="waiting")
+    state = models.JSONField(default=dict, blank=True, verbose_name="판 진행 상태")
+    pot = models.PositiveIntegerField(default=0, verbose_name="이번 판 판돈")
+    turn_deadline = models.DateTimeField(null=True, blank=True, verbose_name="현재 차례 제한시각")
+    next_game_at = models.DateTimeField(null=True, blank=True, verbose_name="다음 판 시작 예정시각")
+    last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 판 결과 요약")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "요트 방"
+        verbose_name_plural = "요트 방 목록"
+
+    def __str__(self):
+        return f"요트 {self.pk}번 방 ({self.capacity}인, {self.stake}칩)"
+
+
+class YachtSeat(models.Model):
+    """좌석 번호는 0부터 빈틈없이 (= 판 진행 상태의 side 번호). 0번이 방장."""
+    room = models.ForeignKey(YachtRoom, on_delete=models.CASCADE, related_name="seats")
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="yacht_seat", verbose_name="사용자"
+    )
+    seat = models.PositiveSmallIntegerField(verbose_name="좌석 번호")
+
+    class Meta:
+        ordering = ["room", "seat"]
+        unique_together = [("room", "seat")]
+        verbose_name = "요트 좌석"
+        verbose_name_plural = "요트 좌석 목록"
+
+    def __str__(self):
+        return f"{self.room_id}번 방 {self.seat}번 - {self.user}"
+
+
+class YachtGameLog(models.Model):
+    room_number = models.PositiveIntegerField(verbose_name="방 번호")
+    pot = models.PositiveIntegerField(default=0, verbose_name="판돈")
+    detail = models.JSONField(default=dict, blank=True, verbose_name="점수/지급 내역")
+    ended_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ended_at"]
+        verbose_name = "요트 판 기록"
+        verbose_name_plural = "요트 판 기록 목록"
+
+    def __str__(self):
+        return f"{self.room_number}번 방 - 판돈 {self.pot}칩"
