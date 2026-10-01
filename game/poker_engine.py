@@ -49,6 +49,7 @@ POKER_RESULT_DISPLAY_SECONDS = 10  # 결과를 중앙에 띄워두는 시간(초
                                    # (혼자 이긴 승자가 패 공개 여부를 고를 시간도 포함)
 POKER_NEXT_HAND_DELAY = POKER_RESULT_DISPLAY_SECONDS + 5  # 핸드 종료 후 다음 핸드까지 대기(초):
                                                            # 결과 표시 5초 + 실제로 보이는 카운트다운 5초
+POKER_FIRST_HAND_DELAY = 5      # 두 명 이상 모여 첫 핸드를 시작하기까지(초) — 결과 표시가 없으니 짧게
 POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 강제 폴드 + 퇴장 예약 (20초 * 4 ≈ 1분 20초)
 
 POKER_BOT_TARGET_PLAYERS = 3   # 사람이 이보다 적으면 AI로 채운다 (사람이 1명 이상일 때만)
@@ -327,7 +328,7 @@ def sit_down(user, seat_number):
         if table.status == "waiting":
             eligible = sum(1 for s in seats_by_number.values() if s.user_id and s.stack > 0)
             if eligible >= 2 and table.next_hand_at is None:
-                table.next_hand_at = timezone.now() + timedelta(seconds=POKER_NEXT_HAND_DELAY)
+                table.next_hand_at = timezone.now() + timedelta(seconds=POKER_FIRST_HAND_DELAY)
                 table.save()
     return True, None
 
