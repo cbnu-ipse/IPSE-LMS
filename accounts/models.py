@@ -364,6 +364,9 @@ class Notification(models.Model):
         ('comment_reply', '댓글 답글 등록'),
         ('game_season_ending', '게임 시즌 종료 예정'),
         ('game_season_reward', '게임 시즌 보상 지급'),
+        ('friend_request', '친구 요청'),
+        ('friend_accept', '친구 요청 수락'),
+        ('game_invite', '게임 초대'),
     ]
 
     recipient = models.ForeignKey(
@@ -400,6 +403,8 @@ class Notification(models.Model):
         verbose_name="관련 게시글"
     )
     message = models.CharField(max_length=255, verbose_name="알림 메시지")
+    # 알림을 눌렀을 때 이동할 사이트 내부 경로 (예: 게임 초대 → "/game/gostop/?room=3")
+    link = models.CharField(max_length=255, blank=True, default="", verbose_name="이동 경로")
     is_read = models.BooleanField(default=False, verbose_name="읽음 여부")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일시")
 
@@ -410,6 +415,36 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.get_notification_type_display()}] {self.recipient.username} - {self.message[:20]}"
+
+
+class Friendship(models.Model):
+    """친구 관계. from_user가 요청하고 to_user가 수락하면 accepted가 된다 (한 쌍에 행 하나)."""
+    STATUS_CHOICES = [("pending", "요청 중"), ("accepted", "친구")]
+
+    from_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friend_requests_sent", verbose_name="요청한 사람"
+    )
+    to_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friend_requests_received", verbose_name="요청받은 사람"
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending", verbose_name="상태")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="요청일시")
+    accepted_at = models.DateTimeField(null=True, blank=True, verbose_name="수락일시")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["from_user", "to_user"], name="unique_friendship_pair")]
+        verbose_name = "친구 관계"
+        verbose_name_plural = "친구 관계 목록"
+
+    def __str__(self):
+        return f"{self.from_user} → {self.to_user} ({self.get_status_display()})"
+
+    @classmethod
+    def between(cls, a, b):
+        """두 사람 사이의 관계 행 (방향 무관). 없으면 None."""
+        return cls.objects.filter(
+            models.Q(from_user=a, to_user=b) | models.Q(from_user=b, to_user=a)
+        ).first()
 
 
 class PushSubscription(models.Model):
