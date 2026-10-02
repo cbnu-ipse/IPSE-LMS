@@ -381,6 +381,29 @@
 .gs-last-play { display: flex; align-items: center; gap: 3px; font-size: .6rem; color: #bbf7d0; white-space: nowrap; }
 .gs-slot { display: flex; align-items: flex-start; }
 .gs-slot .gs-card + .gs-card { margin-left: -34px; margin-top: 8px; }
+/* 고를 패가 겹친 칸은 고르는 동안 펼친다 (옆 칸 위로 살짝 올라와도 된다) */
+.gs-slot--spread { position: relative; z-index: 6; }
+.gs-slot.gs-slot--spread .gs-card + .gs-card { margin-left: 6px !important; margin-top: 0 !important; }
+/* 상대가 먹은 패: 마우스를 올리거나(PC) 길게 누르면(모바일) 그 자리 위에 크게 펼친 창을 띄운다 — 고/스톱 판단용.
+   원래 패 영역은 그대로 두고 위에 덮으므로 판이 밀리거나 화면 밖으로 잘리지 않는다. */
+.gs-opps { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+@media (hover: hover) { .gs-opps .gs-cap { cursor: zoom-in; } }
+.gs-cap-zoom {
+    position: absolute; z-index: 40; left: 10px; right: 10px;
+    padding: 8px; border-radius: 12px; background: rgba(6, 40, 22, .97);
+    box-shadow: 0 14px 36px rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15);
+    pointer-events: none;
+}
+.gs-cap-zoom .gs-zone { min-height: 0; }
+.gs-cap-zoom .gs-zone-cards { padding-right: 0; row-gap: 4px; }
+.gs-cap-zoom .gs-zone-cards .gs-card { width: 44px; height: 66px; margin-right: 3px; }
+@media (max-width: 640px) {
+    .gs-cap-zoom { left: 4px; right: 4px; padding: 6px; }
+    .gs-cap-zoom .gs-cap { grid-template-columns: 1fr 1fr; }
+    .gs-cap-zoom .gs-zone-cards .gs-card { width: 30px; height: 45px; margin-right: 2px; }
+}
+.gs-pick-choices { display: inline-flex; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 12px; background: #fef9c3; }
+.gs-pick-choices .gs-card { cursor: pointer; }
 .gs-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 84px; padding-top: 6px; }
 
 /* ── 화투 카드 (static/img/gostop/hwatu.webp 스프라이트, 10열 × 5행) ── */
@@ -730,6 +753,8 @@ footer { display: none !important; }
     // ── 방 목록 ────────────────────────────────────────────────────
     let createTier = 'beginner';
     const AI_LEVEL_LABELS = { easy: '쉬움', normal: '보통', hard: '어려움' };
+    // 들고 들어가는 칩 범위 (최소 ~ 상한, 고수는 상한 없음)
+    const chipRange = t => t.max_chips == null ? `${fmt(t.buy_in)}칩 이상` : `${fmt(t.buy_in)}~${fmt(t.max_chips)}칩`;
     function renderLobby(state) {
         const cur = state.tiers.find(t => t.tier === createTier) || state.tiers[0];
         const canBuyIn = state.wallet_chips >= cur.buy_in;
@@ -756,14 +781,14 @@ footer { display: none !important; }
             <div class="gs-lobby-head">
                 <div>
                     <h3>고스톱 방 목록</h3>
-                    <p>보관 칩 전부를 가지고 입장 · 방 단계마다 점당 칩과 AI 난이도가 다릅니다</p>
+                    <p>보관 칩 전부를 방 단계 상한까지 가지고 입장 · 단계마다 점당 칩과 AI 난이도가 다릅니다</p>
                 </div>
                 <div class="gs-lobby-create">
                     <span class="gs-seg">${state.tiers.map(t =>
                         `<button type="button" class="${t.tier === createTier ? 'on' : ''}" data-tier="${t.tier}">${t.label}</button>`).join('')}</span>
                     <button type="button" class="gs-btn gs-btn-raise gs-btn-sm" data-create="matgo" ${dis}>맞고 (2인)</button>
                     <button type="button" class="gs-btn gs-btn-raise gs-btn-sm" data-create="gostop" ${dis}>고스톱 (3인)</button>
-                    <div class="gs-tier-info">${cur.label}: 점당 ${fmt(cur.chips_per_point)}칩 · 최소 ${fmt(cur.buy_in)}칩 · AI ${AI_LEVEL_LABELS[cur.ai_level]}</div>
+                    <div class="gs-tier-info">${cur.label}: 점당 ${fmt(cur.chips_per_point)}칩 · ${chipRange(cur)} · AI ${AI_LEVEL_LABELS[cur.ai_level]}</div>
                 </div>
             </div>
             <div class="gs-room-list">${rooms || '<div class="gs-lobby-empty">열린 방이 없습니다. 방을 만들어보세요!</div>'}</div>
@@ -780,7 +805,7 @@ footer { display: none !important; }
                     <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
                     <li>한 판에서 받을 수 있는 칩은 판 시작 때 내 칩까지입니다. (가진 것보다 많이 따올 수 없음)</li>
-                    ${state.tiers.map(t => `<li><b>${t.label}</b>: 점당 ${fmt(t.chips_per_point)}칩, 최소 입장 ${fmt(t.buy_in)}칩, AI 난이도 ${AI_LEVEL_LABELS[t.ai_level]}</li>`).join('')}
+                    ${state.tiers.map(t => `<li><b>${t.label}</b>: 점당 ${fmt(t.chips_per_point)}칩, ${chipRange(t)}, AI 난이도 ${AI_LEVEL_LABELS[t.ai_level]}</li>`).join('')}
                     <li>사람이 부족하면 방에서 "AI로 빈자리 채우기"를 누르세요. AI는 하우스 칩으로 앉고, 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
                     <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 시간초과·연결 끊김 시에는 방 단계 난이도의 AI가 대신 두고, 시간초과가 3번 이어지면 자리 비움으로 진행하다 판이 끝나면 퇴장합니다.</li>
@@ -834,6 +859,12 @@ footer { display: none !important; }
         return { html: isMe ? cap + info : info + cap, turn: isTurn };
     }
 
+    // 바닥에 겹쳐 있는 고를 패를 액션 바에 크게 나란히 보여준다 (눌러서 바로 선택)
+    function pickChoicesHtml(options) {
+        if (!options || !options.length) return '';
+        return `<span class="gs-pick-choices">${options.map(c => cardHtml(c, { cls: 'gs-card--pick', data: `data-pick="${c}"` }).replace(/ data-cid="\d+"/, '')).join('')}</span>`;
+    }
+
     function floorPickable(g) {
         if (!g || !g.my_turn) return null;
         if (g.phase === 'choose_flip' && g.pending_options) return g.pending_options;
@@ -868,6 +899,7 @@ footer { display: none !important; }
             others.push(`<div class="gs-panel${p.turn ? ' gs-panel--turn' : ''}">${p.html}</div>`);
         }
         oppsEl.innerHTML = others.join('');
+        if (capZoomIndex != null) applyCapZoom();
         const me = panelHtml(mySeat, room, true);
         meEl.innerHTML = me.html;
         meEl.classList.toggle('gs-panel--turn', me.turn);
@@ -895,7 +927,8 @@ footer { display: none !important; }
         assignSlots(g.floor);
         const bySlot = {};
         g.floor.forEach(c => { (bySlot[slotOf[month(c)]] = bySlot[slotOf[month(c)]] || []).push(c); });
-        const slots = SLOT_POS.map(([r, col], i) => `<div class="gs-slot" style="grid-row:${r};grid-column:${col}">${(bySlot[i] || []).map(c => {
+        // 고를 패가 겹쳐 있으면 그 칸을 잠시 펼쳐서 눌러 고를 수 있게 한다
+        const slots = SLOT_POS.map(([r, col], i) => `<div class="gs-slot${pickable && (bySlot[i] || []).some(c => pickable.includes(c)) ? ' gs-slot--spread' : ''}" style="grid-row:${r};grid-column:${col}">${(bySlot[i] || []).map(c => {
             let cls = '';
             if (pickable) cls = pickable.includes(c) ? 'gs-card--pick' : 'gs-card--dim';
             else if (myPlayTurn && handMonths.has(month(c))) cls = 'gs-card--match';
@@ -1014,9 +1047,10 @@ footer { display: none !important; }
         } else if (g.phase === 'go_stop') {
             rows.push(timer, `<div class="gs-hint"><strong>${g.scores[room.me]}점</strong> 났습니다!</div>`,
                 `<button type="button" class="gs-btn gs-btn-raise" data-go="1">고 (${g.go[room.me] + 1}고)</button>`,
-                `<button type="button" class="gs-btn gs-btn-call" data-go="0">스톱</button>`);
+                `<button type="button" class="gs-btn gs-btn-call" data-go="0">스톱</button>`,
+                `<div class="gs-hint" style="width:100%">상대가 먹은 패는 ${matchMedia('(hover: hover)').matches ? '마우스를 올리면' : '길게 누르면'} 크게 볼 수 있어요.</div>`);
         } else if (g.phase === 'choose_flip') {
-            rows.push(timer, `<div class="gs-hint">뒤집은 패로 먹을 바닥 패를 선택하세요.</div>`);
+            rows.push(timer, `<div class="gs-hint">뒤집은 패로 먹을 바닥 패를 선택하세요.</div>`, pickChoicesHtml(g.pending_options));
         } else if (sel && sel.need === 'mode') {
             const special = sel.options[0] === 'bomb'
                 ? `<button type="button" class="gs-btn gs-btn-raise" data-mode="bomb">💣 폭탄 (3장 한 번에)</button>`
@@ -1024,7 +1058,7 @@ footer { display: none !important; }
             rows.push(timer, special, `<button type="button" class="gs-btn gs-btn-call" data-mode="">그냥 내기</button>`,
                 `<button type="button" class="gs-btn gs-btn-ghost" data-cancel>취소</button>`);
         } else if (sel && sel.need === 'target') {
-            rows.push(timer, `<div class="gs-hint">먹을 바닥 패를 선택하세요.</div>`,
+            rows.push(timer, `<div class="gs-hint">먹을 바닥 패를 선택하세요.</div>`, pickChoicesHtml(sel.options),
                 `<button type="button" class="gs-btn gs-btn-ghost" data-cancel>취소</button>`);
         } else {
             rows.push(timer, `<div class="gs-hint">낼 패를 선택하세요.</div>`);
@@ -1346,19 +1380,57 @@ footer { display: none !important; }
         const handCard = e.target.closest('[data-hand]');
         if (handCard) { onHandClick(handCard.dataset.hand); return; }
         const pick = e.target.closest('[data-pick]');
-        if (pick) {
-            const target = Number(pick.dataset.pick);
-            const g = lastState.room.game;
-            if (g.phase === 'choose_flip') {
-                if (window.GameSound) window.GameSound.play('click');
-                send({ type: 'choose', target });
-            } else if (sel && sel.need === 'target') {
-                sendPlay(sel.card, sel.mode, target);
-            }
-        }
+        if (pick) pickFloorCard(Number(pick.dataset.pick));
     });
 
+    // 상대가 먹은 패 크게 보기: PC는 마우스를 올린 동안, 모바일은 길게 누르고 있는 동안
+    let capZoomIndex = null;
+    let capZoomTimer = null;
+    const capZoomEl = document.createElement('div');
+    capZoomEl.className = 'gs-cap-zoom hidden';
+    feltEl.appendChild(capZoomEl);
+    function applyCapZoom() {
+        const cap = capZoomIndex != null ? oppsEl.querySelectorAll('.gs-cap')[capZoomIndex] : null;
+        if (!cap) { capZoomEl.classList.add('hidden'); return; }
+        // data-cid를 빼야 카드 이동 애니메이션(FLIP)이 판 위의 같은 카드로 착각하지 않는다
+        capZoomEl.innerHTML = `<div class="gs-cap">${cap.innerHTML.replace(/ data-cid="\d+"/g, '')}</div>`;
+        capZoomEl.style.top = (cap.getBoundingClientRect().top - feltEl.getBoundingClientRect().top - 4) + 'px';
+        capZoomEl.classList.remove('hidden');
+    }
+    function setCapZoom(index) {
+        clearTimeout(capZoomTimer);
+        if (capZoomIndex === index) return;
+        capZoomIndex = index;
+        applyCapZoom();
+    }
+    const capIndexOf = el => { const cap = el && el.closest && el.closest('.gs-opps .gs-cap'); return cap ? [...oppsEl.querySelectorAll('.gs-cap')].indexOf(cap) : null; };
+    oppsEl.addEventListener('pointerover', (e) => { if (e.pointerType === 'mouse') { const i = capIndexOf(e.target); if (i != null) setCapZoom(i); } });
+    oppsEl.addEventListener('pointerout', (e) => {
+        if (e.pointerType === 'mouse' && capIndexOf(e.target) != null && capIndexOf(e.relatedTarget) == null) setCapZoom(null);
+    });
+    oppsEl.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse') return;
+        const i = capIndexOf(e.target);
+        if (i == null) return;
+        clearTimeout(capZoomTimer);
+        capZoomTimer = setTimeout(() => setCapZoom(i), 250);
+    });
+    ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, (e) => { if (e.pointerType !== 'mouse') setCapZoom(null); }));
+    oppsEl.addEventListener('contextmenu', (e) => { if (capIndexOf(e.target) != null) e.preventDefault(); });
+
+    function pickFloorCard(target) {
+        const g = lastState.room.game;
+        if (g.phase === 'choose_flip') {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'choose', target });
+        } else if (sel && sel.need === 'target') {
+            sendPlay(sel.card, sel.mode, target);
+        }
+    }
+
     actionBarEl.addEventListener('click', (e) => {
+        const pickChoice = e.target.closest('[data-pick]');
+        if (pickChoice) { pickFloorCard(Number(pickChoice.dataset.pick)); return; }
         if (e.target.closest('[data-leave]')) {
             if (window.GameSound) window.GameSound.play('tap');
             send({ type: 'leave' });

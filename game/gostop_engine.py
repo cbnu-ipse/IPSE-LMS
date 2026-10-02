@@ -46,7 +46,8 @@ from accounts.models import User
 from .bots import free_bot
 from .models import (
     GostopRoom, GostopSeat, GostopGameLog, HouseBank, PokerChipWallet,
-    GAME_TIERS, GOSTOP_BUY_IN_POINTS, GOSTOP_TIER_POINT_CHIPS, POKER_CHIPS_PER_LEAF, TIER_AI_LEVEL, TIER_LABELS,
+    GAME_TIERS, GOSTOP_BUY_IN_POINTS, GOSTOP_TIER_MAX_CHIPS, GOSTOP_TIER_POINT_CHIPS, POKER_CHIPS_PER_LEAF,
+    TIER_AI_LEVEL, TIER_LABELS,
 )
 
 GOSTOP_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
@@ -566,13 +567,13 @@ def _lock_my_room(user):
     return room, seat
 
 
-def _take_buy_in(user, buy_in):
-    """최소 입장 칩 이상이면 보관 칩 전부를 가지고 들어간다. 가져간 칩 수(모자라면 0)."""
+def _take_buy_in(user, buy_in, max_chips=None):
+    """최소 입장 칩 이상이면 보관 칩 전부를 단계 상한(max_chips)까지 가지고 들어간다. 가져간 칩 수(모자라면 0)."""
     wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
     if not wallet or wallet.chips < buy_in:
         return 0
-    chips = wallet.chips
-    wallet.chips = 0
+    chips = wallet.chips if max_chips is None else min(wallet.chips, max_chips)
+    wallet.chips -= chips
     wallet.save(update_fields=["chips"])
     return chips
 
@@ -629,7 +630,7 @@ def create_room(user, mode, tier="intermediate"):
         err = _leave_poker_table(user)
         if err:
             return False, err
-        chips = _take_buy_in(user, tier_buy_in(tier))
+        chips = _take_buy_in(user, tier_buy_in(tier), GOSTOP_TIER_MAX_CHIPS[tier])
         if not chips:
             return False, _need_buy_in_msg(tier_buy_in(tier))
         room = GostopRoom.objects.create(mode=mode, tier=tier)
@@ -664,7 +665,7 @@ def join_room(user, room_id):
                 return False, _need_buy_in_msg(room.buy_in)
             _remove_seat(room, bot)
             count -= 1
-        chips = _take_buy_in(user, room.buy_in)
+        chips = _take_buy_in(user, room.buy_in, room.max_chips)
         if not chips:
             return False, _need_buy_in_msg(room.buy_in)
         GostopSeat.objects.create(room=room, user=user, seat=count, stack=chips)
@@ -690,6 +691,8 @@ def add_bots(user):
         if empty <= 0:
             return False, "빈자리가 없습니다."
         stack = max([room.buy_in] + [s.stack for s in seats if not s.user.is_bot])
+        if room.max_chips is not None:
+            stack = min(stack, room.max_chips)
         house = HouseBank.locked()
         if house.chips < room.buy_in * empty:
             return False, "하우스 칩이 부족해 AI를 부를 수 없습니다."
@@ -1040,7 +1043,7 @@ def get_state_for(user):
             "mode": my_room.mode,
             "mode_label": MODES[my_room.mode]["label"],
             "tier": my_room.tier, "tier_label": TIER_LABELS[my_room.tier],
-            "chips_per_point": my_room.chips_per_point, "buy_in": my_room.buy_in,
+            "chips_per_point": my_room.chips_per_point, "buy_in": my_room.buy_in, "max_chips": my_room.max_chips,
             "capacity": _capacity(my_room),
             "status": my_room.status,
             "me": me,
@@ -1057,7 +1060,7 @@ def get_state_for(user):
             {
                 "id": r.id, "mode": r.mode, "mode_label": MODES[r.mode]["label"],
                 "tier": r.tier, "tier_label": TIER_LABELS[r.tier], "chips_per_point": r.chips_per_point,
-                "buy_in": r.buy_in, "capacity": _capacity(r), "status": r.status,
+                "buy_in": r.buy_in, "max_chips": r.max_chips, "capacity": _capacity(r), "status": r.status,
                 "players": [_player_view(s.user) for s in sorted(r.seats.all(), key=lambda s: s.seat)],
             }
             for r in rooms
@@ -1066,6 +1069,7 @@ def get_state_for(user):
         "wallet_chips": wallet or 0,
         "my_leaves": my_leaves,
         "tiers": [{"tier": t, "label": TIER_LABELS[t], "chips_per_point": GOSTOP_TIER_POINT_CHIPS[t],
-                   "buy_in": tier_buy_in(t), "ai_level": TIER_AI_LEVEL[t]} for t in GAME_TIERS],
+                   "buy_in": tier_buy_in(t), "max_chips": GOSTOP_TIER_MAX_CHIPS[t], "ai_level": TIER_AI_LEVEL[t]}
+                  for t in GAME_TIERS],
         "chips_per_leaf": POKER_CHIPS_PER_LEAF,
     }

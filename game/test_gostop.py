@@ -658,3 +658,28 @@ class GostopAiFairnessTestCase(TestCase):
                 else:
                     out = gostop_ai.apply(st, s, gostop_ai._policy(st, s))
         self.assertGreater(checked, 200)
+
+
+class GostopTierMaxChipsTestCase(TestCase):
+    """맞고/고스톱도 포커처럼 단계 상한까지만 들고 들어간다 (초보 9,999 / 중수 99,999 / 고수 무제한)."""
+
+    def test_buy_in_capped_by_tier(self):
+        u = User.objects.create_user(username="rich", password="x")
+        PokerChipWallet.objects.create(user=u, chips=150000)
+        eng.create_room(u, "matgo", "beginner")
+        self.assertEqual(GostopSeat.objects.get(user=u).stack, 9999)
+        self.assertEqual(PokerChipWallet.objects.get(user=u).chips, 150000 - 9999)
+        eng.leave_room(u)
+        eng.create_room(u, "matgo", "expert")
+        self.assertEqual(GostopSeat.objects.get(user=u).stack, 150000)  # 고수는 무제한
+
+    def test_ai_stack_capped_by_tier(self):
+        u = User.objects.create_user(username="rich2", password="x")
+        PokerChipWallet.objects.create(user=u, chips=50000)
+        with transaction.atomic():
+            house = HouseBank.locked()
+            house.chips = 10 ** 6
+            house.save()
+        eng.create_room(u, "matgo", "beginner")
+        eng.add_bots(u)
+        self.assertEqual(GostopSeat.objects.get(user__is_bot=True).stack, 9999)

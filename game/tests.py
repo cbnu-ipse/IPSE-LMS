@@ -386,6 +386,17 @@ class LobbyPresenceTestCase(TestCase):
         self.assertTrue(await other.receive_nothing())
         await watcher.disconnect()
 
+    async def test_live_chat_time_is_korean_time(self):
+        """회귀 테스트: 실시간 채팅 시각이 UTC로 나가 9시간 이르게 찍혔다 (이전 기록은 한국 시간)."""
+        u = await database_sync_to_async(User.objects.create_user)(username="chat1", password="x")
+        comm = await self._connect(u, presence=False)
+        await comm.send_json_to({"message": "안녕"})
+        msg = await comm.receive_json_from()
+        saved = await database_sync_to_async(lambda: __import__("game.models", fromlist=["x"]).LobbyChatMessage.objects.get())()
+        self.assertEqual(msg["created_at"], timezone.localtime(saved.created_at).strftime("%H:%M"))
+        self.assertNotEqual(timezone.localtime(saved.created_at).utcoffset(), timedelta(0))  # 서버 시간대가 KST
+        await comm.disconnect()
+
 
 class PokerDisconnectGraceTestCase(TestCase):
     """회귀 테스트: 앉은 채로 연결만 끊고 다시는 접속하지 않으면(새로고침이 아닌

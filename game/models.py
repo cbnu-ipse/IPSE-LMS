@@ -581,9 +581,10 @@ class HouseBank(models.Model):
 # 실제 규칙/상태머신은 game/gostop_engine.py 에 있다.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 단계별 점당 칩. 입장할 때 보관 칩 전부를 가져가고, 최소 입장 칩은 점당의 100배.
+# 단계별 점당 칩. 입장할 때 보관 칩 전부를 단계 상한까지 가져가고(포커와 같은 범위), 최소 입장 칩은 점당의 100배.
 GOSTOP_TIER_POINT_CHIPS = {"beginner": 10, "intermediate": 100, "expert": 1000}
 GOSTOP_BUY_IN_POINTS = 100
+GOSTOP_TIER_MAX_CHIPS = {"beginner": 9999, "intermediate": 99999, "expert": None}  # None = 무제한
 
 
 class GostopRoom(models.Model):
@@ -617,6 +618,10 @@ class GostopRoom(models.Model):
     @property
     def buy_in(self):
         return self.chips_per_point * GOSTOP_BUY_IN_POINTS
+
+    @property
+    def max_chips(self):
+        return GOSTOP_TIER_MAX_CHIPS.get(self.tier)
 
 
 class GostopSeat(models.Model):

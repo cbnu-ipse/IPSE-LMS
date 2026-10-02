@@ -149,7 +149,10 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _save_message(self, user, message):
         from .models import LobbyChatMessage
-        return LobbyChatMessage.objects.create(user=user, message=message)
+        saved = LobbyChatMessage.objects.create(user=user, message=message)
+        # DB 시각은 UTC — 실시간 메시지 시각도 이전 기록(템플릿 |time)처럼 한국 시간으로 보낸다
+        saved.created_at = timezone.localtime(saved.created_at)
+        return saved
 
     @database_sync_to_async
     def _get_user_chat_info(self, user):
