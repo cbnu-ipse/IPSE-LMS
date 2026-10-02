@@ -27,7 +27,10 @@ from django.utils import timezone
 
 from accounts.models import User
 from .bots import free_bot
-from .models import HouseBank, PokerChipWallet, YachtGameLog, YachtRoom, YachtSeat, YACHT_STAKES
+from .models import (
+    HouseBank, PokerChipWallet, YachtGameLog, YachtRoom, YachtSeat, YACHT_STAKES, YACHT_STAKE_TIERS,
+    TIER_AI_LEVEL, TIER_LABELS,
+)
 
 YACHT_TURN_TIMEOUT = 30       # 사람 차례 (굴리기/적기 한 번마다) 제한시간(초)
 YACHT_AWAY_STEP = 2           # 자리 비운 사람을 대신 두는 간격(초)
@@ -82,6 +85,35 @@ def card_totals(card):
     return {"upper": upper, "bonus": bonus, "total": upper + bonus + sum(card.get(c, 0) for c in CATEGORIES[6:])}
 
 
+# 칸마다 낼 수 있는 최고 점수 (풀하우스는 요트도 인정하므로 6×5)
+MAX_SCORE = {
+    "ones": 5, "twos": 10, "threes": 15, "fours": 20, "fives": 25, "sixes": 30,
+    "choice": 30, "four_kind": 30, "full_house": 30, "small_straight": 15, "large_straight": 30, "yacht": 50,
+}
+
+
+def max_possible_total(card):
+    """남은 칸을 모두 최고점으로 채웠을 때의 총점 (아직 못 받은 보너스도 가능하면 포함)."""
+    t = card_totals(card)
+    open_cats = [c for c in CATEGORIES if c not in card]
+    upper_max = t["upper"] + sum(MAX_SCORE[c] for c in open_cats if c in UPPER)
+    bonus = YACHT_BONUS if upper_max >= YACHT_BONUS_LINE else 0
+    lower = sum(card.get(c, 0) for c in CATEGORIES[6:]) + sum(MAX_SCORE[c] for c in open_cats if c not in UPPER)
+    return upper_max + bonus + lower
+
+
+def decided_leader(cards):
+    """역전 불가능해진 1등의 좌석 번호. 아직 뒤집힐 수 있으면 None.
+    (지금 점수는 줄지 않으므로 1등의 현재 점수가 다른 모두의 최대 가능 점수보다 크면 확정)"""
+    if len(cards) < 2:
+        return None
+    totals = [card_totals(c)["total"] for c in cards]
+    leader = max(range(len(cards)), key=lambda i: totals[i])
+    if all(max_possible_total(cards[i]) < totals[leader] for i in range(len(cards)) if i != leader):
+        return leader
+    return None
+
+
 # ── 판 진행 (순수 함수: state dict를 직접 변경) ───────────────────────────────
 
 def new_game(n, first):
@@ -131,6 +163,11 @@ def score_category(st, s, cat):
     st["dice"], st["held"], st["rolls"] = [], [False] * 5, 0
     if st["round"] > YACHT_ROUNDS:
         st["phase"] = "over"
+        return {"over": True}
+    if decided_leader(st["cards"]) is not None:
+        # 남은 칸을 모두 최고점으로 채워도 1등을 따라잡을(동점 포함) 사람이 없으면 조기 종료
+        st["phase"] = "over"
+        st["early_end"] = True
         return {"over": True}
     return None
 
@@ -399,6 +436,7 @@ def _end_game(room):
     room.last_result = {
         "rows": rows, "pot": room.pot, "stake": room.stake, "winners": [seats[w].user.display_name for w in winners],
         "next_first": (st["first"] + 1) % len(seats),
+        "early_end": bool(st.get("early_end")), "round": min(st["round"], YACHT_ROUNDS),
     }
     YachtGameLog.objects.create(room_number=room.pk, pot=room.pot, detail=room.last_result)
     room.pot = 0
@@ -463,17 +501,18 @@ def process_due_deadlines():
             if room.status == "playing" and room.turn_deadline and room.turn_deadline <= now:
                 st = room.state
                 side = st["turn"]
+                level = TIER_AI_LEVEL[YACHT_STAKE_TIERS.get(room.stake, "intermediate")]
                 if side in st["bots"]:
-                    action = yacht_ai.hard_action(st, side)
+                    action = yacht_ai.act_for(level, st, side)
                 else:
-                    # 사람이 시간초과/자리 비움이면 중간 난이도 AI가 한 수씩 대신 둔다
+                    # 사람이 시간초과/자리 비움이면 방 단계 난이도의 AI가 한 수씩 대신 둔다
                     if side not in st["away"]:
                         st["timeouts"][side] += 1
                         if st["timeouts"][side] >= YACHT_MAX_TIMEOUTS:
                             st["away"].append(side)
                             if side not in st["leaving"]:
                                 st["leaving"].append(side)
-                    action = yacht_ai.medium_action(st, side)
+                    action = yacht_ai.act_for(level, st, side)
                 outcome = apply_action(st, side, action)
                 room.state = st
                 if outcome:
@@ -527,6 +566,7 @@ def get_state_for(user):
             next_left = max(0, round((my_room.next_game_at - timezone.now()).total_seconds()))
         room_view = {
             "id": my_room.id, "capacity": my_room.capacity, "stake": my_room.stake, "pot": my_room.pot,
+            "tier_label": TIER_LABELS[YACHT_STAKE_TIERS.get(my_room.stake, "intermediate")],
             "status": my_room.status, "me": my_seat.seat,
             "seats": [dict(_player_view(s.user), side=s.seat) for s in seats],
             "next_game_seconds_left": next_left, "last_result": last, "game": game,
@@ -537,11 +577,13 @@ def get_state_for(user):
         "type": "state",
         "rooms": [{
             "id": r.id, "capacity": r.capacity, "stake": r.stake, "status": r.status,
+            "tier_label": TIER_LABELS[YACHT_STAKE_TIERS.get(r.stake, "intermediate")],
             "players": [_player_view(s.user) for s in sorted(r.seats.all(), key=lambda s: s.seat)],
         } for r in rooms],
         "room": room_view,
         "wallet_chips": wallet or 0,
         "my_leaves": my_leaves,
         "stakes": list(YACHT_STAKES),
+        "stake_labels": {str(k): TIER_LABELS[v] for k, v in YACHT_STAKE_TIERS.items()},
         "categories": [{"key": c, "label": CATEGORY_LABELS[c]} for c in CATEGORIES],
     }

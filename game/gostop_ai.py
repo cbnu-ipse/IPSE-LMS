@@ -188,3 +188,31 @@ def choose(st, me, budget=None, rng=None):
 def act(st, me, budget=None, rng=None):
     """AI 차례를 둔다. 반환값은 엔진과 같은 판 종료 outcome 또는 None."""
     return apply(st, me, choose(st, me, budget, rng))
+
+
+# ── 난이도 (방 단계별: 초보=쉬움, 중수=보통, 고수=어려움) ─────────────────────────
+# 어려움은 위의 몬테카를로를 그대로 쓴다. 보통·쉬움은 사람 수준에 맞춰 일부러 약하게 둔다
+# (단순하게 두는 사람과 1:1로 붙였을 때 딴 점수가 비슷하거나 낮게 — 시뮬레이션으로 맞춤).
+NORMAL_BUDGET = 0.05  # 보통: 짧게만 내다본다
+NORMAL_THINK = 0.2    # 보통: 이 확률로만 내다보고, 나머지는 눈앞의 패만 본다
+EASY_RANDOM = 0.45    # 쉬움: 이 확률로 아무 패나 낸다
+
+
+def choose_level(st, me, level, rng=None):
+    rng = rng or random.Random()
+    if level == "hard":
+        return choose(st, me, rng=rng)
+    if level == "normal":
+        if st["phase"] == "go_stop" or rng.random() >= NORMAL_THINK:
+            return _policy(st, me)  # 고/스톱은 단순한 기준으로 (점수 손익 계산 없이)
+        return choose(st, me, budget=NORMAL_BUDGET, rng=rng)
+    # 쉬움: 고는 부르지 않고, 눈앞에서 먹을 수 있는 패 위주로, 가끔 아무 패나
+    if st["phase"] == "go_stop":
+        return ("go", False)
+    if rng.random() < EASY_RANDOM:
+        return rng.choice(candidates(st, me))
+    return _policy(st, me)
+
+
+def act_level(st, me, level, rng=None):
+    return apply(st, me, choose_level(st, me, level, rng))

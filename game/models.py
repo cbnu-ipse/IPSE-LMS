@@ -358,18 +358,27 @@ class PatternRecallScore(models.Model):
 # 구조로 만든다. 실제 상태머신 로직은 game/poker_engine.py 에 있다.
 # ─────────────────────────────────────────────────────────────────────────────
 
-POKER_SEATS = 8
+# ── 방 단계 (포커·고스톱·요트 공통) ──────────────────────────────────────────
+# 방을 만들 때 초보/중수/고수 중 고른다. 판돈 크기와 AI 난이도(AI 플레이어, 자리 비운 사람
+# 대신 두기 모두)가 단계를 따른다.
+GAME_TIERS = ("beginner", "intermediate", "expert")
+TIER_CHOICES = [("beginner", "초보"), ("intermediate", "중수"), ("expert", "고수")]
+TIER_LABELS = dict(TIER_CHOICES)
+TIER_AI_LEVEL = {"beginner": "easy", "intermediate": "normal", "expert": "hard"}
+
+POKER_CAPACITIES = (2, 4, 6)  # 방장이 고르는 좌석 수
 POKER_CHIPS_PER_LEAF = 1000  # 1낙엽 = 1000칩 환전 비율
-POKER_BUY_IN_LEAVES = 5  # 바이인 시 차감되는 낙엽 수 (5낙엽 = 5000칩)
-# 블라인드는 전체 재화 스코프를 낮추기 위해 낙엽 환전 비율과 무관하게
-# 칩 단위 소액으로 직접 고정한다 (첫 콜 금액 = 빅블라인드 5칩).
-POKER_SMALL_BLIND = 2
-POKER_BIG_BLIND = 5
-POKER_BUY_IN = POKER_BUY_IN_LEAVES * POKER_CHIPS_PER_LEAF
+# 단계별로 들고 앉는 칩 범위와 블라인드 (블라인드 = 최소 칩의 1/50, 1/100).
+# 보관 칩 전부를 들고 앉되 그 단계 최대치까지만 (고수는 무제한).
+POKER_TIERS = {
+    "beginner": {"min": 1000, "max": 9999, "sb": 10, "bb": 20},
+    "intermediate": {"min": 10000, "max": 99999, "sb": 100, "bb": 200},
+    "expert": {"min": 100000, "max": None, "sb": 1000, "bb": 2000},
+}
 
 
 class PokerTable(models.Model):
-    """싱글턴 테이블 — pk=1 인 행만 존재한다 (방 1개 고정)."""
+    """포커 방 하나. 방을 만든 사람이 단계를 고르고, 사람이 모두 나가면 방이 지워진다."""
     STATUS_CHOICES = [("waiting", "대기 중"), ("playing", "진행 중")]
     ROUND_CHOICES = [
         ("preflop", "프리플랍"), ("flop", "플랍"), ("turn", "턴"),
@@ -383,30 +392,32 @@ class PokerTable(models.Model):
     next_hand_at = models.DateTimeField(null=True, blank=True, verbose_name="다음 핸드 시작 예정시각")
     pot = models.PositiveIntegerField(default=0, verbose_name="팟")
     current_bet = models.PositiveIntegerField(default=0, verbose_name="현재 스트리트 콜 금액")
-    min_raise = models.PositiveIntegerField(default=POKER_BIG_BLIND, verbose_name="최소 레이즈 단위")
+    min_raise = models.PositiveIntegerField(default=0, verbose_name="최소 레이즈 단위")
     community_cards = models.JSONField(default=list, blank=True, verbose_name="커뮤니티 카드")
     deck = models.JSONField(default=list, blank=True, verbose_name="남은 덱 (서버 전용)")
     hand_number = models.PositiveIntegerField(default=0, verbose_name="핸드 번호")
     last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 핸드 결과 요약")
+    tier = models.CharField(max_length=12, choices=TIER_CHOICES, default="intermediate", verbose_name="단계")
+    capacity = models.PositiveSmallIntegerField(default=6, verbose_name="좌석 수")
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "포커 테이블"
-        verbose_name_plural = "포커 테이블"
+        ordering = ["created_at"]
+        verbose_name = "포커 방"
+        verbose_name_plural = "포커 방 목록"
 
     def __str__(self):
-        return f"포커 테이블 ({self.get_status_display()})"
+        return f"포커 {self.pk}번 방 ({TIER_LABELS.get(self.tier)}, {self.get_status_display()})"
+
+    @property
+    def tier_config(self):
+        return POKER_TIERS.get(self.tier, POKER_TIERS["intermediate"])
 
     @classmethod
-    def get_solo(cls):
-        """싱글턴 테이블과 POKER_SEATS개 좌석을 보장해서 반환한다 (좌석 수를 늘리면 부족한 좌석을 여기서 채운다)."""
-        table, _ = cls.objects.get_or_create(pk=1)
-        existing = set(table.seats.values_list("seat_number", flat=True))
-        missing = [n for n in range(POKER_SEATS) if n not in existing]
-        if missing:
-            PokerSeat.objects.bulk_create([
-                PokerSeat(table=table, seat_number=n) for n in missing
-            ])
+    def create_with_seats(cls, tier, capacity=6):
+        table = cls.objects.create(tier=tier, capacity=capacity, min_raise=POKER_TIERS[tier]["bb"])
+        PokerSeat.objects.bulk_create([PokerSeat(table=table, seat_number=n) for n in range(capacity)])
         return table
 
 
@@ -444,7 +455,8 @@ class PokerSeat(models.Model):
 
 class PokerHandLog(models.Model):
     """낙엽 이동 자체는 LeafTransaction 원장이 기록하므로, 여기서는 핸드 결과만 남긴다."""
-    table = models.ForeignKey(PokerTable, on_delete=models.CASCADE, related_name="hand_logs")
+    # 방이 지워져도 핸드 기록은 남긴다
+    table = models.ForeignKey(PokerTable, on_delete=models.SET_NULL, null=True, blank=True, related_name="hand_logs")
     hand_number = models.PositiveIntegerField()
     pot = models.PositiveIntegerField()
     community_cards = models.JSONField(default=list, blank=True)
@@ -569,8 +581,9 @@ class HouseBank(models.Model):
 # 실제 규칙/상태머신은 game/gostop_engine.py 에 있다.
 # ─────────────────────────────────────────────────────────────────────────────
 
-GOSTOP_BUY_IN = 5 * POKER_CHIPS_PER_LEAF  # 입장에 필요한 최소 칩 (5낙엽). 입장 시 보관 칩 전부를 가져간다
-GOSTOP_CHIPS_PER_POINT = 100  # 점당 칩 (1낙엽 = 10점)
+# 단계별 점당 칩. 입장할 때 보관 칩 전부를 가져가고, 최소 입장 칩은 점당의 100배.
+GOSTOP_TIER_POINT_CHIPS = {"beginner": 10, "intermediate": 100, "expert": 1000}
+GOSTOP_BUY_IN_POINTS = 100
 
 
 class GostopRoom(models.Model):
@@ -578,6 +591,7 @@ class GostopRoom(models.Model):
     STATUS_CHOICES = [("waiting", "대기 중"), ("playing", "진행 중")]
 
     mode = models.CharField(max_length=10, choices=MODE_CHOICES, default="matgo")
+    tier = models.CharField(max_length=12, choices=TIER_CHOICES, default="intermediate", verbose_name="단계")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="waiting")
     state = models.JSONField(default=dict, blank=True, verbose_name="판 진행 상태 (서버 전용)")
     turn_deadline = models.DateTimeField(null=True, blank=True, verbose_name="현재 차례 제한시각")
@@ -594,7 +608,15 @@ class GostopRoom(models.Model):
         verbose_name_plural = "고스톱 방 목록"
 
     def __str__(self):
-        return f"{self.get_mode_display()} {self.pk}번 방 ({self.get_status_display()})"
+        return f"{self.get_mode_display()} {self.pk}번 방 ({TIER_LABELS.get(self.tier)}, {self.get_status_display()})"
+
+    @property
+    def chips_per_point(self):
+        return GOSTOP_TIER_POINT_CHIPS.get(self.tier, 100)
+
+    @property
+    def buy_in(self):
+        return self.chips_per_point * GOSTOP_BUY_IN_POINTS
 
 
 class GostopSeat(models.Model):
@@ -643,7 +665,8 @@ class GostopGameLog(models.Model):
 # 규칙/상태머신은 game/yacht_engine.py, AI는 game/yacht_ai.py.
 # ─────────────────────────────────────────────────────────────────────────────
 
-YACHT_STAKES = (1000, 5000, 10000)  # 방장이 고를 수 있는 참가비(칩)
+YACHT_STAKES = (1000, 5000, 10000)  # 방장이 고를 수 있는 참가비(칩) = 초보/중수/고수
+YACHT_STAKE_TIERS = dict(zip(YACHT_STAKES, GAME_TIERS))
 
 
 class YachtRoom(models.Model):

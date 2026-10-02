@@ -776,7 +776,6 @@ def highlow_buy_chips(request):
     except (ValueError, TypeError):
         return JsonResponse({"status": "error", "message": "충전할 낙엽 수가 올바르지 않습니다."}, status=400)
 
-    PokerTable.get_solo()  # 포커 페이지를 연 적 없어도 칩 지갑 싱글턴 테이블 행이 있어야 함
     ok, message = poker_engine.buy_chips(request.user, leaves_amount)
     if not ok:
         return JsonResponse({"status": "error", "message": message}, status=400)
@@ -795,7 +794,6 @@ def highlow_cash_out_chips(request):
     except (ValueError, TypeError):
         return JsonResponse({"status": "error", "message": "환전할 칩 수가 올바르지 않습니다."}, status=400)
 
-    PokerTable.get_solo()  # 포커 페이지를 연 적 없어도 칩 지갑 싱글턴 테이블 행이 있어야 함
     ok, message = poker_engine.cash_out_chips(request.user, chips_amount)
     if not ok:
         return JsonResponse({"status": "error", "message": message}, status=400)

@@ -301,7 +301,14 @@
 .gs-room-no { font-weight: 800; color: #fde68a; min-width: 34px; }
 .gs-room-mode { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: #b91c1c; white-space: nowrap; }
 .gs-room-mode--gostop { background: #7c3aed; }
-.gs-lobby-create { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.gs-lobby-create { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.gs-seg { display: inline-flex; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.25); }
+.gs-seg button { padding: 5px 10px; font-size: .72rem; font-weight: 800; color: #dcfce7; background: transparent; border: none; cursor: pointer; font-family: inherit; }
+.gs-seg button.on { background: #fde047; color: #713f12; }
+.gs-tier-info { width: 100%; text-align: right; font-size: .7rem; color: #bbf7d0; }
+.gs-tier-badge { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap; background: #0369a1; }
+.gs-tier-badge--beginner { background: #059669; }
+.gs-tier-badge--expert { background: #b91c1c; }
 .gs-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .gs-room-player { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
 .gs-room-player img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; }
@@ -721,8 +728,11 @@ footer { display: none !important; }
     setInterval(tickCountdowns, 1000);
 
     // ── 방 목록 ────────────────────────────────────────────────────
+    let createTier = 'beginner';
+    const AI_LEVEL_LABELS = { easy: '쉬움', normal: '보통', hard: '어려움' };
     function renderLobby(state) {
-        const canBuyIn = state.wallet_chips >= state.buy_in;
+        const cur = state.tiers.find(t => t.tier === createTier) || state.tiers[0];
+        const canBuyIn = state.wallet_chips >= cur.buy_in;
         const rooms = state.rooms.map(r => {
             const players = r.players.map(p => `<span class="gs-room-player">${avatar(p)}${esc(p.display_name)}${p.is_bot ? '<span class="gs-ai-badge">AI</span>' : ''}</span>`)
                 .join('<span class="gs-room-vs">VS</span>');
@@ -730,11 +740,12 @@ footer { display: none !important; }
             const open = r.players.length < r.capacity || r.players.some(p => p.is_bot);
             const status = r.status === 'playing' ? '진행 중' : open ? `${r.players.length}/${r.capacity}명` : '곧 시작';
             const joinBtn = open
-                ? `<button type="button" class="gs-btn gs-btn-call gs-btn-sm" data-join="${r.id}" ${canBuyIn ? '' : 'disabled'}>입장</button>`
+                ? `<button type="button" class="gs-btn gs-btn-call gs-btn-sm" data-join="${r.id}" ${state.wallet_chips >= r.buy_in ? '' : 'disabled'}>입장</button>`
                 : '';
             return `<div class="gs-room">
                 <span class="gs-room-no">#${r.id}</span>
                 <span class="gs-room-mode gs-room-mode--${r.mode}">${esc(r.mode_label)} ${r.capacity}인</span>
+                <span class="gs-tier-badge gs-tier-badge--${r.tier}">${esc(r.tier_label)} · 점당 ${fmt(r.chips_per_point)}</span>
                 <span class="gs-room-players">${players}</span>
                 <span class="gs-room-status">${status}</span>
                 ${joinBtn}
@@ -745,15 +756,18 @@ footer { display: none !important; }
             <div class="gs-lobby-head">
                 <div>
                     <h3>고스톱 방 목록</h3>
-                    <p>보관 칩 전부(최소 ${fmt(state.buy_in)}칩)를 가지고 입장 · 점당 ${fmt(state.chips_per_point)}칩</p>
+                    <p>보관 칩 전부를 가지고 입장 · 방 단계마다 점당 칩과 AI 난이도가 다릅니다</p>
                 </div>
                 <div class="gs-lobby-create">
+                    <span class="gs-seg">${state.tiers.map(t =>
+                        `<button type="button" class="${t.tier === createTier ? 'on' : ''}" data-tier="${t.tier}">${t.label}</button>`).join('')}</span>
                     <button type="button" class="gs-btn gs-btn-raise gs-btn-sm" data-create="matgo" ${dis}>맞고 (2인)</button>
                     <button type="button" class="gs-btn gs-btn-raise gs-btn-sm" data-create="gostop" ${dis}>고스톱 (3인)</button>
+                    <div class="gs-tier-info">${cur.label}: 점당 ${fmt(cur.chips_per_point)}칩 · 최소 ${fmt(cur.buy_in)}칩 · AI ${AI_LEVEL_LABELS[cur.ai_level]}</div>
                 </div>
             </div>
             <div class="gs-room-list">${rooms || '<div class="gs-lobby-empty">열린 방이 없습니다. 방을 만들어보세요!</div>'}</div>
-            ${canBuyIn ? '' : `<div class="gs-lobby-warn">방에 들어가려면 보관 칩이 ${fmt(state.buy_in)}칩 이상 필요합니다.
+            ${canBuyIn ? '' : `<div class="gs-lobby-warn">${cur.label} 방에 들어가려면 보관 칩이 ${fmt(cur.buy_in)}칩 이상 필요합니다.
                 <button type="button" class="gs-btn gs-btn-call gs-btn-sm" onclick="openGsChipTab()">칩 충전하기</button></div>`}
             <details class="gs-rules">
                 <summary>룰 요약</summary>
@@ -766,9 +780,10 @@ footer { display: none !important; }
                     <li>뻑·쪽·따닥·쓸·뻑 먹기·폭탄 시 다른 사람 모두에게서 피 1장(자뻑 2장)씩 가져옵니다.</li>
                     <li>총통·3뻑은 10점 즉시 승리, 나가리는 다음 판 ×2</li>
                     <li>한 판에서 받을 수 있는 칩은 판 시작 때 내 칩까지입니다. (가진 것보다 많이 따올 수 없음)</li>
+                    ${state.tiers.map(t => `<li><b>${t.label}</b>: 점당 ${fmt(t.chips_per_point)}칩, 최소 입장 ${fmt(t.buy_in)}칩, AI 난이도 ${AI_LEVEL_LABELS[t.ai_level]}</li>`).join('')}
                     <li>사람이 부족하면 방에서 "AI로 빈자리 채우기"를 누르세요. AI는 하우스 칩으로 앉고, 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
-                    <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 연결이 끊기거나 시간초과가 3번 이어지면 자리 비움으로 자동 진행하고 판이 끝나면 퇴장합니다.</li>
+                    <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 시간초과·연결 끊김 시에는 방 단계 난이도의 AI가 대신 두고, 시간초과가 3번 이어지면 자리 비움으로 진행하다 판이 끝나면 퇴장합니다.</li>
                 </ul>
             </details>`;
     }
@@ -1032,8 +1047,9 @@ footer { display: none !important; }
             chipsPerLeafShown = true;
         }
         document.getElementById('gs-chip-sell').classList.toggle('hidden', !state.wallet_chips);
-        document.getElementById('gs-chip-hint').textContent = state.wallet_chips < state.buy_in
-            ? `방에 들어가려면 보관 칩이 ${fmt(state.buy_in)}칩 이상 필요합니다. 낙엽을 칩으로 충전해주세요.`
+        const minBuyIn = state.room ? state.room.buy_in : state.tiers[0].buy_in;
+        document.getElementById('gs-chip-hint').textContent = state.wallet_chips < minBuyIn
+            ? `방에 들어가려면 보관 칩이 ${fmt(minBuyIn)}칩 이상 필요합니다. 낙엽을 칩으로 충전해주세요.`
             : '방 스택은 방에서 나가면 보관 칩으로 돌아옵니다.';
     }
 
@@ -1117,7 +1133,7 @@ footer { display: none !important; }
 
     function render(state, intermediate) {
         const room = state.room;
-        document.getElementById('gs-room-label').textContent = room ? `${room.id}번 방 · ${room.mode_label}` : '방 목록';
+        document.getElementById('gs-room-label').textContent = room ? `${room.id}번 방 · ${room.mode_label} · ${room.tier_label} (점당 ${fmt(room.chips_per_point)})` : '방 목록';
         document.getElementById('gs-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
         document.getElementById('gs-my-wallet-top').textContent = fmt(state.wallet_chips);
 
@@ -1321,8 +1337,10 @@ footer { display: none !important; }
     }
 
     feltEl.addEventListener('click', (e) => {
+        const tierBtn = e.target.closest('[data-tier]');
+        if (tierBtn) { createTier = tierBtn.dataset.tier; render(lastState); return; }
         const createBtn = e.target.closest('[data-create]');
-        if (createBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'create', mode: createBtn.dataset.create }); return; }
+        if (createBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'create', mode: createBtn.dataset.create, tier: createTier }); return; }
         const joinBtn = e.target.closest('[data-join]');
         if (joinBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'join', room_id: Number(joinBtn.dataset.join) }); return; }
         const handCard = e.target.closest('[data-hand]');

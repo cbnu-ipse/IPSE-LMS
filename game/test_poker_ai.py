@@ -10,7 +10,7 @@ from accounts.models import User
 from . import poker_ai, poker_engine
 from .models import HouseBank, PokerChipWallet, PokerHandLog, PokerSeat, PokerTable
 
-BUY_IN = poker_engine.POKER_BUY_IN
+BUY_IN = 10000  # 중수 방 최소 칩
 
 
 class PokerEquityTestCase(TestCase):
@@ -27,7 +27,6 @@ class PokerEquityTestCase(TestCase):
 @patch.object(poker_ai, "AI_TIME_BUDGET", 0)  # 테스트에선 최소 시뮬레이션만
 class PokerBotSeatingTestCase(TestCase):
     def setUp(self):
-        self.table = PokerTable.get_solo()
         self.a = User.objects.create_user(username="a", password="x")
         self.b = User.objects.create_user(username="b", password="x")
         PokerChipWallet.objects.create(user=self.a, chips=BUY_IN * 3)
@@ -45,39 +44,43 @@ class PokerBotSeatingTestCase(TestCase):
         # 핸드 중엔 베팅한 칩이 팟에 있으므로 팟까지 더한다
         return (sum(PokerChipWallet.objects.values_list("chips", flat=True))
                 + sum(PokerSeat.objects.values_list("stack", flat=True)) + self.house()
-                + PokerTable.objects.get(pk=1).pot)
+                + sum(PokerTable.objects.values_list("pot", flat=True)))
 
-    def test_one_human_gets_two_bots_from_house(self):
+    def test_add_bot_brings_biggest_human_stack_from_house(self):
         start = self.total()
-        poker_engine.sit_down(self.a, 0)
+        ok, table_id = poker_engine.create_table(self.a, "intermediate")
+        poker_engine.add_bot(self.a)
+        poker_engine.add_bot(self.a)
         seats = self.seats()
         self.assertEqual([(s.seat_number, s.user.is_bot, s.stack) for s in seats],
-                         [(0, False, BUY_IN * 3), (6, True, BUY_IN * 3), (7, True, BUY_IN * 3)])
+                         [(0, False, BUY_IN * 3), (4, True, BUY_IN * 3), (5, True, BUY_IN * 3)])
         self.assertEqual(self.total(), start)
-        self.assertIsNotNone(PokerTable.objects.get(pk=1).next_hand_at)
+        self.assertIsNotNone(PokerTable.objects.get(pk=table_id).next_hand_at)
 
-    def test_second_human_replaces_a_bot_and_last_human_clears_bots(self):
-        poker_engine.sit_down(self.a, 0)
-        poker_engine.sit_down(self.b, 1)
-        self.assertEqual(sum(s.user.is_bot for s in self.seats()), 1)
+    def test_last_human_leaving_clears_bots(self):
+        ok, table_id = poker_engine.create_table(self.a, "intermediate")
+        poker_engine.add_bot(self.a)
+        poker_engine.join_table(self.b, table_id)
         start = self.total()
         poker_engine.stand_up(self.b)
-        self.assertEqual(sum(s.user.is_bot for s in self.seats()), 2)
         poker_engine.stand_up(self.a)
         self.assertEqual(self.seats(), [])  # 사람이 없으면 AI도 떠나고 칩은 하우스로
+        self.assertFalse(PokerTable.objects.exists())
         self.assertEqual(self.total(), start)
 
-    def test_bots_play_hands_and_chips_are_conserved(self):
-        poker_engine.sit_down(self.a, 0)
+    def test_bots_play_hands_and_timeouts_are_played_by_ai_conserving_chips(self):
+        poker_engine.create_table(self.a, "intermediate")
+        poker_engine.add_bot(self.a)
+        poker_engine.add_bot(self.a)
         start = self.total()
         for _ in range(400):
             PokerTable.objects.update(
                 next_hand_at=timezone.now() - timedelta(seconds=1),
                 turn_deadline=timezone.now() - timedelta(seconds=1),
             )
-            # 사람은 연속 시간초과로 퇴장되지 않게 한다 (퇴장하면 AI도 떠나 핸드가 멈춤)
+            # 사람은 연속 시간초과로 퇴장되지 않게 한다 (퇴장하면 AI도 떠나 방이 닫힘)
             PokerSeat.objects.filter(user=self.a).update(consecutive_timeouts=0)
-            poker_engine.process_due_deadlines()  # 사람 차례는 시간초과(체크/폴드), AI 차례는 AI가 둔다
+            poker_engine.process_due_deadlines()  # 사람 차례는 시간초과 → AI가 대신, AI 차례는 AI가 둔다
             self.assertEqual(self.total(), start)
             if PokerHandLog.objects.count() >= 3:
                 break
@@ -86,7 +89,8 @@ class PokerBotSeatingTestCase(TestCase):
     def test_ai_decisions_are_legal(self):
         rng = random.Random(3)
         for _ in range(60):
-            table = PokerTable(pot=rng.choice([7, 60, 400]), current_bet=rng.choice([0, 5, 40]), min_raise=5,
+            table = PokerTable(tier=rng.choice(["beginner", "intermediate", "expert"]),
+                               pot=rng.choice([7, 60, 400]), current_bet=rng.choice([0, 5, 40]), min_raise=5,
                                community_cards=rng.sample(poker_engine.FULL_DECK, rng.choice([0, 3, 4, 5])))
             deck = [c for c in poker_engine.FULL_DECK if c not in table.community_cards]
             me = PokerSeat(seat_number=0, user=self.a, stack=rng.choice([10, 500, 5000]), status="active",

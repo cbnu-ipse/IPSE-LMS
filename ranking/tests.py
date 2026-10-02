@@ -8,7 +8,7 @@ class LeavesRankingIncludesChipsTestCase(TestCase):
     """낙엽 랭킹은 보유 칩(지갑 + 포커 좌석 스택 + 고스톱 좌석 스택)을 낙엽으로 환전했다고 가정해 합산한다."""
 
     def test_chips_are_counted_as_leaves(self):
-        table = PokerTable.get_solo()
+        table = PokerTable.create_with_seats("intermediate")
         viewer = User.objects.create_user(username="viewer", password="x")
         leaves_only = User.objects.create_user(username="a_leaves", password="x", leaves=3)
         chips_holder = User.objects.create_user(username="b_chips", password="x", leaves=1)

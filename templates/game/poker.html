@@ -12,6 +12,7 @@
             <div class="pk-outer">
                 <!-- 상태 바 -->
                 <div class="pk-stat-bar">
+                    <span class="pk-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="pk-room-label">방 목록</span></span>
                     <span class="pk-stat-chip"><i class="fa-solid fa-layer-group"></i> <span id="pk-hand-no">-</span>번째 핸드</span>
                     <span class="pk-stat-chip" id="pk-round-chip"><i class="fa-solid fa-circle-info"></i> <span id="pk-round-label">대기 중</span></span>
                     <span class="pk-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="pk-my-leaves">-</strong></span>
@@ -25,7 +26,9 @@
 
                 <!-- 테이블 -->
                 <div class="pk-table-wrap" id="pk-table-wrap">
-                    <div class="pk-table">
+                    <!-- 방 목록 (방에 들어가 있지 않을 때) -->
+                    <div id="pk-lobby-view" class="pk-lobby hidden"></div>
+                    <div class="pk-table" id="pk-table">
                         <div class="pk-community">
                             <!-- 핸드 결과 / 다음 핸드 카운트다운 — 표시 중엔 POT 자리를 대신한다 (항상 한 번에 하나만 표시) -->
                             <div id="pk-center-msg" class="pk-center-msg hidden"></div>
@@ -49,7 +52,7 @@
 
                 <!-- 하단 액션 바 -->
                 <div class="pk-action-bar" id="pk-action-bar">
-                    <div class="pk-hint">테이블에 앉으려면 빈 자리를 클릭하세요.</div>
+                    <div class="pk-hint">연결 중...</div>
                 </div>
 
                 <!-- 이모티콘 반응 -->
@@ -373,6 +376,19 @@
     pointer-events: none;
 }
 
+/* 핸드에 참여 중인 다른 플레이어 표시: 딜러가 나눠준 카드가 도착하면 프로필 왼쪽 위에 작은 뒷면
+   카드로 남는다 (공동 카드를 가리지 않는 크기). 카드별 도착 시각까지는 --d 지연으로 숨겨 둔다. */
+.pk-mini-hand { position: absolute; top: -8px; left: -12px; width: 26px; height: 22px; pointer-events: none; z-index: 2; }
+.pk-mini-hand i {
+    position: absolute; top: 0; width: 14px; height: 20px; border-radius: 2px;
+    background: repeating-linear-gradient(135deg, #4338ca, #4338ca 3px, #3730a3 3px, #3730a3 6px);
+    border: 1px solid rgba(255,255,255,.6); box-shadow: 0 1px 3px rgba(0,0,0,.45);
+    animation: pk-mini-in .12s var(--d, 0ms) both;
+}
+.pk-mini-hand i:first-child { left: 0; transform: rotate(-12deg); }
+.pk-mini-hand i:last-child { left: 9px; transform: rotate(9deg); }
+@keyframes pk-mini-in { from { opacity: 0; } to { opacity: 1; } }
+
 /* 앞뒤가 있는 카드: 기본은 뒷면, 앞면을 보일 땐 뒷면을 숨기고 앞면을 드러낸다.
    공동 카드는 새로 깔릴 때 한 장씩 뒤집히고(pk-flip--dealing, 카드별 지연은 --d), 다 뒤집힌 뒤엔 pk-flip--up.
    ponytail: 3D(rotateY + backface-visibility)로 돌리면 사파리/일부 모바일 브라우저가 뒷면을 안 숨겨
@@ -500,6 +516,37 @@
     transition: background .15s, border-color .15s;
 }
 .pk-empty-btn:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.7); }
+.pk-empty-seat { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 999px;
+    border: 2px dashed rgba(255,255,255,.25); color: rgba(255,255,255,.45); font-size: .62rem; font-weight: 700; }
+.pk-outer .hidden { display: none !important; }
+
+/* ── 방 목록 ─────────────────────────────────────────────────────── */
+.pk-lobby { width: 100%; max-width: 640px; color: #fff; align-self: flex-start; }
+.pk-lobby-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.pk-lobby-head h3 { font-size: 1.05rem; font-weight: 800; }
+.pk-lobby-head p { font-size: .74rem; color: #bbf7d0; margin-top: 2px; }
+.pk-create { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.pk-seg { display: inline-flex; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.25); }
+.pk-seg button { padding: 5px 10px; font-size: .72rem; font-weight: 800; color: #dcfce7; background: transparent; border: none; cursor: pointer; font-family: inherit; }
+.pk-seg button.on { background: #fde047; color: #713f12; }
+.pk-tier-info { width: 100%; text-align: right; font-size: .7rem; color: #bbf7d0; }
+.pk-room-list { display: flex; flex-direction: column; gap: 8px; }
+.pk-room { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px; padding: 10px 12px; font-size: .82rem; }
+.pk-room-no { font-weight: 800; color: #fde68a; min-width: 34px; }
+.pk-tier-badge { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap; background: #0369a1; }
+.pk-tier-badge--beginner { background: #059669; }
+.pk-tier-badge--expert { background: #b91c1c; }
+.pk-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.pk-room-player { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.pk-room-player img { width: 20px; height: 20px; border-radius: 999px; object-fit: cover; }
+.pk-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
+.pk-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
+.pk-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
+.pk-rules { margin-top: 18px; font-size: .74rem; color: #dcfce7; background: rgba(0,0,0,.18); border-radius: 12px; padding: 10px 14px; }
+.pk-rules summary { cursor: pointer; font-weight: 800; color: #fff; }
+.pk-rules ul { margin-top: 8px; padding-left: 16px; list-style: disc; display: flex; flex-direction: column; gap: 3px; }
+.pk-btn-sm { padding: 6px 14px !important; font-size: .74rem !important; border-radius: 10px !important; }
 
 /* 좌석 박스: "앉기" 원 버튼 자리를 그대로 이어받는 원형 아바타 + 그 아래
    이름/스택 라벨. 앉기 전/후에 같은 자리에 같은 크기의 원이 있다는 느낌을 준다. */
@@ -573,10 +620,6 @@
     border: 1px solid rgba(0,0,0,.5);
 }
 /* 보유 칩: 아바타 옆 (바깥쪽). 오른쪽 자리(1·3)와 왼쪽 가운데(6)는 오른쪽에 둔다 */
-.pk-stack-pile { position: absolute; bottom: 0; right: calc(100% + 3px); }
-.pk-seat[data-seat="1"] .pk-stack-pile,
-.pk-seat[data-seat="3"] .pk-stack-pile,
-.pk-seat[data-seat="6"] .pk-stack-pile { right: auto; left: calc(100% + 3px); }
 /* 이번 스트리트 베팅: 좌석에서 테이블 가운데 쪽으로 */
 .pk-bet {
     position: absolute;
@@ -592,7 +635,8 @@
     font-variant-numeric: tabular-nums;
 }
 .pk-seat[data-seat="0"] .pk-bet { top: -24px; left: 50%; transform: translateX(-50%); }
-.pk-seat[data-seat="4"] .pk-bet { bottom: -24px; left: 50%; transform: translateX(-50%); }
+/* 위 가운데 자리는 아래로 내리면 가운데 POT 글자와 겹쳐서 오른쪽 옆에 둔다 */
+.pk-seat[data-seat="4"] .pk-bet { top: 50%; left: calc(100% + 6px); transform: translateY(-50%); }
 .pk-seat[data-seat="1"] .pk-bet { top: -28px; right: 62%; }
 .pk-seat[data-seat="7"] .pk-bet { top: -28px; left: 62%; }
 .pk-seat[data-seat="3"] .pk-bet { bottom: -26px; right: 62%; }
@@ -906,8 +950,18 @@ footer { display: none !important; }
 <script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
 <script>
 (function () {
-    const SEAT_COUNT = 8;
-    const seatsEl = Array.from({length: SEAT_COUNT}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
+    // 테이블 둘레의 자리 칸 8개(data-seat = 칸 위치). 방 인원(3/4/5석)에 맞는 칸만 골라
+    // 좌석 번호 순서대로 고르게 배치한다 — seatsEl[좌석 번호]가 그 좌석의 칸.
+    const slotEls = Array.from({length: 8}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
+    const SEAT_POSITIONS = { 2: [0, 4], 4: [0, 2, 4, 6], 6: [0, 1, 3, 4, 5, 7] };
+    let seatsEl = slotEls;
+    let seatCount = 8;
+    function layoutSeats(capacity) {
+        const pos = SEAT_POSITIONS[capacity] || slotEls.map((_, i) => i);
+        seatCount = pos.length;
+        seatsEl = pos.map(p => slotEls[p]);
+        slotEls.forEach((el, i) => el.classList.toggle('hidden', !pos.includes(i)));
+    }
     const communityEl = document.getElementById('pk-community-cards');
     const potEl = document.getElementById('pk-pot');
     const handNoEl = document.getElementById('pk-hand-no');
@@ -929,6 +983,63 @@ footer { display: none !important; }
     const chipSellUnitEl = document.getElementById('pk-chip-sell-unit');
     const cashOutAmountEl = document.getElementById('pk-cash-out-amount');
     let chipsPerLeafShown = false; // 환전 단위(칩/낙엽)는 서버 값을 받은 뒤 최초 1회만 입력창 기본값을 채운다
+    const lobbyEl = document.getElementById('pk-lobby-view');
+    const pkTableEl = document.getElementById('pk-table');
+    const roomLabelEl = document.getElementById('pk-room-label');
+    let createTier = 'beginner';
+    let createCapacity = 6;
+    const fmtN = n => n == null ? '무제한' : Number(n).toLocaleString();
+
+    function tierRange(t) {
+        return t.max == null ? `${fmtN(t.min)}칩 이상` : `${fmtN(t.min)}~${fmtN(t.max)}칩`;
+    }
+
+    // ── 방 목록 ────────────────────────────────────────────────────
+    function renderLobby(state) {
+        const wallet = state.my_wallet_chips || 0;
+        const cur = state.tiers.find(t => t.tier === createTier) || state.tiers[0];
+        const seg = `<span class="pk-seg">${state.capacities.map(c =>
+            `<button type="button" class="${c === createCapacity ? 'on' : ''}" data-capacity="${c}">${c}인</button>`).join('')}</span>
+            <span class="pk-seg">${state.tiers.map(t =>
+            `<button type="button" class="${t.tier === createTier ? 'on' : ''}" data-tier="${t.tier}">${t.label}</button>`).join('')}</span>`;
+        const rooms = state.tables.map(t => {
+            const players = t.players.map(p => `<span class="pk-room-player"><img src="${esc(p.picture)}" alt="">${esc(p.display_name)}${p.is_bot ? '<span class="pk-ai-badge">AI</span>' : ''}</span>`).join('');
+            const canJoin = wallet >= t.min && (t.players.length < t.capacity || t.players.some(p => p.is_bot));
+            return `<div class="pk-room">
+                <span class="pk-room-no">#${t.id}</span>
+                <span class="pk-tier-badge pk-tier-badge--${t.tier}">${t.label} · ${t.small_blind}/${t.big_blind}</span>
+                <span class="pk-room-players">${players}</span>
+                <span class="pk-room-status">${t.status === 'playing' ? '진행 중' : '대기 중'} ${t.players.length}/${t.capacity}</span>
+                <button type="button" class="pk-btn pk-btn-call pk-btn-sm" data-join="${t.id}" ${canJoin ? '' : 'disabled'}>입장</button>
+            </div>`;
+        }).join('');
+        lobbyEl.innerHTML = `
+            <div class="pk-lobby-head">
+                <div>
+                    <h3>포커 방 목록</h3>
+                    <p>보관 칩 전부를 방 단계의 최대치까지 들고 앉습니다</p>
+                </div>
+                <div class="pk-create">
+                    ${seg}
+                    <button type="button" class="pk-btn pk-btn-raise pk-btn-sm" data-create ${wallet >= cur.min ? '' : 'disabled'}>방 만들기</button>
+                    <div class="pk-tier-info">${cur.label}: ${tierRange(cur)} · 블라인드 ${cur.small_blind}/${cur.big_blind}</div>
+                </div>
+            </div>
+            <div class="pk-room-list">${rooms || '<div class="pk-lobby-empty">열린 방이 없습니다. 방을 만들어보세요!</div>'}</div>
+            ${wallet >= state.tiers[0].min ? '' : `<div class="pk-lobby-warn">칩이 부족합니다. 보관 칩 ${fmtN(wallet)}칩
+                <button type="button" class="pk-btn pk-btn-call pk-btn-sm" onclick="openPkChipTab()">칩 충전하기</button></div>`}
+            <details class="pk-rules">
+                <summary>방 단계 안내</summary>
+                <ul>
+                    ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}</li>`).join('')}
+                    <li>방을 만들 때 2인 / 4인 / 6인 중 좌석 수를 고를 수 있습니다.</li>
+                    <li>AI 난이도는 모든 방이 같습니다.</li>
+                    <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
+                    <li>차례 제한시간 20초. 시간을 넘기면 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
+                </ul>
+            </details>`;
+    }
+
 
     const ROUND_LABELS = {
         preflop: '프리플랍', flop: '플랍', turn: '턴', river: '리버', showdown: '쇼다운',
@@ -1005,11 +1116,21 @@ footer { display: none !important; }
         }
         communityEl.innerHTML = slots.join('');
 
-        // 뒤집기가 끝나면 결과/공개 패를 보여주기 위해 한 번 더 그린다
+        // 카드가 한 장 뒤집힐 때마다 다시 그린다 (내 족보를 그 장수에 맞추고, 마지막엔 결과/공개 패 표시)
         clearTimeout(flipRerenderTimer);
-        if (communityFlipEndsAt > now) {
-            flipRerenderTimer = setTimeout(() => { if (lastState) render(lastState); }, communityFlipEndsAt - now + 30);
+        const pending = cards.map(c => flipStarts[c] + FLIP_MS).filter(t => t > now);
+        if (pending.length) {
+            flipRerenderTimer = setTimeout(() => { if (lastState) render(lastState); }, Math.min(...pending) - now + 30);
         }
+    }
+
+    // 화면에서 실제로 다 뒤집힌 공동 카드 장수에 맞는 족보 (서버는 장수별 족보를 같이 보낸다)
+    function visibleHandDesc(state) {
+        const descs = state.my_hand_descs || {};
+        const now = Date.now();
+        const shown = (state.community_cards || []).filter(c => (flipStarts[c] || 0) + FLIP_MS <= now).length;
+        const k = [5, 4, 3, 0].find(n => n <= shown && String(n) in descs);
+        return k != null ? descs[String(k)] : (state.my_hand_desc || '');
     }
 
     let peeking = false;  // 내 패를 누르고 있는 중
@@ -1032,7 +1153,7 @@ footer { display: none !important; }
         myCardsEl.innerHTML = `<div class="pk-hand-cards">${cards.map(face).join('')}
                 <span class="pk-peek-btn" aria-hidden="true"><i class="fa-solid fa-eye"></i></span>
             </div>
-            <span class="pk-hand-name">${folded ? '폴드' : esc(state.my_hand_desc || '')}</span>`;
+            <span class="pk-hand-name">${folded ? '폴드' : esc(visibleHandDesc(state))}</span>`;
     }
 
     // 누르고 있는 동안만 앞면 (마우스·터치·펜 공통 pointer 이벤트). 떼는 건 어디서 떼든 인정
@@ -1069,10 +1190,24 @@ footer { display: none !important; }
         return d ? d[1] : CHIP_DENOMS[CHIP_DENOMS.length - 1][1];
     }
 
+    // 다른 플레이어가 아직 핸드에 남아 있으면(받은 카드를 들고 있으면) 작은 뒷면 카드 2장.
+    // 이번 핸드에 막 나눠준 카드는 딜 애니메이션이 그 자리에 도착하는 시각에 나타난다.
+    let miniRevealAt = {};  // "좌석:몇 번째 카드" → 도착 시각(ms)
+    function miniHandHtml(seat) {
+        if (seat.is_me || !['active', 'all_in'].includes(seat.status) || !lastState || lastState.table_status !== 'playing'
+            || (seat.hole_cards || []).length) return '';
+        const now = Date.now();
+        const card = k => {
+            const at = miniRevealAt[`${seat.seat_number}:${k}`];
+            return `<i style="--d:${at ? at - now : -1000}ms"></i>`;
+        };
+        return `<span class="pk-mini-hand">${card(0)}${card(1)}</span>`;
+    }
+
     function renderSeat(el, seat) {
         el.classList.remove('pk-seat--turn', 'pk-seat--folded', 'pk-seat--winner', 'pk-seat--arrive');
         if (seat.empty) {
-            el.innerHTML = `<button type="button" class="pk-empty-btn" data-sit="${seat.seat_number}">앉기</button>`;
+            el.innerHTML = `<span class="pk-empty-seat">빈 자리</span>`;
             return;
         }
         if (seat.is_turn) el.classList.add('pk-seat--turn');
@@ -1105,7 +1240,7 @@ footer { display: none !important; }
             <div class="pk-seat-box">
                 <div class="pk-seat-circle">
                     ${ring}
-                    <span class="pk-stack-pile" data-pile>${chipsHtml(seat.stack)}</span>
+                    ${miniHandHtml(seat)}
                     ${seat.is_dealer ? '<span class="pk-dealer-btn">D</span>' : ''}
                     <img class="pk-seat-avatar" src="${esc(seat.picture)}" alt="">
                 </div>
@@ -1137,22 +1272,16 @@ footer { display: none !important; }
     setInterval(tickCountdowns, 1000);
 
     function renderActionBar(state) {
-        if (state.my_seat_number == null) {
-            if (state.open_seats > 0) {
-                const walletChips = state.my_wallet_chips || 0;
-                if (walletChips < state.buy_in_chips) {
-                    actionBarEl.innerHTML = `<div class="pk-hint">앉으려면 보관 칩이 최소 ${state.buy_in_chips}칩 필요합니다. <button type="button" class="pk-btn pk-btn-call" onclick="openPkChipTab()">칩 충전하기</button></div>`;
-                } else {
-                    actionBarEl.innerHTML = `<div class="pk-hint">빈 자리를 클릭하면 보관 칩 전부(${walletChips.toLocaleString()}칩)를 가지고 앉습니다.</div>`;
-                }
-            } else {
-                actionBarEl.innerHTML = `<div class="pk-hint">자리가 가득 찼습니다. 자리가 나면 먼저 클릭하는 사람이 앉습니다.</div>`;
-            }
+        if (!state.table) {
+            actionBarEl.innerHTML = `<div class="pk-hint">방을 만들거나 열린 방에 입장하세요.</div>`;
             return;
         }
 
         const mySeat = state.seats.find(s => s.seat_number === state.my_seat_number);
-        const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">일어나기</button>`];
+        const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">나가기</button>`];
+        if (state.open_seats > 0) {
+            rows.push(`<button type="button" class="pk-btn pk-btn-call" data-add-bot><i class="fa-solid fa-robot"></i> AI 추가</button>`);
+        }
         if (state.can_reveal) {
             rows.push(`<button type="button" class="pk-btn pk-btn-raise" data-reveal><i class="fa-solid fa-eye"></i> 내 패 공개</button>`);
         }
@@ -1192,7 +1321,7 @@ footer { display: none !important; }
             cashOutAmountEl.value = state.chips_per_leaf;
             chipsPerLeafShown = true;
         }
-        const seated = state.my_seat_number != null;
+        const seated = !!state.table && state.my_seat_number != null;
         const walletChips = state.my_wallet_chips || 0;
         chipStackEl.textContent = seated ? state.my_stack : '-';
         chipWalletEl.textContent = state.my_wallet_chips != null ? walletChips : '-';
@@ -1204,8 +1333,8 @@ footer { display: none !important; }
         if (seated) {
             chipHintEl.textContent = '충전/환전은 자리에서 일어난 후 할 수 있습니다.';
             chipHintEl.classList.remove('hidden');
-        } else if (walletChips < state.buy_in_chips) {
-            chipHintEl.textContent = `자리에 앉으려면 보관 칩이 ${state.buy_in_chips}칩 이상 필요합니다. 낙엽을 칩으로 충전해주세요.`;
+        } else if (walletChips < state.tiers[0].min) {
+            chipHintEl.textContent = `방에 들어가려면 보관 칩이 최소 ${state.tiers[0].min.toLocaleString()}칩(초보) 필요합니다. 낙엽을 칩으로 충전해주세요.`;
             chipHintEl.classList.remove('hidden');
         } else {
             chipHintEl.classList.add('hidden');
@@ -1309,12 +1438,14 @@ footer { display: none !important; }
 
     // 다시 그리기 전 위치 기록 (사라질 베팅 칩이 어디서 출발하는지 알기 위해)
     function snapshotChips() {
-        const bets = {};
+        const bets = {}, minis = {};
         seatsEl.forEach((el, n) => {
             const b = el && el.querySelector('[data-bet]');
             if (b) bets[n] = b.getBoundingClientRect();
+            const m = el && el.querySelector('.pk-mini-hand');
+            if (m) minis[n] = m.getBoundingClientRect();
         });
-        return { bets };
+        return { bets, minis };
     }
 
     function animateDiff(prev, state, before) {
@@ -1328,12 +1459,16 @@ footer { display: none !important; }
             const oldBet = sameHand ? (p.current_bet || 0) : 0;
             // 베팅(블라인드 포함): 보유 칩 → 베팅 자리
             if (!s.empty && s.current_bet > oldBet) {
-                flyChips(seatAnchor(s.seat_number, '[data-pile]'), seatAnchor(s.seat_number, '[data-bet]'),
+                flyChips(seatAnchor(s.seat_number, '.pk-seat-circle'), seatAnchor(s.seat_number, '[data-bet]'),
                     s.current_bet - oldBet, Math.min(5, 2 + Math.floor(Math.log10(s.current_bet - oldBet + 1))));
             }
             // 스트리트/핸드 종료: 베팅 칩 → 팟
             if ((p.current_bet || 0) > 0 && (!sameHand || s.current_bet < p.current_bet) && before.bets[s.seat_number]) {
                 flyChips(before.bets[s.seat_number], potRect, p.current_bet, 4);
+            }
+            // 폴드: 들고 있던 카드를 가운데로 버린다
+            if (sameHand && ['active', 'all_in'].includes(p.status) && s.status === 'folded' && before.minis[s.seat_number]) {
+                muckCards(before.minis[s.seat_number]);
             }
             // 착석 연출
             if (p.empty && !s.empty) seatsEl[s.seat_number].classList.add('pk-seat--arrive');
@@ -1362,11 +1497,31 @@ footer { display: none !important; }
     function animatePotToWinners(result) {
         const potRect = document.getElementById('pk-pot-line').getBoundingClientRect();
         (result.winners || []).forEach((w, i) => {
-            flyChips(potRect, seatAnchor(w.seat_number, '[data-pile]'), w.amount, 8, i * 150);
+            flyChips(potRect, seatAnchor(w.seat_number, '.pk-seat-circle'), w.amount, 8, i * 150);
         });
     }
 
     function render(state) {
+        const inRoom = !!state.table;
+        lobbyEl.classList.toggle('hidden', inRoom);
+        pkTableEl.classList.toggle('hidden', !inRoom);
+        if (!inRoom) {
+            roomLabelEl.textContent = '방 목록';
+            handNoEl.textContent = '-';
+            roundLabelEl.textContent = '대기 중';
+            myLeavesEl.textContent = state.my_leaves != null ? state.my_leaves : '-';
+            renderLobby(state);
+            renderActionBar(state);
+            renderChipPanel(state);
+            emojiBarEl.classList.add('hidden');
+            renderedState = null;
+            lastHandNumber = null;
+            lastTurnSeat = null;
+            return;
+        }
+        const t = state.table;
+        roomLabelEl.textContent = `${t.id}번 방 · ${t.label} · ${t.capacity}인 · ${t.small_blind}/${t.big_blind}`;
+        layoutSeats(t.capacity);
         const prev = renderedState;
         const before = snapshotChips();
         handNoEl.textContent = state.hand_number || '-';
@@ -1384,18 +1539,13 @@ footer { display: none !important; }
         renderCommunity(state.community_cards || [], state.hand_number);
         renderCenterMsg(state);
         renderMyCards(state);
+        const deal = isNewHand && state.round === 'preflop' && prev ? scheduleDeal(state) : null;
         state.seats.forEach(seat => renderSeat(seatsEl[seat.seat_number], seat));
         renderActionBar(state);
         renderChipPanel(state);
         renderEmojiBar(state);
 
-        if (isNewHand && state.round === 'preflop' && prev) {
-            // 딜러 다음 자리부터 한 장씩 두 바퀴 (내 카드는 공동 카드 아래로)
-            const inHand = state.seats.filter(s => !s.empty && s.status !== 'out').map(s => s.seat_number);
-            const d = state.dealer_seat == null ? -1 : state.dealer_seat;
-            inHand.sort((a, b) => ((a - d - 1 + 8) % 8) - ((b - d - 1 + 8) % 8));
-            playDealAnimation(inHand, state.my_seat_number);
-        }
+        if (deal) playDealAnimation(deal, state);
         animateDiff(prev, state, before);
         renderedState = state;
 
@@ -1454,36 +1604,79 @@ footer { display: none !important; }
 
     // 새 핸드: 테이블 중앙(딜러 더미)에서 한 장씩 두 바퀴 돌려준다. 남의 카드는 좌석에
     // 닿으면 사라지고(카드 정보 없음), 내 카드는 공동 카드 아래 내 카드 자리로 간다.
-    function playDealAnimation(seatNumbers, mySeat) {
-        if (REDUCED_MOTION || !seatNumbers.length) return;
-        const t = tableEl.getBoundingClientRect();
-        const cx = t.width / 2, cy = t.height / 2 - 20;
-        const GAP = 110;
-        myCardsEl.style.opacity = '0';
+    // ── 카드 나눠주기: 딜러 자리에서 딜러 다음 사람부터 한 장씩 두 바퀴 ──────────
+    // 다른 사람에게 간 카드는 그 사람 프로필의 작은 뒷면 카드(.pk-mini-hand)로 남고, 내 카드는 내 패 자리로.
+    const DEAL_GAP = 120, DEAL_MS = 380;
+    function scheduleDeal(state) {
+        const inHand = state.seats.filter(s => !s.empty && s.status !== 'out').map(s => s.seat_number);
+        const d = state.dealer_seat == null ? -1 : state.dealer_seat;
+        inHand.sort((a, b) => ((a - d - 1 + seatCount) % seatCount) - ((b - d - 1 + seatCount) % seatCount));
+        const start = Date.now();
+        miniRevealAt = {};
+        const plan = [];
         for (let round = 0; round < 2; round++) {
-            seatNumbers.forEach((n, i) => {
-                const target = n === mySeat ? myCardsEl.getBoundingClientRect() : seatAnchor(n, '.pk-seat-circle');
-                if (!target) return;
-                const p = center(target);
-                const card = document.createElement('div');
-                card.className = 'pk-deal-card';
-                card.style.left = cx + 'px';
-                card.style.top = cy + 'px';
-                tableEl.appendChild(card);
-                const delay = (round * seatNumbers.length + i) * GAP;
-                card.animate([
-                    { transform: 'translate(0, 0) rotate(0deg) scale(.8)', opacity: 0 },
-                    { opacity: 1, offset: .15 },
-                    { transform: `translate(${p.x - cx + (n === mySeat ? (round ? 16 : -16) : 0)}px, ${p.y - cy}px) rotate(${round ? 8 : -8}deg) scale(1.1)`, opacity: n === mySeat ? 1 : .9 },
-                ], { duration: 420, delay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'both' });
-                setTimeout(() => card.remove(), delay + 460);
+            inHand.forEach((n, i) => {
+                const delay = (round * inHand.length + i) * DEAL_GAP;
+                miniRevealAt[`${n}:${round}`] = REDUCED_MOTION ? 0 : start + delay + DEAL_MS;
+                plan.push({ n, round, delay });
             });
         }
-        const total = seatNumbers.length * 2 * GAP + 420;
+        return plan;
+    }
+
+    function playDealAnimation(plan, state) {
+        if (REDUCED_MOTION || !plan.length) return;
+        const mySeat = state.my_seat_number;
+        const from = center(seatAnchor(state.dealer_seat, '.pk-seat-circle') || tableEl.getBoundingClientRect());
+        myCardsEl.style.opacity = '0';
+        plan.forEach(({ n, round, delay }) => {
+            let target;
+            if (n === mySeat) {
+                target = center(myCardsEl.getBoundingClientRect());
+                target.x += round ? 16 : -16;
+            } else {
+                const mini = seatsEl[n] && seatsEl[n].querySelectorAll('.pk-mini-hand i')[round];
+                const r = mini ? mini.getBoundingClientRect() : seatAnchor(n, '.pk-seat-circle');
+                if (!r) return;
+                target = center(r);
+            }
+            const card = document.createElement('div');
+            card.className = 'pk-deal-card';
+            card.style.left = from.x + 'px';
+            card.style.top = from.y + 'px';
+            tableEl.appendChild(card);
+            const small = n !== mySeat;
+            card.animate([
+                { transform: 'translate(0, 0) rotate(0deg) scale(.7)', opacity: 0 },
+                { opacity: 1, offset: .12 },
+                { transform: `translate(${target.x - from.x}px, ${target.y - from.y}px) rotate(${round ? 9 : -12}deg) scale(${small ? .55 : 1.1})`, opacity: 1 },
+            ], { duration: DEAL_MS, delay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'both' });
+            setTimeout(() => card.remove(), delay + DEAL_MS + 20);
+        });
+        const total = plan.length * DEAL_GAP + DEAL_MS;
         setTimeout(() => {
             myCardsEl.style.transition = 'opacity .25s';
             myCardsEl.style.opacity = '';
         }, total);
+    }
+
+    // 폴드한 사람의 카드를 테이블 가운데(버린 패)로 날려 보낸다
+    function muckCards(fromRect) {
+        if (REDUCED_MOTION) return;
+        const from = center(fromRect);
+        const to = center(document.getElementById('pk-pot-line').getBoundingClientRect());
+        [0, 1].forEach(k => {
+            const card = document.createElement('div');
+            card.className = 'pk-deal-card';
+            card.style.left = (from.x + k * 8) + 'px';
+            card.style.top = from.y + 'px';
+            tableEl.appendChild(card);
+            card.animate([
+                { transform: `rotate(${k ? 9 : -12}deg) scale(.55)`, opacity: 1 },
+                { transform: `translate(${to.x - from.x}px, ${to.y - from.y + 24}px) rotate(${k ? 160 : 120}deg) scale(.5)`, opacity: 0 },
+            ], { duration: 450, delay: k * 60, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' });
+            setTimeout(() => card.remove(), 560);
+        });
     }
 
     emojiBarEl.addEventListener('click', (e) => {
@@ -1495,15 +1688,30 @@ footer { display: none !important; }
 
     // ── 클릭 위임 ────────────────────────────────────────────────
     document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
-        const sitBtn = e.target.closest('[data-sit]');
-        if (!sitBtn) return;
-        if (window.GameSound) window.GameSound.play('click');
-        send({ type: 'sit', seat_number: Number(sitBtn.dataset.sit) });
+        const tierBtn = e.target.closest('[data-tier]');
+        if (tierBtn) { createTier = tierBtn.dataset.tier; if (lastState) render(lastState); return; }
+        const capBtn = e.target.closest('[data-capacity]');
+        if (capBtn) { createCapacity = Number(capBtn.dataset.capacity); if (lastState) render(lastState); return; }
+        if (e.target.closest('[data-create]')) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'create', tier: createTier, capacity: createCapacity });
+            return;
+        }
+        const joinBtn = e.target.closest('[data-join]');
+        if (joinBtn) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'join', table_id: Number(joinBtn.dataset.join) });
+        }
     });
     actionBarEl.addEventListener('click', (e) => {
         if (e.target.closest('[data-reveal]')) {
             if (window.GameSound) window.GameSound.play('click');
             send({ type: 'reveal' });
+            return;
+        }
+        if (e.target.closest('[data-add-bot]')) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'add_bot' });
             return;
         }
         if (e.target.id === 'pk-stand-btn') {
@@ -1596,6 +1804,7 @@ footer { display: none !important; }
             } else if (data.type === 'state') {
                 applyState(data);
             } else if (data.type === 'emoji_reaction') {
+                if (!lastState || !lastState.table || lastState.table.id !== data.table_id) return;
                 showEmojiBubble(data.seat_number, data.emoji);
             }
         };
