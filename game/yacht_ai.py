@@ -7,10 +7,13 @@
       써버리면 나중에 그만큼 잃는다는 기회비용이다.
     * 남길 주사위(5개 중 부분집합) 각각에 대해 나머지를 굴렸을 때의 기대값을 정확히 계산해
       가장 좋은 쪽을 고르고, 지금 적는 게 더 나으면 바로 적는다.
-- 중간 난이도(퇴장/시간초과한 사람 대신): 가장 많이 나온 눈(또는 4개 연속)을 남기고,
-  지금 가장 높은 점수가 나오는 칸에 적는다. 내다보기 없음.
+- 중간 난이도: 가장 많이 나온 눈(또는 4개 연속)을 남기고, 지금 가장 높은 점수가 나오는 칸에 적는다.
+  내다보기 없음.
+- 쉬움: 한 번만 다시 굴려 보고, 가끔 아무 칸에나 적는다.
+방 단계(초보/중수/고수)에 따라 AI 플레이어와 자리 비운 사람 대신 두기 모두 쉬움/보통/어려움을 쓴다 (act_for).
 주사위 결과는 서버가 굴리므로 AI는 미래 주사위를 알 수 없다.
 """
+import random
 from collections import Counter
 from functools import lru_cache
 from itertools import combinations, combinations_with_replacement
@@ -21,6 +24,7 @@ from .yacht_engine import CATEGORIES, UPPER, YACHT_BONUS, YACHT_BONUS_LINE, scor
 # 윗칸 보너스 진척 가중치 (눈 × 3 기준보다 1점 더/덜 적을 때의 가치, 보너스 확정 시 가산)
 BONUS_WEIGHT = 3.5   # 200판 비교로 고름: 평균 186점, 보너스 62%
 BONUS_LOCK = .8
+EASY_CARELESS = .2  # 쉬움: 이 확률로 아무 빈 칸에나 적는다
 
 
 # ── 주사위 조합 확률 ───────────────────────────────────────────────────────────
@@ -133,3 +137,31 @@ def medium_action(st, side):
         if not all(held):
             return ("roll", held)
     return ("score", best)
+
+
+def easy_action(st, side, rng=None):
+    """쉬움: 한 번만 다시 굴려 보고(가장 많이 나온 눈만 남김), 지금 점수가 가장 높은 칸에 적는다.
+    가끔은 생각 없이 아무 빈 칸에나 적는다."""
+    rng = rng or random.Random()
+    card = st["cards"][side]
+    if st["rolls"] == 0:
+        return ("roll", None)
+    dice = st["dice"]
+    open_cats = [c for c in CATEGORIES if c not in card]
+    best = max(open_cats, key=lambda c: score_of(c, dice))
+    if st["rolls"] == 1 and score_of(best, dice) < 15:
+        face, _ = max(Counter(dice).items(), key=lambda kv: (kv[1], kv[0]))
+        held = [d == face for d in dice]
+        if not all(held):
+            return ("roll", held)
+    if rng.random() < EASY_CARELESS:
+        return ("score", rng.choice(open_cats))
+    return ("score", best)
+
+
+LEVEL_ACTIONS = {"easy": easy_action, "normal": medium_action, "hard": hard_action}
+
+
+def act_for(level, st, side):
+    """방 단계의 난이도로 한 수 (초보=쉬움, 중수=보통, 고수=어려움)."""
+    return LEVEL_ACTIONS.get(level, medium_action)(st, side)

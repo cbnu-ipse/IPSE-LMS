@@ -266,7 +266,7 @@ async def _poker_watchdog_loop():
 
 
 class PokerConsumer(AsyncWebsocketConsumer):
-    """포커 테이블(고정 1개) 실시간 WebSocket 컨슈머.
+    """포커 방(여러 개) 실시간 WebSocket 컨슈머.
     - 좌석마다 다른 정보(홀카드)가 보이므로 상태는 브로드캐스트 신호만 그룹으로
       보내고, 각 연결이 자기 시점으로 get_state_for()를 다시 만들어 전송한다.
     """
@@ -315,8 +315,12 @@ class PokerConsumer(AsyncWebsocketConsumer):
         if msg_type == "page_leave":
             self.page_left = True
             return
-        if msg_type == "sit":
-            handler = lambda: poker_engine.sit_down(user, data.get("seat_number"))
+        if msg_type == "create":
+            handler = lambda: poker_engine.create_table(user, data.get("tier"))
+        elif msg_type == "join":
+            handler = lambda: poker_engine.join_table(user, data.get("table_id"))
+        elif msg_type == "add_bot":
+            handler = lambda: poker_engine.add_bot(user)
         elif msg_type == "stand":
             handler = lambda: poker_engine.stand_up(user)
         elif msg_type == "action":
@@ -348,9 +352,9 @@ class PokerConsumer(AsyncWebsocketConsumer):
         if not ok:
             await self.send(text_data=json.dumps({"type": "error", "message": result}, ensure_ascii=False))
         elif msg_type == "emoji":
-            await self.channel_layer.group_send(
-                POKER_GROUP, {"type": "emoji_broadcast", "seat_number": result, "emoji": data.get("emoji")}
-            )
+            await self.channel_layer.group_send(POKER_GROUP, {
+                "type": "emoji_broadcast", "table_id": result[0], "seat_number": result[1], "emoji": data.get("emoji"),
+            })
         else:
             await _broadcast_poker_state()
 
@@ -359,7 +363,8 @@ class PokerConsumer(AsyncWebsocketConsumer):
 
     async def emoji_broadcast(self, event):
         await self.send(text_data=json.dumps(
-            {"type": "emoji_reaction", "seat_number": event["seat_number"], "emoji": event["emoji"]},
+            {"type": "emoji_reaction", "table_id": event.get("table_id"), "seat_number": event["seat_number"],
+             "emoji": event["emoji"]},
             ensure_ascii=False,
         ))
 
@@ -474,7 +479,7 @@ class GostopConsumer(AsyncWebsocketConsumer):
             return
 
         handlers = {
-            "create": lambda: gostop_engine.create_room(user, data.get("mode")),
+            "create": lambda: gostop_engine.create_room(user, data.get("mode"), data.get("tier") or "intermediate"),
             "join": lambda: gostop_engine.join_room(user, data.get("room_id")),
             "leave": lambda: gostop_engine.leave_room(user),
             "add_bots": lambda: gostop_engine.add_bots(user),

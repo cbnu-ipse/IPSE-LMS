@@ -29,7 +29,7 @@
       7점어치를 판 끝에 받는다 (나가리 배수 미적용).
 
 공개 함수(뷰/컨슈머에서 호출):
-    create_room(user, mode) / join_room(user, room_id) / leave_room(user, away) / mark_back(user)
+    create_room(user, mode, tier) / join_room(user, room_id) / leave_room(user, away) / mark_back(user)
     add_bots(user)                                  — 빈자리를 AI로 채운다 (칩은 하우스 계좌)
     play(user, card, target, mode) / choose_flip(user, target) / declare(user, go)
     next_deadline_at() / process_due_deadlines()   — 워치독용
@@ -46,7 +46,7 @@ from accounts.models import User
 from .bots import free_bot
 from .models import (
     GostopRoom, GostopSeat, GostopGameLog, HouseBank, PokerChipWallet,
-    GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT, POKER_CHIPS_PER_LEAF,
+    GAME_TIERS, GOSTOP_BUY_IN_POINTS, GOSTOP_TIER_POINT_CHIPS, POKER_CHIPS_PER_LEAF, TIER_AI_LEVEL, TIER_LABELS,
 )
 
 GOSTOP_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
@@ -566,10 +566,10 @@ def _lock_my_room(user):
     return room, seat
 
 
-def _take_buy_in(user):
-    """최소 바이인 이상이면 보관 칩 전부를 가지고 들어간다. 가져간 칩 수(모자라면 0)."""
+def _take_buy_in(user, buy_in):
+    """최소 입장 칩 이상이면 보관 칩 전부를 가지고 들어간다. 가져간 칩 수(모자라면 0)."""
     wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
-    if not wallet or wallet.chips < GOSTOP_BUY_IN:
+    if not wallet or wallet.chips < buy_in:
         return 0
     chips = wallet.chips
     wallet.chips = 0
@@ -605,13 +605,23 @@ def _leave_poker_table(user):
     return None
 
 
-def _need_buy_in_msg():
-    return f"칩 지갑에 최소 {GOSTOP_BUY_IN:,}칩({GOSTOP_BUY_IN // POKER_CHIPS_PER_LEAF}낙엽)이 있어야 입장할 수 있습니다."
+def _need_buy_in_msg(buy_in):
+    return f"칩 지갑에 최소 {buy_in:,}칩({buy_in / POKER_CHIPS_PER_LEAF:g}낙엽)이 있어야 입장할 수 있습니다."
 
 
-def create_room(user, mode):
+def tier_buy_in(tier):
+    return GOSTOP_TIER_POINT_CHIPS[tier] * GOSTOP_BUY_IN_POINTS
+
+
+def ai_level(room):
+    return TIER_AI_LEVEL.get(room.tier, "normal")
+
+
+def create_room(user, mode, tier="intermediate"):
     if mode not in MODES:
         return False, "잘못된 게임 종류입니다."
+    if tier not in GAME_TIERS:
+        return False, "방 단계를 다시 골라주세요."
     with transaction.atomic():
         User.objects.select_for_update().get(id=user.id)  # 같은 유저의 동시 입장 직렬화
         if GostopSeat.objects.filter(user=user).exists():
@@ -619,10 +629,10 @@ def create_room(user, mode):
         err = _leave_poker_table(user)
         if err:
             return False, err
-        chips = _take_buy_in(user)
+        chips = _take_buy_in(user, tier_buy_in(tier))
         if not chips:
-            return False, _need_buy_in_msg()
-        room = GostopRoom.objects.create(mode=mode)
+            return False, _need_buy_in_msg(tier_buy_in(tier))
+        room = GostopRoom.objects.create(mode=mode, tier=tier)
         GostopSeat.objects.create(room=room, user=user, seat=0, stack=chips)
     return True, room.id
 
@@ -650,13 +660,13 @@ def join_room(user, room_id):
                     leaving.append(bot.seat)
                 room.save(update_fields=["state"])
                 return False, "판이 끝나면 AI가 자리를 비켜줍니다. 판이 끝난 뒤 다시 입장해주세요."
-            if not PokerChipWallet.objects.filter(user=user, chips__gte=GOSTOP_BUY_IN).exists():
-                return False, _need_buy_in_msg()
+            if not PokerChipWallet.objects.filter(user=user, chips__gte=room.buy_in).exists():
+                return False, _need_buy_in_msg(room.buy_in)
             _remove_seat(room, bot)
             count -= 1
-        chips = _take_buy_in(user)
+        chips = _take_buy_in(user, room.buy_in)
         if not chips:
-            return False, _need_buy_in_msg()
+            return False, _need_buy_in_msg(room.buy_in)
         GostopSeat.objects.create(room=room, user=user, seat=count, stack=chips)
         if count + 1 == _capacity(room):
             room.next_first = random.randrange(_capacity(room))
@@ -667,7 +677,8 @@ def join_room(user, room_id):
 
 
 def add_bots(user):
-    """내 방의 빈자리를 AI로 채운다. AI는 방에서 가장 많은 스택만큼(최소 바이인) 하우스 칩을 들고 앉는다."""
+    """내 방의 빈자리를 AI로 채운다. AI는 방에서 가장 많은 스택만큼(최소 입장 칩) 하우스 칩을 들고 앉는다.
+    AI 난이도는 방 단계를 따른다 (초보=쉬움, 중수=보통, 고수=어려움)."""
     with transaction.atomic():
         room, seat = _lock_my_room(user)
         if not room:
@@ -678,9 +689,9 @@ def add_bots(user):
         empty = _capacity(room) - len(seats)
         if empty <= 0:
             return False, "빈자리가 없습니다."
-        stack = max([GOSTOP_BUY_IN] + [s.stack for s in seats if not s.user.is_bot])
+        stack = max([room.buy_in] + [s.stack for s in seats if not s.user.is_bot])
         house = HouseBank.locked()
-        if house.chips < GOSTOP_BUY_IN * empty:
+        if house.chips < room.buy_in * empty:
             return False, "하우스 칩이 부족해 AI를 부를 수 없습니다."
         stack = min(stack, house.chips // empty)
         for i in range(empty):
@@ -821,7 +832,7 @@ def _end_game(room, outcome):
     # 불리해지지 않도록). 3인이면 두 패자에게서 받는 합계, 첫뻑 등 보너스도 포함
     can_take = [s.stack for s in seats]
     for payer, receiver, points, baks, gobak, label in transfers:
-        owed = points * GOSTOP_CHIPS_PER_POINT
+        owed = points * room.chips_per_point
         chips = min(owed, seats[payer].stack, can_take[receiver])
         can_take[receiver] -= chips
         seats[payer].stack -= chips
@@ -936,9 +947,9 @@ def process_due_deadlines():
             if room.status == "playing" and room.turn_deadline and room.turn_deadline <= now:
                 st = room.state
                 side = st["turn"]
+                from . import gostop_ai
                 if side in st.get("bots", []):
-                    from . import gostop_ai
-                    outcome = gostop_ai.act(st, side)
+                    outcome = gostop_ai.act_level(st, side, ai_level(room))
                 else:
                     st["timeouts"][side] += 1
                     if st["timeouts"][side] >= GOSTOP_MAX_TIMEOUTS:
@@ -946,7 +957,8 @@ def process_due_deadlines():
                         leaving = st.setdefault("leaving", [])
                         if side not in leaving:
                             leaving.append(side)
-                    outcome = auto_act(st, side)
+                    # 시간초과·자리 비움이면 방 단계 난이도의 AI가 대신 둔다
+                    outcome = gostop_ai.act_level(st, side, ai_level(room))
                 room.state = st
                 if outcome:
                     _end_game(room, outcome)
@@ -1027,6 +1039,8 @@ def get_state_for(user):
             "id": my_room.id,
             "mode": my_room.mode,
             "mode_label": MODES[my_room.mode]["label"],
+            "tier": my_room.tier, "tier_label": TIER_LABELS[my_room.tier],
+            "chips_per_point": my_room.chips_per_point, "buy_in": my_room.buy_in,
             "capacity": _capacity(my_room),
             "status": my_room.status,
             "me": me,
@@ -1042,7 +1056,8 @@ def get_state_for(user):
         "rooms": [
             {
                 "id": r.id, "mode": r.mode, "mode_label": MODES[r.mode]["label"],
-                "capacity": _capacity(r), "status": r.status,
+                "tier": r.tier, "tier_label": TIER_LABELS[r.tier], "chips_per_point": r.chips_per_point,
+                "buy_in": r.buy_in, "capacity": _capacity(r), "status": r.status,
                 "players": [_player_view(s.user) for s in sorted(r.seats.all(), key=lambda s: s.seat)],
             }
             for r in rooms
@@ -1050,7 +1065,7 @@ def get_state_for(user):
         "room": room_view,
         "wallet_chips": wallet or 0,
         "my_leaves": my_leaves,
-        "buy_in": GOSTOP_BUY_IN,
-        "chips_per_point": GOSTOP_CHIPS_PER_POINT,
+        "tiers": [{"tier": t, "label": TIER_LABELS[t], "chips_per_point": GOSTOP_TIER_POINT_CHIPS[t],
+                   "buy_in": tier_buy_in(t), "ai_level": TIER_AI_LEVEL[t]} for t in GAME_TIERS],
         "chips_per_leaf": POKER_CHIPS_PER_LEAF,
     }

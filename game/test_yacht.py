@@ -64,14 +64,33 @@ class YachtScoringTestCase(TestCase):
 
     def test_game_ends_after_12_rounds(self):
         st = ye.new_game(2, 1)
-        rng = random.Random(5)
         outcome = None
         for _ in range(24):
-            ye.roll_dice(st, st["turn"], None, rng)
+            st["dice"], st["rolls"] = [3, 3, 3, 3, 3], 1  # 두 사람이 똑같이 적어 끝까지 승부가 안 갈림
             cat = next(c for c in ye.CATEGORIES if c not in st["cards"][st["turn"]])
             outcome = ye.score_category(st, st["turn"], cat)
         self.assertEqual(outcome, {"over": True})
         self.assertTrue(all(len(c) == 12 for c in st["cards"]))
+        self.assertFalse(st.get("early_end"))
+
+    def test_max_possible_total(self):
+        self.assertEqual(ye.max_possible_total({}), 105 + 35 + 185)  # 윗칸 105 + 보너스 + 아랫칸 185
+        card = {c: 0 for c in ye.UPPER}  # 윗칸을 0점으로 다 채움 → 보너스 불가
+        self.assertEqual(ye.max_possible_total(card), 185)
+
+    def test_early_end_when_comeback_impossible(self):
+        st = ye.new_game(2, 0)
+        # 0번은 아랫칸을 거의 최고점으로, 1번은 같은 칸들을 0점으로 채운 상태
+        st["cards"][0] = {"yacht": 50, "large_straight": 30, "small_straight": 15, "four_kind": 30,
+                          "full_house": 30, "choice": 30, "sixes": 30, "fives": 25}
+        st["cards"][1] = {"sixes": 30, "fives": 25, "fours": 20, "threes": 15, "yacht": 0, "large_straight": 0}
+        # 0번 240점, 1번 최대 가능 245점 → 아직 역전 가능
+        self.assertIsNone(ye.decided_leader(st["cards"]))
+        st["turn"], st["dice"], st["rolls"] = 1, [1, 1, 1, 1, 6], 1
+        outcome = ye.score_category(st, 1, "small_straight")  # 0점 → 1번 최대 230점 < 240점
+        self.assertEqual(outcome, {"over": True})
+        self.assertTrue(st["early_end"])
+        self.assertEqual(ye.decided_leader(st["cards"]), 0)
 
 
 class YachtAITestCase(TestCase):

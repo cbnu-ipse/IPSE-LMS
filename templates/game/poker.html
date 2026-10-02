@@ -12,6 +12,7 @@
             <div class="pk-outer">
                 <!-- 상태 바 -->
                 <div class="pk-stat-bar">
+                    <span class="pk-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="pk-room-label">방 목록</span></span>
                     <span class="pk-stat-chip"><i class="fa-solid fa-layer-group"></i> <span id="pk-hand-no">-</span>번째 핸드</span>
                     <span class="pk-stat-chip" id="pk-round-chip"><i class="fa-solid fa-circle-info"></i> <span id="pk-round-label">대기 중</span></span>
                     <span class="pk-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="pk-my-leaves">-</strong></span>
@@ -25,7 +26,9 @@
 
                 <!-- 테이블 -->
                 <div class="pk-table-wrap" id="pk-table-wrap">
-                    <div class="pk-table">
+                    <!-- 방 목록 (방에 들어가 있지 않을 때) -->
+                    <div id="pk-lobby-view" class="pk-lobby hidden"></div>
+                    <div class="pk-table" id="pk-table">
                         <div class="pk-community">
                             <!-- 핸드 결과 / 다음 핸드 카운트다운 — 표시 중엔 POT 자리를 대신한다 (항상 한 번에 하나만 표시) -->
                             <div id="pk-center-msg" class="pk-center-msg hidden"></div>
@@ -49,7 +52,7 @@
 
                 <!-- 하단 액션 바 -->
                 <div class="pk-action-bar" id="pk-action-bar">
-                    <div class="pk-hint">테이블에 앉으려면 빈 자리를 클릭하세요.</div>
+                    <div class="pk-hint">연결 중...</div>
                 </div>
 
                 <!-- 이모티콘 반응 -->
@@ -500,6 +503,37 @@
     transition: background .15s, border-color .15s;
 }
 .pk-empty-btn:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.7); }
+.pk-empty-seat { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 999px;
+    border: 2px dashed rgba(255,255,255,.25); color: rgba(255,255,255,.45); font-size: .62rem; font-weight: 700; }
+.pk-outer .hidden { display: none !important; }
+
+/* ── 방 목록 ─────────────────────────────────────────────────────── */
+.pk-lobby { width: 100%; max-width: 640px; color: #fff; align-self: flex-start; }
+.pk-lobby-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.pk-lobby-head h3 { font-size: 1.05rem; font-weight: 800; }
+.pk-lobby-head p { font-size: .74rem; color: #bbf7d0; margin-top: 2px; }
+.pk-create { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.pk-seg { display: inline-flex; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.25); }
+.pk-seg button { padding: 5px 10px; font-size: .72rem; font-weight: 800; color: #dcfce7; background: transparent; border: none; cursor: pointer; font-family: inherit; }
+.pk-seg button.on { background: #fde047; color: #713f12; }
+.pk-tier-info { width: 100%; text-align: right; font-size: .7rem; color: #bbf7d0; }
+.pk-room-list { display: flex; flex-direction: column; gap: 8px; }
+.pk-room { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px; padding: 10px 12px; font-size: .82rem; }
+.pk-room-no { font-weight: 800; color: #fde68a; min-width: 34px; }
+.pk-tier-badge { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap; background: #0369a1; }
+.pk-tier-badge--beginner { background: #059669; }
+.pk-tier-badge--expert { background: #b91c1c; }
+.pk-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.pk-room-player { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.pk-room-player img { width: 20px; height: 20px; border-radius: 999px; object-fit: cover; }
+.pk-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
+.pk-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
+.pk-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
+.pk-rules { margin-top: 18px; font-size: .74rem; color: #dcfce7; background: rgba(0,0,0,.18); border-radius: 12px; padding: 10px 14px; }
+.pk-rules summary { cursor: pointer; font-weight: 800; color: #fff; }
+.pk-rules ul { margin-top: 8px; padding-left: 16px; list-style: disc; display: flex; flex-direction: column; gap: 3px; }
+.pk-btn-sm { padding: 6px 14px !important; font-size: .74rem !important; border-radius: 10px !important; }
 
 /* 좌석 박스: "앉기" 원 버튼 자리를 그대로 이어받는 원형 아바타 + 그 아래
    이름/스택 라벨. 앉기 전/후에 같은 자리에 같은 크기의 원이 있다는 느낌을 준다. */
@@ -929,6 +963,58 @@ footer { display: none !important; }
     const chipSellUnitEl = document.getElementById('pk-chip-sell-unit');
     const cashOutAmountEl = document.getElementById('pk-cash-out-amount');
     let chipsPerLeafShown = false; // 환전 단위(칩/낙엽)는 서버 값을 받은 뒤 최초 1회만 입력창 기본값을 채운다
+    const lobbyEl = document.getElementById('pk-lobby-view');
+    const pkTableEl = document.getElementById('pk-table');
+    const roomLabelEl = document.getElementById('pk-room-label');
+    let createTier = 'beginner';
+    const fmtN = n => n == null ? '무제한' : Number(n).toLocaleString();
+
+    function tierRange(t) {
+        return t.max == null ? `${fmtN(t.min)}칩 이상` : `${fmtN(t.min)}~${fmtN(t.max)}칩`;
+    }
+
+    // ── 방 목록 ────────────────────────────────────────────────────
+    function renderLobby(state) {
+        const wallet = state.my_wallet_chips || 0;
+        const cur = state.tiers.find(t => t.tier === createTier) || state.tiers[0];
+        const seg = `<span class="pk-seg">${state.tiers.map(t =>
+            `<button type="button" class="${t.tier === createTier ? 'on' : ''}" data-tier="${t.tier}">${t.label}</button>`).join('')}</span>`;
+        const rooms = state.tables.map(t => {
+            const players = t.players.map(p => `<span class="pk-room-player"><img src="${esc(p.picture)}" alt="">${esc(p.display_name)}${p.is_bot ? '<span class="pk-ai-badge">AI</span>' : ''}</span>`).join('');
+            const canJoin = wallet >= t.min && (t.players.length < t.capacity || t.players.some(p => p.is_bot));
+            return `<div class="pk-room">
+                <span class="pk-room-no">#${t.id}</span>
+                <span class="pk-tier-badge pk-tier-badge--${t.tier}">${t.label} · ${t.small_blind}/${t.big_blind}</span>
+                <span class="pk-room-players">${players}</span>
+                <span class="pk-room-status">${t.status === 'playing' ? '진행 중' : '대기 중'} ${t.players.length}/${t.capacity}</span>
+                <button type="button" class="pk-btn pk-btn-call pk-btn-sm" data-join="${t.id}" ${canJoin ? '' : 'disabled'}>입장</button>
+            </div>`;
+        }).join('');
+        lobbyEl.innerHTML = `
+            <div class="pk-lobby-head">
+                <div>
+                    <h3>포커 방 목록</h3>
+                    <p>보관 칩 전부를 방 단계의 최대치까지 들고 앉습니다</p>
+                </div>
+                <div class="pk-create">
+                    ${seg}
+                    <button type="button" class="pk-btn pk-btn-raise pk-btn-sm" data-create ${wallet >= cur.min ? '' : 'disabled'}>방 만들기</button>
+                    <div class="pk-tier-info">${cur.label}: ${tierRange(cur)} · 블라인드 ${cur.small_blind}/${cur.big_blind}</div>
+                </div>
+            </div>
+            <div class="pk-room-list">${rooms || '<div class="pk-lobby-empty">열린 방이 없습니다. 방을 만들어보세요!</div>'}</div>
+            ${wallet >= state.tiers[0].min ? '' : `<div class="pk-lobby-warn">칩이 부족합니다. 보관 칩 ${fmtN(wallet)}칩
+                <button type="button" class="pk-btn pk-btn-call pk-btn-sm" onclick="openPkChipTab()">칩 충전하기</button></div>`}
+            <details class="pk-rules">
+                <summary>방 단계 안내</summary>
+                <ul>
+                    ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}, AI 난이도 ${{easy: '쉬움', normal: '보통', hard: '어려움'}[t.ai_level]}</li>`).join('')}
+                    <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
+                    <li>차례 제한시간 20초. 시간을 넘기면 방 단계 난이도의 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
+                </ul>
+            </details>`;
+    }
+
 
     const ROUND_LABELS = {
         preflop: '프리플랍', flop: '플랍', turn: '턴', river: '리버', showdown: '쇼다운',
@@ -1072,7 +1158,7 @@ footer { display: none !important; }
     function renderSeat(el, seat) {
         el.classList.remove('pk-seat--turn', 'pk-seat--folded', 'pk-seat--winner', 'pk-seat--arrive');
         if (seat.empty) {
-            el.innerHTML = `<button type="button" class="pk-empty-btn" data-sit="${seat.seat_number}">앉기</button>`;
+            el.innerHTML = `<span class="pk-empty-seat">빈 자리</span>`;
             return;
         }
         if (seat.is_turn) el.classList.add('pk-seat--turn');
@@ -1137,22 +1223,16 @@ footer { display: none !important; }
     setInterval(tickCountdowns, 1000);
 
     function renderActionBar(state) {
-        if (state.my_seat_number == null) {
-            if (state.open_seats > 0) {
-                const walletChips = state.my_wallet_chips || 0;
-                if (walletChips < state.buy_in_chips) {
-                    actionBarEl.innerHTML = `<div class="pk-hint">앉으려면 보관 칩이 최소 ${state.buy_in_chips}칩 필요합니다. <button type="button" class="pk-btn pk-btn-call" onclick="openPkChipTab()">칩 충전하기</button></div>`;
-                } else {
-                    actionBarEl.innerHTML = `<div class="pk-hint">빈 자리를 클릭하면 보관 칩 전부(${walletChips.toLocaleString()}칩)를 가지고 앉습니다.</div>`;
-                }
-            } else {
-                actionBarEl.innerHTML = `<div class="pk-hint">자리가 가득 찼습니다. 자리가 나면 먼저 클릭하는 사람이 앉습니다.</div>`;
-            }
+        if (!state.table) {
+            actionBarEl.innerHTML = `<div class="pk-hint">방을 만들거나 열린 방에 입장하세요.</div>`;
             return;
         }
 
         const mySeat = state.seats.find(s => s.seat_number === state.my_seat_number);
-        const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">일어나기</button>`];
+        const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">나가기</button>`];
+        if (state.open_seats > 0) {
+            rows.push(`<button type="button" class="pk-btn pk-btn-call" data-add-bot><i class="fa-solid fa-robot"></i> AI 추가</button>`);
+        }
         if (state.can_reveal) {
             rows.push(`<button type="button" class="pk-btn pk-btn-raise" data-reveal><i class="fa-solid fa-eye"></i> 내 패 공개</button>`);
         }
@@ -1192,7 +1272,7 @@ footer { display: none !important; }
             cashOutAmountEl.value = state.chips_per_leaf;
             chipsPerLeafShown = true;
         }
-        const seated = state.my_seat_number != null;
+        const seated = !!state.table && state.my_seat_number != null;
         const walletChips = state.my_wallet_chips || 0;
         chipStackEl.textContent = seated ? state.my_stack : '-';
         chipWalletEl.textContent = state.my_wallet_chips != null ? walletChips : '-';
@@ -1204,8 +1284,8 @@ footer { display: none !important; }
         if (seated) {
             chipHintEl.textContent = '충전/환전은 자리에서 일어난 후 할 수 있습니다.';
             chipHintEl.classList.remove('hidden');
-        } else if (walletChips < state.buy_in_chips) {
-            chipHintEl.textContent = `자리에 앉으려면 보관 칩이 ${state.buy_in_chips}칩 이상 필요합니다. 낙엽을 칩으로 충전해주세요.`;
+        } else if (walletChips < state.tiers[0].min) {
+            chipHintEl.textContent = `방에 들어가려면 보관 칩이 최소 ${state.tiers[0].min.toLocaleString()}칩(초보) 필요합니다. 낙엽을 칩으로 충전해주세요.`;
             chipHintEl.classList.remove('hidden');
         } else {
             chipHintEl.classList.add('hidden');
@@ -1367,6 +1447,25 @@ footer { display: none !important; }
     }
 
     function render(state) {
+        const inRoom = !!state.table;
+        lobbyEl.classList.toggle('hidden', inRoom);
+        pkTableEl.classList.toggle('hidden', !inRoom);
+        if (!inRoom) {
+            roomLabelEl.textContent = '방 목록';
+            handNoEl.textContent = '-';
+            roundLabelEl.textContent = '대기 중';
+            myLeavesEl.textContent = state.my_leaves != null ? state.my_leaves : '-';
+            renderLobby(state);
+            renderActionBar(state);
+            renderChipPanel(state);
+            emojiBarEl.classList.add('hidden');
+            renderedState = null;
+            lastHandNumber = null;
+            lastTurnSeat = null;
+            return;
+        }
+        const t = state.table;
+        roomLabelEl.textContent = `${t.id}번 방 · ${t.label} · ${t.small_blind}/${t.big_blind}`;
         const prev = renderedState;
         const before = snapshotChips();
         handNoEl.textContent = state.hand_number || '-';
@@ -1495,15 +1594,28 @@ footer { display: none !important; }
 
     // ── 클릭 위임 ────────────────────────────────────────────────
     document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
-        const sitBtn = e.target.closest('[data-sit]');
-        if (!sitBtn) return;
-        if (window.GameSound) window.GameSound.play('click');
-        send({ type: 'sit', seat_number: Number(sitBtn.dataset.sit) });
+        const tierBtn = e.target.closest('[data-tier]');
+        if (tierBtn) { createTier = tierBtn.dataset.tier; if (lastState) render(lastState); return; }
+        if (e.target.closest('[data-create]')) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'create', tier: createTier });
+            return;
+        }
+        const joinBtn = e.target.closest('[data-join]');
+        if (joinBtn) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'join', table_id: Number(joinBtn.dataset.join) });
+        }
     });
     actionBarEl.addEventListener('click', (e) => {
         if (e.target.closest('[data-reveal]')) {
             if (window.GameSound) window.GameSound.play('click');
             send({ type: 'reveal' });
+            return;
+        }
+        if (e.target.closest('[data-add-bot]')) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'add_bot' });
             return;
         }
         if (e.target.id === 'pk-stand-btn') {
@@ -1596,6 +1708,7 @@ footer { display: none !important; }
             } else if (data.type === 'state') {
                 applyState(data);
             } else if (data.type === 'emoji_reaction') {
+                if (!lastState || !lastState.table || lastState.table.id !== data.table_id) return;
                 showEmojiBubble(data.seat_number, data.emoji);
             }
         };

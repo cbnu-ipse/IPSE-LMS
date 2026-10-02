@@ -567,7 +567,7 @@ footer { display: none !important; }
             const canPay = state.wallet_chips >= r.stake;
             return `<div class="yc-room">
                 <span class="yc-room-no">#${r.id}</span>
-                <span class="yc-room-meta">${r.capacity}인 · ${fmt(r.stake)}칩</span>
+                <span class="yc-room-meta">${esc(r.tier_label)} · ${r.capacity}인 · ${fmt(r.stake)}칩</span>
                 <span class="yc-room-players">${players}</span>
                 <span class="yc-room-status">${status}</span>
                 ${open ? `<button type="button" class="yc-btn yc-btn-call yc-btn-sm" data-join="${r.id}" ${canPay ? '' : 'disabled'}>입장</button>` : ''}
@@ -583,7 +583,7 @@ footer { display: none !important; }
                 </div>
                 <div class="yc-create">
                     ${seg('cap', [2, 3, 4], createCapacity, v => `${v}인`)}
-                    ${seg('stake', state.stakes, createStake, v => `${fmt(v)}칩`)}
+                    ${seg('stake', state.stakes, createStake, v => `${state.stake_labels[v]} ${fmt(v)}`)}
                     <button type="button" class="yc-btn yc-btn-raise yc-btn-sm" data-create ${state.wallet_chips >= createStake ? '' : 'disabled'}>방 만들기</button>
                 </div>
             </div>
@@ -597,7 +597,9 @@ footer { display: none !important; }
                     <li>에이스~식스: 그 눈의 합. 윗칸 합이 63점 이상이면 보너스 35점.</li>
                     <li>초이스: 주사위 합 / 포커(같은 눈 4개 이상): 주사위 합 / 풀하우스(3+2, 요트 포함): 주사위 합</li>
                     <li>S.스트레이트(4개 연속) 15점 / L.스트레이트(5개 연속) 30점 / 요트(5개 같음) 50점</li>
-                    <li>차례 제한시간 30초. 시간초과·연결 끊김·판 중 나가기 예약이면 AI가 대신 두고 판이 끝난 뒤 퇴장합니다.</li>
+                    <li>방 단계: 초보(참가비 1,000) AI 쉬움 / 중수(5,000) AI 보통 / 고수(10,000) AI 어려움</li>
+                    <li>차례 제한시간 30초. 시간초과·연결 끊김·판 중 나가기 예약이면 방 단계 난이도의 AI가 대신 두고 판이 끝난 뒤 퇴장합니다.</li>
+                    <li>남은 칸을 모두 최고점으로 채워도 1등을 따라잡을 수 없게 되면 그 자리에서 판이 끝납니다(조기 종료).</li>
                     <li>사람이 부족하면 "AI로 빈자리 채우기"를 누르세요. AI는 하우스 칩으로 참가하고, 사람이 들어오면 자리를 비켜줍니다.</li>
                 </ul>
             </details>`;
@@ -694,7 +696,8 @@ footer { display: none !important; }
             const rows = r.rows.slice().sort((a, b) => b.total - a.total).map((x, i) =>
                 `<div>${i + 1}. ${esc(x.name)}${x.is_bot ? ' (AI)' : ''} — ${x.total}점${x.bonus ? ' (보너스 포함)' : ''}${x.won ? ` · +${fmt(x.won)}칩` : ''}</div>`).join('');
             const net = r.my_net;
-            centerMsgEl.innerHTML = `<div class="yc-center-title">${net > 0 ? '🎉 ' : ''}${esc(r.winners.join(', '))} 승리!</div>
+            const early = r.early_end ? `<div class="yc-center-sub">역전이 불가능해져 ${r.round}라운드에서 조기 종료</div>` : '';
+            centerMsgEl.innerHTML = `<div class="yc-center-title">${net > 0 ? '🎉 ' : ''}${esc(r.winners.join(', '))} 승리!</div>${early}
                 ${net != null ? `<div class="yc-center-sub">내 칩 ${net >= 0 ? '+' : ''}${fmt(net)}</div>` : ''}
                 <div class="yc-center-rows">${rows}</div>${next}${waiting}`;
         } else if (waiting) {
@@ -749,7 +752,7 @@ footer { display: none !important; }
 
     function render(state) {
         const room = state.room;
-        document.getElementById('yc-room-label').textContent = room ? `${room.id}번 방 · ${room.capacity}인` : '방 목록';
+        document.getElementById('yc-room-label').textContent = room ? `${room.id}번 방 · ${room.tier_label} · ${room.capacity}인` : '방 목록';
         document.getElementById('yc-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
         document.getElementById('yc-my-wallet-top').textContent = fmt(state.wallet_chips);
         lobbyViewEl.classList.toggle('hidden', !!room);

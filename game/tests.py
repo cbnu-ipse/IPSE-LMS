@@ -82,7 +82,7 @@ class PokerNextHandSchedulingTestCase(TestCase):
     "카운트다운은 뜨는데 다음 핸드가 시작을 안 함" 상태로 영원히 멈췄던 버그."""
 
     def _seat_two_active_players(self):
-        table = PokerTable.get_solo()
+        table = PokerTable.create_with_seats("intermediate")
         u1 = User.objects.create_user(username="p1", password="x")
         u2 = User.objects.create_user(username="p2", password="x")
         seats = {s.seat_number: s for s in table.seats.all()}
@@ -276,35 +276,67 @@ class HighLowGameTestCase(TestCase):
         self.assertEqual(self.wallet.chips, 0)
 
 
-class PokerMissingSingletonRowTestCase(TestCase):
-    """회귀 테스트: 관리자가 PokerTable(pk=1)을 지운 뒤 아무도 포커 페이지를 새로
-    열지 않은 상태(즉 get_solo()가 한 번도 안 불린 상태)에서 액션을 보내면,
-    각 함수가 PokerTable.objects.get(pk=1)을 직접 호출해 DoesNotExist로 죽었다
-    — 컨슈머 쪽에서 예외를 삼키던 시절엔 소켓만 조용히 끊기고 로그도 없었다."""
+class PokerRoomTestCase(TestCase):
+    """포커 방: 만들기/입장/AI 추가/퇴장, 단계별 바이인 범위와 블라인드."""
 
     def _wallet_user(self, username, chips=10000):
         user = User.objects.create_user(username=username, password="x")
         PokerChipWallet.objects.create(user=user, chips=chips)
         return user
 
-    def test_sit_and_stand_recreate_missing_table_row(self):
-        self.assertFalse(PokerTable.objects.filter(pk=1).exists())
-        user = self._wallet_user("p1")
+    def test_create_join_and_last_human_leaving_closes_room(self):
+        a, b = self._wallet_user("p1"), self._wallet_user("p2")
+        ok, table_id = poker_engine.create_table(a, "intermediate")
+        self.assertTrue(ok, table_id)
+        self.assertEqual(poker_engine.join_table(b, table_id), (True, table_id))
+        self.assertEqual(sorted(PokerSeat.objects.filter(user__isnull=False).values_list("seat_number", flat=True)), [0, 1])
+        self.assertIsNotNone(PokerTable.objects.get().next_hand_at)  # 두 명이 모이면 첫 핸드 예약
+        poker_engine.stand_up(b)
+        poker_engine.stand_up(a)
+        self.assertFalse(PokerTable.objects.exists())  # 사람이 모두 나가면 방이 지워진다
+        self.assertEqual(PokerChipWallet.objects.get(user=a).chips, 10000)
 
-        ok, err = poker_engine.sit_down(user, 0)
-        self.assertTrue(ok, err)
-
-        ok, err = poker_engine.stand_up(user)
-        self.assertTrue(ok, err)
-
-    def test_player_action_on_missing_table_row_fails_gracefully(self):
-        self.assertFalse(PokerTable.objects.filter(pk=1).exists())
-        user = self._wallet_user("p2")
-        # 앉지 않은 채로 액션을 보내는 경우 — DoesNotExist로 죽지 않고
-        # 정상적인 실패 응답(ok=False)이어야 한다.
+    def test_player_action_when_not_seated_fails_gracefully(self):
+        user = self._wallet_user("p3")
         ok, err = poker_engine.player_action(user, "check", 0)
         self.assertFalse(ok)
         self.assertIsInstance(err, str)
+
+    def test_tier_buy_in_range(self):
+        rich = self._wallet_user("rich", 150000)
+        poor = self._wallet_user("poor", 999)
+        self.assertFalse(poker_engine.create_table(poor, "beginner")[0])  # 초보 최소 1,000
+        self.assertEqual(PokerChipWallet.objects.get(user=poor).chips, 999)
+        poker_engine.create_table(rich, "beginner")
+        self.assertEqual(PokerSeat.objects.get(user=rich).stack, 9999)  # 초보 최대 9,999까지만 들고 앉음
+        self.assertEqual(PokerChipWallet.objects.get(user=rich).chips, 150000 - 9999)
+        poker_engine.stand_up(rich)
+        poker_engine.create_table(rich, "expert")
+        self.assertEqual(PokerSeat.objects.get(user=rich).stack, 150000)  # 고수는 무제한
+
+    def test_blinds_follow_tier(self):
+        table = PokerTable.create_with_seats("beginner")
+        self.assertEqual(poker_engine.blinds(table), (10, 20))
+        self.assertEqual(poker_engine.blinds(PokerTable.create_with_seats("expert")), (1000, 2000))
+
+    def test_add_bot_uses_house_chips_and_yields_seat(self):
+        from .models import HouseBank
+        HouseBank.objects.create(pk=1, chips=10 ** 6)
+        a = self._wallet_user("host", 20000)
+        ok, table_id = poker_engine.create_table(a, "intermediate")
+        for _ in range(7):
+            self.assertTrue(poker_engine.add_bot(a)[0])
+        self.assertFalse(poker_engine.add_bot(a)[0])  # 8석 가득
+        bot_stacks = list(PokerSeat.objects.filter(user__is_bot=True).values_list("stack", flat=True))
+        self.assertEqual(bot_stacks, [20000] * 7)  # 방에서 가장 큰 사람 스택만큼
+        self.assertEqual(HouseBank.objects.get(pk=1).chips, 10 ** 6 - 20000 * 7)
+        b = self._wallet_user("guest")
+        self.assertTrue(poker_engine.join_table(b, table_id)[0])  # 대기 중이면 AI가 바로 비켜줌
+        self.assertEqual(PokerSeat.objects.filter(user__is_bot=True).count(), 6)
+        poker_engine.stand_up(b)
+        poker_engine.stand_up(a)
+        self.assertFalse(PokerSeat.objects.filter(user__isnull=False).exists())
+        self.assertEqual(HouseBank.objects.get(pk=1).chips, 10 ** 6)  # AI 칩은 모두 하우스로
 
 
 class LobbyPresenceTestCase(TestCase):
@@ -353,10 +385,9 @@ class PokerDisconnectGraceTestCase(TestCase):
     2명 미만이라 핸드가 돌지 않는 한 자리를 영원히 차지하는 버그가 난다."""
 
     def setUp(self):
-        self.table = PokerTable.get_solo()
         self.user = User.objects.create_user(username="afk1", password="x")
-        PokerChipWallet.objects.create(user=self.user, chips=poker_engine.POKER_BUY_IN)
-        ok, _ = poker_engine.sit_down(self.user, 0)
+        PokerChipWallet.objects.create(user=self.user, chips=10000)
+        ok, _ = poker_engine.create_table(self.user, "intermediate")
         self.assertTrue(ok)
 
     def tearDown(self):
@@ -365,8 +396,8 @@ class PokerDisconnectGraceTestCase(TestCase):
     async def test_disconnect_grace_vacates_seat_after_timeout(self):
         with patch.object(game_consumers, "POKER_DISCONNECT_GRACE_SECONDS", 0):
             await game_consumers._schedule_disconnect_grace(self.user)
-        seat = await database_sync_to_async(PokerSeat.objects.get)(table=self.table, seat_number=0)
-        self.assertIsNone(seat.user_id)
+        seated = await database_sync_to_async(PokerSeat.objects.filter(user=self.user).exists)()
+        self.assertFalse(seated)
 
     async def test_reconnect_cancels_pending_grace_vacate(self):
         task = asyncio.create_task(game_consumers._schedule_disconnect_grace(self.user))
@@ -374,8 +405,8 @@ class PokerDisconnectGraceTestCase(TestCase):
         await asyncio.sleep(0)  # 태스크가 asyncio.sleep()에 들어갈 때까지 양보
         game_consumers._cancel_disconnect_grace(self.user.id)
         await asyncio.sleep(0)  # 취소가 반영될 시간을 준다
-        seat = await database_sync_to_async(PokerSeat.objects.get)(table=self.table, seat_number=0)
-        self.assertEqual(seat.user_id, self.user.id)  # 취소됐으니 자리 유지
+        seated = await database_sync_to_async(PokerSeat.objects.filter(user=self.user).exists)()
+        self.assertTrue(seated)  # 취소됐으니 자리 유지
 
 
 class PokerWatchdogResilienceTestCase(TransactionTestCase):
@@ -385,17 +416,16 @@ class PokerWatchdogResilienceTestCase(TransactionTestCase):
     워치독은 별도 스레드(다른 DB 연결)에서 돌므로 데이터가 커밋되는 TransactionTestCase를 쓴다."""
 
     def setUp(self):
-        self.table = PokerTable.get_solo()
         u1 = User.objects.create_user(username="w1", password="x")
         u2 = User.objects.create_user(username="w2", password="x")
         PokerChipWallet.objects.bulk_create([
-            PokerChipWallet(user=u1, chips=poker_engine.POKER_BUY_IN),
-            PokerChipWallet(user=u2, chips=poker_engine.POKER_BUY_IN),
+            PokerChipWallet(user=u1, chips=10000),
+            PokerChipWallet(user=u2, chips=10000),
         ])
-        for u, seat_number in ((u1, 0), (u2, 1)):
-            ok, _ = poker_engine.sit_down(u, seat_number)
-            self.assertTrue(ok)
-        self.table.refresh_from_db()
+        ok, table_id = poker_engine.create_table(u1, "intermediate")
+        self.assertTrue(ok)
+        self.assertTrue(poker_engine.join_table(u2, table_id)[0])
+        self.table = PokerTable.objects.get(pk=table_id)
         self.table.next_hand_at = timezone.now() - timedelta(seconds=1)
         self.table.save()
 
@@ -428,14 +458,12 @@ class PokerWatchdogResilienceTestCase(TransactionTestCase):
 
 
 class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
-    def test_existing_six_seat_table_is_filled_to_eight(self):
-        table = PokerTable.get_solo()
-        table.seats.filter(seat_number__gte=6).delete()  # 배포 전 6좌석 테이블 흉내
-        PokerTable.get_solo()
+    def test_new_table_has_eight_seats(self):
+        table = PokerTable.create_with_seats("beginner")
         self.assertEqual(list(table.seats.values_list("seat_number", flat=True)), list(range(8)))
 
     def _two_players_in_hand(self, other_status="active"):
-        table = PokerTable.get_solo()
+        table = PokerTable.create_with_seats("intermediate")
         me = User.objects.create_user(username="me", password="x")
         other = User.objects.create_user(username="other", password="x")
         for n, u, cards, status in ((0, me, ["AS", "AH"], "active"), (7, other, ["2H", "7D"], other_status)):
@@ -481,20 +509,6 @@ class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
         seen, _ = self._cards_seen_by(other)
         self.assertEqual(seen[0], ["AS", "AH"])
         self.assertFalse(self._cards_seen_by(me)[1]["can_reveal"])
-
-
-class PokerSitWithAllChipsTestCase(TestCase):
-    def test_sit_brings_whole_wallet_and_requires_minimum(self):
-        PokerTable.get_solo()
-        rich = User.objects.create_user(username="rich", password="x")
-        poor = User.objects.create_user(username="poor", password="x")
-        PokerChipWallet.objects.create(user=rich, chips=poker_engine.POKER_BUY_IN * 3 + 123)
-        PokerChipWallet.objects.create(user=poor, chips=poker_engine.POKER_BUY_IN - 1)
-        self.assertEqual(poker_engine.sit_down(rich, 0), (True, None))
-        self.assertEqual(PokerSeat.objects.get(seat_number=0).stack, poker_engine.POKER_BUY_IN * 3 + 123)
-        self.assertEqual(PokerChipWallet.objects.get(user=rich).chips, 0)
-        self.assertFalse(poker_engine.sit_down(poor, 1)[0])
-        self.assertEqual(PokerChipWallet.objects.get(user=poor).chips, poker_engine.POKER_BUY_IN - 1)
 
 
 class PokerHandDescTestCase(TestCase):

@@ -1,13 +1,11 @@
 """
-온라인 포커 (텍사스 홀덤, 8인 고정 테이블 1개) 상태머신.
+온라인 포커 (텍사스 홀덤) — 방 여러 개, 방마다 8석.
 
-테이블은 싱글턴(PokerTable.get_solo())이고, 모든 상태 변경 함수는
-`transaction.atomic()` + `select_for_update()` 로 테이블 전체를 잠그고 동작한다.
-동시 접속자가 많지 않은 클럽 내부 서비스라 테이블 단위 글로벌 락으로 충분하다.
-# ponytail: 글로벌 락 — 여러 포커 테이블을 운영하게 되면 테이블별 락으로 세분화할 것.
+방을 만드는 사람이 단계(초보/중수/고수)를 고른다. 단계마다 들고 앉는 칩 범위와 블라인드,
+AI 난이도가 정해진다 (models.POKER_TIERS, TIER_AI_LEVEL). 입장하면 첫 빈 자리에 앉고,
+보관 칩 전부를 그 단계 최대치까지 들고 앉는다. 사람이 모두 나가면 AI도 정리하고 방을 지운다.
 
-빈 자리는 별도 대기열 없이, 먼저 "앉기"를 누른 사람이 그대로 앉는다(요청 시점에
-select_for_update로 자리를 잠그므로 동시 클릭이 와도 한 명만 성공한다).
+모든 상태 변경 함수는 `transaction.atomic()` + 방 행 `select_for_update()` 로 그 방만 잠근다.
 
 # ponytail: PokerSeat.user는 nullable FK라 select_related("user")가 LEFT OUTER JOIN이
 # 된다 — 여기에 select_for_update()를 그냥 걸면 Postgres가
@@ -16,14 +14,13 @@ select_for_update로 자리를 잠그므로 동시 클릭이 와도 한 명만 �
 # select_for_update(of=("self",))로 PokerSeat 테이블만 잠글 것.
 
 공개 함수(뷰/컨슈머에서 호출):
-    get_state_for(user)         — 접속자 시점의 테이블 상태 스냅샷
-    sit_down(user, seat_number) — 착석. 칩 지갑 전부를 스택으로 옮긴다.
-                                   지갑 잔액이 최소 바이인 미만이면 착석 불가.
+    get_state_for(user)         — 방 목록 + 접속자 시점의 내 방 상태 스냅샷
+    create_table(user, tier)    — 방 만들기 (만든 사람이 0번 자리에 앉는다)
+    join_table(user, table_id)  — 입장 (첫 빈 자리. 꽉 찼으면 AI가 자리를 비켜준다)
+    add_bot(user)               — 내 방 빈자리에 AI 한 명 추가 (하우스 칩)
     stand_up(user)              — 퇴장 (남은 칩 → 개인 칩 지갑으로 보관)
-    buy_chips(user, leaves)     — 낙엽을 칩으로 전환해 칩 지갑에 채운다. 자리에
-                                   앉아있는 동안은 불가 — 일어난 뒤에만 가능.
-    cash_out_chips(user, chips) — 칩 지갑을 낙엽으로 환전. 자리에 앉아있는 동안은
-                                   불가 — 일어난 뒤에만 가능.
+    buy_chips(user, leaves)     — 낙엽을 칩으로 전환해 칩 지갑에 채운다. 앉아있는 동안은 불가.
+    cash_out_chips(user, chips) — 칩 지갑을 낙엽으로 환전. 앉아있는 동안은 불가.
     player_action(user, action, amount) — fold/check/call/bet/raise
     reveal_hand(user)           — 모두 폴드해 혼자 이긴 승자가 결과 표시 중 자기 패 공개
     send_emoji(user, emoji)     — 착석 중인 좌석 위에 띄울 이모티콘 반응 (좌석 번호 반환)
@@ -35,13 +32,13 @@ from datetime import timedelta
 from itertools import combinations
 
 from django.db import transaction
+from django.db.models import Min, Q
 from django.utils import timezone
 
 from accounts.models import User
 from .models import (
     HouseBank, PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    POKER_SEATS, POKER_SMALL_BLIND, POKER_BIG_BLIND, POKER_BUY_IN,
-    POKER_BUY_IN_LEAVES, POKER_CHIPS_PER_LEAF,
+    POKER_SEATS, POKER_CHIPS_PER_LEAF, POKER_TIERS, GAME_TIERS, TIER_LABELS, TIER_AI_LEVEL,
 )
 
 POKER_TURN_TIMEOUT = 20          # 턴당 제한시간(초)
@@ -50,9 +47,8 @@ POKER_RESULT_DISPLAY_SECONDS = 10  # 결과를 중앙에 띄워두는 시간(초
 POKER_NEXT_HAND_DELAY = POKER_RESULT_DISPLAY_SECONDS + 5  # 핸드 종료 후 다음 핸드까지 대기(초):
                                                            # 결과 표시 5초 + 실제로 보이는 카운트다운 5초
 POKER_FIRST_HAND_DELAY = 5      # 두 명 이상 모여 첫 핸드를 시작하기까지(초) — 결과 표시가 없으니 짧게
-POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 강제 폴드 + 퇴장 예약 (20초 * 4 ≈ 1분 20초)
+POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 핸드 끝나고 퇴장 (그동안은 AI가 대신 둔다)
 
-POKER_BOT_TARGET_PLAYERS = 3   # 사람이 이보다 적으면 AI로 채운다 (사람이 1명 이상일 때만)
 POKER_BOT_THINK = 1            # AI 차례는 이 시간 뒤 워치독이 둔다 (+ 승률 계산 시간)
 
 POKER_EMOJI_CHOICES = {"👍", "😂", "😮", "😡", "🔥", "❤️"}  # 이모티콘 반응 화이트리스트
@@ -180,8 +176,39 @@ def _build_side_pots(in_hand_seats):
     return pots
 
 
-# ── 좌석 입/퇴장 ──────────────────────────────────────────────────────────────
-# 별도 관전 대기열 없이, 빈 자리에 먼저 "앉기"를 누른 사람이 그대로 앉는다.
+# ── 방 / 좌석 입·퇴장 ─────────────────────────────────────────────────────────
+
+def blinds(table):
+    cfg = table.tier_config
+    return cfg["sb"], cfg["bb"]
+
+
+def ai_level(table):
+    return TIER_AI_LEVEL.get(table.tier, "normal")
+
+
+def _lock_table(table_id):
+    """방 행과 좌석들을 잠가서 (table, {좌석 번호: 좌석})로. 방이 없으면 (None, None)."""
+    table = PokerTable.objects.select_for_update().filter(pk=table_id).first()
+    if not table:
+        return None, None
+    seats_by_number = {
+        s.seat_number: s
+        for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
+    }
+    return table, seats_by_number
+
+
+def _lock_my_table(user):
+    seat = PokerSeat.objects.filter(user=user).only("table_id").first()
+    if not seat:
+        return None, None, None
+    table, seats_by_number = _lock_table(seat.table_id)
+    if not table:
+        return None, None, None
+    me = next((s for s in seats_by_number.values() if s.user_id == user.id), None)
+    return table, seats_by_number, me
+
 
 def _vacate_seat(seat, table):
     """자리를 비우고 남은 칩을 개인 칩 지갑으로 옮긴다 (강제 환급 없음 —
@@ -208,56 +235,157 @@ def _vacate_seat(seat, table):
     seat.save()
 
 
-def _maybe_reset_empty_table(table):
-    """모든 자리가 비면 새 게임처럼 초기화한다 (핸드 번호/결과 배너 등이 남아
-    다음에 앉는 사람에게 이전 게임 흔적으로 보이지 않도록)."""
-    if PokerSeat.objects.filter(table=table, user__isnull=False).exists():
-        return
-    table.status = "waiting"
-    table.round = "preflop"
-    table.dealer_seat = None
-    table.current_turn_seat = None
-    table.turn_deadline = None
-    table.next_hand_at = None
-    table.pot = 0
-    table.current_bet = 0
-    table.community_cards = []
-    table.deck = []
-    table.hand_number = 0
-    table.last_result = {}
-    table.save()
+def _close_if_no_humans(table, seats_by_number):
+    """사람이 아무도 없으면 AI를 정리(칩은 하우스로)하고 방을 지운다. 지웠으면 True."""
+    if any(s.user_id and not s.user.is_bot for s in seats_by_number.values()):
+        return False
+    for s in seats_by_number.values():
+        if s.user_id:
+            # 핸드 중이었다면 팟에 낸 칩도 함께 돌려준다 (사람이 없으니 팟을 나눌 상대가 없다)
+            s.stack += s.contributed_total
+            s.contributed_total = 0
+            _vacate_seat(s, table)
+    table.delete()
+    return True
 
 
-def _sync_bots(table, seats_by_number):
-    """사람 수에 맞춰 AI를 앉히거나 뺀다: 사람이 있고 POKER_BOT_TARGET_PLAYERS보다 적으면 그만큼
-    AI로 채우고, 사람이 늘거나 모두 떠나면 AI를 뺀다(핸드 중인 AI는 핸드가 끝난 뒤).
-    AI는 테이블에서 가장 큰 사람 스택만큼(최소 바이인, 하우스 잔고 한도) 하우스 칩을 들고 앉는다."""
+def _schedule_first_hand(table, seats_by_number):
+    if table.status == "waiting" and table.next_hand_at is None:
+        eligible = sum(1 for s in seats_by_number.values() if s.user_id and s.stack > 0)
+        if eligible >= 2:
+            table.next_hand_at = timezone.now() + timedelta(seconds=POKER_FIRST_HAND_DELAY)
+            table.save()
+
+
+def _leave_other_games(user):
+    """고스톱 방에 있으면 대기 중일 땐 나가고(칩을 지갑으로), 판 중이면 막는다."""
+    from . import gostop_engine
+    from .models import GostopSeat
+    gseat = GostopSeat.objects.filter(user=user).select_related("room").first()
+    if gseat:
+        if gseat.room.status == "playing":
+            return "고스톱 판이 끝난 뒤 앉을 수 있습니다."
+        gostop_engine.leave_room(user)
+    return None
+
+
+def _buy_in_error(table_cfg, wallet_chips):
+    if wallet_chips < table_cfg["min"]:
+        return f"칩이 부족합니다. 이 방은 최소 {table_cfg['min']:,}칩이 있어야 앉을 수 있습니다."
+    return None
+
+
+def _seat_user(user, table, seats_by_number, seat):
+    """빈 seat에 user를 앉힌다: 보관 칩 전부를 단계 최대치까지 들고 앉는다. 실패하면 오류 메시지."""
+    cfg = table.tier_config
+    wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
+    err = _buy_in_error(cfg, wallet.chips if wallet else 0)
+    if err:
+        return err
+    stack = wallet.chips if cfg["max"] is None else min(wallet.chips, cfg["max"])
+    wallet.chips -= stack
+    wallet.save(update_fields=["chips"])
+    seat.user = user
+    seat.stack = stack
+    seat.status = "out" if table.status == "playing" else "active"
+    seat.current_bet = 0
+    seat.contributed_total = 0
+    seat.hole_cards = []
+    seat.has_acted_this_street = False
+    seat.consecutive_timeouts = 0
+    seat.leaving_after_hand = False
+    seat.joined_at = timezone.now()
+    seat.save()
+    _schedule_first_hand(table, seats_by_number)
+    return None
+
+
+def create_table(user, tier):
+    if tier not in GAME_TIERS:
+        return False, "방 단계를 다시 골라주세요."
+    with transaction.atomic():
+        User.objects.select_for_update().get(id=user.id)
+        if PokerSeat.objects.filter(user=user).exists():
+            return False, "이미 포커 방에 앉아있습니다."
+        # 고스톱 대기 방에 있으면 먼저 나와 칩을 지갑으로 돌린 뒤 최소 칩을 확인한다
+        err = _leave_other_games(user)
+        if not err:
+            wallet = PokerChipWallet.objects.filter(user=user).values_list("chips", flat=True).first() or 0
+            err = _buy_in_error(POKER_TIERS[tier], wallet)
+        if err:
+            return False, err
+        table = PokerTable.create_with_seats(tier)
+        table, seats_by_number = _lock_table(table.id)
+        err = _seat_user(user, table, seats_by_number, seats_by_number[0])
+        if err:
+            transaction.set_rollback(True)
+            return False, err
+    return True, table.id
+
+
+def join_table(user, table_id):
+    try:
+        table_id = int(table_id)
+    except (TypeError, ValueError):
+        return False, "입장할 수 없는 방입니다."
+    with transaction.atomic():
+        User.objects.select_for_update().get(id=user.id)
+        if PokerSeat.objects.filter(user=user).exists():
+            return False, "이미 포커 방에 앉아있습니다."
+        table, seats_by_number = _lock_table(table_id)
+        if not table:
+            return False, "입장할 수 없는 방입니다."
+        err = _leave_other_games(user)
+        if not err:
+            wallet = PokerChipWallet.objects.filter(user=user).values_list("chips", flat=True).first() or 0
+            err = _buy_in_error(table.tier_config, wallet)
+        if err:
+            return False, err
+        seat = next((seats_by_number[n] for n in sorted(seats_by_number) if not seats_by_number[n].user_id), None)
+        if seat is None:
+            # 꽉 찼으면 AI가 사람에게 자리를 비켜준다 (핸드 중이면 핸드가 끝난 뒤)
+            bot = next((s for n, s in sorted(seats_by_number.items(), reverse=True)
+                        if s.user_id and s.user.is_bot), None)
+            if not bot:
+                return False, "방이 가득 찼습니다."
+            if table.status == "playing" and bot.status in ("active", "all_in", "folded"):
+                bot.leaving_after_hand = True
+                bot.save(update_fields=["leaving_after_hand"])
+                return False, "이번 핸드가 끝나면 AI가 자리를 비켜줍니다. 잠시 후 다시 입장해주세요."
+            _vacate_seat(bot, table)
+            seat = bot
+        err = _seat_user(user, table, seats_by_number, seat)
+        if err:
+            return False, err
+    return True, table.id
+
+
+def add_bot(user):
+    """내 방 빈자리에 AI를 한 명 앉힌다. AI는 하우스 칩을 방의 가장 큰 사람 스택만큼
+    (단계 최소~최대 범위 안, 하우스 잔고 한도) 들고 앉는다."""
     from .bots import free_bot
-    seats = [seats_by_number[n] for n in sorted(seats_by_number)]
-    humans = [s for s in seats if s.user_id and not s.user.is_bot]
-    bots = [s for s in seats if s.user_id and s.user.is_bot and not s.leaving_after_hand]
-    want = max(0, POKER_BOT_TARGET_PLAYERS - len(humans)) if humans else 0
-    in_hand = table.status == "playing"
-    for seat in bots[want:]:
-        if in_hand and seat.status in ("active", "all_in", "folded"):
-            seat.leaving_after_hand = True
-            seat.save(update_fields=["leaving_after_hand"])
-        else:
-            _vacate_seat(seat, table)
-    missing = want - len(bots)
-    empty = [s for s in reversed(seats) if not s.user_id]  # 뒷번호 자리부터 (사람이 앞자리를 고르기 쉽게)
-    if missing <= 0 or not empty:
-        return
-    house = HouseBank.locked()
-    stack = max([POKER_BUY_IN] + [s.stack for s in humans])
-    for seat in empty[:missing]:
-        chips = min(stack, house.chips)
-        if chips < POKER_BUY_IN:
-            break
-        house.chips -= chips
+    with transaction.atomic():
+        table, seats_by_number, me = _lock_my_table(user)
+        if not table:
+            return False, "포커 방에 앉아있지 않습니다."
+        empty = [s for n, s in sorted(seats_by_number.items(), reverse=True) if not s.user_id]
+        if not empty:
+            return False, "빈자리가 없습니다."
+        cfg = table.tier_config
+        humans = [s.stack for s in seats_by_number.values() if s.user_id and not s.user.is_bot]
+        stack = max([cfg["min"]] + humans)
+        if cfg["max"] is not None:
+            stack = min(stack, cfg["max"])
+        house = HouseBank.locked()
+        stack = min(stack, house.chips)
+        if stack < cfg["min"]:
+            return False, "하우스 칩이 부족해 AI를 부를 수 없습니다."
+        house.chips -= stack
+        house.save(update_fields=["chips"])
+        seat = empty[0]  # 뒷번호 자리부터
         seat.user = free_bot()
-        seat.stack = chips
-        seat.status = "out" if in_hand else "active"
+        seat.stack = stack
+        seat.status = "out" if table.status == "playing" else "active"
         seat.current_bet = seat.contributed_total = 0
         seat.hole_cards = []
         seat.has_acted_this_street = False
@@ -265,12 +393,14 @@ def _sync_bots(table, seats_by_number):
         seat.leaving_after_hand = False
         seat.joined_at = timezone.now()
         seat.save()
-    house.save(update_fields=["chips"])
+        _schedule_first_hand(table, seats_by_number)
+    return True, None
 
 
 def _bot_act(table, seats_by_number, seat):
+    """AI(또는 시간초과한 사람 대신)가 방 단계 난이도로 한 수 둔다."""
     from . import poker_ai
-    action, amount = poker_ai.decide(table, seats_by_number, seat)
+    action, amount = poker_ai.decide(table, seats_by_number, seat, level=ai_level(table))
     try:
         _apply_action_locked(table, seats_by_number, seat, action, amount)
     except ValueError:
@@ -279,73 +409,10 @@ def _bot_act(table, seats_by_number, seat):
     _resolve_turn(table, seats_by_number, seat.seat_number)
 
 
-def sit_down(user, seat_number):
-    with transaction.atomic():
-        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
-        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
-        # 보장해두고 잠근다.
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seats_by_number = {
-            s.seat_number: s
-            for s in PokerSeat.objects.select_for_update().filter(table=table)
-        }
-        if any(s.user_id == user.id for s in seats_by_number.values()):
-            return False, "이미 테이블에 앉아있습니다."
-        # 고스톱 방에 있으면 대기 중일 땐 나가고(칩을 지갑으로), 판 중이면 막는다
-        from . import gostop_engine
-        from .models import GostopSeat
-        gseat = GostopSeat.objects.filter(user=user).select_related("room").first()
-        if gseat:
-            if gseat.room.status == "playing":
-                return False, "고스톱 판이 끝난 뒤 앉을 수 있습니다."
-            gostop_engine.leave_room(user)
-        seat = seats_by_number.get(seat_number)
-        if seat is None or seat.user_id:
-            return False, "이미 다른 사람이 앉은 자리입니다."
-
-        wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
-        if not wallet or wallet.chips < POKER_BUY_IN:
-            return False, f"칩이 부족합니다. 먼저 낙엽을 칩으로 충전해주세요. (최소 칩: {POKER_BUY_IN})"
-        # 최소 바이인 이상이면 보관 칩 전부를 들고 앉는다
-        stack = wallet.chips
-        wallet.chips = 0
-        wallet.save(update_fields=["chips"])
-
-        seat.user = user
-        seat.stack = stack
-        seat.status = "out" if table.status == "playing" else "active"
-        seat.current_bet = 0
-        seat.contributed_total = 0
-        seat.hole_cards = []
-        seat.has_acted_this_street = False
-        seat.consecutive_timeouts = 0
-        seat.leaving_after_hand = False
-        seat.joined_at = timezone.now()
-        seat.save()
-
-        _sync_bots(table, seats_by_number)
-        if table.status == "waiting":
-            eligible = sum(1 for s in seats_by_number.values() if s.user_id and s.stack > 0)
-            if eligible >= 2 and table.next_hand_at is None:
-                table.next_hand_at = timezone.now() + timedelta(seconds=POKER_FIRST_HAND_DELAY)
-                table.save()
-    return True, None
-
-
 def stand_up(user):
     with transaction.atomic():
-        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
-        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
-        # 보장해두고 잠근다.
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seats_by_number = {
-            s.seat_number: s
-            for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
-        }
-        seat = next((s for s in seats_by_number.values() if s.user_id == user.id), None)
-        if not seat:
+        table, seats_by_number, seat = _lock_my_table(user)
+        if not table:
             return False, "테이블에 앉아있지 않습니다."
 
         if seat.status in ("active", "all_in") and table.status == "playing":
@@ -362,8 +429,7 @@ def stand_up(user):
                 seat.save()
         else:
             _vacate_seat(seat, table)
-            _sync_bots(table, seats_by_number)
-            _maybe_reset_empty_table(table)
+            _close_if_no_humans(table, seats_by_number)
     return True, None
 
 
@@ -377,15 +443,9 @@ def buy_chips(user, leaves_amount):
     if leaves_amount <= 0:
         return False, "충전할 낙엽 수가 올바르지 않습니다."
     with transaction.atomic():
-        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
-        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
-        # 보장해두고 잠근다.
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seat = PokerSeat.objects.select_for_update().filter(table=table, user=user).first()
-        if seat:
-            return False, "자리에 앉아있는 동안은 충전할 수 없습니다. 일어난 후 충전해주세요."
         user_db = User.objects.select_for_update().get(id=user.id)
+        if PokerSeat.objects.filter(user=user).exists():
+            return False, "자리에 앉아있는 동안은 충전할 수 없습니다. 일어난 후 충전해주세요."
         if user_db.leaves < leaves_amount:
             return False, "낙엽이 부족합니다."
         user_db.adjust_leaves(-leaves_amount, "POKER_BUYIN", "포커 칩 충전")
@@ -396,11 +456,10 @@ def buy_chips(user, leaves_amount):
 
 
 def cash_out_chips(user, chips_amount):
-    """칩 지갑의 칩을 낙엽으로 환전한다(100칩 = 1낙엽). 좌석에 앉아있는 동안은
-    환전할 수 없다 — 게임 중에 스택을 빼돌리는 것을 막기 위함. 일어나면 남은
-    스택이 지갑으로 옮겨지므로(_vacate_seat) 그 이후 언제든 환전할 수 있다.
-    베팅/레이즈는 100칩 단위로 강제되지 않으므로 지갑 잔액이 100의 배수가
-    아닐 수 있다 — 요청 금액을 100단위로 내림해 환전하고 나머지는 지갑에 남긴다."""
+    """칩 지갑의 칩을 낙엽으로 환전한다. 좌석에 앉아있는 동안은 환전할 수 없다 —
+    게임 중에 스택을 빼돌리는 것을 막기 위함. 일어나면 남은 스택이 지갑으로
+    옮겨지므로(_vacate_seat) 그 이후 언제든 환전할 수 있다. 요청 금액을 환전 단위로
+    내림해 환전하고 나머지는 지갑에 남긴다."""
     try:
         chips_amount = int(chips_amount)
     except (TypeError, ValueError):
@@ -408,13 +467,8 @@ def cash_out_chips(user, chips_amount):
     if chips_amount <= 0:
         return False, "환전할 칩 수가 올바르지 않습니다."
     with transaction.atomic():
-        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
-        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
-        # 보장해두고 잠근다.
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seat = PokerSeat.objects.select_for_update().filter(table=table, user=user).first()
-        if seat:
+        User.objects.select_for_update().get(id=user.id)
+        if PokerSeat.objects.filter(user=user).exists():
             return False, "자리에 앉아있는 동안은 환전할 수 없습니다. 일어난 후 환전해주세요."
         wallet = PokerChipWallet.objects.select_for_update().filter(user=user).first()
         if not wallet or chips_amount > wallet.chips:
@@ -461,8 +515,9 @@ def _apply_action_locked(table, seats_by_number, seat, action, amount):
             raise ValueError("이미 베팅이 있어 베팅할 수 없습니다. 레이즈를 사용하세요.")
         if amount <= 0 or amount > seat.stack:
             raise ValueError("베팅 금액이 올바르지 않습니다.")
-        if amount < min(POKER_BIG_BLIND, seat.stack):
-            raise ValueError(f"최소 베팅은 {POKER_BIG_BLIND} 칩입니다.")
+        bb = blinds(table)[1]
+        if amount < min(bb, seat.stack):
+            raise ValueError(f"최소 베팅은 {bb} 칩입니다.")
         seat.stack -= amount
         seat.current_bet = amount
         seat.contributed_total += amount
@@ -519,7 +574,7 @@ def _next_street(table, seats_by_number):
             s.has_acted_this_street = False
             s.save()
     table.current_bet = 0
-    table.min_raise = POKER_BIG_BLIND
+    table.min_raise = blinds(table)[1]
 
     if table.round == "preflop":
         table.round = "flop"
@@ -650,7 +705,8 @@ def _finish_hand(table, seats_by_number):
             s.has_acted_this_street = False
             s.save()
 
-    _sync_bots(table, seats_by_number)
+    if _close_if_no_humans(table, seats_by_number):
+        return
     remaining = PokerSeat.objects.filter(table=table, user__isnull=False, stack__gt=0).count()
     if remaining >= 2:
         # ponytail: status를 "waiting"으로 바꿔야 next_deadline_at()/process_due_deadlines()가
@@ -659,12 +715,10 @@ def _finish_hand(table, seats_by_number):
         table.status = "waiting"
         table.next_hand_at = timezone.now() + timedelta(seconds=POKER_NEXT_HAND_DELAY)
         table.save()
-    elif remaining == 1:
+    else:
         table.status = "waiting"
         table.next_hand_at = None
         table.save()
-    else:
-        _maybe_reset_empty_table(table)
 
 
 def player_action(user, action, amount=0):
@@ -673,17 +727,8 @@ def player_action(user, action, amount=0):
     except (TypeError, ValueError):
         amount = 0
     with transaction.atomic():
-        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
-        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
-        # 보장해두고 잠근다.
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seats_by_number = {
-            s.seat_number: s
-            for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
-        }
-        seat = next((s for s in seats_by_number.values() if s.user_id == user.id), None)
-        if not seat:
+        table, seats_by_number, seat = _lock_my_table(user)
+        if not table:
             return False, "테이블에 앉아있지 않습니다."
         try:
             _apply_action_locked(table, seats_by_number, seat, (action or "").lower(), amount)
@@ -698,9 +743,9 @@ def player_action(user, action, amount=0):
 def reveal_hand(user):
     """쇼다운 없이(모두 폴드) 이긴 승자가 결과 표시 중에 자기 패를 공개한다."""
     with transaction.atomic():
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seat = PokerSeat.objects.select_for_update().filter(table=table, user=user).first()
+        table, _, seat = _lock_my_table(user)
+        if not table:
+            return False, "공개할 수 있는 패가 없습니다."
         result = table.last_result or {}
         if (
             not seat or table.status != "waiting" or result.get("reveal_seat") != seat.seat_number
@@ -715,14 +760,14 @@ def reveal_hand(user):
 
 
 def send_emoji(user, emoji):
-    """착석 중인 좌석 위에 띄울 이모티콘 반응. 성공하면 좌석 번호를 반환해
-    컨슈머가 그 좌석 위로 말풍선을 브로드캐스트할 수 있게 한다."""
+    """착석 중인 좌석 위에 띄울 이모티콘 반응. 성공하면 (방 번호, 좌석 번호)를 반환해
+    컨슈머가 그 방 그 좌석 위로 말풍선을 브로드캐스트할 수 있게 한다."""
     if emoji not in POKER_EMOJI_CHOICES:
         return False, "지원하지 않는 이모티콘입니다."
-    seat = PokerSeat.objects.filter(table_id=1, user=user).first()
+    seat = PokerSeat.objects.filter(user=user).first()
     if not seat:
         return False, "테이블에 앉아있지 않습니다."
-    return True, seat.seat_number
+    return True, (seat.table_id, seat.seat_number)
 
 
 def _post_blind(seat, amount, table):
@@ -745,16 +790,15 @@ def _deal_new_hand(table):
         if s.user_id and (s.stack <= 0 or s.leaving_after_hand):
             _vacate_seat(s, table)
 
+    if _close_if_no_humans(table, seats_by_number):
+        return
     eligible = [s for n, s in sorted(seats_by_number.items()) if s.user_id and s.stack > 0]
     if len(eligible) < 2:
-        if any(s.user_id for s in seats_by_number.values()):
-            table.status = "waiting"
-            table.next_hand_at = None
-            table.current_turn_seat = None
-            table.turn_deadline = None
-            table.save()
-        else:
-            _maybe_reset_empty_table(table)
+        table.status = "waiting"
+        table.next_hand_at = None
+        table.current_turn_seat = None
+        table.turn_deadline = None
+        table.save()
         return
 
     eligible_numbers = sorted(s.seat_number for s in eligible)
@@ -777,7 +821,8 @@ def _deal_new_hand(table):
     table.dealer_seat = dealer_num
     table.community_cards = []
     table.pot = 0
-    table.min_raise = POKER_BIG_BLIND
+    sb, bb = blinds(table)
+    table.min_raise = bb
     table.last_result = {}
     table.next_hand_at = None
 
@@ -790,8 +835,8 @@ def _deal_new_hand(table):
 
     sb_seat = seats_by_number[sb_num]
     bb_seat = seats_by_number[bb_num]
-    _post_blind(sb_seat, POKER_SMALL_BLIND, table)
-    _post_blind(bb_seat, POKER_BIG_BLIND, table)
+    _post_blind(sb_seat, sb, table)
+    _post_blind(bb_seat, bb, table)
     # 블라인드는 강제 납부일 뿐 자발적 액션이 아니므로, 두 좌석 모두 아직
     # 이번 스트리트에서 "액션한 적 없음" 상태여야 한다. (베팅액 불일치로 항상
     # 가려져 실전 버그로 드러난 적은 없지만, round_complete 판정 상 정확한 값이 아니었다.)
@@ -809,68 +854,101 @@ def _deal_new_hand(table):
 
 
 def _handle_turn_timeout(table, seats_by_number, seat):
+    """시간초과한 사람 대신 방 단계 난이도의 AI가 한 수 둔다. 연속 POKER_MAX_TIMEOUTS번이면
+    이번 핸드가 끝난 뒤 퇴장시킨다 (그때까지는 계속 대신 둔다)."""
     seat.consecutive_timeouts += 1
-    force_leave = seat.consecutive_timeouts >= POKER_MAX_TIMEOUTS
-    action = "fold" if (force_leave or seat.current_bet != table.current_bet) else "check"
-    try:
-        _apply_action_locked(table, seats_by_number, seat, action, 0)
-    except ValueError:
-        pass
-    if force_leave:
+    if seat.consecutive_timeouts >= POKER_MAX_TIMEOUTS:
         seat.leaving_after_hand = True
-        seat.save(update_fields=["leaving_after_hand"])
-    _resolve_turn(table, seats_by_number, seat.seat_number)
+    seat.save(update_fields=["consecutive_timeouts", "leaving_after_hand"])
+    _bot_act(table, seats_by_number, seat)
 
 
 # ── 워치독(턴 제한시간 / 다음 핸드 시작) ──────────────────────────────────────
 
 def next_deadline_at():
     """다음에 깨어나야 할 가장 이른 시각. 없으면 None."""
-    table = PokerTable.get_solo()
-    candidates = []
-    if table.status == "playing" and table.turn_deadline:
-        candidates.append(table.turn_deadline)
-    if table.status == "waiting" and table.next_hand_at:
-        candidates.append(table.next_hand_at)
+    agg = PokerTable.objects.aggregate(
+        turn=Min("turn_deadline", filter=Q(status="playing")),
+        nxt=Min("next_hand_at", filter=Q(status="waiting")),
+    )
+    candidates = [d for d in agg.values() if d]
     return min(candidates) if candidates else None
 
 
 def process_due_deadlines():
-    """마감시각이 지난 항목들을 처리한다. 여러 개가 동시에 지났어도 전부 처리."""
+    """마감시각이 지난 방들을 처리한다 (방마다 따로 잠근다)."""
     now = timezone.now()
-    with transaction.atomic():
-        # ponytail: 싱글턴 행이 없으면(관리자가 pk=1을 지웠다가 아직 아무도 페이지를
-        # 안 연 경우 등) get()이 DoesNotExist로 죽어 액션이 조용히 실패했다 — 먼저
-        # 보장해두고 잠근다.
-        PokerTable.get_solo()
-        table = PokerTable.objects.select_for_update().get(pk=1)
-        seats_by_number = {
-            s.seat_number: s
-            for s in PokerSeat.objects.select_for_update(of=("self",)).filter(table=table).select_related("user")
-        }
+    due_ids = list(PokerTable.objects.filter(
+        Q(status="playing", turn_deadline__lte=now) | Q(status="waiting", next_hand_at__lte=now)
+    ).values_list("id", flat=True))
+    for table_id in due_ids:
+        with transaction.atomic():
+            table, seats_by_number = _lock_table(table_id)
+            if not table:
+                continue
+            if table.status == "playing" and table.turn_deadline and now >= table.turn_deadline:
+                seat = seats_by_number.get(table.current_turn_seat)
+                if seat and seat.status == "active" and seat.user.is_bot:
+                    _bot_act(table, seats_by_number, seat)
+                elif seat and seat.status == "active":
+                    _handle_turn_timeout(table, seats_by_number, seat)
+                else:
+                    # 턴을 가진 좌석이 (관리자가 자리를 강제로 비우는 등) 도중에
+                    # active가 아니게 되면 아무도 액션할 수 없는데 turn_deadline만
+                    # 과거에 남아 게임이 영원히 멈춘다 — 다음 액션 가능한 사람에게
+                    # 턴을 넘겨 복구한다.
+                    _resolve_turn(table, seats_by_number, table.current_turn_seat)
+            if table.pk and table.status == "waiting" and table.next_hand_at and now >= table.next_hand_at:
+                _deal_new_hand(table)
+    return bool(due_ids)
 
-        if table.status == "playing" and table.turn_deadline and now >= table.turn_deadline:
-            seat = seats_by_number.get(table.current_turn_seat)
-            if seat and seat.status == "active" and seat.user.is_bot:
-                _bot_act(table, seats_by_number, seat)
-            elif seat and seat.status == "active":
-                _handle_turn_timeout(table, seats_by_number, seat)
-            else:
-                # 턴을 가진 좌석이 (관리자가 자리를 강제로 비우는 등) 도중에
-                # active가 아니게 되면 아무도 액션할 수 없는데 turn_deadline만
-                # 과거에 남아 게임이 영원히 멈춘다 — 다음 액션 가능한 사람에게
-                # 턴을 넘겨 복구한다.
-                _resolve_turn(table, seats_by_number, table.current_turn_seat)
 
-        if table.status == "waiting" and table.next_hand_at and now >= table.next_hand_at:
-            _deal_new_hand(table)
+def _tier_view(tier):
+    cfg = POKER_TIERS[tier]
+    return {"tier": tier, "label": TIER_LABELS[tier], "min": cfg["min"], "max": cfg["max"],
+            "small_blind": cfg["sb"], "big_blind": cfg["bb"], "ai_level": TIER_AI_LEVEL[tier]}
+
+
+def _tables_view():
+    tables = PokerTable.objects.prefetch_related("seats__user").order_by("created_at", "id")
+    out = []
+    for t in tables:
+        players = [
+            {"display_name": s.user.display_name, "picture": s.user.get_picture(), "is_bot": s.user.is_bot}
+            for s in sorted(t.seats.all(), key=lambda s: s.seat_number) if s.user_id
+        ]
+        out.append(dict(_tier_view(t.tier), id=t.id, status=t.status, players=players, capacity=POKER_SEATS))
+    return out
 
 
 def get_state_for(user):
-    table = PokerTable.get_solo()
+    is_authed = bool(getattr(user, "is_authenticated", False))
+    wallet_chips = None
+    my_leaves = None
+    if is_authed:
+        wallet = PokerChipWallet.objects.filter(user_id=user.id).first()
+        wallet_chips = wallet.chips if wallet else 0
+        # ponytail: WS 스코프의 user는 연결 시점에 캐시되어 leaves가 갱신되지
+        # 않으므로(adjust_leaves는 F()로 DB만 갱신), 매번 DB에서 새로 읽는다.
+        my_leaves = User.objects.filter(id=user.id).values_list("leaves", flat=True).first()
+    common = {
+        "type": "state",
+        "tables": _tables_view(),
+        "tiers": [_tier_view(t) for t in GAME_TIERS],
+        "chips_per_leaf": POKER_CHIPS_PER_LEAF,
+        "my_leaves": my_leaves,
+        "my_wallet_chips": wallet_chips,
+        "result_display_seconds": POKER_RESULT_DISPLAY_SECONDS,
+        "turn_timeout": POKER_TURN_TIMEOUT,
+    }
+    my = PokerSeat.objects.filter(user_id=getattr(user, "id", None)).select_related("table").first() if is_authed else None
+    if not my:
+        return dict(common, table=None)
+    table = my.table
     seats = list(table.seats.select_related("user", "user__student").order_by("seat_number"))
-    my_seat = next((s for s in seats if s.user_id == getattr(user, "id", None)), None)
+    my_seat = next((s for s in seats if s.user_id == user.id), None)
     now = timezone.now()
+    sb, bb = blinds(table)
 
     result = table.last_result or {}
     shown = result.get("shown", {}) if result.get("hand_number") == table.hand_number and table.status == "waiting" else {}
@@ -917,18 +995,7 @@ def get_state_for(user):
         if table.current_bet > 0:
             min_raise_to = table.current_bet + table.min_raise
 
-    is_authed = bool(getattr(user, "is_authenticated", False))
-    wallet_chips = None
-    my_leaves = None
-    if is_authed:
-        wallet = PokerChipWallet.objects.filter(user_id=user.id).first()
-        wallet_chips = wallet.chips if wallet else 0
-        # ponytail: WS 스코프의 user는 연결 시점에 캐시되어 leaves가 갱신되지
-        # 않으므로(adjust_leaves는 F()로 DB만 갱신), 매번 DB에서 새로 읽는다.
-        my_leaves = User.objects.filter(id=user.id).values_list("leaves", flat=True).first()
-
-    return {
-        "type": "state",
+    return dict(common, table=dict(_tier_view(table.tier), id=table.id), **{
         "table_status": table.status,
         "round": table.round,
         "hand_number": table.hand_number,
@@ -945,18 +1012,11 @@ def get_state_for(user):
         "my_stack": my_seat.stack if my_seat else None,
         "to_call": to_call,
         "can_check": can_check,
-        "min_bet": POKER_BIG_BLIND,
+        "min_bet": bb,
         "min_raise_to": min_raise_to,
-        "buy_in_leaves": POKER_BUY_IN_LEAVES,
-        "buy_in_chips": POKER_BUY_IN,
-        "chips_per_leaf": POKER_CHIPS_PER_LEAF,
-        "small_blind": POKER_SMALL_BLIND,
-        "big_blind": POKER_BIG_BLIND,
-        "my_leaves": my_leaves,
-        "my_wallet_chips": wallet_chips,
+        "small_blind": sb,
+        "big_blind": bb,
         "open_seats": sum(1 for s in seats if not s.user_id),
-        "result_display_seconds": POKER_RESULT_DISPLAY_SECONDS,
-        "turn_timeout": POKER_TURN_TIMEOUT,
         "my_hand_desc": (
             hand_desc(my_seat.hole_cards, table.community_cards)
             if my_seat and my_seat.hole_cards and my_seat.status != "folded" else None
@@ -965,4 +1025,4 @@ def get_state_for(user):
             my_seat and table.status == "waiting" and result.get("hand_number") == table.hand_number
             and result.get("reveal_seat") == my_seat.seat_number and my_seat.hole_cards
         ),
-    }
+    })

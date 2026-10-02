@@ -11,8 +11,12 @@ from django.utils import timezone
 from accounts.models import User
 from . import consumers as game_consumers, gostop_ai, gostop_engine as eng, poker_engine
 from .models import (
-    GostopGameLog, GostopRoom, GostopSeat, HouseBank, PokerChipWallet, PokerSeat, GOSTOP_BUY_IN, GOSTOP_CHIPS_PER_POINT,
+    GostopGameLog, GostopRoom, GostopSeat, HouseBank, PokerChipWallet, PokerSeat, PokerTable,
 )
+
+# 기본 방 단계(중수): 점당 100칩, 최소 입장 10,000칩
+GOSTOP_CHIPS_PER_POINT = 100
+GOSTOP_BUY_IN = GOSTOP_CHIPS_PER_POINT * 100
 
 # 카드 id = (월-1)*4 + 월 안 순번. 예) 1월 광=0, 1월 홍단=1, 12월 비광=44
 GWANG = [0, 8, 28, 40, 44]
@@ -464,7 +468,6 @@ class GostopChipConservationTestCase(TestCase):
         with transaction.atomic():
             HouseBank.locked()
         users = [User.objects.create_user(username=f"u{i}", password="x") for i in range(6)]
-        poker_engine.PokerTable.get_solo()
         for i, u in enumerate(users):
             PokerChipWallet.objects.create(user=u, chips=[0, 3000, 5000, 7000, 12000, 50000][i])
         start = self.total()
@@ -486,7 +489,11 @@ class GostopChipConservationTestCase(TestCase):
             elif op < .47:
                 eng.add_bots(u)
             elif op < .5:
-                poker_engine.sit_down(u, rng.randrange(8))
+                table = PokerTable.objects.order_by("?").first()
+                if table and rng.random() < .7:
+                    poker_engine.join_table(u, table.id)
+                else:
+                    poker_engine.create_table(u, rng.choice(["beginner", "intermediate"]))
             elif op < .54:
                 poker_engine.stand_up(u)
             elif op < .8:
@@ -572,14 +579,13 @@ class CrossGameSeatTestCase(TestCase):
     """포커에 앉은 채 고스톱으로 가거나 그 반대여도 칩이 묶이지 않는다."""
 
     def setUp(self):
-        poker_engine.PokerTable.get_solo()
         self.u = User.objects.create_user(username="u", password="x")
         self.v = User.objects.create_user(username="v", password="x")
         PokerChipWallet.objects.create(user=self.u, chips=GOSTOP_BUY_IN * 2)
         PokerChipWallet.objects.create(user=self.v, chips=GOSTOP_BUY_IN * 2)
 
     def test_gostop_entry_stands_up_from_idle_poker_seat(self):
-        poker_engine.sit_down(self.u, 0)
+        poker_engine.create_table(self.u, "intermediate")
         self.assertEqual(PokerChipWallet.objects.get(user=self.u).chips, 0)
         ok, room_id = eng.create_room(self.u, "matgo")
         self.assertTrue(ok)
@@ -588,7 +594,7 @@ class CrossGameSeatTestCase(TestCase):
 
     def test_poker_sit_leaves_waiting_gostop_room(self):
         eng.create_room(self.u, "matgo")
-        self.assertEqual(poker_engine.sit_down(self.u, 0), (True, None))
+        self.assertTrue(poker_engine.create_table(self.u, "intermediate")[0])
         self.assertFalse(GostopRoom.objects.exists())
         self.assertEqual(PokerSeat.objects.get(user=self.u).stack, GOSTOP_BUY_IN * 2)
 
@@ -611,10 +617,9 @@ class PageLeaveGraceTestCase(TestCase):
 
     async def test_page_leave_stands_up_quickly(self):
         def setup():
-            poker_engine.PokerTable.get_solo()
             u = User.objects.create_user(username="pl", password="x")
             PokerChipWallet.objects.create(user=u, chips=GOSTOP_BUY_IN)
-            poker_engine.sit_down(u, 0)
+            poker_engine.create_table(u, "intermediate")
             return u
         u = await database_sync_to_async(setup)()
         comm = WebsocketCommunicator(game_consumers.PokerConsumer.as_asgi(), "/ws/poker/")
