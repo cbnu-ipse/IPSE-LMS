@@ -1,5 +1,5 @@
 """
-온라인 포커 (텍사스 홀덤) — 방 여러 개, 방장이 3/4/5석 중 고른다.
+온라인 포커 (텍사스 홀덤) — 방 여러 개, 방장이 2/4/6석 중 고른다.
 
 방을 만드는 사람이 단계(초보/중수/고수)를 고른다. 단계마다 들고 앉는 칩 범위와 블라인드가
 정해진다 (models.POKER_TIERS). AI 난이도는 다른 게임과 달리 모든 방이 같다 (poker_ai 참고). 입장하면 첫 빈 자리에 앉고,
@@ -298,7 +298,7 @@ def _seat_user(user, table, seats_by_number, seat):
     return None
 
 
-def create_table(user, tier, capacity=5):
+def create_table(user, tier, capacity=6):
     try:
         capacity = int(capacity)
     except (TypeError, ValueError):
@@ -1023,6 +1023,13 @@ def get_state_for(user):
         "my_hand_desc": (
             hand_desc(my_seat.hole_cards, table.community_cards)
             if my_seat and my_seat.hole_cards and my_seat.status != "folded" else None
+        ),
+        # 공동 카드 k장까지만 봤을 때의 족보 — 화면은 카드를 한 장씩 뒤집으므로, 실제로 뒤집힌
+        # 장수에 맞는 족보를 골라 보여준다 (안 그러면 아직 안 보이는 카드로 만든 족보가 먼저 뜬다)
+        "my_hand_descs": (
+            {str(k): hand_desc(my_seat.hole_cards, table.community_cards[:k])
+             for k in (0, 3, 4, 5) if k <= len(table.community_cards)}
+            if my_seat and my_seat.hole_cards and my_seat.status != "folded" else {}
         ),
         "can_reveal": bool(
             my_seat and table.status == "waiting" and result.get("hand_number") == table.hand_number

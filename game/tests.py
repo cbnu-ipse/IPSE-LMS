@@ -286,11 +286,11 @@ class PokerRoomTestCase(TestCase):
 
     def test_capacity_choice(self):
         a = self._wallet_user("cap")
-        self.assertFalse(poker_engine.create_table(a, "intermediate", 8)[0])  # 3/4/5만
-        ok, table_id = poker_engine.create_table(a, "intermediate", 3)
+        self.assertFalse(poker_engine.create_table(a, "intermediate", 5)[0])  # 2/4/6만
+        ok, table_id = poker_engine.create_table(a, "intermediate", 2)
         self.assertTrue(ok)
-        self.assertEqual(PokerTable.objects.get(pk=table_id).seats.count(), 3)
-        self.assertEqual(poker_engine.get_state_for(a)["table"]["capacity"], 3)
+        self.assertEqual(PokerTable.objects.get(pk=table_id).seats.count(), 2)
+        self.assertEqual(poker_engine.get_state_for(a)["table"]["capacity"], 2)
 
     def test_create_join_and_last_human_leaving_closes_room(self):
         a, b = self._wallet_user("p1"), self._wallet_user("p2")
@@ -518,6 +518,20 @@ class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
         seen, _ = self._cards_seen_by(other)
         self.assertEqual(seen[0], ["AS", "AH"])
         self.assertFalse(self._cards_seen_by(me)[1]["can_reveal"])
+
+
+class PokerHandDescPerStreetTestCase(TestCase):
+    def test_hand_desc_for_each_revealed_count(self):
+        """공동 카드를 한 장씩 뒤집어 보여주므로, 장수별 족보를 같이 보낸다 (아직 안 보이는 카드로 만든 족보 금지)."""
+        table = PokerTable.create_with_seats("intermediate", 2)
+        me = User.objects.create_user(username="hd", password="x")
+        PokerSeat.objects.filter(table=table, seat_number=0).update(
+            user=me, status="active", stack=100, hole_cards=["AH", "KH"])
+        table.status, table.round, table.hand_number = "playing", "river", 1
+        table.community_cards = ["2H", "7C", "9H", "AS", "5H"]  # 플랍엔 하이카드, 턴에 원페어, 리버에 플러시
+        table.save()
+        descs = poker_engine.get_state_for(me)["my_hand_descs"]
+        self.assertEqual(descs, {"0": "하이카드", "3": "하이카드", "4": "원페어", "5": "플러시"})
 
 
 class PokerHandDescTestCase(TestCase):

@@ -607,10 +607,6 @@
     border: 1px solid rgba(0,0,0,.5);
 }
 /* 보유 칩: 아바타 옆 (바깥쪽). 오른쪽 자리(1·3)와 왼쪽 가운데(6)는 오른쪽에 둔다 */
-.pk-stack-pile { position: absolute; bottom: 0; right: calc(100% + 3px); }
-.pk-seat[data-seat="1"] .pk-stack-pile,
-.pk-seat[data-seat="3"] .pk-stack-pile,
-.pk-seat[data-seat="6"] .pk-stack-pile { right: auto; left: calc(100% + 3px); }
 /* 이번 스트리트 베팅: 좌석에서 테이블 가운데 쪽으로 */
 .pk-bet {
     position: absolute;
@@ -626,7 +622,8 @@
     font-variant-numeric: tabular-nums;
 }
 .pk-seat[data-seat="0"] .pk-bet { top: -24px; left: 50%; transform: translateX(-50%); }
-.pk-seat[data-seat="4"] .pk-bet { bottom: -24px; left: 50%; transform: translateX(-50%); }
+/* 위 가운데 자리는 아래로 내리면 가운데 POT 글자와 겹쳐서 오른쪽 옆에 둔다 */
+.pk-seat[data-seat="4"] .pk-bet { top: 50%; left: calc(100% + 6px); transform: translateY(-50%); }
 .pk-seat[data-seat="1"] .pk-bet { top: -28px; right: 62%; }
 .pk-seat[data-seat="7"] .pk-bet { top: -28px; left: 62%; }
 .pk-seat[data-seat="3"] .pk-bet { bottom: -26px; right: 62%; }
@@ -943,7 +940,7 @@ footer { display: none !important; }
     // 테이블 둘레의 자리 칸 8개(data-seat = 칸 위치). 방 인원(3/4/5석)에 맞는 칸만 골라
     // 좌석 번호 순서대로 고르게 배치한다 — seatsEl[좌석 번호]가 그 좌석의 칸.
     const slotEls = Array.from({length: 8}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
-    const SEAT_POSITIONS = { 3: [0, 3, 5], 4: [0, 2, 4, 6], 5: [0, 2, 3, 5, 6] };
+    const SEAT_POSITIONS = { 2: [0, 4], 4: [0, 2, 4, 6], 6: [0, 1, 3, 4, 5, 7] };
     let seatsEl = slotEls;
     let seatCount = 8;
     function layoutSeats(capacity) {
@@ -977,7 +974,7 @@ footer { display: none !important; }
     const pkTableEl = document.getElementById('pk-table');
     const roomLabelEl = document.getElementById('pk-room-label');
     let createTier = 'beginner';
-    let createCapacity = 5;
+    let createCapacity = 6;
     const fmtN = n => n == null ? '무제한' : Number(n).toLocaleString();
 
     function tierRange(t) {
@@ -1022,7 +1019,7 @@ footer { display: none !important; }
                 <summary>방 단계 안내</summary>
                 <ul>
                     ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}</li>`).join('')}
-                    <li>방을 만들 때 3인 / 4인 / 5인 중 좌석 수를 고를 수 있습니다.</li>
+                    <li>방을 만들 때 2인 / 4인 / 6인 중 좌석 수를 고를 수 있습니다.</li>
                     <li>AI 난이도는 모든 방이 같습니다.</li>
                     <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>차례 제한시간 20초. 시간을 넘기면 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
@@ -1106,11 +1103,21 @@ footer { display: none !important; }
         }
         communityEl.innerHTML = slots.join('');
 
-        // 뒤집기가 끝나면 결과/공개 패를 보여주기 위해 한 번 더 그린다
+        // 카드가 한 장 뒤집힐 때마다 다시 그린다 (내 족보를 그 장수에 맞추고, 마지막엔 결과/공개 패 표시)
         clearTimeout(flipRerenderTimer);
-        if (communityFlipEndsAt > now) {
-            flipRerenderTimer = setTimeout(() => { if (lastState) render(lastState); }, communityFlipEndsAt - now + 30);
+        const pending = cards.map(c => flipStarts[c] + FLIP_MS).filter(t => t > now);
+        if (pending.length) {
+            flipRerenderTimer = setTimeout(() => { if (lastState) render(lastState); }, Math.min(...pending) - now + 30);
         }
+    }
+
+    // 화면에서 실제로 다 뒤집힌 공동 카드 장수에 맞는 족보 (서버는 장수별 족보를 같이 보낸다)
+    function visibleHandDesc(state) {
+        const descs = state.my_hand_descs || {};
+        const now = Date.now();
+        const shown = (state.community_cards || []).filter(c => (flipStarts[c] || 0) + FLIP_MS <= now).length;
+        const k = [5, 4, 3, 0].find(n => n <= shown && String(n) in descs);
+        return k != null ? descs[String(k)] : (state.my_hand_desc || '');
     }
 
     let peeking = false;  // 내 패를 누르고 있는 중
@@ -1133,7 +1140,7 @@ footer { display: none !important; }
         myCardsEl.innerHTML = `<div class="pk-hand-cards">${cards.map(face).join('')}
                 <span class="pk-peek-btn" aria-hidden="true"><i class="fa-solid fa-eye"></i></span>
             </div>
-            <span class="pk-hand-name">${folded ? '폴드' : esc(state.my_hand_desc || '')}</span>`;
+            <span class="pk-hand-name">${folded ? '폴드' : esc(visibleHandDesc(state))}</span>`;
     }
 
     // 누르고 있는 동안만 앞면 (마우스·터치·펜 공통 pointer 이벤트). 떼는 건 어디서 떼든 인정
@@ -1206,7 +1213,6 @@ footer { display: none !important; }
             <div class="pk-seat-box">
                 <div class="pk-seat-circle">
                     ${ring}
-                    <span class="pk-stack-pile" data-pile>${chipsHtml(seat.stack)}</span>
                     ${seat.is_dealer ? '<span class="pk-dealer-btn">D</span>' : ''}
                     <img class="pk-seat-avatar" src="${esc(seat.picture)}" alt="">
                 </div>
@@ -1423,7 +1429,7 @@ footer { display: none !important; }
             const oldBet = sameHand ? (p.current_bet || 0) : 0;
             // 베팅(블라인드 포함): 보유 칩 → 베팅 자리
             if (!s.empty && s.current_bet > oldBet) {
-                flyChips(seatAnchor(s.seat_number, '[data-pile]'), seatAnchor(s.seat_number, '[data-bet]'),
+                flyChips(seatAnchor(s.seat_number, '.pk-seat-circle'), seatAnchor(s.seat_number, '[data-bet]'),
                     s.current_bet - oldBet, Math.min(5, 2 + Math.floor(Math.log10(s.current_bet - oldBet + 1))));
             }
             // 스트리트/핸드 종료: 베팅 칩 → 팟
@@ -1457,7 +1463,7 @@ footer { display: none !important; }
     function animatePotToWinners(result) {
         const potRect = document.getElementById('pk-pot-line').getBoundingClientRect();
         (result.winners || []).forEach((w, i) => {
-            flyChips(potRect, seatAnchor(w.seat_number, '[data-pile]'), w.amount, 8, i * 150);
+            flyChips(potRect, seatAnchor(w.seat_number, '.pk-seat-circle'), w.amount, 8, i * 150);
         });
     }
 

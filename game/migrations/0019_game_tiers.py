@@ -95,7 +95,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="pokertable",
             name="capacity",
-            field=models.PositiveSmallIntegerField(default=5, verbose_name="좌석 수"),
+            field=models.PositiveSmallIntegerField(default=6, verbose_name="좌석 수"),
         ),
         migrations.RunPython(close_single_poker_table, migrations.RunPython.noop),
     ]
