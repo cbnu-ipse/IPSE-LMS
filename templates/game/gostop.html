@@ -1408,13 +1408,16 @@ footer { display: none !important; }
     // ── 고스톱 WebSocket ────────────────────────────────────────────
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${wsProto}://${location.host}/ws/gostop/`;
-    const HEARTBEAT_INTERVAL_MS = 25000;
+    const HEARTBEAT_INTERVAL_MS = 10000;  // 모바일은 망 전환/백그라운드로 소켓이 조용히 죽는 일이 잦아 짧게
     // 포커와 동일: pong이 두 번 이상 안 오면 좀비 연결로 보고 직접 끊고 재연결한다.
-    const CONNECTION_STALE_MS = HEARTBEAT_INTERVAL_MS * 2 + 10000;
+    const CONNECTION_STALE_MS = HEARTBEAT_INTERVAL_MS * 2 + 5000;
     let lastMessageAt = 0;
 
+    let reconnectTimer = null;
     function connect() {
-        socket = new WebSocket(wsUrl);
+        clearTimeout(reconnectTimer);
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+        const ws = socket = new WebSocket(wsUrl);
         socket.onopen = () => {
             lastMessageAt = Date.now();
             clearInterval(heartbeatTimer);
@@ -1426,10 +1429,29 @@ footer { display: none !important; }
             if (data.type === 'error') showToast(data.message);
             else if (data.type === 'state') applyState(data);
         };
-        socket.onclose = () => { clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
-        socket.onerror = () => socket.close();
+        socket.onclose = () => {
+            if (socket !== ws) return;
+            clearInterval(heartbeatTimer);
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, document.hidden ? 5000 : 1000);
+        };
+        socket.onerror = () => ws.close();
     }
     connect();
+    // 폰에서 앱 전환·화면 꺼짐·망 전환 후 돌아오면 바로 연결을 확인한다: 끊겼으면 즉시 재연결,
+    // 열려 있다고 나와도 응답이 없으면(좀비 연결) 끊고 다시 붙는다.
+    function checkConnectionNow() {
+        if (document.hidden) return;
+        if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) { connect(); return; }
+        if (socket.readyState !== WebSocket.OPEN) return;
+        const before = lastMessageAt;
+        const ws = socket;
+        send({ type: '__ping__' });
+        setTimeout(() => { if (socket === ws && lastMessageAt === before) ws.close(); }, 3000);
+    }
+    document.addEventListener('visibilitychange', checkConnectionNow);
+    window.addEventListener('online', checkConnectionNow);
+    window.addEventListener('pageshow', (e) => { if (e.persisted) checkConnectionNow(); });
     // 나가기/뒤로가기/다른 페이지로 이동하면 서버가 곧바로 일어나기(포커)·퇴장 예약(고스톱)을
     // 처리하도록 알린다. 새로고침도 이 신호를 보내지만 금방 다시 접속하면 자리가 유지된다.
     window.addEventListener('pagehide', () => send({ type: 'page_leave' }));

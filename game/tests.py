@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from accounts.models import User
@@ -378,10 +378,11 @@ class PokerDisconnectGraceTestCase(TestCase):
         self.assertEqual(seat.user_id, self.user.id)  # 취소됐으니 자리 유지
 
 
-class PokerWatchdogResilienceTestCase(TestCase):
+class PokerWatchdogResilienceTestCase(TransactionTestCase):
     """회귀 테스트: 워치독 루프가 한 틱에서 예외를 만나면 조용히 죽어버려서,
     누군가 새 WS 메시지를 보내 다시 살리기 전까지 턴 진행/다음 핸드 시작이
-    영원히 멈추는 사고가 있었다. 예외를 삼키고 계속 재시도해야 한다."""
+    영원히 멈추는 사고가 있었다. 예외를 삼키고 계속 재시도해야 한다.
+    워치독은 별도 스레드(다른 DB 연결)에서 돌므로 데이터가 커밋되는 TransactionTestCase를 쓴다."""
 
     def setUp(self):
         self.table = PokerTable.get_solo()
