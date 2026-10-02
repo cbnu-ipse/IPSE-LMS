@@ -1,7 +1,7 @@
 from django.urls import path
 from django.urls import reverse_lazy
 from django.contrib.auth import views as auth_views
-from . import views
+from . import friends, views
 
 urlpatterns = [
     path(
@@ -80,6 +80,10 @@ urlpatterns = [
     path('notifications/<int:notification_id>/delete/', views.delete_notification_api, name='delete_notification_api'),
     path('notifications/push/subscribe/', views.subscribe_push_api, name='subscribe_push_api'),
     path('notifications/push/unsubscribe/', views.unsubscribe_push_api, name='unsubscribe_push_api'),
+    path('friends/', friends.friends_api, name='friends_api'),
+    path('friends/request/', friends.friend_request_api, name='friend_request_api'),
+    path('friends/respond/', friends.friend_respond_api, name='friend_respond_api'),
+    path('friends/remove/', friends.friend_remove_api, name='friend_remove_api'),
 
     # ─── LMS Integration ───────────────────────────────────────────────────────
     path('lms/', views.lms_page, name='lms_page'),

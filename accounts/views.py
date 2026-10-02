@@ -1079,6 +1079,9 @@ def read_and_redirect(request, notification_id):
         return redirect(reverse('gathering_detail', kwargs={'gathering_id': n.gathering.id}))
     elif n.post:
         return redirect(reverse('post_detail', kwargs={'post_id': n.post.id}))
+    elif n.link.startswith('/') and not n.link.startswith('//'):
+        # 사이트 내부 경로만 허용 (외부 주소로 보내는 오픈 리다이렉트 방지)
+        return redirect(n.link)
     elif n.notification_type in ('game_season_ending', 'game_season_reward'):
         return redirect(reverse('game_lobby'))
     return redirect(reverse('gathering_list'))

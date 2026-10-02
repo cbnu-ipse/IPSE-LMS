@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
-from .models import User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage, Notification
+from .models import User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage, Notification, Friendship
 
 
 @admin.action(description="선택한 사용자 계정을 승인합니다 (is_active=True)")
@@ -126,3 +126,9 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ('recipient', 'sender', 'notification_type', 'message', 'is_read', 'created_at')
     list_filter = ('notification_type', 'is_read', 'created_at')
     search_fields = ('recipient__username', 'sender__username', 'message')
+
+@admin.register(Friendship)
+class FriendshipAdmin(admin.ModelAdmin):
+    list_display = ("from_user", "to_user", "status", "created_at", "accepted_at")
+    list_filter = ("status",)
+    search_fields = ("from_user__username", "to_user__username")

@@ -803,3 +803,56 @@ def highlow_cash_out_chips(request):
     wallet = PokerChipWallet.objects.get(user=request.user)
     request.user.refresh_from_db()
     return JsonResponse({"status": "success", "chips": wallet.chips, "leaves": request.user.leaves})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 친구를 내가 있는 게임 방으로 초대 (사이트 알림 + 웹 푸시)
+# ─────────────────────────────────────────────────────────────────────────────
+
+GAME_INVITE_COOLDOWN_SECONDS = 30  # 같은 친구에게 연달아 초대 알림이 쌓이지 않게
+
+
+def _my_game_spot(user, game):
+    """초대할 위치 (이름, 이동 경로). 그 게임에 앉아 있지 않으면 None."""
+    from .models import GostopSeat, PokerSeat, YachtSeat
+    if game == "gostop":
+        seat = GostopSeat.objects.filter(user=user).select_related("room").first()
+        if seat:
+            label = "맞고" if seat.room.mode == "matgo" else "고스톱"
+            return f"{label} {seat.room_id}번 방", f"/game/gostop/?room={seat.room_id}"
+    elif game == "yacht":
+        seat = YachtSeat.objects.filter(user=user).first()
+        if seat:
+            return f"요트 다이스 {seat.room_id}번 방", f"/game/yacht/?room={seat.room_id}"
+    elif game == "poker":
+        if PokerSeat.objects.filter(user=user).exists():
+            return "포커 테이블", "/game/poker/"
+    return None
+
+
+@login_required
+@require_POST
+def game_invite(request):
+    from datetime import timedelta
+    from accounts.friends import are_friends, notify
+    from accounts.models import Notification
+    me = request.user
+    try:
+        data = json.loads(request.body or "{}")
+        friend = User.objects.filter(pk=int(data.get("user_id")), is_active=True).first()
+    except (TypeError, ValueError):
+        friend = None
+    if not friend or not are_friends(me, friend):
+        return JsonResponse({"ok": False, "message": "친구에게만 초대를 보낼 수 있습니다."}, status=400)
+    spot = _my_game_spot(me, data.get("game"))
+    if not spot:
+        return JsonResponse({"ok": False, "message": "방에 들어가 있을 때 초대할 수 있습니다."}, status=400)
+    recent = Notification.objects.filter(
+        recipient=friend, sender=me, notification_type="game_invite",
+        created_at__gte=timezone.now() - timedelta(seconds=GAME_INVITE_COOLDOWN_SECONDS),
+    ).exists()
+    if recent:
+        return JsonResponse({"ok": False, "message": "방금 초대했어요. 잠시 후 다시 보낼 수 있습니다."}, status=400)
+    name, link = spot
+    notify(friend, me, "game_invite", f"{me.display_chat_name}님이 {name}에 초대했어요.", link)
+    return JsonResponse({"ok": True})

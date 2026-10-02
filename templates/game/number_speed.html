@@ -719,6 +719,7 @@ function toggleNsChat() {
 </script>
 
 <script src="{% static 'js/chat-unread.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/friends.js' %}?v={{ static_version }}"></script>
 <script>
 // ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
 (function () {
@@ -801,23 +802,10 @@ function toggleNsChat() {
     const onlineList  = document.getElementById('ns-online-list');
     const onlineCount = document.getElementById('ns-online-count');
     const MY_USER_ID  = {{ request.user.id }};
+    FriendsPanel.mount({ listEl: onlineList, countEl: onlineCount, myUserId: MY_USER_ID, csrf: '{{ csrf_token }}',
+        inviteGame: null, panel: document.getElementById('ns-side-col'), fab: document.getElementById('ns-toggle-chat-fab') });
     function renderOnlineUsers(users) {
-        onlineCount.textContent = users.length;
-        if (!users.length) {
-            onlineList.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-6">접속자가 없습니다.</p>';
-            return;
-        }
-        onlineList.innerHTML = users.map(u => {
-            const isMe = u.user_id === MY_USER_ID;
-            const pic = u.picture_url
-                ? `<img src="${esc(u.picture_url)}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
-                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(u.display_name.charAt(0))}</span>`;
-            return `<div class="flex items-center gap-2 px-4 py-2.5 ${isMe ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
-                        ${pic}
-                        <span class="flex-1 font-semibold text-xs ${isMe ? 'text-emerald-700' : 'text-slate-700'} truncate">${esc(u.display_name)}${isMe ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : ''}</span>
-                    </div>`;
-        }).join('');
+        FriendsPanel.render(users);
     }
 
     function send() {
