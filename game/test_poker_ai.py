@@ -25,7 +25,6 @@ class PokerEquityTestCase(TestCase):
 
 
 @patch.object(poker_ai, "AI_TIME_BUDGET", 0)  # 테스트에선 최소 시뮬레이션만
-@patch.dict(poker_ai.LEVEL_EQUITY, {"normal": (0, .08)})
 class PokerBotSeatingTestCase(TestCase):
     def setUp(self):
         self.a = User.objects.create_user(username="a", password="x")
@@ -97,8 +96,7 @@ class PokerBotSeatingTestCase(TestCase):
             me = PokerSeat(seat_number=0, user=self.a, stack=rng.choice([10, 500, 5000]), status="active",
                            current_bet=min(table.current_bet, rng.choice([0, 5])), hole_cards=deck[:2])
             opp = PokerSeat(seat_number=1, user=self.b, stack=5000, status="active", hole_cards=deck[2:4])
-            level = rng.choice(["easy", "normal", "hard"])
-            action, amount = poker_ai.decide(table, {0: me, 1: opp}, me, budget=0, rng=rng, level=level)
+            action, amount = poker_ai.decide(table, {0: me, 1: opp}, me, budget=0, rng=rng)
             self.assertIn(action, {"fold", "check", "call", "bet", "raise"})
             if action == "check":
                 self.assertEqual(me.current_bet, table.current_bet)

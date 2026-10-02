@@ -1,8 +1,8 @@
 """
 온라인 포커 (텍사스 홀덤) — 방 여러 개, 방마다 8석.
 
-방을 만드는 사람이 단계(초보/중수/고수)를 고른다. 단계마다 들고 앉는 칩 범위와 블라인드,
-AI 난이도가 정해진다 (models.POKER_TIERS, TIER_AI_LEVEL). 입장하면 첫 빈 자리에 앉고,
+방을 만드는 사람이 단계(초보/중수/고수)를 고른다. 단계마다 들고 앉는 칩 범위와 블라인드가
+정해진다 (models.POKER_TIERS). AI 난이도는 다른 게임과 달리 모든 방이 같다 (poker_ai 참고). 입장하면 첫 빈 자리에 앉고,
 보관 칩 전부를 그 단계 최대치까지 들고 앉는다. 사람이 모두 나가면 AI도 정리하고 방을 지운다.
 
 모든 상태 변경 함수는 `transaction.atomic()` + 방 행 `select_for_update()` 로 그 방만 잠근다.
@@ -38,7 +38,7 @@ from django.utils import timezone
 from accounts.models import User
 from .models import (
     HouseBank, PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    POKER_SEATS, POKER_CHIPS_PER_LEAF, POKER_TIERS, GAME_TIERS, TIER_LABELS, TIER_AI_LEVEL,
+    POKER_SEATS, POKER_CHIPS_PER_LEAF, POKER_TIERS, GAME_TIERS, TIER_LABELS,
 )
 
 POKER_TURN_TIMEOUT = 20          # 턴당 제한시간(초)
@@ -181,10 +181,6 @@ def _build_side_pots(in_hand_seats):
 def blinds(table):
     cfg = table.tier_config
     return cfg["sb"], cfg["bb"]
-
-
-def ai_level(table):
-    return TIER_AI_LEVEL.get(table.tier, "normal")
 
 
 def _lock_table(table_id):
@@ -398,9 +394,9 @@ def add_bot(user):
 
 
 def _bot_act(table, seats_by_number, seat):
-    """AI(또는 시간초과한 사람 대신)가 방 단계 난이도로 한 수 둔다."""
+    """AI(또는 시간초과한 사람 대신)가 한 수 둔다."""
     from . import poker_ai
-    action, amount = poker_ai.decide(table, seats_by_number, seat, level=ai_level(table))
+    action, amount = poker_ai.decide(table, seats_by_number, seat)
     try:
         _apply_action_locked(table, seats_by_number, seat, action, amount)
     except ValueError:
@@ -854,7 +850,7 @@ def _deal_new_hand(table):
 
 
 def _handle_turn_timeout(table, seats_by_number, seat):
-    """시간초과한 사람 대신 방 단계 난이도의 AI가 한 수 둔다. 연속 POKER_MAX_TIMEOUTS번이면
+    """시간초과한 사람 대신 AI가 한 수 둔다. 연속 POKER_MAX_TIMEOUTS번이면
     이번 핸드가 끝난 뒤 퇴장시킨다 (그때까지는 계속 대신 둔다)."""
     seat.consecutive_timeouts += 1
     if seat.consecutive_timeouts >= POKER_MAX_TIMEOUTS:
@@ -906,7 +902,7 @@ def process_due_deadlines():
 def _tier_view(tier):
     cfg = POKER_TIERS[tier]
     return {"tier": tier, "label": TIER_LABELS[tier], "min": cfg["min"], "max": cfg["max"],
-            "small_blind": cfg["sb"], "big_blind": cfg["bb"], "ai_level": TIER_AI_LEVEL[tier]}
+            "small_blind": cfg["sb"], "big_blind": cfg["bb"]}
 
 
 def _tables_view():

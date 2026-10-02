@@ -11,19 +11,17 @@ AI 차례마다:
        그 사이면 콜. 큰 베팅을 받을수록 상대 패가 강하다고 보고 요구 승률을 조금 올린다.
      - 무작위를 섞어 같은 상황에서도 늘 같은 선택을 하지 않는다 (읽히지 않도록).
 
-난이도(방 단계: 초보=쉬움, 중수=보통, 고수=어려움 — AI 플레이어와 시간초과한 사람 대신 두기 모두):
-  - 어려움: 위 그대로.
-  - 보통: 승률을 대충만 계산하고(오차가 섞임), 팟 오즈를 덜 따지며 레이즈·블러핑을 덜 한다.
-  - 쉬움: 웬만하면 따라가는(콜) 수동적인 플레이. 아주 강할 때만 올리고, 판단 오차가 크다.
+난이도는 방 단계와 상관없이 하나다 (AI 플레이어, 시간초과한 사람 대신 두기 모두).
+쉬움·보통 버전을 여러 플레이 스타일(콜만 하는 사람, 좋은 패만 하는 사람, 막 올리는 사람,
+승률을 따지는 사람, 아무렇게나 두는 사람)과 1:1 시뮬레이션해 보니 패를 가려 두는 사람에게
+꾸준히 칩을 잃어(하우스 칩이 빠져나감) 이 버전 하나로 통일했다.
 """
 import random
 import time
 
 from .poker_engine import FULL_DECK, blinds, evaluate_best_of_7
 
-AI_TIME_BUDGET = 0.4   # 승률 계산에 쓰는 시간(초)
-# 난이도별 (승률 계산 시간, 승률 오차 표준편차)
-LEVEL_EQUITY = {"hard": (None, 0.0), "normal": (0.08, 0.08), "easy": (0.0, 0.15)}
+AI_TIME_BUDGET = 0.1   # 승률 계산에 쓰는 시간(초) — 시뮬레이션으로 강도를 맞춘 값 (길수록 더 세진다)
 MAX_SIMS = 1500
 
 
@@ -48,20 +46,12 @@ def equity(hole, board, n_opp, budget=None, rng=None, max_sims=MAX_SIMS, min_sim
     return wins / sims
 
 
-def decide(table, seats_by_number, seat, budget=None, rng=None, level="hard"):
+def decide(table, seats_by_number, seat, budget=None, rng=None):
     """(action, amount). amount는 bet이면 베팅액, raise면 '올릴 총액'(엔진과 같은 의미)."""
     rng = rng or random.Random()
     others = [s for s in seats_by_number.values()
               if s is not seat and s.user_id and s.status in ("active", "all_in")]
-    level_budget, noise = LEVEL_EQUITY.get(level, LEVEL_EQUITY["hard"])
-    e = equity(seat.hole_cards, table.community_cards, len(others),
-               budget if budget is not None else level_budget, rng)
-    if noise:
-        e = min(1.0, max(0.0, e + rng.gauss(0, noise)))
-    if level == "easy":
-        return _decide_easy(table, seat, e, rng)
-    if level == "normal":
-        return _decide_normal(table, seat, e, rng)
+    e = equity(seat.hole_cards, table.community_cards, len(others), budget, rng)
     pot = table.pot
     to_call = max(0, table.current_bet - seat.current_bet)
     max_total = seat.current_bet + seat.stack   # 올인하면 도달하는 총액
@@ -102,42 +92,3 @@ def _raiser(table, seat):
             return ("bet", max(min(total, seat.stack), min(bb, seat.stack)))
         return ("raise", total)
     return raise_to
-
-
-def _decide_normal(table, seat, e, rng):
-    """보통: 기본 흐름은 같지만 덜 공격적이고, 팟 오즈를 느슨하게 본다."""
-    bb = blinds(table)[1]
-    pot = table.pot
-    to_call = max(0, table.current_bet - seat.current_bet)
-    raise_to = _raiser(table, seat)
-    r = rng.random()
-    if to_call == 0:
-        if e >= .75 and r < .6:
-            return raise_to(table.current_bet + max(bb * 2, pot * .5))
-        if e < .3 and r < .05:
-            return raise_to(table.current_bet + max(bb * 2, pot * .4))
-        return ("check", 0)
-    pot_odds = to_call / (pot + to_call)
-    if e < pot_odds - .05:
-        return ("call", 0) if to_call <= bb * 2 and r < .35 else ("fold", 0)
-    if seat.current_bet + seat.stack > table.current_bet and e >= .82 and r < .5:
-        return raise_to(table.current_bet + max(table.min_raise, pot * .6))
-    return ("call", 0)
-
-
-def _decide_easy(table, seat, e, rng):
-    """쉬움: 웬만하면 콜(체크)하고, 아주 강할 때만 가끔 올린다. 큰 베팅에만 접는다."""
-    bb = blinds(table)[1]
-    pot = table.pot
-    to_call = max(0, table.current_bet - seat.current_bet)
-    raise_to = _raiser(table, seat)
-    r = rng.random()
-    if to_call == 0:
-        if e >= .85 and r < .4:
-            return raise_to(table.current_bet + max(bb * 2, pot * .4))
-        return ("check", 0)
-    if e < .25 and to_call > max(bb * 4, pot * .5) and r < .7:
-        return ("fold", 0)
-    if e < .15 and r < .4:
-        return ("fold", 0)
-    return ("call", 0)

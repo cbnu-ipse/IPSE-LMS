@@ -1008,9 +1008,10 @@ footer { display: none !important; }
             <details class="pk-rules">
                 <summary>방 단계 안내</summary>
                 <ul>
-                    ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}, AI 난이도 ${{easy: '쉬움', normal: '보통', hard: '어려움'}[t.ai_level]}</li>`).join('')}
+                    ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}</li>`).join('')}
+                    <li>AI 난이도는 모든 방이 같습니다.</li>
                     <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
-                    <li>차례 제한시간 20초. 시간을 넘기면 방 단계 난이도의 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
+                    <li>차례 제한시간 20초. 시간을 넘기면 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
                 </ul>
             </details>`;
     }
