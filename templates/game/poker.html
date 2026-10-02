@@ -376,6 +376,19 @@
     pointer-events: none;
 }
 
+/* 핸드에 참여 중인 다른 플레이어 표시: 딜러가 나눠준 카드가 도착하면 프로필 왼쪽 위에 작은 뒷면
+   카드로 남는다 (공동 카드를 가리지 않는 크기). 카드별 도착 시각까지는 --d 지연으로 숨겨 둔다. */
+.pk-mini-hand { position: absolute; top: -8px; left: -12px; width: 26px; height: 22px; pointer-events: none; z-index: 2; }
+.pk-mini-hand i {
+    position: absolute; top: 0; width: 14px; height: 20px; border-radius: 2px;
+    background: repeating-linear-gradient(135deg, #4338ca, #4338ca 3px, #3730a3 3px, #3730a3 6px);
+    border: 1px solid rgba(255,255,255,.6); box-shadow: 0 1px 3px rgba(0,0,0,.45);
+    animation: pk-mini-in .12s var(--d, 0ms) both;
+}
+.pk-mini-hand i:first-child { left: 0; transform: rotate(-12deg); }
+.pk-mini-hand i:last-child { left: 9px; transform: rotate(9deg); }
+@keyframes pk-mini-in { from { opacity: 0; } to { opacity: 1; } }
+
 /* 앞뒤가 있는 카드: 기본은 뒷면, 앞면을 보일 땐 뒷면을 숨기고 앞면을 드러낸다.
    공동 카드는 새로 깔릴 때 한 장씩 뒤집히고(pk-flip--dealing, 카드별 지연은 --d), 다 뒤집힌 뒤엔 pk-flip--up.
    ponytail: 3D(rotateY + backface-visibility)로 돌리면 사파리/일부 모바일 브라우저가 뒷면을 안 숨겨
@@ -1177,6 +1190,20 @@ footer { display: none !important; }
         return d ? d[1] : CHIP_DENOMS[CHIP_DENOMS.length - 1][1];
     }
 
+    // 다른 플레이어가 아직 핸드에 남아 있으면(받은 카드를 들고 있으면) 작은 뒷면 카드 2장.
+    // 이번 핸드에 막 나눠준 카드는 딜 애니메이션이 그 자리에 도착하는 시각에 나타난다.
+    let miniRevealAt = {};  // "좌석:몇 번째 카드" → 도착 시각(ms)
+    function miniHandHtml(seat) {
+        if (seat.is_me || !['active', 'all_in'].includes(seat.status) || !lastState || lastState.table_status !== 'playing'
+            || (seat.hole_cards || []).length) return '';
+        const now = Date.now();
+        const card = k => {
+            const at = miniRevealAt[`${seat.seat_number}:${k}`];
+            return `<i style="--d:${at ? at - now : -1000}ms"></i>`;
+        };
+        return `<span class="pk-mini-hand">${card(0)}${card(1)}</span>`;
+    }
+
     function renderSeat(el, seat) {
         el.classList.remove('pk-seat--turn', 'pk-seat--folded', 'pk-seat--winner', 'pk-seat--arrive');
         if (seat.empty) {
@@ -1213,6 +1240,7 @@ footer { display: none !important; }
             <div class="pk-seat-box">
                 <div class="pk-seat-circle">
                     ${ring}
+                    ${miniHandHtml(seat)}
                     ${seat.is_dealer ? '<span class="pk-dealer-btn">D</span>' : ''}
                     <img class="pk-seat-avatar" src="${esc(seat.picture)}" alt="">
                 </div>
@@ -1410,12 +1438,14 @@ footer { display: none !important; }
 
     // 다시 그리기 전 위치 기록 (사라질 베팅 칩이 어디서 출발하는지 알기 위해)
     function snapshotChips() {
-        const bets = {};
+        const bets = {}, minis = {};
         seatsEl.forEach((el, n) => {
             const b = el && el.querySelector('[data-bet]');
             if (b) bets[n] = b.getBoundingClientRect();
+            const m = el && el.querySelector('.pk-mini-hand');
+            if (m) minis[n] = m.getBoundingClientRect();
         });
-        return { bets };
+        return { bets, minis };
     }
 
     function animateDiff(prev, state, before) {
@@ -1435,6 +1465,10 @@ footer { display: none !important; }
             // 스트리트/핸드 종료: 베팅 칩 → 팟
             if ((p.current_bet || 0) > 0 && (!sameHand || s.current_bet < p.current_bet) && before.bets[s.seat_number]) {
                 flyChips(before.bets[s.seat_number], potRect, p.current_bet, 4);
+            }
+            // 폴드: 들고 있던 카드를 가운데로 버린다
+            if (sameHand && ['active', 'all_in'].includes(p.status) && s.status === 'folded' && before.minis[s.seat_number]) {
+                muckCards(before.minis[s.seat_number]);
             }
             // 착석 연출
             if (p.empty && !s.empty) seatsEl[s.seat_number].classList.add('pk-seat--arrive');
@@ -1505,18 +1539,13 @@ footer { display: none !important; }
         renderCommunity(state.community_cards || [], state.hand_number);
         renderCenterMsg(state);
         renderMyCards(state);
+        const deal = isNewHand && state.round === 'preflop' && prev ? scheduleDeal(state) : null;
         state.seats.forEach(seat => renderSeat(seatsEl[seat.seat_number], seat));
         renderActionBar(state);
         renderChipPanel(state);
         renderEmojiBar(state);
 
-        if (isNewHand && state.round === 'preflop' && prev) {
-            // 딜러 다음 자리부터 한 장씩 두 바퀴 (내 카드는 공동 카드 아래로)
-            const inHand = state.seats.filter(s => !s.empty && s.status !== 'out').map(s => s.seat_number);
-            const d = state.dealer_seat == null ? -1 : state.dealer_seat;
-            inHand.sort((a, b) => ((a - d - 1 + seatCount) % seatCount) - ((b - d - 1 + seatCount) % seatCount));
-            playDealAnimation(inHand, state.my_seat_number);
-        }
+        if (deal) playDealAnimation(deal, state);
         animateDiff(prev, state, before);
         renderedState = state;
 
@@ -1575,36 +1604,79 @@ footer { display: none !important; }
 
     // 새 핸드: 테이블 중앙(딜러 더미)에서 한 장씩 두 바퀴 돌려준다. 남의 카드는 좌석에
     // 닿으면 사라지고(카드 정보 없음), 내 카드는 공동 카드 아래 내 카드 자리로 간다.
-    function playDealAnimation(seatNumbers, mySeat) {
-        if (REDUCED_MOTION || !seatNumbers.length) return;
-        const t = tableEl.getBoundingClientRect();
-        const cx = t.width / 2, cy = t.height / 2 - 20;
-        const GAP = 110;
-        myCardsEl.style.opacity = '0';
+    // ── 카드 나눠주기: 딜러 자리에서 딜러 다음 사람부터 한 장씩 두 바퀴 ──────────
+    // 다른 사람에게 간 카드는 그 사람 프로필의 작은 뒷면 카드(.pk-mini-hand)로 남고, 내 카드는 내 패 자리로.
+    const DEAL_GAP = 120, DEAL_MS = 380;
+    function scheduleDeal(state) {
+        const inHand = state.seats.filter(s => !s.empty && s.status !== 'out').map(s => s.seat_number);
+        const d = state.dealer_seat == null ? -1 : state.dealer_seat;
+        inHand.sort((a, b) => ((a - d - 1 + seatCount) % seatCount) - ((b - d - 1 + seatCount) % seatCount));
+        const start = Date.now();
+        miniRevealAt = {};
+        const plan = [];
         for (let round = 0; round < 2; round++) {
-            seatNumbers.forEach((n, i) => {
-                const target = n === mySeat ? myCardsEl.getBoundingClientRect() : seatAnchor(n, '.pk-seat-circle');
-                if (!target) return;
-                const p = center(target);
-                const card = document.createElement('div');
-                card.className = 'pk-deal-card';
-                card.style.left = cx + 'px';
-                card.style.top = cy + 'px';
-                tableEl.appendChild(card);
-                const delay = (round * seatNumbers.length + i) * GAP;
-                card.animate([
-                    { transform: 'translate(0, 0) rotate(0deg) scale(.8)', opacity: 0 },
-                    { opacity: 1, offset: .15 },
-                    { transform: `translate(${p.x - cx + (n === mySeat ? (round ? 16 : -16) : 0)}px, ${p.y - cy}px) rotate(${round ? 8 : -8}deg) scale(1.1)`, opacity: n === mySeat ? 1 : .9 },
-                ], { duration: 420, delay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'both' });
-                setTimeout(() => card.remove(), delay + 460);
+            inHand.forEach((n, i) => {
+                const delay = (round * inHand.length + i) * DEAL_GAP;
+                miniRevealAt[`${n}:${round}`] = REDUCED_MOTION ? 0 : start + delay + DEAL_MS;
+                plan.push({ n, round, delay });
             });
         }
-        const total = seatNumbers.length * 2 * GAP + 420;
+        return plan;
+    }
+
+    function playDealAnimation(plan, state) {
+        if (REDUCED_MOTION || !plan.length) return;
+        const mySeat = state.my_seat_number;
+        const from = center(seatAnchor(state.dealer_seat, '.pk-seat-circle') || tableEl.getBoundingClientRect());
+        myCardsEl.style.opacity = '0';
+        plan.forEach(({ n, round, delay }) => {
+            let target;
+            if (n === mySeat) {
+                target = center(myCardsEl.getBoundingClientRect());
+                target.x += round ? 16 : -16;
+            } else {
+                const mini = seatsEl[n] && seatsEl[n].querySelectorAll('.pk-mini-hand i')[round];
+                const r = mini ? mini.getBoundingClientRect() : seatAnchor(n, '.pk-seat-circle');
+                if (!r) return;
+                target = center(r);
+            }
+            const card = document.createElement('div');
+            card.className = 'pk-deal-card';
+            card.style.left = from.x + 'px';
+            card.style.top = from.y + 'px';
+            tableEl.appendChild(card);
+            const small = n !== mySeat;
+            card.animate([
+                { transform: 'translate(0, 0) rotate(0deg) scale(.7)', opacity: 0 },
+                { opacity: 1, offset: .12 },
+                { transform: `translate(${target.x - from.x}px, ${target.y - from.y}px) rotate(${round ? 9 : -12}deg) scale(${small ? .55 : 1.1})`, opacity: 1 },
+            ], { duration: DEAL_MS, delay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'both' });
+            setTimeout(() => card.remove(), delay + DEAL_MS + 20);
+        });
+        const total = plan.length * DEAL_GAP + DEAL_MS;
         setTimeout(() => {
             myCardsEl.style.transition = 'opacity .25s';
             myCardsEl.style.opacity = '';
         }, total);
+    }
+
+    // 폴드한 사람의 카드를 테이블 가운데(버린 패)로 날려 보낸다
+    function muckCards(fromRect) {
+        if (REDUCED_MOTION) return;
+        const from = center(fromRect);
+        const to = center(document.getElementById('pk-pot-line').getBoundingClientRect());
+        [0, 1].forEach(k => {
+            const card = document.createElement('div');
+            card.className = 'pk-deal-card';
+            card.style.left = (from.x + k * 8) + 'px';
+            card.style.top = from.y + 'px';
+            tableEl.appendChild(card);
+            card.animate([
+                { transform: `rotate(${k ? 9 : -12}deg) scale(.55)`, opacity: 1 },
+                { transform: `translate(${to.x - from.x}px, ${to.y - from.y + 24}px) rotate(${k ? 160 : 120}deg) scale(.5)`, opacity: 0 },
+            ], { duration: 450, delay: k * 60, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' });
+            setTimeout(() => card.remove(), 560);
+        });
     }
 
     emojiBarEl.addEventListener('click', (e) => {
