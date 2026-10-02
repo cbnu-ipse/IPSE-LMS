@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from . import consumers as game_consumers, poker_engine, views as game_views
-from .models import PokerSeat, PokerTable, PokerChipWallet, HighLowSession, HighLowPlayLog
+from .models import HouseBank, PokerSeat, PokerTable, PokerChipWallet, HighLowSession, HighLowPlayLog
 from .poker_engine import evaluate_best_of_7, _build_side_pots
 
 
@@ -208,6 +208,7 @@ class HighLowGameTestCase(TestCase):
         self.assertGreater(session.potential_payout, game_views.HIGHLOW_MIN_BET)
 
     def test_wrong_guess_busts_and_forfeits_bet(self):
+        house_before = HouseBank.objects.get_or_create(pk=1)[0].chips
         with patch.object(game_views, "_highlow_draw_rank", return_value=8):
             self._post("start", {"bet": 10})
         with patch.object(game_views, "_highlow_draw_rank", return_value=3):
@@ -217,6 +218,7 @@ class HighLowGameTestCase(TestCase):
         self.assertFalse(HighLowSession.objects.filter(user=self.user).exists())
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.chips, 990)  # 베팅액은 시작 시점에 이미 차감, 환불 없음
+        self.assertEqual(HouseBank.objects.get(pk=1).chips, house_before + 10)  # 잃은 베팅액은 하우스로
         log = HighLowPlayLog.objects.get(user=self.user)
         self.assertEqual(log.result, "busted")
         self.assertEqual(log.payout, 0)
@@ -237,6 +239,15 @@ class HighLowGameTestCase(TestCase):
         self.assertFalse(HighLowSession.objects.filter(user=self.user).exists())
         log = HighLowPlayLog.objects.get(user=self.user, result="cashed_out")
         self.assertEqual(log.streak, 1)
+
+    def test_cashout_is_paid_from_house_and_can_go_negative(self):
+        HouseBank.objects.update_or_create(pk=1, defaults={"chips": 0})
+        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+            self._post("start", {"bet": 10})
+        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+            self._post("guess", {"guess": "higher"})
+        payout = self._post("cashout").json()["payout"]
+        self.assertEqual(HouseBank.objects.get(pk=1).chips, -payout)  # 잔액이 없어도 지급하고 음수로
 
     def test_cashout_without_any_correct_guess_is_rejected(self):
         with patch.object(game_views, "_highlow_draw_rank", return_value=8):

@@ -9,7 +9,7 @@ from django.db import transaction
 from .models import (
     SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
-    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable,
+    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank,
 )
 from . import gostop_engine, poker_engine
 from accounts.models import User
@@ -721,6 +721,10 @@ def highlow_guess(request):
             HighLowPlayLog.objects.create(
                 user=user, bet=session.bet, streak=session.streak, payout=0, result="busted",
             )
+            # 잃은 베팅액은 하우스 계좌로 들어간다
+            house = HouseBank.locked()
+            house.chips += session.bet
+            house.save(update_fields=["chips"])
             prev_rank = session.current_rank
             session.delete()
             return JsonResponse({
@@ -750,6 +754,10 @@ def highlow_cashout(request):
         wallet, _ = PokerChipWallet.objects.select_for_update().get_or_create(user=user)
         wallet.chips += session.potential_payout
         wallet.save(update_fields=["chips"])
+        # 지급액은 하우스 계좌에서 나간다 (잔액이 모자라면 음수로 내려간다)
+        house = HouseBank.locked()
+        house.chips -= session.potential_payout
+        house.save(update_fields=["chips"])
         HighLowPlayLog.objects.create(
             user=user, bet=session.bet, streak=session.streak, payout=session.potential_payout, result="cashed_out",
         )
