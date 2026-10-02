@@ -87,15 +87,16 @@
 </head>
 
 <body class="{% if site_section == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
-    <!-- 카카오톡 인앱 브라우저: 처음 한 번만 외부 브라우저로 열지 물어본다 -->
+    <!-- 카카오톡 인앱 브라우저: 카톡에서 링크를 열 때마다 외부 브라우저로 열지 물어본다
+         (같은 인앱 창 안에서 페이지를 옮길 때는 다시 묻지 않음) -->
     <script>
         (function () {
             if (navigator.userAgent.toLowerCase().indexOf('kakaotalk') === -1) return;
             const KEY = 'ipse-kakao-external-asked';
             try {
-                if (localStorage.getItem(KEY)) return;
-                localStorage.setItem(KEY, '1');
-            } catch (e) { /* 저장소를 못 쓰면 매번 묻지 않도록 그냥 넘어간다 */ return; }
+                if (sessionStorage.getItem(KEY)) return;
+                sessionStorage.setItem(KEY, '1');
+            } catch (e) { /* 저장소를 못 쓰면 그냥 묻는다 */ }
             if (confirm('외부 브라우저로 여시겠습니까?\n(카카오톡 안에서는 일부 기능이 제한될 수 있어요)')) {
                 location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
             }
