@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}졸업생 전환 신청 | IPSE LMS{% endblock title %}
+
+{% block content %}
+<section class="max-w-4xl mx-auto px-6 py-10">
+    <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-graduation-cap text-indigo-600"></i> 졸업생 전환 신청
+        </h2>
+        <p class="text-sm text-slate-400 mt-1">승인하면 그 회원 이름 옆에 졸업생 마크가 붙습니다. 사이트 이용은 그대로입니다.</p>
+
+        {% if messages %}
+        <div class="mt-4 space-y-1">{% for m in messages %}<p class="text-sm font-semibold text-emerald-600">{{ m }}</p>{% endfor %}</div>
+        {% endif %}
+
+        <h3 class="mt-8 text-sm font-bold text-slate-500">대기 중 ({{ pending|length }})</h3>
+        <div class="mt-3 divide-y divide-slate-100 border border-slate-100 rounded-xl">
+            {% for req in pending %}
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
+                <img src="{{ req.user.get_picture }}" class="w-10 h-10 rounded-full object-cover border border-slate-200" alt="">
+                <div class="flex-1 min-w-0">
+                    <p class="font-bold text-slate-800 text-sm">{{ req.user.get_full_name }} <span class="text-slate-400 font-medium">({{ req.user.username }}{% if req.user.display_chat_name != req.user.username %} · {{ req.user.display_chat_name }}{% endif %})</span></p>
+                    <p class="text-xs text-slate-400 mt-0.5">{{ req.created_at|date:"Y-m-d H:i" }} 신청{% if req.message %} · “{{ req.message }}”{% endif %}</p>
+                </div>
+                <form method="post" action="{% url 'graduation_review' req.id %}" class="flex gap-2 shrink-0">
+                    {% csrf_token %}
+                    <button name="action" value="reject" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">반려</button>
+                    <button name="action" value="approve" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700">승인</button>
+                </form>
+            </div>
+            {% empty %}
+            <p class="p-6 text-center text-sm text-slate-400">대기 중인 신청이 없습니다.</p>
+            {% endfor %}
+        </div>
+
+        <h3 class="mt-8 text-sm font-bold text-slate-500">최근 처리</h3>
+        <div class="mt-3 divide-y divide-slate-100 border border-slate-100 rounded-xl text-sm">
+            {% for req in processed %}
+            <div class="flex items-center gap-3 p-3">
+                <span class="flex-1 text-slate-700">{{ req.user.get_full_name }} <span class="text-slate-400">({{ req.user.username }})</span></span>
+                <span class="text-xs font-bold {% if req.status == 'approved' %}text-indigo-600{% else %}text-slate-400{% endif %}">{{ req.get_status_display }}</span>
+                <span class="text-xs text-slate-400">{{ req.reviewed_at|date:"Y-m-d" }}{% if req.reviewed_by %} · {{ req.reviewed_by.display_chat_name }}{% endif %}</span>
+            </div>
+            {% empty %}
+            <p class="p-4 text-center text-sm text-slate-400">처리 내역이 없습니다.</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock content %}

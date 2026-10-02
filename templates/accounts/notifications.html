@@ -73,6 +73,8 @@
                             <i class="fa-solid fa-user-check text-emerald-500 text-sm"></i>
                         {% elif n.notification_type == 'game_invite' %}
                             <i class="fa-solid fa-gamepad text-violet-500 text-sm"></i>
+                        {% elif n.notification_type == 'graduation_request' or n.notification_type == 'graduation_result' %}
+                            <i class="fa-solid fa-graduation-cap text-indigo-500 text-sm"></i>
                         {% else %}
                             <i class="fa-solid fa-bell text-slate-400 text-sm"></i>
                         {% endif %}

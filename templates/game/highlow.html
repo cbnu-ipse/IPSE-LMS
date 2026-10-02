@@ -109,12 +109,12 @@
                         {% for msg in chat_messages %}
                         <div class="flex gap-2 items-start">
                             {% if msg.user.picture and msg.user.picture.name != "default.png" %}
-                            <img src="{{ msg.user.picture.url }}" alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            <img src="{{ msg.user.picture.url }}"{% include "game/_chat_card_attrs.html" with u=msg.user %} alt="" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
                             {% else %}
-                            <span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            <span{% include "game/_chat_card_attrs.html" with u=msg.user %} class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
                             {% endif %}
                             <div>
-                                <span class="font-semibold text-slate-700">{{ msg.user.display_chat_name }}</span>
+                                <span class="font-semibold text-slate-700"{% include "game/_chat_card_attrs.html" with u=msg.user %}>{{ msg.user.display_chat_name }}</span>{{ msg.user.graduate_badge_html }}
                                 <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
                                 <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
                             </div>
@@ -912,6 +912,7 @@ function toggleHlChat() {
 </script>
 
 <script src="{% static 'js/chat-unread.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/chat-profile.js' %}?v={{ static_version }}"></script>
 <script src="{% static 'js/friends.js' %}?v={{ static_version }}"></script>
 <script>
 // ─── 로비 채팅 WebSocket ─────────────────────────────────────────────────────
@@ -980,7 +981,7 @@ function toggleHlChat() {
             const data = JSON.parse(e.data);
             if (data.type === 'presence') renderOnlineUsers(data.users);
             else if (data.error === 'spam_blocked') append('SYSTEM', data.message, '', true, '');
-            else { append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || ''); ChatUnread.bump(data.username); }
+            else { append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || ''); ChatProfile.tag(box.lastElementChild, data); ChatUnread.bump(data.username); }
         };
         socket.onclose   = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
         socket.onerror   = () => socket.close();

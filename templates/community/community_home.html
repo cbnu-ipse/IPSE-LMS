@@ -176,7 +176,7 @@
                         {% elif post.is_anonymous and not request.user.is_staff %}
                             <span class="text-slate-400">익명</span>
                         {% else %}
-                            {{ post.display_author }}
+                            {{ post.display_author }}{% if not post.is_anonymous %}{{ post.author.graduate_badge_html }}{% endif %}
                             {% if post.is_anonymous %}<span class="text-[10px] text-amber-600 font-bold">[익명]</span>{% endif %}
                         {% endif %}
                     </td>

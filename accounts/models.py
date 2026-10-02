@@ -30,6 +30,13 @@ class CustomUserManager(UserManager):
 
 GENDERS = ((_("M"), _("Male")), (_("F"), _("Female")))
 
+# 졸업생 마크 (Tailwind 빌드에 없는 색도 쓰도록 인라인 스타일)
+GRADUATE_BADGE_HTML = (
+    '<span title="졸업생" style="display:inline-flex;align-items:center;gap:2px;margin:0 2px;padding:0 5px;'
+    'border-radius:999px;background:#eef2ff;color:#4338ca;font-size:10px;font-weight:800;line-height:16px;'
+    'vertical-align:middle;white-space:nowrap"><i class="fa-solid fa-graduation-cap"></i>졸업</span>'
+)
+
 class User(AbstractUser):
     
     is_student = models.BooleanField(default=False)
@@ -50,6 +57,9 @@ class User(AbstractUser):
     leaves = models.PositiveIntegerField(default=0, verbose_name="낙엽")
     # 놀이터 게임의 AI 플레이어 계정 (is_active=False로 만들어 로그인·랭킹·목록에서 빠진다)
     is_bot = models.BooleanField(default=False, verbose_name="AI 봇")
+    # 졸업생: 본인 신청 → 운영진 승인. 기능 제한 없이 이름 옆에 졸업생 마크만 붙는다.
+    is_graduate = models.BooleanField(default=False, verbose_name="졸업생")
+    graduated_at = models.DateTimeField(null=True, blank=True, verbose_name="졸업생 전환일")
     class Meta:
         ordering = ("-date_joined",)
 
@@ -183,10 +193,18 @@ class User(AbstractUser):
         return ""
 
     @property
+    def graduate_badge_html(self):
+        """졸업생 마크 (게시글·댓글·프로필 등 이름 옆)."""
+        from django.utils.safestring import mark_safe
+        if not self.is_graduate:
+            return ""
+        return mark_safe(GRADUATE_BADGE_HTML)
+
+    @property
     def badge_html(self):
         """회원 직책 및 랭킹 메달을 아이콘 형태로 반환합니다."""
         from django.utils.safestring import mark_safe
-        badges = []
+        badges = [GRADUATE_BADGE_HTML] if self.is_graduate else []
         if self.is_president:
             badges.append('<i class="fa-solid fa-crown text-yellow-500" title="회장" style="margin-left: 2px; margin-right: 2px;"></i>')
         elif self.is_vice_president:
@@ -367,6 +385,8 @@ class Notification(models.Model):
         ('friend_request', '친구 요청'),
         ('friend_accept', '친구 요청 수락'),
         ('game_invite', '게임 초대'),
+        ('graduation_request', '졸업생 전환 신청'),
+        ('graduation_result', '졸업생 전환 결과'),
     ]
 
     recipient = models.ForeignKey(
@@ -445,6 +465,31 @@ class Friendship(models.Model):
         return cls.objects.filter(
             models.Q(from_user=a, to_user=b) | models.Q(from_user=b, to_user=a)
         ).first()
+
+
+class GraduationRequest(models.Model):
+    """졸업생 전환 신청. 본인이 신청하고 운영진(관리자·회장단·임원진)이 승인/거절한다."""
+    STATUS_CHOICES = [("pending", "대기"), ("approved", "승인"), ("rejected", "거절")]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="graduation_requests", verbose_name="신청자"
+    )
+    message = models.CharField(max_length=200, blank=True, verbose_name="신청 메모")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending", verbose_name="상태")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="신청일시")
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="graduation_reviews", verbose_name="처리자"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="처리일시")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "졸업생 전환 신청"
+        verbose_name_plural = "졸업생 전환 신청 목록"
+
+    def __str__(self):
+        return f"{self.user} - {self.get_status_display()}"
 
 
 class PushSubscription(models.Model):

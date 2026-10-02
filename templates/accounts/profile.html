@@ -347,6 +347,60 @@
                 <p class="text-sm text-slate-400 py-6 text-center">발생한 낙엽 변동 내역이 없습니다.</p>
                 {% endif %}
             </div>
+
+            <!-- 계정 관리: 졸업생 전환 / 회원탈퇴 -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm" id="account-manage">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-user-gear text-slate-500"></i>
+                    계정 관리
+                </h3>
+                {% if messages %}
+                <div class="mb-4 space-y-1">{% for m in messages %}<p class="text-sm font-semibold text-indigo-600">{{ m }}</p>{% endfor %}</div>
+                {% endif %}
+                <div class="space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <p class="font-bold text-slate-700 text-sm flex items-center gap-1">졸업생 전환 {{ user.graduate_badge_html }}</p>
+                            {% if user.is_graduate %}
+                            <p class="text-xs text-slate-400 mt-1">{{ user.graduated_at|date:"Y-m-d" }}에 졸업생으로 전환되었습니다. 이름 옆에 졸업생 마크가 표시됩니다.</p>
+                            {% elif graduation_pending %}
+                            <p class="text-xs text-amber-600 mt-1">{{ graduation_pending.created_at|date:"Y-m-d" }}에 신청했어요. 운영진 승인을 기다리는 중입니다.</p>
+                            {% else %}
+                            <p class="text-xs text-slate-400 mt-1">졸업했다면 신청해주세요. 운영진이 승인하면 게시글·댓글·프로필의 이름 옆에 졸업생 마크가 붙습니다. 사이트 이용은 그대로입니다.</p>
+                            {% endif %}
+                        </div>
+                        {% if not user.is_graduate %}
+                        {% if graduation_pending %}
+                        <form method="post" action="{% url 'graduation_cancel' %}" class="shrink-0">
+                            {% csrf_token %}
+                            <button type="submit" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">신청 취소</button>
+                        </form>
+                        {% else %}
+                        <form method="post" action="{% url 'graduation_apply' %}" class="flex gap-2 shrink-0">
+                            {% csrf_token %}
+                            <input name="message" maxlength="200" placeholder="예: 2026년 2월 졸업" class="w-40 px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:border-indigo-400">
+                            <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700">졸업생 전환 신청</button>
+                        </form>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    {% if can_review_graduation %}
+                    <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                        <p class="text-sm font-bold text-slate-700">졸업생 전환 신청 관리 <span class="text-xs text-slate-400 font-medium">(운영진)</span></p>
+                        <a href="{% url 'graduation_requests' %}" class="px-4 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-xs font-bold text-indigo-700 hover:bg-indigo-100">
+                            대기 {{ graduation_pending_count }}건 보기
+                        </a>
+                    </div>
+                    {% endif %}
+                    <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                        <div>
+                            <p class="font-bold text-rose-600 text-sm">회원탈퇴</p>
+                            <p class="text-xs text-slate-400 mt-1">계정과 게시글·댓글·낙엽·칩 등 모든 기록이 영구히 삭제됩니다.</p>
+                        </div>
+                        <a href="{% url 'withdraw' %}" class="shrink-0 px-4 py-2 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 hover:bg-rose-50">탈퇴하기</a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </section>
