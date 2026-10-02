@@ -156,6 +156,7 @@ TODO.md
 DONE.md
 REQ.md
 CLAUDE.md
+SERVER_POWER.md
 
 # Docker environment files (secrets)
 .env.docker
