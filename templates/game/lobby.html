@@ -600,6 +600,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/chat-unread.js' %}?v={{ static_version }}"></script>
 <script>
 (function () {
     const messagesBox = document.getElementById('chat-messages');
@@ -609,6 +610,7 @@
 
     // ─── 프로토콜 자동 분기 및 WebSocket 설정 ───
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    ChatUnread.setup({ panel: document.getElementById('lobby-chat-container'), fab: document.getElementById('toggle-chat-fab'), chatPane: document.getElementById('lobby-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
     const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/?presence=1`;
 
     let socket = null;
@@ -689,6 +691,7 @@
             } else {
                 const displayName = data.display_name || data.username;
                 appendMessage(displayName, data.message, data.created_at, false, data.picture_url || '');
+                ChatUnread.bump(data.username);
             }
         };
 
