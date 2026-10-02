@@ -92,5 +92,10 @@ class Migration(migrations.Migration):
                 default=0, verbose_name="최소 레이즈 단위"
             ),
         ),
+        migrations.AddField(
+            model_name="pokertable",
+            name="capacity",
+            field=models.PositiveSmallIntegerField(default=5, verbose_name="좌석 수"),
+        ),
         migrations.RunPython(close_single_poker_table, migrations.RunPython.noop),
     ]

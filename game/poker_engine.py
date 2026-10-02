@@ -1,5 +1,5 @@
 """
-온라인 포커 (텍사스 홀덤) — 방 여러 개, 방마다 8석.
+온라인 포커 (텍사스 홀덤) — 방 여러 개, 방장이 3/4/5석 중 고른다.
 
 방을 만드는 사람이 단계(초보/중수/고수)를 고른다. 단계마다 들고 앉는 칩 범위와 블라인드가
 정해진다 (models.POKER_TIERS). AI 난이도는 다른 게임과 달리 모든 방이 같다 (poker_ai 참고). 입장하면 첫 빈 자리에 앉고,
@@ -15,7 +15,7 @@
 
 공개 함수(뷰/컨슈머에서 호출):
     get_state_for(user)         — 방 목록 + 접속자 시점의 내 방 상태 스냅샷
-    create_table(user, tier)    — 방 만들기 (만든 사람이 0번 자리에 앉는다)
+    create_table(user, tier, capacity) — 방 만들기 (만든 사람이 0번 자리에 앉는다)
     join_table(user, table_id)  — 입장 (첫 빈 자리. 꽉 찼으면 AI가 자리를 비켜준다)
     add_bot(user)               — 내 방 빈자리에 AI 한 명 추가 (하우스 칩)
     stand_up(user)              — 퇴장 (남은 칩 → 개인 칩 지갑으로 보관)
@@ -38,7 +38,7 @@ from django.utils import timezone
 from accounts.models import User
 from .models import (
     HouseBank, PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
-    POKER_SEATS, POKER_CHIPS_PER_LEAF, POKER_TIERS, GAME_TIERS, TIER_LABELS,
+    POKER_CAPACITIES, POKER_CHIPS_PER_LEAF, POKER_TIERS, GAME_TIERS, TIER_LABELS,
 )
 
 POKER_TURN_TIMEOUT = 20          # 턴당 제한시간(초)
@@ -50,6 +50,8 @@ POKER_FIRST_HAND_DELAY = 5      # 두 명 이상 모여 첫 핸드를 시작하�
 POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하면 핸드 끝나고 퇴장 (그동안은 AI가 대신 둔다)
 
 POKER_BOT_THINK = 1            # AI 차례는 이 시간 뒤 워치독이 둔다 (+ 승률 계산 시간)
+
+SEAT_CYCLE = max(POKER_CAPACITIES)  # 좌석 번호 순환 범위 (방 최대 인원)
 
 POKER_EMOJI_CHOICES = {"👍", "😂", "😮", "😡", "🔥", "❤️"}  # 이모티콘 반응 화이트리스트
 
@@ -127,8 +129,8 @@ def hand_desc(hole_cards, community_cards):
 # ── 좌석 순회 헬퍼 ────────────────────────────────────────────────────────────
 
 def _next_seat(seats_by_number, from_seat, statuses):
-    for offset in range(1, POKER_SEATS + 1):
-        n = (from_seat + offset) % POKER_SEATS
+    for offset in range(1, SEAT_CYCLE + 1):
+        n = (from_seat + offset) % SEAT_CYCLE
         seat = seats_by_number.get(n)
         if seat and seat.status in statuses:
             return seat
@@ -143,13 +145,13 @@ def _cycle_next(numbers, current):
 def _rotate_dealer(eligible_numbers, prev_dealer):
     if prev_dealer is None or prev_dealer not in eligible_numbers:
         base = prev_dealer if prev_dealer is not None else -1
-        return min(eligible_numbers, key=lambda n: (n - base - 1) % POKER_SEATS)
+        return min(eligible_numbers, key=lambda n: (n - base - 1) % SEAT_CYCLE)
     return _cycle_next(eligible_numbers, prev_dealer)
 
 
 def _order_from_dealer(seat_list, dealer_seat):
     d = dealer_seat if dealer_seat is not None else 0
-    return sorted(seat_list, key=lambda s: (s.seat_number - d - 1) % POKER_SEATS)
+    return sorted(seat_list, key=lambda s: (s.seat_number - d - 1) % SEAT_CYCLE)
 
 
 # ── 사이드팟 ─────────────────────────────────────────────────────────────────
@@ -296,9 +298,13 @@ def _seat_user(user, table, seats_by_number, seat):
     return None
 
 
-def create_table(user, tier):
-    if tier not in GAME_TIERS:
-        return False, "방 단계를 다시 골라주세요."
+def create_table(user, tier, capacity=5):
+    try:
+        capacity = int(capacity)
+    except (TypeError, ValueError):
+        capacity = 0
+    if tier not in GAME_TIERS or capacity not in POKER_CAPACITIES:
+        return False, "방 단계와 인원을 다시 골라주세요."
     with transaction.atomic():
         User.objects.select_for_update().get(id=user.id)
         if PokerSeat.objects.filter(user=user).exists():
@@ -310,7 +316,7 @@ def create_table(user, tier):
             err = _buy_in_error(POKER_TIERS[tier], wallet)
         if err:
             return False, err
-        table = PokerTable.create_with_seats(tier)
+        table = PokerTable.create_with_seats(tier, capacity)
         table, seats_by_number = _lock_table(table.id)
         err = _seat_user(user, table, seats_by_number, seats_by_number[0])
         if err:
@@ -913,7 +919,7 @@ def _tables_view():
             {"display_name": s.user.display_name, "picture": s.user.get_picture(), "is_bot": s.user.is_bot}
             for s in sorted(t.seats.all(), key=lambda s: s.seat_number) if s.user_id
         ]
-        out.append(dict(_tier_view(t.tier), id=t.id, status=t.status, players=players, capacity=POKER_SEATS))
+        out.append(dict(_tier_view(t.tier), id=t.id, status=t.status, players=players, capacity=t.capacity))
     return out
 
 
@@ -931,6 +937,7 @@ def get_state_for(user):
         "type": "state",
         "tables": _tables_view(),
         "tiers": [_tier_view(t) for t in GAME_TIERS],
+        "capacities": list(POKER_CAPACITIES),
         "chips_per_leaf": POKER_CHIPS_PER_LEAF,
         "my_leaves": my_leaves,
         "my_wallet_chips": wallet_chips,
@@ -991,7 +998,7 @@ def get_state_for(user):
         if table.current_bet > 0:
             min_raise_to = table.current_bet + table.min_raise
 
-    return dict(common, table=dict(_tier_view(table.tier), id=table.id), **{
+    return dict(common, table=dict(_tier_view(table.tier), id=table.id, capacity=table.capacity), **{
         "table_status": table.status,
         "round": table.round,
         "hand_number": table.hand_number,

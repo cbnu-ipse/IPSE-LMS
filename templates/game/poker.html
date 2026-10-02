@@ -940,8 +940,18 @@ footer { display: none !important; }
 <script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
 <script>
 (function () {
-    const SEAT_COUNT = 8;
-    const seatsEl = Array.from({length: SEAT_COUNT}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
+    // 테이블 둘레의 자리 칸 8개(data-seat = 칸 위치). 방 인원(3/4/5석)에 맞는 칸만 골라
+    // 좌석 번호 순서대로 고르게 배치한다 — seatsEl[좌석 번호]가 그 좌석의 칸.
+    const slotEls = Array.from({length: 8}, (_, i) => document.querySelector(`.pk-seat[data-seat="${i}"]`));
+    const SEAT_POSITIONS = { 3: [0, 3, 5], 4: [0, 2, 4, 6], 5: [0, 2, 3, 5, 6] };
+    let seatsEl = slotEls;
+    let seatCount = 8;
+    function layoutSeats(capacity) {
+        const pos = SEAT_POSITIONS[capacity] || slotEls.map((_, i) => i);
+        seatCount = pos.length;
+        seatsEl = pos.map(p => slotEls[p]);
+        slotEls.forEach((el, i) => el.classList.toggle('hidden', !pos.includes(i)));
+    }
     const communityEl = document.getElementById('pk-community-cards');
     const potEl = document.getElementById('pk-pot');
     const handNoEl = document.getElementById('pk-hand-no');
@@ -967,6 +977,7 @@ footer { display: none !important; }
     const pkTableEl = document.getElementById('pk-table');
     const roomLabelEl = document.getElementById('pk-room-label');
     let createTier = 'beginner';
+    let createCapacity = 5;
     const fmtN = n => n == null ? '무제한' : Number(n).toLocaleString();
 
     function tierRange(t) {
@@ -977,7 +988,9 @@ footer { display: none !important; }
     function renderLobby(state) {
         const wallet = state.my_wallet_chips || 0;
         const cur = state.tiers.find(t => t.tier === createTier) || state.tiers[0];
-        const seg = `<span class="pk-seg">${state.tiers.map(t =>
+        const seg = `<span class="pk-seg">${state.capacities.map(c =>
+            `<button type="button" class="${c === createCapacity ? 'on' : ''}" data-capacity="${c}">${c}인</button>`).join('')}</span>
+            <span class="pk-seg">${state.tiers.map(t =>
             `<button type="button" class="${t.tier === createTier ? 'on' : ''}" data-tier="${t.tier}">${t.label}</button>`).join('')}</span>`;
         const rooms = state.tables.map(t => {
             const players = t.players.map(p => `<span class="pk-room-player"><img src="${esc(p.picture)}" alt="">${esc(p.display_name)}${p.is_bot ? '<span class="pk-ai-badge">AI</span>' : ''}</span>`).join('');
@@ -1009,6 +1022,7 @@ footer { display: none !important; }
                 <summary>방 단계 안내</summary>
                 <ul>
                     ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}</li>`).join('')}
+                    <li>방을 만들 때 3인 / 4인 / 5인 중 좌석 수를 고를 수 있습니다.</li>
                     <li>AI 난이도는 모든 방이 같습니다.</li>
                     <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>차례 제한시간 20초. 시간을 넘기면 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
@@ -1466,7 +1480,8 @@ footer { display: none !important; }
             return;
         }
         const t = state.table;
-        roomLabelEl.textContent = `${t.id}번 방 · ${t.label} · ${t.small_blind}/${t.big_blind}`;
+        roomLabelEl.textContent = `${t.id}번 방 · ${t.label} · ${t.capacity}인 · ${t.small_blind}/${t.big_blind}`;
+        layoutSeats(t.capacity);
         const prev = renderedState;
         const before = snapshotChips();
         handNoEl.textContent = state.hand_number || '-';
@@ -1493,7 +1508,7 @@ footer { display: none !important; }
             // 딜러 다음 자리부터 한 장씩 두 바퀴 (내 카드는 공동 카드 아래로)
             const inHand = state.seats.filter(s => !s.empty && s.status !== 'out').map(s => s.seat_number);
             const d = state.dealer_seat == null ? -1 : state.dealer_seat;
-            inHand.sort((a, b) => ((a - d - 1 + 8) % 8) - ((b - d - 1 + 8) % 8));
+            inHand.sort((a, b) => ((a - d - 1 + seatCount) % seatCount) - ((b - d - 1 + seatCount) % seatCount));
             playDealAnimation(inHand, state.my_seat_number);
         }
         animateDiff(prev, state, before);
@@ -1597,9 +1612,11 @@ footer { display: none !important; }
     document.getElementById('pk-table-wrap').addEventListener('click', (e) => {
         const tierBtn = e.target.closest('[data-tier]');
         if (tierBtn) { createTier = tierBtn.dataset.tier; if (lastState) render(lastState); return; }
+        const capBtn = e.target.closest('[data-capacity]');
+        if (capBtn) { createCapacity = Number(capBtn.dataset.capacity); if (lastState) render(lastState); return; }
         if (e.target.closest('[data-create]')) {
             if (window.GameSound) window.GameSound.play('click');
-            send({ type: 'create', tier: createTier });
+            send({ type: 'create', tier: createTier, capacity: createCapacity });
             return;
         }
         const joinBtn = e.target.closest('[data-join]');

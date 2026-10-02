@@ -53,7 +53,7 @@ class PokerBotSeatingTestCase(TestCase):
         poker_engine.add_bot(self.a)
         seats = self.seats()
         self.assertEqual([(s.seat_number, s.user.is_bot, s.stack) for s in seats],
-                         [(0, False, BUY_IN * 3), (6, True, BUY_IN * 3), (7, True, BUY_IN * 3)])
+                         [(0, False, BUY_IN * 3), (3, True, BUY_IN * 3), (4, True, BUY_IN * 3)])
         self.assertEqual(self.total(), start)
         self.assertIsNotNone(PokerTable.objects.get(pk=table_id).next_hand_at)
 

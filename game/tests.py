@@ -284,6 +284,14 @@ class PokerRoomTestCase(TestCase):
         PokerChipWallet.objects.create(user=user, chips=chips)
         return user
 
+    def test_capacity_choice(self):
+        a = self._wallet_user("cap")
+        self.assertFalse(poker_engine.create_table(a, "intermediate", 8)[0])  # 3/4/5만
+        ok, table_id = poker_engine.create_table(a, "intermediate", 3)
+        self.assertTrue(ok)
+        self.assertEqual(PokerTable.objects.get(pk=table_id).seats.count(), 3)
+        self.assertEqual(poker_engine.get_state_for(a)["table"]["capacity"], 3)
+
     def test_create_join_and_last_human_leaving_closes_room(self):
         a, b = self._wallet_user("p1"), self._wallet_user("p2")
         ok, table_id = poker_engine.create_table(a, "intermediate")
@@ -323,16 +331,16 @@ class PokerRoomTestCase(TestCase):
         from .models import HouseBank
         HouseBank.objects.create(pk=1, chips=10 ** 6)
         a = self._wallet_user("host", 20000)
-        ok, table_id = poker_engine.create_table(a, "intermediate")
-        for _ in range(7):
+        ok, table_id = poker_engine.create_table(a, "intermediate", 4)
+        for _ in range(3):
             self.assertTrue(poker_engine.add_bot(a)[0])
-        self.assertFalse(poker_engine.add_bot(a)[0])  # 8석 가득
+        self.assertFalse(poker_engine.add_bot(a)[0])  # 4석 가득
         bot_stacks = list(PokerSeat.objects.filter(user__is_bot=True).values_list("stack", flat=True))
-        self.assertEqual(bot_stacks, [20000] * 7)  # 방에서 가장 큰 사람 스택만큼
-        self.assertEqual(HouseBank.objects.get(pk=1).chips, 10 ** 6 - 20000 * 7)
+        self.assertEqual(bot_stacks, [20000] * 3)  # 방에서 가장 큰 사람 스택만큼
+        self.assertEqual(HouseBank.objects.get(pk=1).chips, 10 ** 6 - 20000 * 3)
         b = self._wallet_user("guest")
         self.assertTrue(poker_engine.join_table(b, table_id)[0])  # 대기 중이면 AI가 바로 비켜줌
-        self.assertEqual(PokerSeat.objects.filter(user__is_bot=True).count(), 6)
+        self.assertEqual(PokerSeat.objects.filter(user__is_bot=True).count(), 2)
         poker_engine.stand_up(b)
         poker_engine.stand_up(a)
         self.assertFalse(PokerSeat.objects.filter(user__isnull=False).exists())
@@ -458,15 +466,16 @@ class PokerWatchdogResilienceTestCase(TransactionTestCase):
 
 
 class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
-    def test_new_table_has_eight_seats(self):
-        table = PokerTable.create_with_seats("beginner")
-        self.assertEqual(list(table.seats.values_list("seat_number", flat=True)), list(range(8)))
+    def test_new_table_has_chosen_seat_count(self):
+        for cap in (3, 4, 5):
+            table = PokerTable.create_with_seats("beginner", cap)
+            self.assertEqual(list(table.seats.values_list("seat_number", flat=True)), list(range(cap)))
 
     def _two_players_in_hand(self, other_status="active"):
         table = PokerTable.create_with_seats("intermediate")
         me = User.objects.create_user(username="me", password="x")
         other = User.objects.create_user(username="other", password="x")
-        for n, u, cards, status in ((0, me, ["AS", "AH"], "active"), (7, other, ["2H", "7D"], other_status)):
+        for n, u, cards, status in ((0, me, ["AS", "AH"], "active"), (4, other, ["2H", "7D"], other_status)):
             PokerSeat.objects.filter(table=table, seat_number=n).update(
                 user=u, status=status, stack=100, hole_cards=cards, contributed_total=10)
         table.status, table.round, table.hand_number = "playing", "river", 1
@@ -487,7 +496,7 @@ class PokerEightSeatsAndHiddenCardsTestCase(TestCase):
     def test_other_players_cards_are_not_sent_during_hand(self):
         table, me, other = self._two_players_in_hand()
         seen, _ = self._cards_seen_by(me)
-        self.assertEqual(seen, {0: ["AS", "AH"], 7: []})
+        self.assertEqual(seen, {0: ["AS", "AH"], 4: []})
 
     def test_showdown_reveals_remaining_hands(self):
         table, me, other = self._two_players_in_hand()

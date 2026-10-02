@@ -316,7 +316,7 @@ class PokerConsumer(AsyncWebsocketConsumer):
             self.page_left = True
             return
         if msg_type == "create":
-            handler = lambda: poker_engine.create_table(user, data.get("tier"))
+            handler = lambda: poker_engine.create_table(user, data.get("tier"), data.get("capacity", 5))
         elif msg_type == "join":
             handler = lambda: poker_engine.join_table(user, data.get("table_id"))
         elif msg_type == "add_bot":

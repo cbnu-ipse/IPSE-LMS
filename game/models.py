@@ -366,7 +366,7 @@ TIER_CHOICES = [("beginner", "초보"), ("intermediate", "중수"), ("expert", "
 TIER_LABELS = dict(TIER_CHOICES)
 TIER_AI_LEVEL = {"beginner": "easy", "intermediate": "normal", "expert": "hard"}
 
-POKER_SEATS = 8
+POKER_CAPACITIES = (3, 4, 5)  # 방장이 고르는 좌석 수
 POKER_CHIPS_PER_LEAF = 1000  # 1낙엽 = 1000칩 환전 비율
 # 단계별로 들고 앉는 칩 범위와 블라인드 (블라인드 = 최소 칩의 1/50, 1/100).
 # 보관 칩 전부를 들고 앉되 그 단계 최대치까지만 (고수는 무제한).
@@ -398,6 +398,7 @@ class PokerTable(models.Model):
     hand_number = models.PositiveIntegerField(default=0, verbose_name="핸드 번호")
     last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 핸드 결과 요약")
     tier = models.CharField(max_length=12, choices=TIER_CHOICES, default="intermediate", verbose_name="단계")
+    capacity = models.PositiveSmallIntegerField(default=5, verbose_name="좌석 수")
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -414,9 +415,9 @@ class PokerTable(models.Model):
         return POKER_TIERS.get(self.tier, POKER_TIERS["intermediate"])
 
     @classmethod
-    def create_with_seats(cls, tier):
-        table = cls.objects.create(tier=tier, min_raise=POKER_TIERS[tier]["bb"])
-        PokerSeat.objects.bulk_create([PokerSeat(table=table, seat_number=n) for n in range(POKER_SEATS)])
+    def create_with_seats(cls, tier, capacity=5):
+        table = cls.objects.create(tier=tier, capacity=capacity, min_raise=POKER_TIERS[tier]["bb"])
+        PokerSeat.objects.bulk_create([PokerSeat(table=table, seat_number=n) for n in range(capacity)])
         return table
 
 
