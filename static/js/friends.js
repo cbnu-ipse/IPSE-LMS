@@ -69,7 +69,8 @@
         });
         let json = {};
         try { json = await res.json(); } catch (e) { /* 빈 응답 */ }
-        if (!res.ok || json.ok === false) throw new Error(json.message || '처리하지 못했습니다.');
+        // 오류 페이지(HTML)가 오면 원인을 알 수 있게 상태 코드를 같이 보여준다
+        if (!res.ok || json.ok === false) throw new Error(json.message || `처리하지 못했습니다. (오류 ${res.status})`);
         return json;
     }
 

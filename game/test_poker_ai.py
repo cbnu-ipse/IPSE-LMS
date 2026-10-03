@@ -69,11 +69,22 @@ class PokerBotSeatingTestCase(TestCase):
         self.assertEqual(self.total(), start)
 
     def test_bots_play_hands_and_timeouts_are_played_by_ai_conserving_chips(self):
-        poker_engine.create_table(self.a, "intermediate")
-        poker_engine.add_bot(self.a)
-        poker_engine.add_bot(self.a)
-        start = self.total()
-        for _ in range(400):
+        def open_table():
+            # 사람이 올인으로 파산하면 방이 닫힌다 — 그럴 땐 칩을 채워 다시 연다 (운에 따라 가끔 실패하던 원인)
+            if PokerChipWallet.objects.get(user=self.a).chips < BUY_IN:
+                PokerChipWallet.objects.filter(user=self.a).update(chips=BUY_IN * 3)
+            poker_engine.create_table(self.a, "intermediate")
+            poker_engine.add_bot(self.a)
+            poker_engine.add_bot(self.a)
+            return self.total()
+        start = open_table()
+        hands = 0
+        for _ in range(600):
+            if not PokerTable.objects.exists():
+                self.assertEqual(self.total(), start)  # 방이 닫혀도 칩은 그대로 (하우스·지갑으로)
+                hands += PokerHandLog.objects.count()
+                PokerHandLog.objects.all().delete()
+                start = open_table()
             PokerTable.objects.update(
                 next_hand_at=timezone.now() - timedelta(seconds=1),
                 turn_deadline=timezone.now() - timedelta(seconds=1),
@@ -82,9 +93,9 @@ class PokerBotSeatingTestCase(TestCase):
             PokerSeat.objects.filter(user=self.a).update(consecutive_timeouts=0)
             poker_engine.process_due_deadlines()  # 사람 차례는 시간초과 → AI가 대신, AI 차례는 AI가 둔다
             self.assertEqual(self.total(), start)
-            if PokerHandLog.objects.count() >= 3:
+            if hands + PokerHandLog.objects.count() >= 3:
                 break
-        self.assertGreaterEqual(PokerHandLog.objects.count(), 3)
+        self.assertGreaterEqual(hands + PokerHandLog.objects.count(), 3)
 
     def test_ai_decisions_are_legal(self):
         rng = random.Random(3)
