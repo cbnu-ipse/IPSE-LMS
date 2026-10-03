@@ -281,10 +281,36 @@ def profile_ranking_stats(request, user_id):
 	current_streak = get_attendance_streak(user, kst_today)
 	max_streak = get_max_attendance_streak(user)
 
+	bio = ""
+	try:
+		bio = user.student.bio
+	except Exception:
+		pass
 	return JsonResponse({
+		"user_id": user.id,
 		"leaves": user.leaves,
 		"total_attendance": Attendance.objects.filter(user=user).count(),
 		"streak": current_streak,
 		"streak_is_best": current_streak > 0 and current_streak >= max_streak,
 		"top_games": top_games,
+		"is_graduate": user.is_graduate,
+		"bio": bio,
+		"friend_status": _friend_status(request.user, user),
 	})
+
+
+def _friend_status(viewer, target):
+	"""프로필 카드의 친구 버튼 상태: self / friend / outgoing(요청 보냄) / incoming(요청 받음) / none / anon."""
+	from accounts.models import Friendship
+	if not viewer.is_authenticated:
+		return "anon"
+	if viewer.pk == target.pk:
+		return "self"
+	if target.is_bot:
+		return "anon"
+	f = Friendship.between(viewer, target)
+	if not f:
+		return "none"
+	if f.status == "accepted":
+		return "friend"
+	return "outgoing" if f.from_user_id == viewer.pk else "incoming"

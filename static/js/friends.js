@@ -48,10 +48,16 @@
     function toast(msg, variant) {
         if (window.showToast) window.showToast(msg, variant || 'success');
     }
+    // 사진·이름을 누르면 프로필 카드(base.html의 [data-hover-card] 모달)
+    function cardAttrs(u) {
+        return ` data-hover-card data-user-id="${u.user_id}" data-hover-stats="1" data-picture="${esc(u.card_picture || u.picture_url || '')}"`
+            + ` data-nickname="${esc(u.display_name || '')}" data-fullname="${esc(u.full_name || '')}" style="cursor:pointer"`;
+    }
+    const GRADUATE = '<span title="졸업생" style="margin-left:3px;padding:0 4px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:9px;font-weight:800"><i class="fa-solid fa-graduation-cap"></i></span>';
     function avatar(u) {
         return u.picture_url
-            ? `<img src="${esc(u.picture_url)}" alt="" class="fr-avatar">`
-            : `<span class="fr-initial">${esc((u.display_name || '?').charAt(0))}</span>`;
+            ? `<img src="${esc(u.picture_url)}" alt="" class="fr-avatar"${cardAttrs(u)}>`
+            : `<span class="fr-initial"${cardAttrs(u)}>${esc((u.display_name || '?').charAt(0))}</span>`;
     }
     const ids = list => new Set(list.map(u => u.user_id));
 
@@ -100,7 +106,7 @@
         return `<div class="${cls}">
             ${opts.noDot ? '' : '<span class="fr-dot"></span>'}
             ${avatar(u)}
-            <span class="fr-name">${esc(u.display_name)}${star}${me}</span>
+            <span class="fr-name"><span${cardAttrs(u)}>${esc(u.display_name)}</span>${u.is_graduate ? GRADUATE : ''}${star}${me}</span>
             ${isMe ? '' : actionsFor(u, rel)}
         </div>`;
     }

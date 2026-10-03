@@ -254,7 +254,20 @@ def profile(request):
         'streak_is_current': streak_is_current,
         'already_attended_today': already_attended_today,
         'is_debug': settings.DEBUG,
+        **_membership_context(user),
     })
+
+
+def _membership_context(user):
+    """프로필 '계정 관리' 카드: 졸업생 신청 상태, 운영진이면 처리할 신청 수."""
+    from .membership import can_review_graduation
+    from .models import GraduationRequest
+    can_review = can_review_graduation(user)
+    return {
+        'graduation_pending': GraduationRequest.objects.filter(user=user, status='pending').first(),
+        'can_review_graduation': can_review,
+        'graduation_pending_count': GraduationRequest.objects.filter(status='pending').count() if can_review else 0,
+    }
 
 
 @login_required

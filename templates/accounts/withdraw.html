@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}회원탈퇴 | IPSE LMS{% endblock title %}
+
+{% block content %}
+<section class="max-w-xl mx-auto px-6 py-12">
+    <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-user-xmark text-rose-500"></i> 회원탈퇴
+        </h2>
+        <p class="text-sm text-slate-500 mt-3 leading-relaxed">
+            탈퇴하면 계정과 함께 아래 기록이 <b class="text-rose-600">모두 영구히 삭제</b>되며 되돌릴 수 없습니다.
+        </p>
+        <ul class="mt-4 text-sm text-slate-600 list-disc pl-5 space-y-1">
+            <li>프로필, 프로필 사진, 동아리원 인증 서류</li>
+            <li>작성한 게시글·댓글·방명록, 투표·설문 응답, 번개 모임 참여</li>
+            <li>낙엽·보상 코드 사용 이력, 놀이터 칩과 게임 기록, 출석 기록</li>
+            <li>저지 풀이·제출·대회 참가 기록, 친구·알림</li>
+        </ul>
+        <p class="text-xs text-slate-400 mt-3">졸업으로 활동을 마치는 거라면, 기록을 남긴 채 이름 옆에 졸업생 마크만 붙는
+            <a href="{% url 'profile' %}#account-manage" class="text-indigo-600 font-bold underline">졸업생 전환</a>도 있어요.</p>
+
+        {% if messages %}
+        <div class="mt-5 space-y-2">
+            {% for m in messages %}<p class="text-sm font-semibold text-rose-600">{{ m }}</p>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% if blockers %}
+        <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p class="text-sm font-bold text-amber-700">지금은 탈퇴할 수 없습니다</p>
+            <ul class="mt-2 text-sm text-amber-700 list-disc pl-5 space-y-1">
+                {% for r in blockers %}<li>{{ r }}</li>{% endfor %}
+            </ul>
+        </div>
+        {% else %}
+        <form method="post" class="mt-6 space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="text-xs font-bold text-slate-500">비밀번호</label>
+                <input type="password" name="password" required autocomplete="current-password"
+                       class="mt-1 w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:border-rose-400">
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-500">확인을 위해 <b class="text-rose-600">{{ confirm_text }}</b>를 입력하세요</label>
+                <input name="confirm" required autocomplete="off"
+                       class="mt-1 w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:border-rose-400">
+            </div>
+            <div class="flex gap-2 justify-end pt-2">
+                <a href="{% url 'profile' %}" class="px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50">취소</a>
+                <button type="submit" class="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-700">영구 탈퇴</button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</section>
+{% endblock content %}

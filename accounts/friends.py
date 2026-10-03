@@ -23,14 +23,15 @@ FRIENDS_PAGE_LINK = "/game/?friends=1"
 
 
 def user_view(u):
-    """접속자 목록(presence)과 같은 모양: user_id / display_name / picture_url."""
+    """접속자 목록(presence)과 같은 모양: user_id / display_name / picture_url (+ 프로필 카드용 정보)."""
     picture_url = ""
     try:
         if u.picture and u.picture.name and u.picture.name != "default.png":
             picture_url = u.picture.url
     except Exception:
         pass
-    return {"user_id": u.id, "display_name": u.display_chat_name, "picture_url": picture_url}
+    return {"user_id": u.id, "display_name": u.display_chat_name, "picture_url": picture_url,
+            "full_name": u.get_full_name, "card_picture": u.get_picture(), "is_graduate": u.is_graduate}
 
 
 def notify(recipient, sender, notification_type, message, link=""):

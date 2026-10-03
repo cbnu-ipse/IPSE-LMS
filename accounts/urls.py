@@ -1,7 +1,7 @@
 from django.urls import path
 from django.urls import reverse_lazy
 from django.contrib.auth import views as auth_views
-from . import friends, views
+from . import friends, membership, views
 
 urlpatterns = [
     path(
@@ -80,6 +80,11 @@ urlpatterns = [
     path('notifications/<int:notification_id>/delete/', views.delete_notification_api, name='delete_notification_api'),
     path('notifications/push/subscribe/', views.subscribe_push_api, name='subscribe_push_api'),
     path('notifications/push/unsubscribe/', views.unsubscribe_push_api, name='unsubscribe_push_api'),
+    path('graduation/apply/', membership.graduation_apply, name='graduation_apply'),
+    path('graduation/cancel/', membership.graduation_cancel, name='graduation_cancel'),
+    path('graduation-requests/', membership.graduation_requests, name='graduation_requests'),
+    path('graduation-requests/<int:request_id>/', membership.graduation_review, name='graduation_review'),
+    path('withdraw/', membership.withdraw, name='withdraw'),
     path('friends/', friends.friends_api, name='friends_api'),
     path('friends/request/', friends.friend_request_api, name='friend_request_api'),
     path('friends/respond/', friends.friend_respond_api, name='friend_respond_api'),

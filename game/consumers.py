@@ -127,6 +127,10 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
                 "username": user.username,
                 "display_name": chat_info["display_name"],
                 "picture_url": chat_info["picture_url"],
+                "user_id": chat_info.get("user_id"),
+                "full_name": chat_info.get("full_name", ""),
+                "card_picture": chat_info.get("card_picture", ""),
+                "is_graduate": chat_info.get("is_graduate", False),
                 "created_at": saved.created_at.strftime("%H:%M"),
             },
         )
@@ -140,6 +144,10 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
                     "username": event["username"],
                     "display_name": event["display_name"],
                     "picture_url": event["picture_url"],
+                    "user_id": event.get("user_id"),
+                    "full_name": event.get("full_name", ""),
+                    "card_picture": event.get("card_picture", ""),
+                    "is_graduate": event.get("is_graduate", False),
                     "created_at": event["created_at"],
                 },
                 ensure_ascii=False,
@@ -168,7 +176,9 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
         except Exception:
             pass
 
-        return {"display_name": display_name, "picture_url": picture_url}
+        # 프로필 카드(채팅 이름·사진 클릭)용
+        return {"display_name": display_name, "picture_url": picture_url, "user_id": u.pk,
+                "full_name": u.get_full_name, "card_picture": u.get_picture(), "is_graduate": u.is_graduate}
 
 
 # ── 포커 ──────────────────────────────────────────────────────────────────────

@@ -1051,6 +1051,7 @@
             else if (n.notification_type === 'friend_request') icon = '<i class="fa-solid fa-user-plus text-indigo-500"></i>';
             else if (n.notification_type === 'friend_accept') icon = '<i class="fa-solid fa-user-check text-emerald-500"></i>';
             else if (n.notification_type === 'game_invite') icon = '<i class="fa-solid fa-gamepad text-violet-500"></i>';
+            else if (n.notification_type === 'graduation_request' || n.notification_type === 'graduation_result') icon = '<i class="fa-solid fa-graduation-cap text-indigo-500"></i>';
 
             item.innerHTML = `
               <span class="mt-0.5">${icon}</span>
@@ -1254,7 +1255,11 @@
               }).join('')
             : '<p class="text-[11px] text-slate-400">현재 TOP 3 게임 없음</p>';
 
+          const graduate = stats.is_graduate
+            ? '<div class="flex justify-center mb-2"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold" style="background:#eef2ff;color:#4338ca"><i class="fa-solid fa-graduation-cap"></i> 졸업생</span></div>' : '';
+          const bio = stats.bio ? '<p class="text-xs text-slate-500 text-center mb-3 break-all">' + escapeHtml(stats.bio) + '</p>' : '';
           return (
+            graduate + bio +
             '<div class="grid grid-cols-3 gap-2 text-center">' +
               '<div class="bg-amber-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">낙엽</p><p class="font-bold text-amber-600 text-sm">' + escapeHtml(stats.leaves) + '</p></div>' +
               '<div class="bg-orange-50 rounded-lg px-2 py-2"><p class="text-[10px] text-slate-400">총 출석</p><p class="font-bold text-orange-600 text-sm">' + escapeHtml(stats.total_attendance) + '</p></div>' +
@@ -1263,9 +1268,47 @@
             '<div class="mt-2">' +
               '<p class="text-[11px] font-bold text-slate-400 mb-1">현재 TOP 3 게임</p>' +
               '<div class="flex flex-wrap gap-1">' + gamesHtml + '</div>' +
-            '</div>'
+            '</div>' +
+            friendButtonHtml(stats)
           );
         }
+
+        // 프로필 카드의 친구 버튼 (상태는 /ranking/api/profile-stats/의 friend_status)
+        const FRIEND_BUTTONS = {
+          none: ['request', '<i class="fa-solid fa-user-plus"></i> 친구 추가', 'bg-indigo-600 text-white hover:bg-indigo-700'],
+          incoming: ['accept', '<i class="fa-solid fa-user-check"></i> 친구 요청 수락', 'bg-emerald-600 text-white hover:bg-emerald-700'],
+          outgoing: [null, '친구 요청을 보냈어요', 'bg-slate-100 text-slate-400'],
+          friend: [null, '<i class="fa-solid fa-star text-amber-400"></i> 친구', 'bg-slate-100 text-slate-500'],
+        };
+        function friendButtonHtml(stats) {
+          const b = FRIEND_BUTTONS[stats.friend_status];
+          if (!b) return '';
+          const attrs = b[0] ? ' data-friend-action="' + b[0] + '" data-friend-user="' + escapeHtml(stats.user_id) + '"' : ' disabled';
+          return '<button type="button" class="mt-3 w-full py-2 rounded-xl text-xs font-bold transition ' + b[2] + '"' + attrs + '>' + b[1] + '</button>';
+        }
+        backdrop.addEventListener('click', function(e) {
+          const btn = e.target.closest('[data-friend-action]');
+          if (!btn) return;
+          const userId = Number(btn.dataset.friendUser);
+          const accept = btn.dataset.friendAction === 'accept';
+          btn.disabled = true;
+          fetch(accept ? '/accounts/friends/respond/' : '/accounts/friends/request/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify(accept ? { user_id: userId, accept: true } : { user_id: userId }),
+          }).then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+            .then(function(r) {
+              if (!r.ok) throw new Error(r.data.message || '처리하지 못했습니다.');
+              const status = r.data.status === 'accepted' ? 'friend' : 'outgoing';
+              if (statsCache[userId]) statsCache[userId].friend_status = status;
+              btn.outerHTML = friendButtonHtml({ friend_status: status, user_id: userId });
+              if (window.showToast) window.showToast(status === 'friend' ? '친구가 되었어요!' : '친구 요청을 보냈어요.', 'success');
+            })
+            .catch(function(err) {
+              btn.disabled = false;
+              if (window.showToast) window.showToast(err.message, 'error');
+            });
+        });
 
         function loadStats(userId, slotEl) {
           if (!userId) {
