@@ -854,3 +854,81 @@ def game_invite(request):
     name, link = spot
     notify(friend, me, "game_invite", f"{me.display_chat_name}님이 {name}에 초대했어요.", link)
     return JsonResponse({"ok": True})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 트릭 오어 트릿 (할로윈 이벤트 사탕) — 로직은 game/trick_or_treat.py, 사탕은 accounts/treats.py
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _treat_ranking_view(user):
+    from accounts import treats
+    rows = treats.ranking()
+    top = [{"rank": r["rank"], "user_id": r["user"].pk, "name": r["user"].display_chat_name,
+            "picture": r["user"].get_picture(), "treats": r["treats"], "is_me": r["user"].pk == user.pk}
+           for r in rows[:treats.TREAT_RANKING_SIZE]]
+    mine = next((r for r in rows if r["user"].pk == user.pk), None)
+    return {"top": top, "my_rank": mine["rank"] if mine else None, "my_total": mine["treats"] if mine else 0}
+
+
+def _trick_or_treat_payload(user):
+    from accounts import treats
+    from . import trick_or_treat
+    return dict(trick_or_treat.state_for(user), ranking=_treat_ranking_view(user),
+                event_end=treats.TREAT_EVENT_END.isoformat(), exchange_rate=treats.TREAT_TO_LEAF_RATE)
+
+
+@login_required
+def trick_or_treat_view(request):
+    from accounts import treats
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    return render(request, "game/trick_or_treat.html", {
+        "title": "트릭 오어 트릿",
+        "chat_messages": list(latest)[::-1],
+        "state": _trick_or_treat_payload(request.user),
+        "event_end": treats.TREAT_EVENT_END,
+    })
+
+
+def _tot_response(request, ok, result):
+    if not ok:
+        return JsonResponse({"ok": False, "message": result}, status=400)
+    return JsonResponse({"ok": True, "result": result, "state": _trick_or_treat_payload(request.user)})
+
+
+@login_required
+@require_POST
+def trick_or_treat_start(request):
+    from . import trick_or_treat
+    return _tot_response(request, *trick_or_treat.start(request.user))
+
+
+@login_required
+@require_POST
+def trick_or_treat_knock(request):
+    from . import trick_or_treat
+    try:
+        index = json.loads(request.body or "{}").get("house")
+    except ValueError:
+        index = None
+    return _tot_response(request, *trick_or_treat.knock(request.user, index))
+
+
+@login_required
+@require_POST
+def trick_or_treat_home(request):
+    from . import trick_or_treat
+    return _tot_response(request, *trick_or_treat.go_home(request.user))
+
+
+@login_required
+@require_POST
+def trick_or_treat_exchange(request):
+    from accounts import treats
+    try:
+        amount = json.loads(request.body or "{}").get("amount")
+    except ValueError:
+        amount = None
+    ok, message = treats.exchange_to_leaves(request.user, amount)
+    if not ok:
+        return JsonResponse({"ok": False, "message": message}, status=400)
+    return JsonResponse({"ok": True, "message": message, "state": _trick_or_treat_payload(request.user)})

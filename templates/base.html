@@ -330,6 +330,12 @@
                         <i class="fa-solid fa-leaf text-emerald-600"></i>
                         <span>{{ user.leaves }}</span>
                     </div>
+                    {% if treat_event_active or user.treats %}
+                    <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때) -->
+                    <a href="/game/trick-or-treat/" class="inline-flex items-center gap-1 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200 text-orange-700 text-sm font-bold shadow-sm transition" title="할로윈 사탕">
+                        🍬 <span>{{ user.treats }}</span>
+                    </a>
+                    {% endif %}
                     <button type="button" onclick="doLogout()" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
                             <i class="fa-solid fa-right-from-bracket text-xs"></i>
                         </button>
@@ -387,6 +393,9 @@
                                 <span class="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                     <i class="fa-solid fa-leaf text-amber-600"></i> {{ user.leaves }}
                                 </span>
+                                {% if treat_event_active or user.treats %}
+                                <span class="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 font-bold px-1.5 py-0.5 rounded-md">🍬 {{ user.treats }}</span>
+                                {% endif %}
                             </div>
                         </div>
                     </a>

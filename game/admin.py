@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    TrickOrTreatLog, TrickOrTreatRun,
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
     HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog, HouseBank, YachtRoom, YachtSeat, YachtGameLog,
@@ -150,3 +151,16 @@ class YachtSeatAdmin(admin.ModelAdmin):
 class YachtGameLogAdmin(admin.ModelAdmin):
     list_display = ("id", "room_number", "pot", "ended_at")
     ordering = ("-ended_at",)
+
+
+
+@admin.register(TrickOrTreatLog)
+class TrickOrTreatLogAdmin(admin.ModelAdmin):
+    list_display = ("user", "result", "bag", "steps", "granted", "created_at")
+    list_filter = ("result",)
+    search_fields = ("user__username",)
+
+
+@admin.register(TrickOrTreatRun)
+class TrickOrTreatRunAdmin(admin.ModelAdmin):
+    list_display = ("user", "bag", "step", "created_at")

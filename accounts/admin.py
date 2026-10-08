@@ -3,6 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from .models import (
     User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage, Notification, Friendship, GraduationRequest,
+    TreatTransaction,
 )
 
 
@@ -170,3 +171,10 @@ class GraduationRequestAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("user__username", "user__first_name", "user__last_name")
     actions = [approve_graduation]
+
+
+@admin.register(TreatTransaction)
+class TreatTransactionAdmin(admin.ModelAdmin):
+    list_display = ("user", "amount", "transaction_type", "description", "created_at")
+    list_filter = ("transaction_type",)
+    search_fields = ("user__username", "description")

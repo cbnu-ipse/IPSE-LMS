@@ -728,3 +728,41 @@ class YachtGameLog(models.Model):
 
     def __str__(self):
         return f"{self.room_number}번 방 - 판돈 {self.pot}칩"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 트릭 오어 트릿 (할로윈 이벤트, game/trick_or_treat.py) — 사탕(accounts/treats.py)을 얻는 게임.
+# 한 판 = 집을 하나씩 두드려 자루에 사탕을 모으다 "집으로 가기"로 챙기거나, 유령을 만나 잃거나.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TrickOrTreatRun(models.Model):
+    """진행 중인 한 판 (유저당 하나). 다음에 두드릴 수 있는 집 3채(offers)도 서버가 정해 둔다."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trick_or_treat_run", verbose_name="사용자"
+    )
+    bag = models.PositiveIntegerField(default=0, verbose_name="자루 속 사탕")
+    step = models.PositiveIntegerField(default=0, verbose_name="두드린 집 수")
+    offers = models.JSONField(default=list, verbose_name="이번에 고를 수 있는 집")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "트릭 오어 트릿 진행 중"
+        verbose_name_plural = "트릭 오어 트릿 진행 중"
+
+
+class TrickOrTreatLog(models.Model):
+    RESULT_CHOICES = [("home", "집으로 감"), ("ghost", "유령에게 뺏김")]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trick_or_treat_logs", verbose_name="사용자"
+    )
+    bag = models.PositiveIntegerField(default=0, verbose_name="자루 속 사탕")
+    steps = models.PositiveIntegerField(default=0, verbose_name="두드린 집 수")
+    result = models.CharField(max_length=10, choices=RESULT_CHOICES, verbose_name="결과")
+    granted = models.PositiveIntegerField(default=0, verbose_name="받은 사탕 (하루 상한 적용)")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="끝난 시각")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "트릭 오어 트릿 기록"
+        verbose_name_plural = "트릭 오어 트릿 기록"
