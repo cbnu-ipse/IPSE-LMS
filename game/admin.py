@@ -156,11 +156,10 @@ class YachtGameLogAdmin(admin.ModelAdmin):
 
 @admin.register(TrickOrTreatLog)
 class TrickOrTreatLogAdmin(admin.ModelAdmin):
-    list_display = ("user", "result", "bag", "steps", "granted", "created_at")
-    list_filter = ("result",)
+    list_display = ("user", "score", "best", "earned", "granted", "seconds", "created_at")
     search_fields = ("user__username",)
 
 
 @admin.register(TrickOrTreatRun)
 class TrickOrTreatRunAdmin(admin.ModelAdmin):
-    list_display = ("user", "bag", "step", "created_at")
+    list_display = ("user", "best", "created_at")

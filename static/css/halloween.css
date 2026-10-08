@@ -1,0 +1,76 @@
+/*
+ * 할로윈 이벤트 테마 — 이벤트 기간(accounts.treats.TREAT_EVENT_END 전)에만 base.html이 불러온다.
+ * 사이트 기본 강조색(에메랄드)을 할로윈 주황으로 바꾸고, 배경·장식을 더한다.
+ * 놀이터 게임 판은 각자 색을 쓰므로 영향이 없다.
+ */
+:root {
+    --hw-orange-50: #fff7ed;
+    --hw-orange-100: #ffedd5;
+    --hw-orange-200: #fed7aa;
+    --hw-orange-500: #f97316;
+    --hw-orange-600: #ea580c;
+    --hw-orange-700: #c2410c;
+    --hw-orange-800: #9a3412;
+    --hw-purple: #6d28d9;
+}
+
+/* ── 배경: 은은한 달밤 + 별 ───────────────────────── */
+body.host-community {
+    background:
+        radial-gradient(circle at 88% 6%, rgba(253, 230, 138, .35) 0, rgba(253, 230, 138, 0) 140px),
+        radial-gradient(rgba(109, 40, 217, .07) 1px, transparent 1.5px) 0 0 / 26px 26px,
+        linear-gradient(180deg, #faf5ff 0%, #fff7ed 45%, #ffffff 100%) !important;
+}
+
+/* ── 상단 메뉴 ─────────────────────────────────── */
+nav.sticky { border-bottom: 2px solid var(--hw-orange-200) !important; }
+nav.sticky .fa-leaf { color: var(--hw-orange-600) !important; }
+
+/* ── 강조색 에메랄드 → 주황, 틸 → 보라 ───────────────
+   Tailwind v4는 색을 --color-* 변수로 쓰므로 변수만 바꾸면 글자·배경·테두리·그라데이션·hover가 한꺼번에 바뀐다. */
+:root {
+    --color-emerald-50: #fff7ed;
+    --color-emerald-100: #ffedd5;
+    --color-emerald-200: #fed7aa;
+    --color-emerald-300: #fdba74;
+    --color-emerald-400: #fb923c;
+    --color-emerald-500: #f97316;
+    --color-emerald-600: #ea580c;
+    --color-emerald-700: #c2410c;
+    --color-emerald-800: #9a3412;
+    --color-emerald-900: #7c2d12;
+    --color-teal-50: #faf5ff;
+    --color-teal-400: #a78bfa;
+    --color-teal-500: #8b5cf6;
+    --color-teal-600: #7c3aed;
+}
+#sk-leaf-fill { color: var(--hw-orange-500) !important; }
+
+/* ── 이벤트 배너 (메뉴 아래) ─────────────────────── */
+.hw-banner {
+    display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+    padding: 9px 16px; font-size: .82rem; font-weight: 700; color: #fff7ed; text-align: center;
+    background: linear-gradient(90deg, #2e1065, #6d28d9 45%, #c2410c);
+}
+.hw-banner b { color: #fde68a; }
+nav[data-game-collapsed] ~ .hw-banner, nav[data-game-collapsed] ~ .hw-bats { display: none; }  /* 게임 화면에선 숨김 */
+.hw-banner a {
+    padding: 3px 12px; border-radius: 999px; background: #f97316; color: #fff; font-weight: 800; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+.hw-banner a:hover { background: #ea580c; }
+
+/* ── 날아다니는 박쥐 (클릭 방해 없음) ─────────────── */
+.hw-bats { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.hw-bat { position: absolute; font-size: 22px; opacity: .22; animation: hw-fly 26s linear infinite; }
+.hw-bat:nth-child(1) { top: 18%; animation-duration: 28s; }
+.hw-bat:nth-child(2) { top: 46%; animation-duration: 34s; animation-delay: -12s; font-size: 16px; }
+.hw-bat:nth-child(3) { top: 72%; animation-duration: 40s; animation-delay: -24s; font-size: 19px; }
+@keyframes hw-fly {
+    0% { transform: translateX(-60px) translateY(0); }
+    25% { transform: translateX(25vw) translateY(-18px); }
+    50% { transform: translateX(50vw) translateY(10px); }
+    75% { transform: translateX(75vw) translateY(-12px); }
+    100% { transform: translateX(105vw) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .hw-bats { display: none; } }

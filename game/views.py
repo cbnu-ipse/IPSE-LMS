@@ -857,7 +857,7 @@ def game_invite(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 트릭 오어 트릿 (할로윈 이벤트 사탕) — 로직은 game/trick_or_treat.py, 사탕은 accounts/treats.py
+# 트릭 오어 트릿: 사탕 골목 지도 (할로윈 이벤트 사탕) — 로직은 game/trick_or_treat.py, 사탕은 accounts/treats.py
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _treat_ranking_view(user):
@@ -904,20 +904,13 @@ def trick_or_treat_start(request):
 
 @login_required
 @require_POST
-def trick_or_treat_knock(request):
+def trick_or_treat_submit(request):
     from . import trick_or_treat
     try:
-        index = json.loads(request.body or "{}").get("house")
+        route = json.loads(request.body or "{}").get("route")
     except ValueError:
-        index = None
-    return _tot_response(request, *trick_or_treat.knock(request.user, index))
-
-
-@login_required
-@require_POST
-def trick_or_treat_home(request):
-    from . import trick_or_treat
-    return _tot_response(request, *trick_or_treat.go_home(request.user))
+        route = None
+    return _tot_response(request, *trick_or_treat.submit(request.user, route))
 
 
 @login_required

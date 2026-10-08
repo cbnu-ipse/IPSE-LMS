@@ -1,5 +1,4 @@
 import json
-import random
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -13,18 +12,6 @@ from .models import TrickOrTreatLog, TrickOrTreatRun
 
 PAST = datetime(2020, 1, 1, tzinfo=treats.KST)
 FUTURE = timezone.now() + timedelta(days=30)
-
-
-class AlwaysRng:
-    """rng.random()이 항상 같은 값을 돌려준다 (0 = 유령, 0.99 = 사탕·왕사탕 없음)."""
-    def __init__(self, value):
-        self.value = value
-
-    def random(self):
-        return self.value
-
-    def shuffle(self, x):
-        pass
 
 
 @patch.object(treats, "TREAT_EVENT_END", FUTURE)
@@ -94,56 +81,86 @@ class TreatAfterEventTestCase(TestCase):
         self.assertFalse(tot.start(self.u)[0])
 
 
+# 고정 지도 (6×6, 출발 🏠 = 왼쪽 아래, -1 = 귀신 집)
+BOARD = [
+    [1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1],
+    [5, -1, 1, 1, 1, 1],
+    [5, 1, 1, 1, 1, 1],
+    [0, 1, 1, 1, 1, 1],
+]
+
+
 @patch.object(treats, "TREAT_EVENT_END", FUTURE)
 class TrickOrTreatGameTestCase(TestCase):
     def setUp(self):
         self.u = User.objects.create_user(username="kid", password="x")
 
-    def test_treat_then_home_grants_bag(self):
-        tot.start(self.u)
-        run = TrickOrTreatRun.objects.get(user=self.u)
-        haunted = run.offers.index("haunted")
-        ok, res = tot.knock(self.u, haunted, rng=AlwaysRng(0.99))
-        self.assertEqual((res["outcome"], res["gained"]), ("treat", 4))
-        run.refresh_from_db()
-        self.assertEqual((run.bag, run.step), (4, 1))
-        ok, res = tot.go_home(self.u)
-        self.assertEqual(res, {"bag": 4, "granted": 4})
-        self.u.refresh_from_db()
-        self.assertEqual(self.u.treats, 4)
-        self.assertFalse(TrickOrTreatRun.objects.exists())
-        self.assertEqual(TrickOrTreatLog.objects.get().result, "home")
+    def _run(self, board=BOARD):
+        best, _ = tot.best_route(board)
+        TrickOrTreatRun.objects.create(user=self.u, board=board, best=best)
+        return best
 
-    def test_ghost_loses_bag(self):
-        tot.start(self.u)
-        tot.knock(self.u, 0, rng=AlwaysRng(0.99))
-        ok, res = tot.knock(self.u, 0, rng=AlwaysRng(0.0))
-        self.assertEqual(res["outcome"], "ghost")
-        self.assertGreater(res["lost"], 0)
-        self.assertFalse(TrickOrTreatRun.objects.exists())
-        self.u.refresh_from_db()
-        self.assertEqual(self.u.treats, 0)
+    def test_best_route_and_route_check(self):
+        best, route = tot.best_route(BOARD)
+        self.assertEqual(tot.check_route(BOARD, route), best)
+        self.assertEqual(best, 18)  # 5 + 5 + 나머지 8칸 1개씩
+        self.assertIsNone(tot.check_route(BOARD, [[3, 1]]))           # 출발점과 붙어 있지 않음
+        self.assertIsNone(tot.check_route(BOARD, [[4, 0], [3, 0], [4, 0]]))  # 같은 칸 다시
+        self.assertIsNone(tot.check_route(BOARD, [[4, 0], [4, 1], [3, 1]]))  # 귀신 집
+        self.assertIsNone(tot.check_route(BOARD, [[4, 0]] * 11))       # 걸음 초과
+        self.assertEqual(tot.check_route(BOARD, [[4, 0], [3, 0]]), 10)
 
-    def test_home_capped_by_daily_limit_and_risk_grows(self):
-        treats.grant(self.u, 8, "test")
-        tot.start(self.u)
-        for _ in range(3):
-            run = TrickOrTreatRun.objects.get(user=self.u)
-            tot.knock(self.u, run.offers.index("candle"), rng=AlwaysRng(0.99))
-        self.assertEqual(tot.go_home(self.u)[1], {"bag": 6, "granted": 2})
-        self.assertGreater(tot.risk_of("pumpkin", 5), tot.risk_of("pumpkin", 0))
+    def test_rewards_by_ratio(self):
+        self.assertEqual([tot.reward_for(s, 20) for s in (20, 17, 14, 13)], [3, 2, 1, 0])
+
+    def test_submit_best_grants_three_and_shows_best_route(self):
+        best = self._run()
+        _, route = tot.best_route(BOARD)
+        ok, res = tot.submit(self.u, route)
+        self.assertTrue(ok)
+        self.assertEqual((res["score"], res["best"], res["earned"], res["granted"]), (best, best, 3, 3))
+        self.assertEqual(len(res["best_route"]), tot.MOVES)
+        self.assertFalse(TrickOrTreatRun.objects.exists())
+        self.assertEqual(TrickOrTreatLog.objects.get().granted, 3)
+        self.u.refresh_from_db()
+        self.assertEqual(self.u.treats, 3)
+
+    def test_invalid_route_rejected_and_late_gets_nothing(self):
+        self._run()
+        self.assertFalse(tot.submit(self.u, [[3, 1]])[0])
+        TrickOrTreatRun.objects.update(created_at=timezone.now() - timedelta(seconds=tot.TIME_LIMIT + 10))
+        _, route = tot.best_route(BOARD)
+        ok, res = tot.submit(self.u, route)
+        self.assertTrue(res["late"])
+        self.assertEqual(res["granted"], 0)
+
+    def test_daily_cap_applies(self):
+        treats.grant(self.u, 9, "test")
+        self._run()
+        _, route = tot.best_route(BOARD)
+        self.assertEqual(tot.submit(self.u, route)[1]["granted"], 1)
+
+    def test_generated_board_is_solvable(self):
+        board, best = tot.make_board()
+        self.assertEqual(len(board), tot.SIZE)
+        self.assertEqual(best, tot.best_route(board)[0])
+        self.assertGreaterEqual(best, 15)
 
     def test_endpoints_and_page(self):
         self.client.force_login(self.u)
         page = self.client.get("/game/trick-or-treat/")
-        self.assertContains(page, "트릭 오어 트릿")
+        self.assertContains(page, "사탕 골목 지도")
         self.assertContains(page, '"event_active": true')  # 상태가 JSON 객체로 들어가는지 (문자열로 이중 인코딩 X)
         data = self.client.post("/game/trick-or-treat/start/", content_type="application/json").json()
-        self.assertEqual(len(data["state"]["run"]["houses"]), 3)
-        res = self.client.post("/game/trick-or-treat/knock/", data=json.dumps({"house": 9}), content_type="application/json")
+        self.assertEqual(len(data["state"]["run"]["board"]), tot.SIZE)
+        self.assertNotIn("best", data["state"]["run"])  # 최고 점수는 제출 전엔 보내지 않는다
+        res = self.client.post("/game/trick-or-treat/submit/", data=json.dumps({"route": [[0, 0]]}),
+                               content_type="application/json")
         self.assertEqual(res.status_code, 400)
-        random.seed(0)
-        data = self.client.post("/game/trick-or-treat/knock/", data=json.dumps({"house": 0}), content_type="application/json").json()
-        self.assertIn(data["result"]["outcome"], ("treat", "ghost"))
+        res = self.client.post("/game/trick-or-treat/submit/", data=json.dumps({"route": []}),
+                               content_type="application/json").json()
+        self.assertEqual(res["result"]["score"], 0)
         self.assertEqual(self.client.post("/game/trick-or-treat/exchange/", data=json.dumps({"amount": 1}),
                                           content_type="application/json").status_code, 400)  # 기간 중 환전 불가

@@ -25,17 +25,18 @@
                 <div class="tt-body" id="tt-body">
                     <div class="tt-moon"></div>
                     <div class="tt-title">
-                        <h2>🎃 트릭 오어 트릿</h2>
-                        <p>집을 두드려 사탕을 모으세요. 유령을 만나면 자루를 뺏겨요!</p>
+                        <h2>🎃 트릭 오어 트릿: 사탕 골목 지도</h2>
+                        <p>🏠에서 출발해 정해진 걸음 안에 사탕을 가장 많이 모으는 길을 그려 보세요. 👻 귀신 집은 못 지나가요!</p>
                     </div>
 
-                    <div class="tt-bag" id="tt-bag">
-                        <span class="tt-bag-icon">🧺</span>
-                        <span class="tt-bag-count"><b id="tt-bag-count">0</b>개</span>
-                        <span class="tt-bag-step" id="tt-bag-step"></span>
+                    <div class="tt-hud" id="tt-hud">
+                        <span class="tt-hud-item">👣 남은 걸음 <b id="tt-moves">-</b></span>
+                        <span class="tt-hud-item">🍬 모은 사탕 <b id="tt-score">0</b></span>
+                        <span class="tt-hud-item">⏱ <b id="tt-timer">-</b>초</span>
                     </div>
+                    <div class="tt-timebar"><i id="tt-timebar"></i></div>
 
-                    <div class="tt-houses" id="tt-houses"></div>
+                    <div class="tt-map" id="tt-map"></div>
                     <div class="tt-pop hidden" id="tt-pop"></div>
                     <div class="tt-warn hidden" id="tt-warn"></div>
                     <div class="tt-actions" id="tt-actions"></div>
@@ -43,10 +44,11 @@
                     <details class="tt-rules">
                         <summary>규칙 보기</summary>
                         <ul>
-                            <li>매번 세 집 중 하나를 두드립니다. 🎃 환한 호박집은 안전하지만 사탕 1개, 🕯️ 촛불 켜진 집은 2개, 🏚️ 으스스한 폐가는 4개를 줘요.</li>
-                            <li>집에 표시된 확률로 유령이 나오고, 유령을 만나면 자루 속 사탕을 모두 뺏깁니다. 집을 두드릴수록 골목이 으스스해져 유령 확률이 조금씩 올라가요.</li>
-                            <li>가끔 🍭 왕사탕(2배)이 나옵니다. 언제든 "집으로 가기"를 눌러 자루를 챙기세요.</li>
-                            <li>사탕은 방명록(하루 첫 글)과 이 게임을 합쳐 <b>하루 10개</b>까지 받을 수 있어요. 플레이 횟수 제한은 없습니다.</li>
+                            <li>🏠 출발점에서 상하좌우로 한 칸씩, 최대 <b>10걸음</b> 움직여요. 같은 칸은 다시 밟을 수 없고 👻 귀신 집은 지나갈 수 없어요.</li>
+                            <li>지나간 집의 사탕을 모아요. 칸을 눌러 길을 그리고, 마지막 칸을 다시 누르면 한 걸음 취소돼요.</li>
+                            <li>제한 시간은 <b>60초</b>. 시간이 다 되면 그린 데까지 자동으로 제출돼요.</li>
+                            <li>이 지도에서 가능한 <b>최고 점수</b>와 비교해 사탕을 줘요: 최고 점수 = 🍬 3개, 85% 이상 = 2개, 70% 이상 = 1개. 제출하면 최고 경로를 보여줘요.</li>
+                            <li>사탕은 방명록(하루 첫 글)과 이 게임을 합쳐 <b>하루 10개</b>까지 받을 수 있어요. 플레이 횟수 제한은 없어요.</li>
                             <li>10월 31일 0시(30일 → 31일 자정)에 마감하고, 사탕 순위 TOP 10에게 실제 사탕을 드려요. 동점이면 먼저 도달한 사람이 앞섭니다.</li>
                             <li>사탕은 이벤트가 끝난 뒤 낙엽으로 바꿀 수 있어요 (사탕 1 = 낙엽 1).</li>
                         </ul>
@@ -217,44 +219,39 @@
 .tt-title h2 { font-size: 1.35rem; font-weight: 900; color: #fb923c; text-shadow: 0 2px 12px rgba(249,115,22,.45); }
 .tt-title p { font-size: .76rem; color: #c4b5fd; margin-top: 2px; }
 
-.tt-bag { display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-radius: 999px;
-    background: rgba(0,0,0,.28); border: 1px solid rgba(251,146,60,.35); }
-.tt-bag-icon { font-size: 1.5rem; }
-.tt-bag-count { font-size: .95rem; font-weight: 800; color: #fde68a; }
-.tt-bag-count b { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
-.tt-bag-step { font-size: .7rem; color: #c4b5fd; }
-.tt-bag--bump { animation: tt-bump .35s ease; }
-@keyframes tt-bump { 40% { transform: scale(1.12); } }
+.tt-hud { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.tt-hud-item { padding: 6px 14px; border-radius: 999px; background: rgba(0,0,0,.28); border: 1px solid rgba(251,146,60,.3);
+    font-size: .78rem; font-weight: 700; color: #ddd6fe; }
+.tt-hud-item b { color: #fde68a; font-size: 1rem; font-variant-numeric: tabular-nums; }
+.tt-timebar { width: 100%; max-width: 420px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+.tt-timebar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #f97316, #fde68a); transition: width .25s linear; }
+.tt-timebar i.tt-low { background: #ef4444; }
 
-/* ── 집 3채 ────────────────────────────────────── */
-.tt-houses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; }
-.tt-house {
-    position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 14px 8px 12px; border-radius: 16px; cursor: pointer; font-family: inherit; color: #ede9fe;
-    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-    border: 2px solid rgba(255,255,255,.12); transition: transform .12s, border-color .12s, box-shadow .12s;
+/* ── 지도 ──────────────────────────────────────── */
+.tt-map { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; width: 100%; max-width: 420px; }
+.tt-cell {
+    position: relative; aspect-ratio: 1; border-radius: 12px; border: 2px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.06); color: #fde68a; font-family: inherit; font-weight: 900; font-size: 1rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; cursor: default; padding: 0;
+    transition: transform .1s, border-color .1s, background .1s;
 }
-.tt-house:hover:not(:disabled) { transform: translateY(-3px); }
-.tt-house:disabled { cursor: default; opacity: .55; }
-.tt-house-emoji { font-size: 2.6rem; line-height: 1; filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)); }
-.tt-house-label { font-size: .74rem; font-weight: 800; }
-.tt-house-treat { font-size: .82rem; font-weight: 900; color: #fde68a; }
-.tt-house-risk { font-size: .66rem; font-weight: 800; padding: 1px 8px; border-radius: 999px; }
-.tt-house--pumpkin { border-color: rgba(52,211,153,.5); box-shadow: 0 0 18px rgba(52,211,153,.12) inset; }
-.tt-house--pumpkin .tt-house-risk { background: rgba(16,185,129,.2); color: #6ee7b7; }
-.tt-house--candle { border-color: rgba(251,191,36,.55); box-shadow: 0 0 18px rgba(251,191,36,.12) inset; }
-.tt-house--candle .tt-house-risk { background: rgba(245,158,11,.2); color: #fcd34d; }
-.tt-house--haunted { border-color: rgba(248,113,113,.55); box-shadow: 0 0 18px rgba(239,68,68,.15) inset; }
-.tt-house--haunted .tt-house-risk { background: rgba(239,68,68,.2); color: #fca5a5; }
-.tt-house--knocking { animation: tt-knock .45s ease; }
-@keyframes tt-knock { 20%, 60% { transform: translateX(-4px) rotate(-1deg); } 40%, 80% { transform: translateX(4px) rotate(1deg); } }
-.tt-empty { grid-column: 1 / -1; text-align: center; font-size: .85rem; color: #c4b5fd; padding: 26px 0; }
-
+.tt-cell small { font-size: .55rem; color: #c4b5fd; font-weight: 700; }
+.tt-cell--candy { background: linear-gradient(180deg, rgba(251,146,60,.16), rgba(251,146,60,.05)); }
+.tt-cell--empty { color: rgba(255,255,255,.25); }
+.tt-cell--haunted { background: rgba(15,23,42,.6); font-size: 1.35rem; }
+.tt-cell--start { background: rgba(52,211,153,.18); border-color: rgba(52,211,153,.6); font-size: 1.35rem; }
+.tt-cell--next { cursor: pointer; border-color: rgba(253,224,71,.75); box-shadow: 0 0 14px rgba(253,224,71,.25); }
+.tt-cell--next:hover { transform: scale(1.05); }
+.tt-cell--path { background: rgba(249,115,22,.55); border-color: #fb923c; color: #fff; cursor: pointer; }
+.tt-cell--path small { color: #ffedd5; }
+.tt-cell--last { box-shadow: 0 0 0 3px #fde68a; }
+.tt-cell--best { outline: 3px dashed #fde68a; outline-offset: -5px; }
+.tt-empty { text-align: center; font-size: .85rem; color: #c4b5fd; padding: 40px 0; line-height: 1.6; }
+.tt-step { position: absolute; top: 2px; left: 4px; font-size: .55rem; font-weight: 900; color: #fff; opacity: .9; }
 /* ── 결과 / 경고 / 버튼 ─────────────────────────── */
 .tt-pop { font-size: 1rem; font-weight: 900; text-align: center; padding: 8px 18px; border-radius: 14px; animation: tt-pop .35s ease; }
 .tt-pop--treat { background: rgba(251,191,36,.18); color: #fde68a; }
-.tt-pop--ghost { background: rgba(148,163,184,.18); color: #e2e8f0; }
-.tt-pop--home { background: rgba(52,211,153,.18); color: #6ee7b7; }
+.tt-pop--none { background: rgba(148,163,184,.18); color: #e2e8f0; }
 @keyframes tt-pop { from { transform: scale(.7); opacity: 0; } }
 .tt-warn { font-size: .74rem; font-weight: 700; color: #fcd34d; text-align: center; }
 .tt-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
@@ -289,10 +286,8 @@
     section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
     .tt-body { padding: 18px 10px 14px; gap: 12px; }
     .tt-moon { width: 32px; height: 32px; top: 12px; right: 14px; }
-    .tt-houses { gap: 6px; }
-    .tt-house { padding: 10px 4px 9px; }
-    .tt-house-emoji { font-size: 2.1rem; }
-    .tt-house-label { font-size: .66rem; }
+    .tt-map { gap: 4px; }
+    .tt-cell { border-radius: 9px; font-size: .9rem; }
 }
 
 /* ── 모바일 채팅 패널 (< 1024px) ────────────────────────── */
@@ -370,18 +365,75 @@
         $('tt-rank-me').textContent = r.my_rank ? `내 순위 ${r.my_rank}위 · 사탕 ${r.my_total}개` : '아직 순위에 없어요';
     }
 
+    // ── 사탕 골목 지도 ─────────────────────────────────────────────
+    const HAUNTED = -1;
+    let route = [];            // 내가 그린 길 [[r, c], ...] (출발점 제외)
+    let result = null;         // 제출 결과 (최고 경로 표시용)
+    let resultBoard = null;    // 결과를 보여줄 지도 (제출하면 서버의 판은 끝난다)
+    let deadline = null;       // 이번 판 제한시각(ms)
+    const key = (r, c) => `${r},${c}`;
+
+    function board() { return state.run ? state.run.board : resultBoard; }
+    function routeScore() { const b = board(); return route.reduce((n, [r, c]) => n + b[r][c], 0); }
+    function lastPos() { return route.length ? route[route.length - 1] : state.start; }
+    function isNext(r, c) {
+        const b = board();
+        if (!state.run || route.length >= state.moves || b[r][c] === HAUNTED) return false;
+        if (r === state.start[0] && c === state.start[1]) return false;
+        if (route.some(([pr, pc]) => pr === r && pc === c)) return false;
+        const [lr, lc] = lastPos();
+        return Math.abs(lr - r) + Math.abs(lc - c) === 1;
+    }
+
+    function renderMap() {
+        const b = board();
+        const mapEl = $('tt-map');
+        if (!b) { mapEl.innerHTML = ''; return; }
+        const stepOf = {};
+        route.forEach(([r, c], i) => { stepOf[key(r, c)] = i + 1; });
+        const bestSet = new Set(result ? result.best_route.map(([r, c]) => key(r, c)) : []);
+        let html = '';
+        for (let r = 0; r < state.size; r++) {
+            for (let c = 0; c < state.size; c++) {
+                const v = b[r][c], k = key(r, c), step = stepOf[k];
+                const isStart = r === state.start[0] && c === state.start[1];
+                const cls = ['tt-cell'];
+                let label;
+                if (isStart) { cls.push('tt-cell--start'); label = '🏠'; }
+                else if (v === HAUNTED) { cls.push('tt-cell--haunted'); label = '👻'; }
+                else if (v === 0) { cls.push('tt-cell--empty'); label = '·'; }
+                else { cls.push('tt-cell--candy'); label = `${v}<small>🍬</small>`; }
+                if (step) cls.push('tt-cell--path');
+                if (step && step === route.length) cls.push('tt-cell--last');
+                if (!result && isNext(r, c)) cls.push('tt-cell--next');
+                if (bestSet.has(k)) cls.push('tt-cell--best');
+                html += `<button type="button" class="${cls.join(' ')}" data-cell="${r},${c}">${step ? `<span class="tt-step">${step}</span>` : ''}${label}</button>`;
+            }
+        }
+        mapEl.innerHTML = html;
+    }
+
+    function renderHud() {
+        $('tt-moves').textContent = state.run || result ? `${state.moves - route.length}/${state.moves}` : '-';
+        $('tt-score').textContent = board() ? routeScore() : 0;
+        const left = deadline ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : null;
+        $('tt-timer').textContent = state.run && left != null ? left : '-';
+        const bar = $('tt-timebar');
+        bar.style.width = state.run && left != null ? `${left / state.time_limit * 100}%` : '0%';
+        bar.classList.toggle('tt-low', left != null && left <= 10);
+    }
+
     function render() {
         $('tt-my-treats').textContent = state.treats;
         $('tt-today').textContent = state.event_active ? `${state.daily_cap - state.remaining_today}/${state.daily_cap}` : '-';
         renderDeadline();
         renderRanking();
-        const run = state.run;
-        $('tt-bag-count').textContent = run ? run.bag : 0;
-        $('tt-bag-step').textContent = run ? (run.step ? `${run.step}번째 집까지 돌았어요` : '골목 입구') : '';
-        const housesEl = $('tt-houses'), actionsEl = $('tt-actions'), warnEl = $('tt-warn');
+        renderMap();
+        renderHud();
+        const mapEl = $('tt-map'), actionsEl = $('tt-actions'), warnEl = $('tt-warn');
 
         if (!state.event_active) {
-            housesEl.innerHTML = `<div class="tt-empty">🎃 할로윈 이벤트가 끝났어요! 함께해 주셔서 고마워요.<br>사탕 순위는 오른쪽(모바일은 채팅 버튼) "사탕 순위" 탭에서 볼 수 있어요.</div>`;
+            mapEl.innerHTML = `<div class="tt-empty" style="grid-column:1/-1">🎃 할로윈 이벤트가 끝났어요! 함께해 주셔서 고마워요.<br>사탕 순위는 "사탕 순위" 탭(모바일은 채팅 버튼)에서 볼 수 있어요.</div>`;
             warnEl.classList.add('hidden');
             actionsEl.innerHTML = state.treats > 0 ? `
                 <div class="tt-exchange">
@@ -390,28 +442,29 @@
                 </div>` : '';
             return;
         }
-        if (!run) {
-            housesEl.innerHTML = `<div class="tt-empty">달빛이 비치는 골목... 사탕 바구니를 들고 출발해 볼까요?</div>`;
-            actionsEl.innerHTML = `<button type="button" class="tt-btn" data-start ${busy ? 'disabled' : ''}>🎃 골목으로 출발</button>`;
+        if (state.run) {
+            actionsEl.innerHTML = `
+                <button type="button" class="tt-btn" data-undo style="background:rgba(255,255,255,.12);color:#ddd6fe;box-shadow:none" ${busy || !route.length ? 'disabled' : ''}>↩ 한 걸음 취소</button>
+                <button type="button" class="tt-btn tt-btn--home" data-submit ${busy || !route.length ? 'disabled' : ''}>🍬 이 길로 제출 (${routeScore()}개)</button>`;
         } else {
-            housesEl.innerHTML = run.houses.map((h, i) => `
-                <button type="button" class="tt-house tt-house--${h.kind}" data-house="${i}" ${busy ? 'disabled' : ''}>
-                    <span class="tt-house-emoji">${h.emoji}</span>
-                    <span class="tt-house-label">${esc(h.label)}</span>
-                    <span class="tt-house-treat">🍬 +${h.treat}</span>
-                    <span class="tt-house-risk">👻 ${h.risk}%</span>
-                </button>`).join('');
-            actionsEl.innerHTML = `<button type="button" class="tt-btn tt-btn--home" data-home ${busy || !run.bag ? 'disabled' : ''}>🏠 집으로 가기 (사탕 ${run.bag}개 챙기기)</button>`
-                + (run.bag ? '' : `<button type="button" class="tt-btn" data-home-empty ${busy ? 'disabled' : ''} style="background:rgba(255,255,255,.12);color:#ddd6fe;box-shadow:none">그만하기</button>`);
+            if (!board()) mapEl.innerHTML = `<div class="tt-empty" style="grid-column:1/-1">달빛이 비치는 동네 지도를 펼쳐 볼까요? 지도를 펼치면 60초가 시작돼요.</div>`;
+            actionsEl.innerHTML = `<button type="button" class="tt-btn" data-start ${busy ? 'disabled' : ''}>🗺️ ${result ? '다음 지도 펼치기' : '지도 펼치기'}</button>`;
         }
         if (state.remaining_today <= 0) {
             warnEl.textContent = '오늘 받을 수 있는 사탕(10개)을 다 받았어요. 놀이로는 계속 즐길 수 있고, 내일 다시 받을 수 있어요!';
             warnEl.classList.remove('hidden');
-        } else if (run && run.bag > state.remaining_today) {
-            warnEl.textContent = `오늘 더 받을 수 있는 사탕은 ${state.remaining_today}개예요. 넘는 만큼은 챙겨도 받지 못해요.`;
-            warnEl.classList.remove('hidden');
         } else {
             warnEl.classList.add('hidden');
+        }
+    }
+
+    function syncRun() {
+        // 새 판이 시작되면 내 길을 비우고 서버가 알려준 남은 시간으로 제한시각을 잡는다
+        if (state.run) {
+            deadline = Date.now() + state.run.seconds_left * 1000;
+            resultBoard = null;
+        } else {
+            deadline = null;
         }
     }
 
@@ -424,47 +477,61 @@
         render();
     }
 
+    function submitRoute() {
+        const sent = route.slice();
+        const boardAtSubmit = board();
+        act(async () => {
+            const data = await post('submit', { route: sent });
+            state = data.state;
+            const res = data.result;
+            result = res;
+            resultBoard = boardAtSubmit;
+            syncRun();
+            const pct = Math.round(res.score / res.best * 100);
+            if (res.late) {
+                sound('error');
+                showPop('none', `⏱ 시간이 지나서 사탕을 받지 못했어요. (${res.score} / 최고 ${res.best})`);
+            } else if (res.earned) {
+                sound(res.earned === 3 ? 'winSmall' : 'pop');
+                const capped = res.granted < res.earned ? ` (오늘 상한 때문에 ${res.granted}개만)` : '';
+                showPop('treat', `${res.score === res.best ? '🏆 최고 경로!' : `🍬 ${pct}%`} ${res.score} / 최고 ${res.best} → 사탕 +${res.earned}${capped}`);
+            } else {
+                sound('lose');
+                showPop('none', `🍬 ${res.score} / 최고 ${res.best} (${pct}%) — 70% 이상이면 사탕을 받아요. 점선이 최고 경로예요!`);
+            }
+        });
+    }
+
     $('tt-body').addEventListener('click', (e) => {
         if (e.target.closest('[data-start]')) {
             hidePop();
             sound('click');
-            act(async () => { state = (await post('start')).state; });
-            return;
-        }
-        const house = e.target.closest('[data-house]');
-        if (house) {
-            const index = Number(house.dataset.house);
-            sound('tap');
-            house.classList.add('tt-house--knocking');
             act(async () => {
-                const [data] = await Promise.all([post('knock', { house: index }), new Promise(r => setTimeout(r, 450))]);
-                const res = data.result;
-                state = data.state;
-                if (res.outcome === 'ghost') {
-                    sound('lose');
-                    showPop('ghost', `👻 BOO! 유령이 나타나 사탕 ${res.lost}개를 몽땅 가져갔어요...`);
-                } else {
-                    sound(res.big ? 'winSmall' : 'pop');
-                    showPop('treat', res.big ? `🍭 왕사탕! 사탕 +${res.gained}` : `🍬 트릿! 사탕 +${res.gained}`);
-                    $('tt-bag').classList.remove('tt-bag--bump'); void $('tt-bag').offsetWidth; $('tt-bag').classList.add('tt-bag--bump');
-                }
+                state = (await post('start')).state;
+                route = [];
+                result = null;
+                syncRun();
             });
             return;
         }
-        if (e.target.closest('[data-home]') || e.target.closest('[data-home-empty]')) {
-            act(async () => {
-                const data = await post('home');
-                state = data.state;
-                const { bag, granted } = data.result;
-                if (granted) {
-                    sound('winSmall');
-                    showPop('home', granted < bag ? `🏠 사탕 ${granted}개를 받았어요! (오늘 상한 때문에 ${bag - granted}개는 못 받았어요)` : `🏠 사탕 ${granted}개를 받았어요!`);
-                } else {
-                    showPop('home', bag ? '🏠 오늘 받을 수 있는 사탕을 이미 다 받았어요.' : '🏠 빈손으로 집에 왔어요.');
-                }
-            });
+        const cell = e.target.closest('[data-cell]');
+        if (cell && state.run && !busy) {
+            const [r, c] = cell.dataset.cell.split(',').map(Number);
+            const at = route.findIndex(([pr, pc]) => pr === r && pc === c);
+            if (at >= 0) {
+                route = route.slice(0, at);  // 그린 길의 칸을 누르면 그 앞까지로 되돌린다
+                sound('click');
+            } else if (isNext(r, c)) {
+                route.push([r, c]);
+                sound('tap');
+            } else {
+                return;
+            }
+            render();
             return;
         }
+        if (e.target.closest('[data-undo]')) { route.pop(); sound('click'); render(); return; }
+        if (e.target.closest('[data-submit]')) { submitRoute(); return; }
         if (e.target.closest('[data-exchange]')) {
             const amount = Number($('tt-exchange-amount').value);
             act(async () => {
@@ -475,10 +542,17 @@
         }
     });
 
+    // 남은 시간 표시, 시간이 다 되면 그린 데까지 자동 제출
+    setInterval(() => {
+        if (!state.run || !deadline) return;
+        renderHud();
+        if (Date.now() >= deadline && !busy) submitRoute();
+    }, 250);
     setInterval(() => {
         renderDeadline();
         if (state.event_active && Date.now() >= END) location.reload();  // 마감 순간 화면 전환
     }, 30000);
+    syncRun();
     render();
 })();
 
