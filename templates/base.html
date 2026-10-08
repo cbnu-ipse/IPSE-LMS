@@ -43,6 +43,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="IPSE">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={% now 'U' %}">
+    {% if treat_event_active %}<link rel="stylesheet" href="{% static 'css/halloween.css' %}?v={{ static_version }}">{% endif %}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
     /* ── 컴포넌트 단위 skeleton (홈 일정 위젯 등) ── */
@@ -330,6 +331,12 @@
                         <i class="fa-solid fa-leaf text-emerald-600"></i>
                         <span>{{ user.leaves }}</span>
                     </div>
+                    {% if treat_event_active or user.treats %}
+                    <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때) -->
+                    <a href="/game/trick-or-treat/" class="inline-flex items-center gap-1 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200 text-orange-700 text-sm font-bold shadow-sm transition" title="할로윈 사탕">
+                        🍬 <span>{{ user.treats }}</span>
+                    </a>
+                    {% endif %}
                     <button type="button" onclick="doLogout()" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
                             <i class="fa-solid fa-right-from-bracket text-xs"></i>
                         </button>
@@ -387,6 +394,9 @@
                                 <span class="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                     <i class="fa-solid fa-leaf text-amber-600"></i> {{ user.leaves }}
                                 </span>
+                                {% if treat_event_active or user.treats %}
+                                <span class="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 font-bold px-1.5 py-0.5 rounded-md">🍬 {{ user.treats }}</span>
+                                {% endif %}
                             </div>
                         </div>
                     </a>
@@ -454,6 +464,14 @@
         </div>
 
     </nav>
+    {% if treat_event_active %}
+    <!-- 할로윈 이벤트 배너 + 장식 (이벤트 기간에만) -->
+    <div class="hw-banner">
+        <span>🎃 할로윈 이벤트 진행 중! 사탕을 모으면 <b>TOP 10에게 진짜 사탕</b>을 드려요 · 마감까지 <b>{{ treat_event_end|timeuntil }}</b></span>
+        <a href="/game/trick-or-treat/">🍬 사탕 모으러 가기</a>
+    </div>
+    <div class="hw-bats" aria-hidden="true"><span class="hw-bat">🦇</span><span class="hw-bat">🦇</span><span class="hw-bat">🦇</span></div>
+    {% endif %}
     {% endif %}
     {% endblock %}
 

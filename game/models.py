@@ -728,3 +728,39 @@ class YachtGameLog(models.Model):
 
     def __str__(self):
         return f"{self.room_number}번 방 - 판돈 {self.pot}칩"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 트릭 오어 트릿: 사탕 골목 지도 (할로윈 이벤트, game/trick_or_treat.py) — 사탕(accounts/treats.py)을
+# 얻는 실력 게임. 지도에서 정해진 걸음 안에 사탕을 가장 많이 모으는 경로를 그린다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TrickOrTreatRun(models.Model):
+    """진행 중인 한 판 (유저당 하나). 지도와 그 지도의 최고 점수를 서버가 들고 있다."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trick_or_treat_run", verbose_name="사용자"
+    )
+    board = models.JSONField(default=list, verbose_name="지도 (칸별 사탕, -1 = 귀신 집)")
+    best = models.PositiveIntegerField(default=0, verbose_name="이 지도의 최고 점수")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "트릭 오어 트릿 진행 중"
+        verbose_name_plural = "트릭 오어 트릿 진행 중"
+
+
+class TrickOrTreatLog(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trick_or_treat_logs", verbose_name="사용자"
+    )
+    score = models.PositiveIntegerField(default=0, verbose_name="모은 사탕")
+    best = models.PositiveIntegerField(default=0, verbose_name="최고 점수")
+    earned = models.PositiveIntegerField(default=0, verbose_name="보상 사탕")
+    granted = models.PositiveIntegerField(default=0, verbose_name="받은 사탕 (하루 상한 적용)")
+    seconds = models.PositiveIntegerField(default=0, verbose_name="걸린 시간(초)")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="끝난 시각")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "트릭 오어 트릿 기록"
+        verbose_name_plural = "트릭 오어 트릿 기록"

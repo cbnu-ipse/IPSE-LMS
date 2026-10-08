@@ -55,6 +55,8 @@ class User(AbstractUser):
     is_vice_president = models.BooleanField(default=False, verbose_name="부회장")
     is_executive = models.BooleanField(default=False, verbose_name="임원진")
     leaves = models.PositiveIntegerField(default=0, verbose_name="낙엽")
+    # 할로윈 이벤트 전용 재화 (accounts/treats.py). 낙엽과 별개, 이벤트가 끝난 뒤에만 낙엽으로 환전
+    treats = models.PositiveIntegerField(default=0, verbose_name="사탕")
     # 놀이터 게임의 AI 플레이어 계정 (is_active=False로 만들어 로그인·랭킹·목록에서 빠진다)
     is_bot = models.BooleanField(default=False, verbose_name="AI 봇")
     # 졸업생: 본인 신청 → 운영진 승인. 기능 제한 없이 이름 옆에 졸업생 마크만 붙는다.
@@ -465,6 +467,23 @@ class Friendship(models.Model):
         return cls.objects.filter(
             models.Q(from_user=a, to_user=b) | models.Q(from_user=b, to_user=a)
         ).first()
+
+
+class TreatTransaction(models.Model):
+    """사탕 원장. 하루 획득 상한과 이벤트 순위(마감 시각까지의 합계)를 이 기록으로 계산한다."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="treat_transactions")
+    amount = models.IntegerField(verbose_name="변동 수량")
+    transaction_type = models.CharField(max_length=30, verbose_name="유형")
+    description = models.CharField(max_length=255, blank=True, verbose_name="상세 내용")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="일시")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "사탕 거래 내역"
+        verbose_name_plural = "사탕 거래 내역"
+
+    def __str__(self):
+        return f"{self.user} {self.amount:+d} ({self.transaction_type})"
 
 
 class GraduationRequest(models.Model):

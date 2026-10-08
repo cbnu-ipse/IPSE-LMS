@@ -155,6 +155,7 @@ TEMPLATES = [
                 "core.context_processors.site_section",
                 "game.context_processors.pending_season_reward",
                 "game.context_processors.static_version",
+                "accounts.context_processors.treat_event",
             ],
         },
     },

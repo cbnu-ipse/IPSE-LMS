@@ -2548,13 +2548,19 @@ def guestbook_create_api(request):
             attendance_recorded = False
             streak_bonus = 0
 
+            treats_given = 0
             if not already_today:
-                request.user.adjust_leaves(
-                    amount=1,
-                    transaction_type='guestbook',
-                    description='방명록 작성 보상 (하루 1회)',
-                )
-                leaf_given = True
+                from accounts import treats
+                if treats.event_active():
+                    # 할로윈 이벤트 기간: 낙엽 대신 사탕 (하루 상한 안에서)
+                    treats_given = treats.grant(request.user, treats.TREAT_GUESTBOOK, 'guestbook', '방명록 작성 보상 (하루 1회)')
+                else:
+                    request.user.adjust_leaves(
+                        amount=1,
+                        transaction_type='guestbook',
+                        description='방명록 작성 보상 (하루 1회)',
+                    )
+                    leaf_given = True
 
                 if not Attendance.objects.filter(user=request.user, date=kst_today).exists():
                     Attendance.objects.create(user=request.user, date=kst_today)
@@ -2576,8 +2582,10 @@ def guestbook_create_api(request):
         bonus_msg = f' 🎉 {streak}일 연속 출석 보너스 낙엽 {streak_bonus}개!' if streak_bonus else ''
         return JsonResponse({
             'status': 'success',
-            'message': '방명록에 글을 남겼습니다!' + (' 낙엽 1개가 적립되었습니다.' if leaf_given else '') + bonus_msg,
+            'message': '방명록에 글을 남겼습니다!' + (' 낙엽 1개가 적립되었습니다.' if leaf_given else '')
+                       + (f' 🍬 사탕 {treats_given}개를 받았어요!' if treats_given else '') + bonus_msg,
             'leaf_given': leaf_given,
+            'treats_given': treats_given,
             'attendance_recorded': attendance_recorded,
             'streak': streak,
             'streak_bonus': streak_bonus,
