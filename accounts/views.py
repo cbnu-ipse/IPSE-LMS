@@ -990,7 +990,12 @@ def lms_download_file(request):
     file_url = request.GET.get("url")
     if not file_url:
         return HttpResponse("파일 URL이 누락되었습니다.", status=400)
-    
+
+    # Only forward the user's LMS token to the LMS host itself
+    parsed_file_url = urllib.parse.urlparse(file_url)
+    if parsed_file_url.scheme != "https" or parsed_file_url.hostname != urllib.parse.urlparse(LMS_API_URL).hostname:
+        return HttpResponse("허용되지 않은 파일 주소입니다.", status=400)
+
     lms_token_obj = getattr(request.user, "lms_token", None)
     if not lms_token_obj:
         return HttpResponse("LMS 연동이 필요합니다.", status=403)

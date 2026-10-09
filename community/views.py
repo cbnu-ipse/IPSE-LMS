@@ -5,6 +5,7 @@ import random
 from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.contrib.admin.views.decorators import staff_member_required
@@ -317,7 +318,10 @@ def post_add(request):
         NewsAndEvents.objects.create(
             title=title, summary=summary, posted_as=posted_as, thumbnail=thumbnail
         )
-        return redirect(request.META.get('HTTP_REFERER', 'community_main'))
+        referer = request.META.get('HTTP_REFERER', '')
+        if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return redirect(referer)
+        return redirect('community_main')
     return redirect('community_main')
 
 @staff_member_required
@@ -2323,6 +2327,7 @@ def gathering_comment_dislike_toggle(request, comment_id):
 
 import urllib.request
 import urllib.parse
+import urllib.error
 from html.parser import HTMLParser
 from django.views.decorators.http import require_GET
 
@@ -2363,21 +2368,53 @@ class _OGParser(HTMLParser):
         if self.in_title:
             self.title_tag += data
 
+def _is_public_http_url(url):
+    """Allow only http(s) URLs on standard ports whose host resolves to public IPs."""
+    import ipaddress
+    import socket
+
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+            return False
+        if parsed.port not in (None, 80, 443):
+            return False
+        infos = socket.getaddrinfo(parsed.hostname, None)
+    except (ValueError, OSError):
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split('%')[0])
+        if not ip.is_global:
+            return False
+    return bool(infos)
+
+
+class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_public_http_url(newurl):
+            raise urllib.error.URLError('redirect target is not allowed')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 @require_GET
 def og_preview(request):
     url = request.GET.get('url', '').strip()
     if not url:
         return JsonResponse({'status': 'error', 'message': 'URL이 제공되지 않았습니다.'}, status=400)
-    
+
     if not (url.startswith('http://') or url.startswith('https://')):
         return JsonResponse({'status': 'error', 'message': '유효하지 않은 URL 형식입니다.'}, status=400)
-        
+
+    if not _is_public_http_url(url):
+        return JsonResponse({'status': 'error', 'message': '미리보기를 제공할 수 없는 주소입니다.'}, status=400)
+
     try:
         req = urllib.request.Request(
-            url, 
+            url,
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         )
-        with urllib.request.urlopen(req, timeout=3.0) as response:
+        opener = urllib.request.build_opener(_PublicOnlyRedirectHandler)
+        with opener.open(req, timeout=3.0) as response:
             content_type = response.headers.get('Content-Type', '')
             if 'text/html' not in content_type:
                 return JsonResponse({
