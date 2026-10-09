@@ -611,7 +611,11 @@ def season_reward_debug(request):
         reward=reward,
     )
     from django.shortcuts import redirect
-    return redirect(request.GET.get("next", "/"))
+    from django.utils.http import url_has_allowed_host_and_scheme
+    next_url = request.GET.get("next", "/")
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = "/"
+    return redirect(next_url)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

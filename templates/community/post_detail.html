@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load safe_output %}
 {% block title %}{{ post.title }} | IPSE LMS{% endblock %}
 
 {% block og_title %}{{ post.title }}{% endblock %}
@@ -85,7 +86,7 @@
             <!-- Toast UI Viewer / HTML 본문 영역 -->
             <div id="content-viewer" class="prose max-w-none text-slate-700 py-4 leading-relaxed">
                 {% if post.category == 'academic' %}
-                    {{ post.content|safe }}
+                    {{ post.content|sanitize_html }}
                 {% endif %}
             </div>
 
@@ -926,10 +927,15 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.title) {
+                        // Preview fields come from external pages: escape before inserting as HTML
+                        const safeTitle = escapeHtml(data.title);
+                        const safeDescription = data.description ? escapeHtml(data.description) : '미리보기 설명이 없습니다.';
+                        const safeImage = /^https?:\/\//i.test(data.image || '') ? escapeHtml(data.image) : '';
+
                         // 링크 텍스트가 순수 주소 형태였다면 타이틀로 대체
                         const text = link.textContent.trim();
                         if (text === href || text === decodeURIComponent(href) || text.replace(/\/$/, '') === href.replace(/\/$/, '')) {
-                            link.innerHTML = `<i class="fa-solid fa-link text-xs mr-1"></i>${data.title}`;
+                            link.innerHTML = `<i class="fa-solid fa-link text-xs mr-1"></i>${safeTitle}`;
                         }
 
                         const card = document.createElement('a');
@@ -939,10 +945,10 @@
                         card.className = 'link-preview-card';
 
                         let imgHtml = '';
-                        if (data.image) {
+                        if (safeImage) {
                             imgHtml = `
                                 <div class="link-preview-image-container">
-                                    <img src="${data.image}" alt="${data.title}" class="link-preview-image" onerror="this.parentNode.style.display='none'">
+                                    <img src="${safeImage}" alt="${safeTitle}" class="link-preview-image" onerror="this.parentNode.style.display='none'">
                                 </div>
                             `;
                         }
@@ -950,8 +956,8 @@
                         card.innerHTML = `
                             ${imgHtml}
                             <div class="link-preview-content">
-                                <div class="link-preview-title">${data.title}</div>
-                                <div class="link-preview-description">${data.description || '미리보기 설명이 없습니다.'}</div>
+                                <div class="link-preview-title">${safeTitle}</div>
+                                <div class="link-preview-description">${safeDescription}</div>
                                 <div class="link-preview-domain">
                                     <i class="fa-solid fa-earth-americas text-xs"></i>
                                     ${new URL(href).hostname}

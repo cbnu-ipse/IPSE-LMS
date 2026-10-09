@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load safe_output %}
 {% load static %}
 
 {% block title %}IPSE 놀이터 | 하이로우{% endblock %}
@@ -617,7 +618,7 @@ const SUITS = [
     { char: '♥', color: 'red' },   { char: '♦', color: 'red' },
 ];
 let hlBusy = false;
-let hlState = {{ session_state_json|safe }};
+let hlState = {{ session_state_json|script_json }};
 
 const cardEl      = document.getElementById('hl-card');
 const rankEl      = document.getElementById('hl-card-rank');
