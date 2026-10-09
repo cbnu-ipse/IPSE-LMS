@@ -20,7 +20,7 @@ from .models import TimetableSubject
 
 def get_pastel_color(subject_name):
     """Generate consistent pastel HSL color based on subject name for text-white readability"""
-    hash_val = int(hashlib.md5(subject_name.encode('utf-8')).hexdigest(), 16)
+    hash_val = int(hashlib.md5(subject_name.encode('utf-8'), usedforsecurity=False).hexdigest(), 16)
     h = hash_val % 360
     s = 55 + (hash_val % 15)  # 55% ~ 70%
     l = 45 + (hash_val % 15)  # 45% ~ 60%
@@ -169,7 +169,7 @@ def import_everytime_timetable_api(request):
         )
         
         try:
-            context = ssl._create_unverified_context()
+            context = ssl.create_default_context()
             with urllib.request.urlopen(req, context=context, timeout=10) as response:
                 xml_data = response.read()
         except urllib.error.HTTPError as he:
@@ -185,6 +185,9 @@ def import_everytime_timetable_api(request):
         except Exception as e:
             traceback.print_exc()
             return JsonResponse({'success': False, 'error': f'네트워크 요청 중 알 수 없는 오류 발생: {str(e)}'}, status=400)
+
+        if b"<!DOCTYPE" in xml_data.upper():
+            return JsonResponse({'success': False, 'error': '받아온 시간표 데이터(XML) 형식이 유효하지 않습니다.'}, status=400)
 
         try:
             root = ET.fromstring(xml_data)

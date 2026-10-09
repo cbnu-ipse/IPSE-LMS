@@ -80,7 +80,11 @@ def _extract_hwpx(f):
     with zipfile.ZipFile(f) as zf:
         for name in zf.namelist():
             if name.startswith("Contents/section") and name.endswith(".xml"):
-                texts.append("".join(ET.fromstring(zf.read(name)).itertext()))
+                data = zf.read(name)
+                # Uploaded files are untrusted: refuse DTDs (entity expansion / external entities)
+                if b"<!DOCTYPE" in data.upper():
+                    raise ValueError("hwpx section contains a DTD")
+                texts.append("".join(ET.fromstring(data).itertext()))
     return "\n".join(texts)
 
 
