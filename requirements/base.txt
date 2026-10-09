@@ -34,6 +34,7 @@ icalendar==7.1.1
 django-dbbackup>=4.2.1
 pywebpush>=1.14.0
 beautifulsoup4>=4.12.3
+nh3>=0.3.0            # HTML sanitizing for untrusted rich text
 
 # ==========================================
 # AI (assistant / mypage 문서 요약·문제생성)

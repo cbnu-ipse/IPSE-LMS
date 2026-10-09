@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load safe_output %}
 {% load i18n %}
 {% block title %}{{ title }} | IPSE LMS{% endblock %}
 
@@ -380,7 +381,7 @@
 </div>
 
 <script>
-    const subjects = {{ subjects_json|safe }};
+    const subjects = {{ subjects_json|script_json }};
 
     function renderSubjects() {
         const container = document.getElementById('subject-cards-container');

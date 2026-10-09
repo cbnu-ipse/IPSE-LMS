@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load safe_output %}
 {% load i18n %}
 {% block title %}{% if is_edit %}글 수정{% else %}글쓰기{% endif %} | IPSE LMS{% endblock title %}
 
@@ -245,7 +246,7 @@
 </section>
 
 {% if survey_data_json %}
-<script id="survey-initial-data" type="application/json">{{ survey_data_json|safe }}</script>
+<script id="survey-initial-data" type="application/json">{{ survey_data_json|script_json }}</script>
 {% endif %}
 
 <!-- Toast UI Editor CDN 리소스 로드 -->
