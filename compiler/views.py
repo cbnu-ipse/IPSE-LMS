@@ -11,6 +11,9 @@ from django.views.decorators.http import require_POST
 @login_required
 @require_POST
 def compiler_run(request):
+    # Temporarily disabled until code runs in an isolated sandbox
+    return JsonResponse({"ok": False, "output": "코드 실행 기능은 현재 점검 중입니다."}, status=503)
+
     language = request.POST.get("language", "python")
     code = request.POST.get("code", "").strip()
     stdin = request.POST.get("stdin", "")
