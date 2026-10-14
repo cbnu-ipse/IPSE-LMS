@@ -2525,6 +2525,25 @@ def guestbook(request):
     })
 
 
+def give_guestbook_rewards(user, kst_start, kst_end):
+    """방명록 하루 보상 중 그날(KST) 아직 못 받은 몫을 준다: 낙엽 1개는 항상, 사탕은 할로윈 이벤트 기간에만.
+    둘을 따로 확인하므로, 하나만 받은 상태(예: 이벤트 초기 사탕만 받은 날)면 빠진 쪽만 준다.
+    반환: (낙엽을 줬는지, 준 사탕 수)."""
+    from accounts import treats
+    from accounts.models import LeafTransaction, TreatTransaction, User
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=user.pk)  # 같은 유저의 동시 작성으로 두 번 받지 않게
+        today = {'transaction_type': 'guestbook', 'created_at__gte': kst_start, 'created_at__lt': kst_end}
+        leaf_given = False
+        if not LeafTransaction.objects.filter(user=user, **today).exists():
+            user.adjust_leaves(amount=1, transaction_type='guestbook', description='방명록 작성 보상 (하루 1회)')
+            leaf_given = True
+        treats_given = 0
+        if treats.event_active() and not TreatTransaction.objects.filter(user=user, amount__gt=0, **today).exists():
+            treats_given = treats.grant(user, treats.TREAT_GUESTBOOK, 'guestbook', '방명록 작성 보상 (하루 1회)')
+    return leaf_given, treats_given
+
+
 def _kst_day_utc_range():
     """Return (kst_start, kst_end, kst_today) in UTC for the current KST calendar day."""
     from datetime import datetime as _dt, timedelta as _td, timezone as _tz
@@ -2538,7 +2557,7 @@ def _kst_day_utc_range():
 @login_required
 @require_POST
 def guestbook_create_api(request):
-    """방명록 한 줄 등록 + 하루 첫 번째 작성 시 낙엽 1개 지급 + 출석 처리"""
+    """방명록 한 줄 등록 + 그날 방명록 보상(낙엽 1개, 할로윈 이벤트 기간엔 사탕도) 지급 + 출석 처리"""
     try:
         data = json.loads(request.body)
         content = data.get('content', '').strip()
@@ -2581,24 +2600,12 @@ def guestbook_create_api(request):
                 entry.created_at = entry_created_at
 
             STREAK_BONUSES = {7: 2, 14: 3, 30: 5, 60: 8, 100: 15}
-            leaf_given = False
             attendance_recorded = False
             streak_bonus = 0
 
-            treats_given = 0
+            # 낙엽(항상)과 사탕(할로윈 이벤트 기간)을 각각 "오늘 받았는지"로 따로 확인해 빠진 몫만 준다
+            leaf_given, treats_given = give_guestbook_rewards(request.user, kst_start, kst_end)
             if not already_today:
-                from accounts import treats
-                if treats.event_active():
-                    # 할로윈 이벤트 기간: 낙엽 대신 사탕 (하루 상한 안에서)
-                    treats_given = treats.grant(request.user, treats.TREAT_GUESTBOOK, 'guestbook', '방명록 작성 보상 (하루 1회)')
-                else:
-                    request.user.adjust_leaves(
-                        amount=1,
-                        transaction_type='guestbook',
-                        description='방명록 작성 보상 (하루 1회)',
-                    )
-                    leaf_given = True
-
                 if not Attendance.objects.filter(user=request.user, date=kst_today).exists():
                     Attendance.objects.create(user=request.user, date=kst_today)
                     attendance_recorded = True
