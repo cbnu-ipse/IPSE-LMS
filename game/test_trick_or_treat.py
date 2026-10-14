@@ -82,6 +82,29 @@ class TreatCurrencyTestCase(TestCase):
         self.assertEqual((self.u.leaves, self.u.treats), (1, treats.TREAT_GUESTBOOK))
         self.assertEqual((other.leaves, other.treats), (1, treats.TREAT_GUESTBOOK))
 
+    def test_backfill_gives_leaf_for_early_event_days(self):
+        """이벤트 초기(사탕만 주던 날)에 쓴 방명록은 날짜마다 낙엽 1개씩 소급 (다시 돌아도 중복 없음)."""
+        import importlib
+        from django.apps import apps
+        from community.models import Guestbook
+        from accounts.models import LeafTransaction
+        mig = importlib.import_module("community.migrations.0024_backfill_today_guestbook_rewards")
+        today = (timezone.now() + timedelta(hours=9)).date()
+        days = [today - timedelta(days=2), today - timedelta(days=1)]
+        for d in days:
+            start, _ = mig._day_range(d)
+            g = Guestbook.objects.create(author=self.u, content="초기에 쓴 글")
+            Guestbook.objects.filter(pk=g.pk).update(created_at=start + timedelta(hours=12))
+        before_start, _ = mig._day_range(today - timedelta(days=5))  # 이벤트 시작 전에 쓴 글은 대상 아님
+        g = Guestbook.objects.create(author=self.u, content="이벤트 전")
+        Guestbook.objects.filter(pk=g.pk).update(created_at=before_start + timedelta(hours=12))
+        with patch.object(mig, "EVENT_START_DAY", today - timedelta(days=3)):
+            mig.backfill(apps, None)
+            mig.backfill(apps, None)
+        self.u.refresh_from_db()
+        self.assertEqual(self.u.leaves, 2)
+        self.assertEqual(LeafTransaction.objects.filter(user=self.u, description__contains="소급").count(), 2)
+
 
 class TreatAfterEventTestCase(TestCase):
     def setUp(self):
