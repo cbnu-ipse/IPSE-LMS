@@ -41,13 +41,69 @@ class TreatCurrencyTestCase(TestCase):
         self.assertEqual([r["user"].username for r in rows], ["t1", "boss", "late"])  # 동점은 먼저 도달한 사람
         self.assertEqual(treats.my_rank(late), 3)
 
-    def test_guestbook_gives_treats_instead_of_leaf(self):
+    def _write_guestbook(self, content="해피 할로윈"):
+        return self.client.post("/community/guestbook/api/create/", data=json.dumps({"content": content}),
+                                content_type="application/json").json()
+
+    def test_guestbook_gives_leaf_and_treats(self):
         self.client.force_login(self.u)
-        res = self.client.post("/community/guestbook/api/create/", data=json.dumps({"content": "해피 할로윈"}),
-                               content_type="application/json")
-        self.assertEqual(res.json()["treats_given"], treats.TREAT_GUESTBOOK)
+        res = self._write_guestbook()
+        self.assertEqual((res["leaf_given"], res["treats_given"]), (True, treats.TREAT_GUESTBOOK))
         self.u.refresh_from_db()
-        self.assertEqual((self.u.treats, self.u.leaves), (treats.TREAT_GUESTBOOK, 0))
+        self.assertEqual((self.u.treats, self.u.leaves), (treats.TREAT_GUESTBOOK, 1))
+        res = self._write_guestbook("또 씀")  # 같은 날 두 번째 글은 보상 없음
+        self.assertEqual((res["leaf_given"], res["treats_given"]), (False, 0))
+
+    def test_missing_leaf_is_given_when_writing_again_same_day(self):
+        """업데이트 전(이벤트 초기)엔 방명록 보상이 사탕뿐이었다 — 그날 다시 쓰면 빠진 낙엽만 준다."""
+        from community.models import Guestbook
+        Guestbook.objects.create(author=self.u, content="업데이트 전에 쓴 글")
+        treats.grant(self.u, treats.TREAT_GUESTBOOK, "guestbook", "방명록 작성 보상 (하루 1회)")
+        self.client.force_login(self.u)
+        res = self._write_guestbook()
+        self.assertEqual((res["leaf_given"], res["treats_given"]), (True, 0))
+        self.u.refresh_from_db()
+        self.assertEqual((self.u.treats, self.u.leaves), (treats.TREAT_GUESTBOOK, 1))
+
+    def test_backfill_gives_todays_writers_missing_rewards(self):
+        """배포 때 도는 데이터 마이그레이션: 오늘 이미 쓴 사람에게 못 받은 몫을 준다 (두 번 돌아도 한 번만)."""
+        import importlib
+        from django.apps import apps
+        from community.models import Guestbook
+        backfill = importlib.import_module("community.migrations.0024_backfill_today_guestbook_rewards").backfill
+        other = User.objects.create_user(username="early", password="x")
+        Guestbook.objects.create(author=self.u, content="사탕만 받은 사람")
+        treats.grant(self.u, treats.TREAT_GUESTBOOK, "guestbook", "방명록 작성 보상 (하루 1회)")
+        Guestbook.objects.create(author=other, content="아무것도 못 받은 사람")
+        backfill(apps, None)
+        backfill(apps, None)
+        self.u.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual((self.u.leaves, self.u.treats), (1, treats.TREAT_GUESTBOOK))
+        self.assertEqual((other.leaves, other.treats), (1, treats.TREAT_GUESTBOOK))
+
+    def test_backfill_gives_leaf_for_early_event_days(self):
+        """이벤트 초기(사탕만 주던 날)에 쓴 방명록은 날짜마다 낙엽 1개씩 소급 (다시 돌아도 중복 없음)."""
+        import importlib
+        from django.apps import apps
+        from community.models import Guestbook
+        from accounts.models import LeafTransaction
+        mig = importlib.import_module("community.migrations.0024_backfill_today_guestbook_rewards")
+        today = (timezone.now() + timedelta(hours=9)).date()
+        days = [today - timedelta(days=2), today - timedelta(days=1)]
+        for d in days:
+            start, _ = mig._day_range(d)
+            g = Guestbook.objects.create(author=self.u, content="초기에 쓴 글")
+            Guestbook.objects.filter(pk=g.pk).update(created_at=start + timedelta(hours=12))
+        before_start, _ = mig._day_range(today - timedelta(days=5))  # 이벤트 시작 전에 쓴 글은 대상 아님
+        g = Guestbook.objects.create(author=self.u, content="이벤트 전")
+        Guestbook.objects.filter(pk=g.pk).update(created_at=before_start + timedelta(hours=12))
+        with patch.object(mig, "EVENT_START_DAY", today - timedelta(days=3)):
+            mig.backfill(apps, None)
+            mig.backfill(apps, None)
+        self.u.refresh_from_db()
+        self.assertEqual(self.u.leaves, 2)
+        self.assertEqual(LeafTransaction.objects.filter(user=self.u, description__contains="소급").count(), 2)
 
 
 class TreatAfterEventTestCase(TestCase):
