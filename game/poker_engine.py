@@ -946,7 +946,8 @@ def _tier_view(tier):
             "small_blind": cfg["sb"], "big_blind": cfg["bb"]}
 
 
-def _tables_view():
+def _tables_view(spectators=None):
+    spectators = spectators or {}
     tables = PokerTable.objects.prefetch_related("seats__user").order_by("created_at", "id")
     out = []
     for t in tables:
@@ -955,11 +956,13 @@ def _tables_view():
             for s in sorted(t.seats.all(), key=lambda s: s.seat_number) if s.user_id
         ]
         out.append(dict(_tier_view(t.tier), id=t.id, status=t.status, players=players, capacity=t.capacity,
-                        game_type=t.game_type))
+                        game_type=t.game_type, spectators=spectators.get(t.id, [])))
     return out
 
 
-def get_state_for(user):
+def get_state_for(user, watch_table_id=None, spectators=None):
+    """watch_table_id: 앉아있지 않을 때 관전 중인 방 (공개된 정보만 보인다).
+    spectators: {방 id: [관전자 {user_id, display_name, picture}]} — 컨슈머가 메모리로 관리한다."""
     is_authed = bool(getattr(user, "is_authenticated", False))
     wallet_chips = None
     my_leaves = None
@@ -971,7 +974,7 @@ def get_state_for(user):
         my_leaves = User.objects.filter(id=user.id).values_list("leaves", flat=True).first()
     common = {
         "type": "state",
-        "tables": _tables_view(),
+        "tables": _tables_view(spectators),
         "tiers": [_tier_view(t) for t in GAME_TIERS],
         "capacities": list(POKER_CAPACITIES),
         "game_types": [{"value": v, "label": label} for v, label in PokerTable.GAME_TYPE_CHOICES],
@@ -983,13 +986,15 @@ def get_state_for(user):
         "turn_timeout": POKER_TURN_TIMEOUT,
     }
     my = PokerSeat.objects.filter(user_id=getattr(user, "id", None)).select_related("table").first() if is_authed else None
-    if not my:
+    table = my.table if my else (PokerTable.objects.filter(pk=watch_table_id).first() if watch_table_id else None)
+    if not table:
         return dict(common, table=None)
-    table = my.table
     seats = list(table.seats.select_related("user", "user__student").order_by("seat_number"))
     my_seat = next((s for s in seats if s.user_id == user.id), None)
     now = timezone.now()
-    table_view = dict(_tier_view(table.tier), id=table.id, capacity=table.capacity, game_type=table.game_type)
+    table_view = dict(_tier_view(table.tier), id=table.id, capacity=table.capacity, game_type=table.game_type,
+                      spectating=my_seat is None, spectators=(spectators or {}).get(table.id, []),
+                      can_sit=any(not s.user_id or s.user.is_bot for s in seats))
     if table.game_type == "blackjack":
         return dict(common, table=table_view, **blackjack_engine.state_view(table, seats, my_seat, now))
     sb, bb = blinds(table)

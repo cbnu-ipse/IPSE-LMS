@@ -213,6 +213,43 @@ PAGE_LEAVE_GRACE_SECONDS = 3
 _disconnect_grace_tasks = {}  # user_id -> asyncio.Task
 
 
+class _Spectators:
+    """관전자 목록 (프로세스 메모리, 연결 단위). {방 id: {채널 이름: 관전자 정보}}
+    워치독과 마찬가지로 단일 프로세스 전제 — 서버가 재시작되면 관전자는 다시 들어오면 된다."""
+
+    def __init__(self):
+        self.rooms = {}
+
+    def room_of(self, channel):
+        return next((rid for rid, d in self.rooms.items() if channel in d), None)
+
+    def set(self, channel, room_id, info=None):
+        """관전 방을 바꾼다 (None이면 관전 종료). 목록이 바뀌었으면 True."""
+        if self.room_of(channel) == room_id:
+            return False
+        for rid, d in list(self.rooms.items()):
+            if d.pop(channel, None) is not None and not d:
+                del self.rooms[rid]
+        if room_id is not None:
+            self.rooms.setdefault(room_id, {})[channel] = info
+        return True
+
+    def snapshot(self):
+        out = {}
+        for rid, d in self.rooms.items():
+            by_user = {v["user_id"]: v for v in d.values()}  # 탭 여러 개로 봐도 한 명
+            out[rid] = list(by_user.values())
+        return out
+
+
+def _spectator_info(user):
+    return {"user_id": user.id, "display_name": user.display_name, "picture": user.get_picture()}
+
+
+_poker_spectators = _Spectators()
+_gostop_spectators = _Spectators()
+
+
 async def _broadcast_poker_state():
     channel_layer = get_channel_layer()
     if channel_layer is not None:
@@ -296,6 +333,8 @@ class PokerConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(POKER_GROUP, self.channel_name)
+        if _poker_spectators.set(self.channel_name, None):
+            await _broadcast_poker_state()
         user = self.scope.get("user")
         if user and user.is_authenticated and user.id not in _disconnect_grace_tasks:
             seconds = PAGE_LEAVE_GRACE_SECONDS if getattr(self, "page_left", False) else None
@@ -327,6 +366,16 @@ class PokerConsumer(AsyncWebsocketConsumer):
 
         if msg_type == "page_leave":
             self.page_left = True
+            return
+        if msg_type in ("watch", "unwatch"):
+            room_id = data.get("table_id") if msg_type == "watch" else None
+            info = await database_sync_to_async(_spectator_info)(user) if room_id is not None else None
+            try:
+                room_id = int(room_id) if room_id is not None else None
+            except (TypeError, ValueError):
+                return
+            _poker_spectators.set(self.channel_name, room_id, info)
+            await _broadcast_poker_state()
             return
         if msg_type == "create":
             handler = lambda: poker_engine.create_table(user, data.get("tier"), data.get("capacity", 6),
@@ -387,7 +436,14 @@ class PokerConsumer(AsyncWebsocketConsumer):
         ))
 
     async def _send_state(self):
-        state = await database_sync_to_async(poker_engine.get_state_for)(self.scope["user"])
+        watch = _poker_spectators.room_of(self.channel_name)
+        state = await database_sync_to_async(poker_engine.get_state_for)(
+            self.scope["user"], watch, _poker_spectators.snapshot())
+        table = state.get("table")
+        if watch is not None and (not table or not table.get("spectating")):
+            # 관전하던 방이 없어졌거나 그 방에 앉았으면 관전 종료
+            _poker_spectators.set(self.channel_name, None)
+            await _broadcast_poker_state()
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
 
 
@@ -475,6 +531,8 @@ class GostopConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(GOSTOP_GROUP, self.channel_name)
+        if _gostop_spectators.set(self.channel_name, None):
+            await _broadcast_gostop_state()
         user = self.scope.get("user")
         if user and user.is_authenticated and user.id not in _gostop_disconnect_tasks:
             seconds = PAGE_LEAVE_GRACE_SECONDS if getattr(self, "page_left", False) else None
@@ -496,6 +554,16 @@ class GostopConsumer(AsyncWebsocketConsumer):
             self.page_left = True
             return
 
+        if msg_type in ("watch", "unwatch"):
+            room_id = data.get("room_id") if msg_type == "watch" else None
+            info = await database_sync_to_async(_spectator_info)(user) if room_id is not None else None
+            try:
+                room_id = int(room_id) if room_id is not None else None
+            except (TypeError, ValueError):
+                return
+            _gostop_spectators.set(self.channel_name, room_id, info)
+            await _broadcast_gostop_state()
+            return
         handlers = {
             "create": lambda: gostop_engine.create_room(user, data.get("mode"), data.get("tier") or "intermediate"),
             "join": lambda: gostop_engine.join_room(user, data.get("room_id")),
@@ -533,7 +601,13 @@ class GostopConsumer(AsyncWebsocketConsumer):
         await self._send_state()
 
     async def _send_state(self):
-        state = await database_sync_to_async(gostop_engine.get_state_for)(self.scope["user"])
+        watch = _gostop_spectators.room_of(self.channel_name)
+        state = await database_sync_to_async(gostop_engine.get_state_for)(
+            self.scope["user"], watch, _gostop_spectators.snapshot())
+        room = state.get("room")
+        if watch is not None and (not room or not room.get("spectating")):
+            _gostop_spectators.set(self.channel_name, None)
+            await _broadcast_gostop_state()
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
 
 

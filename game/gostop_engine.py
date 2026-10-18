@@ -979,7 +979,7 @@ def _player_view(u):
     return {"user_id": u.id, "display_name": u.display_name, "picture": u.get_picture(), "is_bot": u.is_bot}
 
 
-def _game_view(room, st, me):
+def _game_view(room, st, me, spectating=False):
     now = timezone.now()
     turn_left = None
     if room.status == "playing" and room.turn_deadline:
@@ -990,12 +990,13 @@ def _game_view(room, st, me):
     return {
         "phase": st["phase"],
         "turn": st["turn"],
-        "my_turn": mine and not over,
+        "my_turn": mine and not over and not spectating,
         "win_score": st["win_score"],
         "floor": st["floor"],
         "pile_count": len(st["pile"]),
-        "my_hand": st["hands"][me],
-        "my_bombs": st["bombs"][me],
+        # 관전자는 me 자리 시점으로 보되, 손패처럼 공개되지 않은 정보는 받지 않는다
+        "my_hand": [] if spectating else st["hands"][me],
+        "my_bombs": 0 if spectating else st["bombs"][me],
         # 판이 끝나면 모두의 손패 공개
         "hands": st["hands"] if over else None,
         "hand_counts": [len(h) + b for h, b in zip(st["hands"], st["bombs"])],
@@ -1004,8 +1005,8 @@ def _game_view(room, st, me):
         "go": st["go"],
         "shakes": st["shakes"],
         "ppeok": st["ppeok"],
-        "shaken": st["shaken"][me],
-        "pending_options": pending["options"] if pending and mine else None,
+        "shaken": [] if spectating else st["shaken"][me],
+        "pending_options": pending["options"] if pending and mine and not spectating else None,
         "pending_card": pending["card"] if pending else None,
         "events": st["events"],
         "last_play": st["last_play"],
@@ -1015,7 +1016,10 @@ def _game_view(room, st, me):
     }
 
 
-def get_state_for(user):
+def get_state_for(user, watch_room_id=None, spectators=None):
+    """watch_room_id: 앉아있지 않을 때 관전 중인 방 (첫 자리 시점, 손패는 숨김).
+    spectators: {방 id: [관전자 {user_id, display_name, picture}]} — 컨슈머가 메모리로 관리한다."""
+    spectators = spectators or {}
     rooms = list(GostopRoom.objects.prefetch_related("seats__user").order_by("created_at"))
     my_seat = GostopSeat.objects.filter(user_id=user.id).first()
     wallet = PokerChipWallet.objects.filter(user_id=user.id).values_list("chips", flat=True).first()
@@ -1024,14 +1028,17 @@ def get_state_for(user):
 
     room_view = None
     my_room = next((r for r in rooms if my_seat and r.id == my_seat.room_id), None)
+    spectating = my_room is None and watch_room_id is not None
+    if spectating:
+        my_room = next((r for r in rooms if r.id == watch_room_id), None)
     if my_room:
-        me = my_seat.seat
         seats = sorted(my_room.seats.all(), key=lambda s: s.seat)
+        me = seats[0].seat if spectating and seats else (my_seat.seat if not spectating else 0)
         next_left = None
         if my_room.next_game_at:
             next_left = max(0, round((my_room.next_game_at - timezone.now()).total_seconds()))
         last = dict(my_room.last_result)
-        if last.get("transfers") is not None:
+        if last.get("transfers") is not None and not spectating:
             # 좌석 번호가 아니라 유저로 계산한다 — 판이 끝나고 퇴장/파산자가 빠지면 남은 사람의
             # 좌석 번호가 당겨져서, 좌석 기준이면 승자 화면에 패자 몫(-)이 찍혔다
             last["my_net"] = sum(
@@ -1051,7 +1058,10 @@ def get_state_for(user):
             "carry_multiplier": my_room.carry_multiplier,
             "next_game_seconds_left": next_left,
             "last_result": last,
-            "game": _game_view(my_room, my_room.state, me) if my_room.state else None,
+            "game": _game_view(my_room, my_room.state, me, spectating) if my_room.state else None,
+            "spectating": spectating,
+            "spectators": spectators.get(my_room.id, []),
+            "can_sit": len(seats) < _capacity(my_room) or any(s.user.is_bot for s in seats),
         }
 
     return {
@@ -1062,6 +1072,7 @@ def get_state_for(user):
                 "tier": r.tier, "tier_label": TIER_LABELS[r.tier], "chips_per_point": r.chips_per_point,
                 "buy_in": r.buy_in, "max_chips": r.max_chips, "capacity": _capacity(r), "status": r.status,
                 "players": [_player_view(s.user) for s in sorted(r.seats.all(), key=lambda s: s.seat)],
+                "spectators": spectators.get(r.id, []),
             }
             for r in rooms
         ],
