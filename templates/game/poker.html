@@ -15,6 +15,7 @@
                     <span class="pk-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="pk-room-label">방 목록</span></span>
                     <span class="pk-stat-chip"><i class="fa-solid fa-layer-group"></i> <span id="pk-hand-no">-</span>번째 핸드</span>
                     <span class="pk-stat-chip" id="pk-round-chip"><i class="fa-solid fa-circle-info"></i> <span id="pk-round-label">대기 중</span></span>
+                    <button type="button" id="pk-spec-chip" class="pk-stat-chip pk-spec-chip hidden" data-spec-list title="관전 중인 사람 보기"><i class="fa-solid fa-eye"></i> <span id="pk-spec-count">0</span>명 관전</button>
                     <span class="pk-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="pk-my-leaves">-</strong></span>
                     <button type="button" id="pk-chip-exchange-btn" class="pk-stat-chip pk-chip-exchange-btn" onclick="openPkChipTab()" title="칩 충전/환전">
                         <i class="fa-solid fa-coins"></i> 칩 환전
@@ -880,6 +881,17 @@
 .pk-chip-btn-row .pk-btn { flex: 1; padding: 8px 4px; font-size: .76rem; white-space: nowrap; }
 .pk-chip-hint { color: #94a3b8; font-size: .74rem; text-align: center; padding: 8px 0; }
 
+/* ── 관전 ─────────────────────────────────────────────────────────── */
+.pk-spec-chip { cursor: pointer; }
+.pk-room-spec { font-size: .7rem; font-weight: 800; color: #bbf7d0; background: rgba(255,255,255,.1); border: none; border-radius: 999px;
+    padding: 3px 8px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+.pk-spec-pop { position: fixed; z-index: 60; min-width: 150px; max-width: 240px; max-height: 260px; overflow-y: auto; background: #0f172a; color: #fff;
+    border-radius: 12px; padding: 8px; box-shadow: 0 12px 30px rgba(0,0,0,.4); font-size: .76rem; }
+.pk-spec-pop h4 { font-size: .68rem; color: #94a3b8; font-weight: 800; margin: 0 0 6px 2px; }
+.pk-spec-pop div { display: flex; align-items: center; gap: 6px; padding: 3px 2px; }
+.pk-spec-pop img { width: 20px; height: 20px; border-radius: 999px; object-fit: cover; }
+.pk-spec-badge { font-size: .62rem; font-weight: 900; color: #0f172a; background: #fde047; border-radius: 999px; padding: 2px 8px; margin-right: 4px; }
+
 /* ── 블랙잭 방 ───────────────────────────────────────────────────── */
 .pk-table--bj .pk-pot, .pk-table--bj .pk-board-cards, .pk-table--bj .pk-my-hand, .pk-table--bj .pk-center-msg { display: none !important; }
 .pk-bj-center { display: flex; flex-direction: column; align-items: center; gap: 6px; color: #fff; min-width: 220px; }
@@ -1059,6 +1071,8 @@ footer { display: none !important; }
                 <span class="pk-tier-badge pk-tier-badge--${t.tier}">${t.label} · ${t.game_type === 'blackjack' ? betRange(t) : `${t.small_blind}/${t.big_blind}`}</span>
                 <span class="pk-room-players">${players}</span>
                 <span class="pk-room-status">${t.status === 'playing' ? '진행 중' : '대기 중'} ${t.players.length}/${t.capacity}</span>
+                ${t.spectators.length ? `<button type="button" class="pk-room-spec" data-spec-list="${t.id}"><i class="fa-solid fa-eye"></i> ${t.spectators.length}</button>` : ''}
+                <button type="button" class="pk-btn pk-btn-ghost pk-btn-sm" data-watch="${t.id}">관전</button>
                 <button type="button" class="pk-btn pk-btn-call pk-btn-sm" data-join="${t.id}" ${canJoin ? '' : 'disabled'}>입장</button>
             </div>`;
         }).join('');
@@ -1083,6 +1097,7 @@ footer { display: none !important; }
                     ${state.tiers.map(t => `<li><b>${t.label}</b>: ${tierRange(t)}, 블라인드 ${t.small_blind}/${t.big_blind}</li>`).join('')}
                     <li>방을 만들 때 2인 / 4인 / 6인 중 좌석 수를 고를 수 있습니다.</li>
                     <li>AI 난이도는 모든 방이 같습니다.</li>
+                    <li>진행 중인 방도 "관전"으로 들어가 볼 수 있습니다 (남의 손패는 공개된 것만). 빈자리가 있으면 관전하다 바로 앉을 수 있습니다.</li>
                     <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>차례 제한시간 20초. 시간을 넘기면 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
                     <li><b>블랙잭</b>: 하우스 딜러와 겨룹니다. 배팅은 빅블라인드의 1~10배, 딜러는 16 이하 히트·17 이상 스탠드(소프트 17 포함).
@@ -1330,6 +1345,7 @@ footer { display: none !important; }
         }
 
         const mySeat = state.seats.find(s => s.seat_number === state.my_seat_number);
+        if (state.table.spectating) { actionBarEl.innerHTML = spectatorBar(state); return; }
         const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">나가기</button>`];
         if (state.open_seats > 0) {
             rows.push(`<button type="button" class="pk-btn pk-btn-call" data-add-bot><i class="fa-solid fa-robot"></i> AI 추가</button>`);
@@ -1559,6 +1575,7 @@ footer { display: none !important; }
         pkTableEl.classList.toggle('hidden', !inRoom);
         if (!inRoom) {
             roomLabelEl.textContent = '방 목록';
+            renderSpecChip(state);
             handNoEl.textContent = '-';
             roundLabelEl.textContent = '대기 중';
             myLeavesEl.textContent = state.my_leaves != null ? state.my_leaves : '-';
@@ -1572,10 +1589,11 @@ footer { display: none !important; }
             return;
         }
         const t = state.table;
+        renderSpecChip(state);
         if (t.game_type === 'blackjack') { renderBlackjack(state); return; }
         pkTableEl.classList.remove('pk-table--bj');
         bjCenterEl.classList.add('hidden');
-        roomLabelEl.textContent = `${t.id}번 방 · ${t.label} · ${t.capacity}인 · ${t.small_blind}/${t.big_blind}`;
+        roomLabelEl.textContent = `${t.spectating ? '관전 · ' : ''}${t.id}번 방 · ${t.label} · ${t.capacity}인 · ${t.small_blind}/${t.big_blind}`;
         layoutSeats(t.capacity);
         const prev = renderedState;
         const before = snapshotChips();
@@ -1622,6 +1640,44 @@ footer { display: none !important; }
         lastTurnSeat = state.turn_seat;
         lastHandNumber = state.hand_number;
     }
+
+    // ── 관전 ────────────────────────────────────────────────────────
+    function spectatorBar(state) {
+        const t = state.table;
+        const canJoin = (state.my_wallet_chips || 0) >= t.min && t.can_sit;
+        return `<div class="pk-action-row"><span class="pk-spec-badge"><i class="fa-solid fa-eye"></i> 관전 중</span>
+            <button type="button" class="pk-btn pk-btn-ghost" data-unwatch>관전 종료</button>
+            <button type="button" class="pk-btn pk-btn-call" data-join="${t.id}" ${canJoin ? '' : 'disabled'}>자리 앉기</button>
+            ${t.can_sit ? '' : '<span class="pk-hint">빈자리가 없습니다</span>'}</div>`;
+    }
+    const specChipEl = document.getElementById('pk-spec-chip');
+    function renderSpecChip(state) {
+        const list = state.table ? state.table.spectators : [];
+        specChipEl.classList.toggle('hidden', !list.length);
+        document.getElementById('pk-spec-count').textContent = list.length;
+    }
+    let specPopEl = null;
+    function closeSpecPop() { if (specPopEl) { specPopEl.remove(); specPopEl = null; } }
+    function openSpecPop(anchor, list) {
+        closeSpecPop();
+        specPopEl = document.createElement('div');
+        specPopEl.className = 'pk-spec-pop';
+        specPopEl.innerHTML = `<h4>관전 중 ${list.length}명</h4>` + list.map(p =>
+            `<div><img src="${esc(p.picture)}" alt="">${esc(p.display_name)}</div>`).join('');
+        document.body.appendChild(specPopEl);
+        const r = anchor.getBoundingClientRect();
+        specPopEl.style.top = Math.min(r.bottom + 6, window.innerHeight - specPopEl.offsetHeight - 8) + 'px';
+        specPopEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - specPopEl.offsetWidth - 8)) + 'px';
+    }
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-spec-list]');
+        if (!btn) { closeSpecPop(); return; }
+        if (specPopEl) { closeSpecPop(); return; }
+        const id = btn.dataset.specList;
+        const list = id ? ((lastState.tables.find(t => String(t.id) === id) || {}).spectators || [])
+            : (lastState.table ? lastState.table.spectators : []);
+        if (list.length) openSpecPop(btn, list);
+    });
 
     // ── 블랙잭 방 ──────────────────────────────────────────────────
     // 홀덤과 같은 테이블·좌석 칸을 쓰고, 가운데에 딜러 패와 내 패를 그린다. 남의 패는 좌석 위에 작게 (블랙잭은 모두 앞면).
@@ -1718,6 +1774,7 @@ footer { display: none !important; }
     }
 
     function renderBjActionBar(state) {
+        if (state.table.spectating) { actionBarEl.innerHTML = spectatorBar(state); return; }
         const rows = [`<button type="button" id="pk-stand-btn" class="pk-btn pk-btn-ghost">나가기</button>`];
         if (state.open_seats > 0) {
             rows.push(`<button type="button" class="pk-btn pk-btn-call" data-add-bot><i class="fa-solid fa-robot"></i> AI 추가</button>`);
@@ -1751,7 +1808,7 @@ footer { display: none !important; }
         const t = state.table;
         pkTableEl.classList.add('pk-table--bj');
         bjCenterEl.classList.remove('hidden');
-        roomLabelEl.textContent = `${t.id}번 방 · 블랙잭 · ${t.label} · ${t.capacity}인 · 배팅 ${fmtN(state.min_bet)}~${fmtN(state.max_bet)}`;
+        roomLabelEl.textContent = `${t.spectating ? '관전 · ' : ''}${t.id}번 방 · 블랙잭 · ${t.label} · ${t.capacity}인 · 배팅 ${fmtN(state.min_bet)}~${fmtN(state.max_bet)}`;
         layoutSeats(t.capacity);
         handNoEl.textContent = state.hand_number || '-';
         roundLabelEl.textContent = BJ_PHASES[state.phase] || '대기 중';
@@ -1921,6 +1978,12 @@ footer { display: none !important; }
             send({ type: 'create', tier: createTier, capacity: createCapacity, game_type: createGame });
             return;
         }
+        const watchBtn = e.target.closest('[data-watch]');
+        if (watchBtn) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'watch', table_id: Number(watchBtn.dataset.watch) });
+            return;
+        }
         const joinBtn = e.target.closest('[data-join]');
         if (joinBtn) {
             if (window.GameSound) window.GameSound.play('click');
@@ -1936,6 +1999,17 @@ footer { display: none !important; }
         if (e.target.closest('[data-add-bot]')) {
             if (window.GameSound) window.GameSound.play('click');
             send({ type: 'add_bot' });
+            return;
+        }
+        if (e.target.closest('[data-unwatch]')) {
+            if (window.GameSound) window.GameSound.play('tap');
+            send({ type: 'unwatch' });
+            return;
+        }
+        const sitBtn = e.target.closest('[data-join]');
+        if (sitBtn) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'join', table_id: Number(sitBtn.dataset.join) });
             return;
         }
         const quickBet = e.target.closest('[data-bj-quick]');
