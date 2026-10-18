@@ -399,6 +399,10 @@ class PokerTable(models.Model):
     last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 핸드 결과 요약")
     tier = models.CharField(max_length=12, choices=TIER_CHOICES, default="intermediate", verbose_name="단계")
     capacity = models.PositiveSmallIntegerField(default=6, verbose_name="좌석 수")
+    GAME_TYPE_CHOICES = [("holdem", "텍사스 홀덤"), ("blackjack", "블랙잭")]
+    game_type = models.CharField(max_length=10, choices=GAME_TYPE_CHOICES, default="holdem", verbose_name="게임 종류")
+    # 블랙잭 한 판 상태 (game/blackjack_engine.py): 단계·덱·딜러 패·좌석별 패와 배팅·결과
+    bj_state = models.JSONField(default=dict, blank=True, verbose_name="블랙잭 상태 (서버 전용)")
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -415,8 +419,8 @@ class PokerTable(models.Model):
         return POKER_TIERS.get(self.tier, POKER_TIERS["intermediate"])
 
     @classmethod
-    def create_with_seats(cls, tier, capacity=6):
-        table = cls.objects.create(tier=tier, capacity=capacity, min_raise=POKER_TIERS[tier]["bb"])
+    def create_with_seats(cls, tier, capacity=6, game_type="holdem"):
+        table = cls.objects.create(tier=tier, capacity=capacity, game_type=game_type, min_raise=POKER_TIERS[tier]["bb"])
         PokerSeat.objects.bulk_create([PokerSeat(table=table, seat_number=n) for n in range(capacity)])
         return table
 
