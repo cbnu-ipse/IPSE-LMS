@@ -384,10 +384,10 @@
 /* 고를 패가 겹친 칸은 고르는 동안 펼친다 (옆 칸 위로 살짝 올라와도 된다) */
 .gs-slot--spread { position: relative; z-index: 6; }
 .gs-slot.gs-slot--spread .gs-card + .gs-card { margin-left: 6px !important; margin-top: 0 !important; }
-/* 상대가 먹은 패: 마우스를 올리거나(PC) 길게 누르면(모바일) 그 자리 위에 크게 펼친 창을 띄운다 — 고/스톱 판단용.
+/* 먹은 패(상대·나): 마우스를 올리거나(PC) 길게 누르면(모바일) 그 자리 위에 크게 펼친 창을 띄운다 — 고/스톱 판단용.
    원래 패 영역은 그대로 두고 위에 덮으므로 판이 밀리거나 화면 밖으로 잘리지 않는다. */
-.gs-opps { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-@media (hover: hover) { .gs-opps .gs-cap { cursor: zoom-in; } }
+.gs-opps, #gs-me .gs-cap { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+@media (hover: hover) { .gs-opps .gs-cap, #gs-me .gs-cap { cursor: zoom-in; } }
 .gs-cap-zoom {
     position: absolute; z-index: 40; left: 10px; right: 10px;
     padding: 8px; border-radius: 12px; background: rgba(6, 40, 22, .97);
@@ -1383,19 +1383,21 @@ footer { display: none !important; }
         if (pick) pickFloorCard(Number(pick.dataset.pick));
     });
 
-    // 상대가 먹은 패 크게 보기: PC는 마우스를 올린 동안, 모바일은 길게 누르고 있는 동안
+    // 먹은 패(상대·나) 크게 보기: PC는 마우스를 올린 동안, 모바일은 길게 누르고 있는 동안
     let capZoomIndex = null;
     let capZoomTimer = null;
     const capZoomEl = document.createElement('div');
     capZoomEl.className = 'gs-cap-zoom hidden';
     feltEl.appendChild(capZoomEl);
     function applyCapZoom() {
-        const cap = capZoomIndex != null ? oppsEl.querySelectorAll('.gs-cap')[capZoomIndex] : null;
+        const cap = capZoomIndex != null ? allCaps()[capZoomIndex] : null;
         if (!cap) { capZoomEl.classList.add('hidden'); return; }
         // data-cid를 빼야 카드 이동 애니메이션(FLIP)이 판 위의 같은 카드로 착각하지 않는다
         capZoomEl.innerHTML = `<div class="gs-cap">${cap.innerHTML.replace(/ data-cid="\d+"/g, '')}</div>`;
-        capZoomEl.style.top = (cap.getBoundingClientRect().top - feltEl.getBoundingClientRect().top - 4) + 'px';
         capZoomEl.classList.remove('hidden');
+        // 내 패는 판 아래쪽이라 펼친 창이 판 밖으로 나가지 않게 위로 올린다
+        const top = cap.getBoundingClientRect().top - feltEl.getBoundingClientRect().top - 4;
+        capZoomEl.style.top = Math.max(4, Math.min(top, feltEl.clientHeight - capZoomEl.offsetHeight - 4)) + 'px';
     }
     function setCapZoom(index) {
         clearTimeout(capZoomTimer);
@@ -1403,20 +1405,23 @@ footer { display: none !important; }
         capZoomIndex = index;
         applyCapZoom();
     }
-    const capIndexOf = el => { const cap = el && el.closest && el.closest('.gs-opps .gs-cap'); return cap ? [...oppsEl.querySelectorAll('.gs-cap')].indexOf(cap) : null; };
-    oppsEl.addEventListener('pointerover', (e) => { if (e.pointerType === 'mouse') { const i = capIndexOf(e.target); if (i != null) setCapZoom(i); } });
-    oppsEl.addEventListener('pointerout', (e) => {
-        if (e.pointerType === 'mouse' && capIndexOf(e.target) != null && capIndexOf(e.relatedTarget) == null) setCapZoom(null);
+    const allCaps = () => [...document.querySelectorAll('#gs-opps .gs-cap, #gs-me .gs-cap')];
+    const capIndexOf = el => { const cap = el && el.closest && el.closest('#gs-opps .gs-cap, #gs-me .gs-cap'); return cap ? allCaps().indexOf(cap) : null; };
+    [oppsEl, meEl].forEach(zoneEl => {
+        zoneEl.addEventListener('pointerover', (e) => { if (e.pointerType === 'mouse') { const i = capIndexOf(e.target); if (i != null) setCapZoom(i); } });
+        zoneEl.addEventListener('pointerout', (e) => {
+            if (e.pointerType === 'mouse' && capIndexOf(e.target) != null && capIndexOf(e.relatedTarget) == null) setCapZoom(null);
+        });
+        zoneEl.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse') return;
+            const i = capIndexOf(e.target);
+            if (i == null) return;
+            clearTimeout(capZoomTimer);
+            capZoomTimer = setTimeout(() => setCapZoom(i), 250);
+        });
+        ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, (e) => { if (e.pointerType !== 'mouse') setCapZoom(null); }));
+        zoneEl.addEventListener('contextmenu', (e) => { if (capIndexOf(e.target) != null) e.preventDefault(); });
     });
-    oppsEl.addEventListener('pointerdown', (e) => {
-        if (e.pointerType === 'mouse') return;
-        const i = capIndexOf(e.target);
-        if (i == null) return;
-        clearTimeout(capZoomTimer);
-        capZoomTimer = setTimeout(() => setCapZoom(i), 250);
-    });
-    ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, (e) => { if (e.pointerType !== 'mouse') setCapZoom(null); }));
-    oppsEl.addEventListener('contextmenu', (e) => { if (capIndexOf(e.target) != null) e.preventDefault(); });
 
     function pickFloorCard(target) {
         const g = lastState.room.game;
