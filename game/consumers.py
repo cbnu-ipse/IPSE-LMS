@@ -329,7 +329,8 @@ class PokerConsumer(AsyncWebsocketConsumer):
             self.page_left = True
             return
         if msg_type == "create":
-            handler = lambda: poker_engine.create_table(user, data.get("tier"), data.get("capacity", 6))
+            handler = lambda: poker_engine.create_table(user, data.get("tier"), data.get("capacity", 6),
+                                                         data.get("game_type", "holdem"))
         elif msg_type == "join":
             handler = lambda: poker_engine.join_table(user, data.get("table_id"))
         elif msg_type == "add_bot":
@@ -338,6 +339,10 @@ class PokerConsumer(AsyncWebsocketConsumer):
             handler = lambda: poker_engine.stand_up(user)
         elif msg_type == "action":
             handler = lambda: poker_engine.player_action(user, data.get("action"), data.get("amount", 0))
+        elif msg_type == "bj_bet":
+            handler = lambda: poker_engine.blackjack_bet(user, data.get("amount", 0))
+        elif msg_type == "bj_action":
+            handler = lambda: poker_engine.blackjack_action(user, data.get("action"))
         elif msg_type == "buy_chips":
             handler = lambda: poker_engine.buy_chips(user, data.get("leaves", 0))
         elif msg_type == "cash_out_chips":

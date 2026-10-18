@@ -22,6 +22,7 @@
     buy_chips(user, leaves)     — 낙엽을 칩으로 전환해 칩 지갑에 채운다. 앉아있는 동안은 불가.
     cash_out_chips(user, chips) — 칩 지갑을 낙엽으로 환전. 앉아있는 동안은 불가.
     player_action(user, action, amount) — fold/check/call/bet/raise
+    blackjack_bet(user, amount) / blackjack_action(user, action) — 블랙잭 방 배팅·히트/스탠드/더블/스플릿
     reveal_hand(user)           — 모두 폴드해 혼자 이긴 승자가 결과 표시 중 자기 패 공개
     send_emoji(user, emoji)     — 착석 중인 좌석 위에 띄울 이모티콘 반응 (좌석 번호 반환)
     next_deadline_at()          — 다음에 깨어나야 할 시각 (워치독용)
@@ -36,6 +37,7 @@ from django.db.models import Min, Q
 from django.utils import timezone
 
 from accounts.models import User
+from . import blackjack_engine
 from .models import (
     HouseBank, PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
     POKER_CAPACITIES, POKER_CHIPS_PER_LEAF, POKER_TIERS, GAME_TIERS, TIER_LABELS,
@@ -52,6 +54,8 @@ POKER_MAX_TIMEOUTS = 4           # 연속 시간초과 이 횟수에 도달하�
 POKER_BOT_THINK = 1            # AI 차례는 이 시간 뒤 워치독이 둔다 (+ 승률 계산 시간)
 
 SEAT_CYCLE = max(POKER_CAPACITIES)  # 좌석 번호 순환 범위 (방 최대 인원)
+
+POKER_GAME_TYPES = {v for v, _ in PokerTable.GAME_TYPE_CHOICES}
 
 POKER_EMOJI_CHOICES = {"👍", "😂", "😮", "😡", "🔥", "❤️"}  # 이모티콘 반응 화이트리스트
 
@@ -250,7 +254,7 @@ def _close_if_no_humans(table, seats_by_number):
 def _schedule_first_hand(table, seats_by_number):
     if table.status == "waiting" and table.next_hand_at is None:
         eligible = sum(1 for s in seats_by_number.values() if s.user_id and s.stack > 0)
-        if eligible >= 2:
+        if eligible >= (1 if table.game_type == "blackjack" else 2):  # 블랙잭은 딜러(하우스)와 혼자서도 한다
             table.next_hand_at = timezone.now() + timedelta(seconds=POKER_FIRST_HAND_DELAY)
             table.save()
 
@@ -298,12 +302,12 @@ def _seat_user(user, table, seats_by_number, seat):
     return None
 
 
-def create_table(user, tier, capacity=6):
+def create_table(user, tier, capacity=6, game_type="holdem"):
     try:
         capacity = int(capacity)
     except (TypeError, ValueError):
         capacity = 0
-    if tier not in GAME_TIERS or capacity not in POKER_CAPACITIES:
+    if tier not in GAME_TIERS or capacity not in POKER_CAPACITIES or game_type not in POKER_GAME_TYPES:
         return False, "방 단계와 인원을 다시 골라주세요."
     with transaction.atomic():
         User.objects.select_for_update().get(id=user.id)
@@ -316,7 +320,7 @@ def create_table(user, tier, capacity=6):
             err = _buy_in_error(POKER_TIERS[tier], wallet)
         if err:
             return False, err
-        table = PokerTable.create_with_seats(tier, capacity)
+        table = PokerTable.create_with_seats(tier, capacity, game_type)
         table, seats_by_number = _lock_table(table.id)
         err = _seat_user(user, table, seats_by_number, seats_by_number[0])
         if err:
@@ -417,7 +421,9 @@ def stand_up(user):
         if not table:
             return False, "테이블에 앉아있지 않습니다."
 
-        if seat.status in ("active", "all_in") and table.status == "playing":
+        if table.game_type == "blackjack":
+            blackjack_engine.stand_up(table, seats_by_number, seat)
+        elif seat.status in ("active", "all_in") and table.status == "playing":
             # 핸드 진행 중이면 즉시 자리를 비우지 않고, 이번 핸드가 끝난 뒤 퇴장 처리한다
             # (남의 팟 정산이 걸려있는 상태에서 바로 빼면 사이드팟 계산이 깨짐)
             seat.leaving_after_hand = True
@@ -730,7 +736,7 @@ def player_action(user, action, amount=0):
         amount = 0
     with transaction.atomic():
         table, seats_by_number, seat = _lock_my_table(user)
-        if not table:
+        if not table or table.game_type != "holdem":
             return False, "테이블에 앉아있지 않습니다."
         try:
             _apply_action_locked(table, seats_by_number, seat, (action or "").lower(), amount)
@@ -739,6 +745,32 @@ def player_action(user, action, amount=0):
         seat.consecutive_timeouts = 0
         seat.save(update_fields=["consecutive_timeouts"])
         _resolve_turn(table, seats_by_number, seat.seat_number)
+    return True, None
+
+
+def blackjack_bet(user, amount):
+    with transaction.atomic():
+        table, seats_by_number, seat = _lock_my_table(user)
+        if not table or table.game_type != "blackjack":
+            return False, "블랙잭 방에 앉아있지 않습니다."
+        try:
+            blackjack_engine.place_bet(table, seats_by_number, seat, amount)
+        except ValueError as exc:
+            return False, str(exc)
+    return True, None
+
+
+def blackjack_action(user, action):
+    with transaction.atomic():
+        table, seats_by_number, seat = _lock_my_table(user)
+        if not table or table.game_type != "blackjack":
+            return False, "블랙잭 방에 앉아있지 않습니다."
+        try:
+            blackjack_engine.apply_action(table, seats_by_number, seat, (action or "").lower())
+        except (ValueError, KeyError) as exc:
+            return False, str(exc) if isinstance(exc, ValueError) else "지금 할 수 없는 선택입니다."
+        seat.consecutive_timeouts = 0
+        seat.save(update_fields=["consecutive_timeouts"])
     return True, None
 
 
@@ -888,6 +920,9 @@ def process_due_deadlines():
             table, seats_by_number = _lock_table(table_id)
             if not table:
                 continue
+            if table.game_type == "blackjack":
+                blackjack_engine.on_due(table, seats_by_number, now)
+                continue
             if table.status == "playing" and table.turn_deadline and now >= table.turn_deadline:
                 seat = seats_by_number.get(table.current_turn_seat)
                 if seat and seat.status == "active" and seat.user.is_bot:
@@ -919,7 +954,8 @@ def _tables_view():
             {"display_name": s.user.display_name, "picture": s.user.get_picture(), "is_bot": s.user.is_bot}
             for s in sorted(t.seats.all(), key=lambda s: s.seat_number) if s.user_id
         ]
-        out.append(dict(_tier_view(t.tier), id=t.id, status=t.status, players=players, capacity=t.capacity))
+        out.append(dict(_tier_view(t.tier), id=t.id, status=t.status, players=players, capacity=t.capacity,
+                        game_type=t.game_type))
     return out
 
 
@@ -938,6 +974,8 @@ def get_state_for(user):
         "tables": _tables_view(),
         "tiers": [_tier_view(t) for t in GAME_TIERS],
         "capacities": list(POKER_CAPACITIES),
+        "game_types": [{"value": v, "label": label} for v, label in PokerTable.GAME_TYPE_CHOICES],
+        "bj_bet_multiplier": blackjack_engine.BJ_MAX_BET_MULTIPLIER,
         "chips_per_leaf": POKER_CHIPS_PER_LEAF,
         "my_leaves": my_leaves,
         "my_wallet_chips": wallet_chips,
@@ -951,6 +989,9 @@ def get_state_for(user):
     seats = list(table.seats.select_related("user", "user__student").order_by("seat_number"))
     my_seat = next((s for s in seats if s.user_id == user.id), None)
     now = timezone.now()
+    table_view = dict(_tier_view(table.tier), id=table.id, capacity=table.capacity, game_type=table.game_type)
+    if table.game_type == "blackjack":
+        return dict(common, table=table_view, **blackjack_engine.state_view(table, seats, my_seat, now))
     sb, bb = blinds(table)
 
     result = table.last_result or {}
@@ -998,7 +1039,7 @@ def get_state_for(user):
         if table.current_bet > 0:
             min_raise_to = table.current_bet + table.min_raise
 
-    return dict(common, table=dict(_tier_view(table.tier), id=table.id, capacity=table.capacity), **{
+    return dict(common, table=table_view, **{
         "table_status": table.status,
         "round": table.round,
         "hand_number": table.hand_number,
