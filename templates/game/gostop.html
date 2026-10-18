@@ -13,6 +13,7 @@
                 <!-- 상태 바 -->
                 <div class="gs-stat-bar">
                     <span class="gs-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="gs-room-label">방 목록</span></span>
+                    <button type="button" id="gs-spec-chip" class="gs-stat-chip gs-spec-chip hidden" data-spec-list title="관전 중인 사람 보기"><i class="fa-solid fa-eye"></i> <span id="gs-spec-count">0</span>명 관전</button>
                     <span class="gs-stat-chip"><i class="fa-solid fa-leaf" style="color:#059669"></i> 내 낙엽 <strong id="gs-my-leaves">-</strong></span>
                     <span class="gs-stat-chip"><i class="fa-solid fa-coins"></i> 보관 칩 <strong id="gs-my-wallet-top">-</strong></span>
                     <button type="button" class="gs-stat-chip gs-chip-exchange-btn" onclick="openGsChipTab()" title="칩 충전/환전">
@@ -315,6 +316,16 @@
 .gs-room-vs { color: #86efac; font-size: .7rem; font-weight: 800; }
 .gs-room-empty { color: #86efac; font-size: .75rem; }
 .gs-ai-badge { margin-left: 4px; padding: 0 5px; border-radius: 4px; background: #7c3aed; color: #fff; font-size: .58rem; font-weight: 900; }
+/* 관전 */
+.gs-spec-chip { cursor: pointer; }
+.gs-room-spec { font-size: .7rem; font-weight: 800; color: #fef3c7; background: rgba(0,0,0,.25); border: none; border-radius: 999px;
+    padding: 3px 8px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+.gs-spec-pop { position: fixed; z-index: 60; min-width: 150px; max-width: 240px; max-height: 260px; overflow-y: auto; background: #0f172a; color: #fff;
+    border-radius: 12px; padding: 8px; box-shadow: 0 12px 30px rgba(0,0,0,.4); font-size: .76rem; }
+.gs-spec-pop h4 { font-size: .68rem; color: #94a3b8; font-weight: 800; margin: 0 0 6px 2px; }
+.gs-spec-pop div { display: flex; align-items: center; gap: 6px; padding: 3px 2px; }
+.gs-spec-pop img { width: 20px; height: 20px; border-radius: 999px; object-fit: cover; }
+.gs-spec-badge { font-size: .62rem; font-weight: 900; color: #0f172a; background: #fde047; border-radius: 999px; padding: 2px 8px; }
 .gs-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
 .gs-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
 .gs-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
@@ -773,6 +784,8 @@ footer { display: none !important; }
                 <span class="gs-tier-badge gs-tier-badge--${r.tier}">${esc(r.tier_label)} · 점당 ${fmt(r.chips_per_point)}</span>
                 <span class="gs-room-players">${players}</span>
                 <span class="gs-room-status">${status}</span>
+                ${r.spectators.length ? `<button type="button" class="gs-room-spec" data-spec-list="${r.id}"><i class="fa-solid fa-eye"></i> ${r.spectators.length}</button>` : ''}
+                <button type="button" class="gs-btn gs-btn-ghost gs-btn-sm" data-watch="${r.id}">관전</button>
                 ${joinBtn}
             </div>`;
         }).join('');
@@ -816,7 +829,7 @@ footer { display: none !important; }
     // ── 게임판 ─────────────────────────────────────────────────────
     function seatName(room, side) {
         const s = room.seats.find(x => x.side === side);
-        return side === room.me ? '나' : s ? s.display_name : '?';
+        return side === room.me && !room.spectating ? '나' : s ? s.display_name : '?';
     }
 
     function capHtml(cards) {
@@ -853,7 +866,7 @@ footer { display: none !important; }
                 : Array.from({ length: g.hand_counts[side] }, () => cardHtml('back', { size: 'xs' })).join('');
             oppHand = `<span class="gs-opp-hand" data-opp-hand="${side}">${cards}</span>`;
         }
-        const info = `<div class="gs-info">${avatar(seat)}<span class="gs-name">${esc(seat.display_name)}${isMe ? ' (나)' : ''}</span>${seat.is_bot ? '<span class="gs-ai-badge">AI</span>' : ''}
+        const info = `<div class="gs-info">${avatar(seat)}<span class="gs-name">${esc(seat.display_name)}${isMe && !room.spectating ? ' (나)' : ''}</span>${seat.is_bot ? '<span class="gs-ai-badge">AI</span>' : ''}
             <span class="gs-stack"><i class="fa-solid fa-coins"></i> ${fmt(seat.stack)}</span>${badges.join('')}${timer}${oppHand}${score}</div>`;
         const cap = g ? capHtml(g.captured[side]) : '';
         return { html: isMe ? cap + info : info + cap, turn: isTurn };
@@ -938,6 +951,10 @@ footer { display: none !important; }
 
         // 손패
         const floorMonths = new Set(g.floor.map(month));
+        if (room.spectating) {  // 관전: 보고 있는 자리의 손패는 뒷면으로
+            handEl.innerHTML = Array.from({ length: g.hand_counts[room.me] }, () => cardHtml('back', { size: 'hand' })).join('');
+            return;
+        }
         const hand = g.my_hand.map(c => {
             let cls = myPlayTurn ? 'gs-card--playable' : '';
             if (myPlayTurn && (floorMonths.has(month(c)) || isBonus(c))) cls += ' gs-card--match';
@@ -985,7 +1002,7 @@ footer { display: none !important; }
         const net = r.my_net || 0;
         return {
             title: `${net > 0 ? '🎉 ' : ''}${title}`,
-            sub: `내 칩 ${net >= 0 ? '+' : ''}${fmt(net)}`,
+            sub: r.my_net == null ? '' : `내 칩 ${net >= 0 ? '+' : ''}${fmt(net)}`,
             detail: [parts.join(' · '), ...lines].filter(Boolean).join('<br>'),
         };
     }
@@ -1014,10 +1031,43 @@ footer { display: none !important; }
         centerMsgEl.classList.remove('hidden');
     }
 
+    // ── 관전자 수 / 목록 ──
+    function renderSpecChip(state) {
+        const list = state.room ? state.room.spectators : [];
+        document.getElementById('gs-spec-chip').classList.toggle('hidden', !list.length);
+        document.getElementById('gs-spec-count').textContent = list.length;
+    }
+    let specPopEl = null;
+    function closeSpecPop() { if (specPopEl) { specPopEl.remove(); specPopEl = null; } }
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-spec-list]');
+        if (!btn || specPopEl) { closeSpecPop(); return; }
+        const id = btn.dataset.specList;
+        const list = id ? ((lastState.rooms.find(r => String(r.id) === id) || {}).spectators || [])
+            : (lastState.room ? lastState.room.spectators : []);
+        if (!list.length) return;
+        specPopEl = document.createElement('div');
+        specPopEl.className = 'gs-spec-pop';
+        specPopEl.innerHTML = `<h4>관전 중 ${list.length}명</h4>` + list.map(p =>
+            `<div><img src="${esc(p.picture)}" alt="">${esc(p.display_name)}</div>`).join('');
+        document.body.appendChild(specPopEl);
+        const r = btn.getBoundingClientRect();
+        specPopEl.style.top = Math.min(r.bottom + 6, window.innerHeight - specPopEl.offsetHeight - 8) + 'px';
+        specPopEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - specPopEl.offsetWidth - 8)) + 'px';
+    });
+
     function renderActionBar(state) {
         const room = state.room;
         if (!room) {
             actionBarEl.innerHTML = `<div class="gs-hint">방을 만들거나 열린 방에 입장하세요.</div>`;
+            return;
+        }
+        if (room.spectating) {
+            const canJoin = room.can_sit && state.wallet_chips >= room.buy_in;
+            actionBarEl.innerHTML = `<span class="gs-spec-badge"><i class="fa-solid fa-eye"></i> 관전 중</span>
+                <button type="button" class="gs-btn gs-btn-ghost" data-unwatch>관전 종료</button>
+                <button type="button" class="gs-btn gs-btn-call" data-join="${room.id}" ${canJoin ? '' : 'disabled'}>자리 앉기</button>
+                ${room.can_sit ? '' : '<div class="gs-hint">빈자리가 없습니다</div>'}`;
             return;
         }
         const g = room.game;
@@ -1160,14 +1210,15 @@ footer { display: none !important; }
         const r = room && room.last_result;
         const key = r && Object.keys(r).length ? JSON.stringify(r) : null;
         if (key && key !== lastResultKey && lastResultKey !== undefined) {
-            window.GameSound.play(r.nagari ? 'tap' : r.my_net > 0 ? 'winSmall' : 'lose');
+            window.GameSound.play(r.nagari ? 'tap' : r.my_net == null ? 'success' : r.my_net > 0 ? 'winSmall' : 'lose');
         }
         lastResultKey = key;
     }
 
     function render(state, intermediate) {
         const room = state.room;
-        document.getElementById('gs-room-label').textContent = room ? `${room.id}번 방 · ${room.mode_label} · ${room.tier_label} (점당 ${fmt(room.chips_per_point)})` : '방 목록';
+        renderSpecChip(state);
+        document.getElementById('gs-room-label').textContent = room ? `${room.spectating ? '관전 · ' : ''}${room.id}번 방 · ${room.mode_label} · ${room.tier_label} (점당 ${fmt(room.chips_per_point)})` : '방 목록';
         document.getElementById('gs-my-leaves').textContent = state.my_leaves != null ? fmt(state.my_leaves) : '-';
         document.getElementById('gs-my-wallet-top').textContent = fmt(state.wallet_chips);
 
@@ -1377,6 +1428,8 @@ footer { display: none !important; }
         if (createBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'create', mode: createBtn.dataset.create, tier: createTier }); return; }
         const joinBtn = e.target.closest('[data-join]');
         if (joinBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'join', room_id: Number(joinBtn.dataset.join) }); return; }
+        const watchBtn = e.target.closest('[data-watch]');
+        if (watchBtn) { if (window.GameSound) window.GameSound.play('click'); send({ type: 'watch', room_id: Number(watchBtn.dataset.watch) }); return; }
         const handCard = e.target.closest('[data-hand]');
         if (handCard) { onHandClick(handCard.dataset.hand); return; }
         const pick = e.target.closest('[data-pick]');
@@ -1436,6 +1489,17 @@ footer { display: none !important; }
     actionBarEl.addEventListener('click', (e) => {
         const pickChoice = e.target.closest('[data-pick]');
         if (pickChoice) { pickFloorCard(Number(pickChoice.dataset.pick)); return; }
+        if (e.target.closest('[data-unwatch]')) {
+            if (window.GameSound) window.GameSound.play('tap');
+            send({ type: 'unwatch' });
+            return;
+        }
+        const sitBtn = e.target.closest('[data-join]');
+        if (sitBtn) {
+            if (window.GameSound) window.GameSound.play('click');
+            send({ type: 'join', room_id: Number(sitBtn.dataset.join) });
+            return;
+        }
         if (e.target.closest('[data-leave]')) {
             if (window.GameSound) window.GameSound.play('tap');
             send({ type: 'leave' });
