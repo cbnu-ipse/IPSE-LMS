@@ -356,3 +356,34 @@ class StandaloneStudyPageTests(TestCase):
         with patch("core.ai.complete_json", return_value={"is_correct": False, "feedback": "x"}) as llm:
             grade_answer("음이름?", "Ut / Re / Mi / Fa / Sol / La", "Ut Le Mi Fa Sol La", question_type="short")
         self.assertIn("학생 답에만 있는 단어: le", llm.call_args.args[1][1]["content"])
+
+
+class AsyncGradingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="grader", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="d", file="d.txt", extracted_text="본문",
+                                                   summary="요약", summary_status=ProcessingStatus.DONE)
+        self.q = GeneratedQuestion.objects.create(document=self.doc, question_type="essay", status=ProcessingStatus.DONE,
+                                                  question_text="정규화를 설명하시오.", answer="중복을 줄인다")
+
+    def test_ajax_submit_returns_json_without_redirect(self):
+        with patch("mypage.views.grade_answer", return_value={"is_correct": True, "feedback": "좋아요"}):
+            res = self.client.post(f"/mypage/{self.doc.pk}/answer/{self.q.pk}/", {"user_answer": "중복 제거"},
+                                   HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["is_correct"], True)
+        self.q.refresh_from_db()
+        self.assertEqual(self.q.user_answer, "중복 제거")
+
+    def test_ajax_errors_are_json(self):
+        res = self.client.post(f"/mypage/{self.doc.pk}/answer/{self.q.pk}/", {"user_answer": " "},
+                               HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(res.json()["ok"])
+
+    def test_essay_uses_large_textarea_and_page_has_no_iframe_src_swap(self):
+        res = self.client.get(f"/mypage/{self.doc.pk}/?panel=quiz")
+        self.assertContains(res, "<textarea")
+        self.assertContains(res, 'rows="8"')
+        self.assertNotContains(res, "data-src")

@@ -47,51 +47,26 @@ class TopicsTestCase(TestCase):
             self.assertEqual(topics.classify_document(again), ("운영체제", True))
         ai.assert_not_called()
 
-    def test_readiness_is_llm_judged_and_not_asked_twice_for_same_bundle(self):
-        d = self.doc()
-        PersonalDocument.objects.filter(pk=d.pk).update(subject_code="운영체제")
-        with patch("core.ai.complete_json", return_value={"ready": False, "reason": "스케줄링만 있음"}) as ai:
-            self.assertEqual(topics.judge_readiness("운영체제"), (False, "스케줄링만 있음"))
-            self.assertEqual(topics.judge_readiness("운영체제"), (False, "스케줄링만 있음"))
-        self.assertEqual(ai.call_count, 1)  # 같은 자료 묶음은 다시 묻지 않는다
-        PersonalDocument.objects.filter(pk=self.doc(title="메모리", summary="페이징 요약").pk).update(subject_code="운영체제")
-        with patch("core.ai.complete_json", return_value={"ready": True, "reason": "충분"}) as ai:
-            self.assertEqual(topics.judge_readiness("운영체제"), (True, "충분"))  # 자료가 늘면 다시 판단
-        self.assertIn("자료 2개", ai.call_args.args[1][1]["content"])
-
-    def test_readiness_failure_allows_retry(self):
-        d = self.doc()
-        PersonalDocument.objects.filter(pk=d.pk).update(subject_code="운영체제")
-        with patch("core.ai.complete_json", side_effect=RuntimeError("down")):
-            with self.assertRaises(RuntimeError):
-                topics.judge_readiness("운영체제")
-        self.assertEqual(Subject.objects.get(name="운영체제").readiness_hash, "")
-
-    def test_after_summary_builds_draft_only_when_ready(self):
+    def test_after_summary_always_builds_draft_without_readiness_judgement(self):
         d = self.doc()
         with patch.object(topics, "classify_document", return_value=("운영체제", True)), \
-                patch("course.studio.build_draft") as build:
-            PersonalDocument.objects.filter(pk=d.pk).update(subject_code="운영체제")
-            with patch.object(topics, "judge_readiness", return_value=(False, "부족")):
-                topics.after_summary(d.pk)
-            build.assert_not_called()
-            with patch.object(topics, "judge_readiness", return_value=(True, "충분")):
-                topics.after_summary(d.pk)
-            build.assert_called_once_with("운영체제")
+                patch("course.studio.build_draft") as build, patch("core.ai.complete_json") as ai:
+            topics.after_summary(d.pk)
+        build.assert_called_once_with("운영체제")
+        ai.assert_not_called()  # 자료가 충분한지 AI에게 미리 묻지 않는다
 
-    def test_existing_course_gets_update_draft_without_readiness_call(self):
+    def test_existing_course_gets_update_draft(self):
         category = CourseCategory.objects.create(title="AI 자동 생성")
         Course.objects.create(code="운영체제", title="운영체제", category=category, instructor=self.user)
         d = self.doc()
         with patch.object(topics, "classify_document", return_value=("운영체제", True)), \
-                patch.object(topics, "judge_readiness") as judge, patch("course.studio.build_draft") as build:
+                patch("course.studio.build_draft") as build:
             topics.after_summary(d.pk)
-        judge.assert_not_called()
         build.assert_called_once_with("운영체제")
 
     def test_unusable_material_stops_pipeline(self):
         d = self.doc()
         with patch.object(topics, "classify_document", return_value=("운영체제", False)), \
-                patch.object(topics, "judge_readiness") as judge:
+                patch("course.studio.build_draft") as build:
             self.assertIsNone(topics.after_summary(d.pk))
-        judge.assert_not_called()
+        build.assert_not_called()

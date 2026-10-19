@@ -29,8 +29,8 @@ _JUDGE_PATH_PREFIXES = ('/course/', '/quiz/', '/contest/', '/problems/', '/compi
 def site_section(request):
     """구 judge/game 서브도메인이 담당하던 영역을 현재 경로 기준으로 구분해 템플릿에 전달"""
     path = request.path
-    if path.startswith(_JUDGE_PATH_PREFIXES):
-        section = 'judge'
+    if path.startswith(_JUDGE_PATH_PREFIXES) or (path.startswith('/ranking/') and not path.startswith('/ranking/community/')):
+        section = 'judge'  # 문제·대회 랭킹은 judge 메뉴 안에서 보여야 한다 (커뮤니티 랭킹만 잎새 쪽)
     elif path.startswith('/game/'):
         section = 'game'
     else:

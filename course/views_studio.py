@@ -30,7 +30,9 @@ def studio_list(request):
     courses = Course.objects.filter(drafts__status=CourseDraft.Status.APPROVED).distinct().select_related("instructor")
     if not request.user.is_superuser:
         courses = courses.filter(instructor=request.user)
+    topics, in_progress = studio.topic_overview()
     return render(request, "course/studio_list.html", {
+        "topics": topics, "in_progress_docs": in_progress,
         "pending": pending,
         "generating": drafts.filter(status=CourseDraft.Status.GENERATING),
         "history": drafts.exclude(status__in=[CourseDraft.Status.PENDING, CourseDraft.Status.GENERATING])[:20],
@@ -137,3 +139,38 @@ def studio_start_edit(request, slug):
     draft = studio.start_edit_draft(course, request.user)
     messages.info(request, "수정 초안을 만들었습니다. 고친 뒤 승인해야 강의에 반영됩니다.")
     return redirect("course_studio_detail", pk=draft.pk)
+
+
+@_studio_only
+def studio_topic(request):
+    """한 주제(?name=)에 어떤 자료가 있고, 어떻게 가공(요약)됐고, 어느 챕터에 쓰였는지."""
+    name = request.GET.get("name", "")
+    docs, draft, chapters = studio.topic_detail(name)
+    if not docs:
+        raise Http404("없는 주제입니다.")
+    return render(request, "course/studio_topic.html", {
+        "name": name, "docs": docs, "draft": draft, "chapters": chapters,
+        "course": Course.objects.filter(code=name).first(),
+        "generating": CourseDraft.objects.filter(subject_code=name, status=CourseDraft.Status.GENERATING).exists(),
+    })
+
+
+@require_POST
+@_studio_only
+def studio_topic_build(request):
+    """초안을 지금 만든다 (자료가 그대로면 AI를 부르지 않는다). 실패해서 멈춘 주제를 다시 시도할 때도 쓴다."""
+    import threading
+
+    from django.db import connection
+
+    name = request.POST.get("name", "")
+
+    def run():
+        try:
+            studio.build_draft(name)
+        finally:
+            connection.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    messages.info(request, "초안 만들기를 시작했습니다. 잠시 뒤 강의 생성 화면에서 확인하세요.")
+    return redirect("course_studio")

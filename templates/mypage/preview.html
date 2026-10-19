@@ -24,6 +24,7 @@
     .ms-src { background: #fff; border: 1px solid #f1f5f9; border-radius: 16px; padding: 6px; min-height: 0; display: flex; }
     .ms-src > iframe, .ms-src > pre { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
     .ms-src > pre { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; }
+    .ms-essay { min-height: 11rem; resize: vertical; line-height: 1.6; }
     .ms-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
     @media (max-width: 1023px) {
         /* 좁은 화면: 원문과 학습 패널 중 하나만 보여 준다 */
@@ -55,7 +56,7 @@
     <div class="ms-grid" id="ms-grid">
         <div class="ms-src" id="ms-src">
             {% if is_pdf %}
-                <iframe data-src="{{ document.file.url }}" title="원문"></iframe>
+                <iframe src="{{ document.file.url }}" title="원문"></iframe>
             {% else %}
                 <pre>{{ document.extracted_text|default:"미리볼 수 있는 텍스트가 없습니다." }}</pre>
             {% endif %}
@@ -108,7 +109,7 @@
                         <p class="shrink-0 text-xs font-bold text-slate-400 mb-3">{{ q_index|add:1 }} / {{ current_questions|length }}</p>
 
                         <div class="flex-1 min-h-0 overflow-y-auto">
-                            <div class="rounded-xl border border-slate-100 p-4">
+                            <div class="rounded-xl border border-slate-100 p-4" id="ms-qcard">
                                 {% if current_question.status == 'processing' %}
                                     <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>문제를 생성하고 있습니다...</p>
                                             {% else %}
@@ -117,16 +118,22 @@
 
                                 {% if current_question.is_correct is None %}
                                     {% if current_question.question_type == "ox" %}
-                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer flex gap-2 mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
                                             <button type="submit" name="user_answer" value="O" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">O</button>
                                             <button type="submit" name="user_answer" value="X" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">X</button>
                                         </form>
+                                    {% elif current_question.question_type == "essay" %}
+                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer mt-3 pt-3 border-t border-slate-100">
+                                            {% csrf_token %}
+                                            <textarea name="user_answer" required rows="8" placeholder="답을 자유롭게 서술하세요 (Ctrl/⌘ + Enter로 제출)" class="ms-essay w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"></textarea>
+                                            <div class="flex justify-end mt-2"><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2 rounded-lg transition">제출</button></div>
+                                        </form>
                                     {% else %}
-                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer flex gap-2 mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
                                             <input type="text" name="user_answer" required placeholder="답을 입력하세요" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
-                                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">제출</button>
+                                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 rounded-lg transition">제출</button>
                                         </form>
                                     {% endif %}
                                 {% else %}
@@ -177,6 +184,56 @@
     </div>
 </div>
 
+<script>
+// 답 제출은 페이지 이동 없이 처리하고, 채점 결과만 그 자리에 보여 준다
+(function () {
+    const card = document.getElementById('ms-qcard');
+    if (!card) return;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    function showResult(d) {
+        const form = card.querySelector('.ms-answer');
+        const box = document.createElement('div');
+        box.className = 'mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-sm';
+        box.innerHTML = '<p class="text-slate-500" style="white-space:pre-wrap;overflow-wrap:anywhere">제출한 답: ' + esc(d.user_answer) + '</p>' +
+            (d.is_correct ? '<p class="font-bold text-emerald-600">정답입니다</p>' : '<p class="font-bold text-rose-600">오답입니다</p>') +
+            '<p class="text-slate-500">정답: ' + esc(d.answer) + '</p>' +
+            (d.feedback ? '<div class="rounded-lg ' + (d.is_correct ? 'bg-slate-50 text-slate-500' : 'bg-amber-50 text-amber-700 border border-amber-100') + ' px-3 py-2 mt-1">' +
+                (d.is_correct ? '' : '<span class="font-bold">힌트/해설</span> · ') + esc(d.feedback) + '</div>' : '');
+        form.replaceWith(box);
+    }
+    card.addEventListener('submit', async (e) => {
+        const form = e.target.closest('.ms-answer');
+        if (!form) return;
+        e.preventDefault();
+        const submitter = e.submitter;
+        const data = new FormData(form);
+        if (submitter && submitter.name) data.set(submitter.name, submitter.value);
+        if (!String(data.get('user_answer') || '').trim()) return;
+        form.querySelectorAll('button, textarea, input[type=text]').forEach((el) => { el.disabled = true; });
+        const label = submitter && submitter.textContent;
+        if (submitter) submitter.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 채점 중';
+        let err = '';
+        try {
+            const res = await fetch(form.action, { method: 'POST', body: data, credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } });
+            const d = await res.json().catch(() => ({}));
+            if (res.ok && d.ok) { showResult(d); return; }
+            err = d.error || '채점하지 못했습니다. 잠시 후 다시 시도해주세요.';
+        } catch (x) { err = '네트워크 오류로 제출하지 못했습니다.'; }
+        form.querySelectorAll('button, textarea, input[type=text]').forEach((el) => { el.disabled = false; });
+        if (submitter) submitter.textContent = label;
+        let note = form.parentNode.querySelector('.ms-err');
+        if (!note) { note = document.createElement('p'); note.className = 'ms-err mt-2 text-xs font-bold text-rose-600'; form.after(note); }
+        note.textContent = err;
+    });
+    card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target.classList.contains('ms-essay')) {
+            e.preventDefault(); e.target.form.requestSubmit();
+        }
+    });
+})();
+</script>
+
 {{ initial_state|json_script:"ms-initial-state" }}
 <script src="{% static 'js/markdown-lite.js' %}"></script>
 <script>
@@ -190,17 +247,13 @@
     try { desktopOpen = localStorage.getItem(KEY) !== '0'; } catch (e) {}
     let mobileSrc = false;
 
-    function loadFrame() {
-        const frame = src && src.querySelector('iframe');
-        if (frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.src);
-    }
+    // 열고 닫을 때는 보이기만 바꾼다 (iframe의 src를 바꾸면 브라우저 뒤로가기 기록이 쌓인다)
     function render() {
         const showSrc = mobile() ? mobileSrc : desktopOpen;
         grid.classList.toggle('src-closed', !mobile() && !desktopOpen);
         grid.classList.toggle('mob-src', mobile() && mobileSrc);
         btn.setAttribute('aria-expanded', showSrc ? 'true' : 'false');
         btn.querySelector('span').textContent = mobile() ? (mobileSrc ? '학습 보기' : '원문 보기') : (desktopOpen ? '원문 닫기' : '원문 열기');
-        if (showSrc) loadFrame();
     }
     btn.addEventListener('click', () => {
         if (mobile()) mobileSrc = !mobileSrc;

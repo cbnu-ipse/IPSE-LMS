@@ -283,15 +283,20 @@ def submit_answer_view(request, pk, question_id):
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
 
     redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&q={request.GET.get('q', 0)}"
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def fail(message, status=400):
+        if wants_json:
+            return JsonResponse({"ok": False, "error": message}, status=status)
+        messages.error(request, message)
+        return redirect(redirect_base)
 
     if question.status != ProcessingStatus.DONE:
-        messages.error(request, "문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")
-        return redirect(redirect_base)
+        return fail("문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")
 
     user_answer = request.POST.get("user_answer", "").strip()
     if not user_answer:
-        messages.error(request, "답을 입력해주세요.")
-        return redirect(redirect_base)
+        return fail("답을 입력해주세요.")
 
     if question.question_type == GeneratedQuestion.QuestionType.OX:
         # 해설은 문제를 만들 때 받아 둔 것(question.feedback)을 그대로 쓴다 — AI를 다시 부르지 않음
@@ -303,17 +308,18 @@ def submit_answer_view(request, pk, question_id):
                                   question_type=question.question_type)
             is_correct, feedback = result["is_correct"], result["feedback"]
         except AIQuotaExceeded as exc:
-            messages.error(request, str(exc))
-            return redirect(redirect_base)
+            return fail(str(exc), status=429)
         except Exception:
             logger.exception("문제 %s 채점 실패", question.pk)
-            messages.error(request, "채점 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-            return redirect(redirect_base)
+            return fail("채점 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", status=500)
 
     question.user_answer = user_answer
     question.is_correct = is_correct
     question.feedback = feedback
     question.save(update_fields=["user_answer", "is_correct", "feedback"])
+    if wants_json:
+        return JsonResponse({"ok": True, "is_correct": is_correct, "feedback": feedback,
+                             "user_answer": user_answer, "answer": question.answer})
     return redirect(redirect_base)
 
 
