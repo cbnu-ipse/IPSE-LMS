@@ -47,7 +47,7 @@ from .bots import free_bot
 from .models import (
     GostopRoom, GostopSeat, GostopGameLog, HouseBank, PokerChipWallet,
     GAME_TIERS, GOSTOP_BUY_IN_POINTS, GOSTOP_TIER_MAX_CHIPS, GOSTOP_TIER_POINT_CHIPS, POKER_CHIPS_PER_LEAF,
-    TIER_AI_LEVEL, TIER_LABELS,
+    TIER_LABELS,
 )
 
 GOSTOP_TURN_TIMEOUT = 20       # 턴(또는 고/스톱, 뒤집은 패 선택)당 제한시간(초)
@@ -614,8 +614,13 @@ def tier_buy_in(tier):
     return GOSTOP_TIER_POINT_CHIPS[tier] * GOSTOP_BUY_IN_POINTS
 
 
+# 맞고·고스톱 AI는 방 단계(초보/중수/고수)와 상관없이 모두 고수 AI로 둔다 (자리비움 대신 두기 포함).
+# 단계는 판돈(점당 칩)과 칩 범위만 정한다. 요트 다이스는 여전히 TIER_AI_LEVEL을 쓴다.
+GOSTOP_AI_LEVEL = "hard"
+
+
 def ai_level(room):
-    return TIER_AI_LEVEL.get(room.tier, "normal")
+    return GOSTOP_AI_LEVEL
 
 
 def create_room(user, mode, tier="intermediate"):
@@ -1080,7 +1085,7 @@ def get_state_for(user, watch_room_id=None, spectators=None):
         "wallet_chips": wallet or 0,
         "my_leaves": my_leaves,
         "tiers": [{"tier": t, "label": TIER_LABELS[t], "chips_per_point": GOSTOP_TIER_POINT_CHIPS[t],
-                   "buy_in": tier_buy_in(t), "max_chips": GOSTOP_TIER_MAX_CHIPS[t], "ai_level": TIER_AI_LEVEL[t]}
+                   "buy_in": tier_buy_in(t), "max_chips": GOSTOP_TIER_MAX_CHIPS[t], "ai_level": GOSTOP_AI_LEVEL}
                   for t in GAME_TIERS],
         "chips_per_leaf": POKER_CHIPS_PER_LEAF,
     }

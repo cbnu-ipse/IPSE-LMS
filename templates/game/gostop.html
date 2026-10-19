@@ -794,7 +794,7 @@ footer { display: none !important; }
             <div class="gs-lobby-head">
                 <div>
                     <h3>고스톱 방 목록</h3>
-                    <p>보관 칩 전부를 방 단계 상한까지 가지고 입장 · 단계마다 점당 칩과 AI 난이도가 다릅니다</p>
+                    <p>보관 칩 전부를 방 단계 상한까지 가지고 입장 · 단계마다 점당 칩이 다르고, AI는 모든 방에서 어려움입니다</p>
                 </div>
                 <div class="gs-lobby-create">
                     <span class="gs-seg">${state.tiers.map(t =>
@@ -821,7 +821,7 @@ footer { display: none !important; }
                     ${state.tiers.map(t => `<li><b>${t.label}</b>: 점당 ${fmt(t.chips_per_point)}칩, ${chipRange(t)}, AI 난이도 ${AI_LEVEL_LABELS[t.ai_level]}</li>`).join('')}
                     <li>사람이 부족하면 방에서 "AI로 빈자리 채우기"를 누르세요. AI는 하우스 칩으로 앉고, 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>맞고 전용: 보너스피 2장(+2피·+3피, 내면 상대 피 1장 + 더미에서 1장 보충 후 한 번 더), 고박 ×2, 첫뻑·연뻑·첫따닥은 승패와 무관하게 7점어치를 받습니다.</li>
-                    <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 시간초과·연결 끊김 시에는 방 단계 난이도의 AI가 대신 두고, 시간초과가 3번 이어지면 자리 비움으로 진행하다 판이 끝나면 퇴장합니다.</li>
+                    <li>차례 제한시간 20초. 판 도중 나가기는 판이 끝난 뒤 퇴장하는 예약입니다. 시간초과·연결 끊김 시에는 AI(어려움)가 대신 두고, 시간초과가 3번 이어지면 자리 비움으로 진행하다 판이 끝나면 퇴장합니다.</li>
                 </ul>
             </details>`;
     }
