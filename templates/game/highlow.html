@@ -80,7 +80,7 @@
                     </div>
                 </div>
 
-                <p class="hl-hint">직전 카드보다 높을지 낮을지 맞히면 배당이 붙습니다 · 동점은 실패 처리 · 언제든 캐시아웃 가능</p>
+                <p class="hl-hint">직전 카드보다 높을지 낮을지 맞히면 배당이 붙습니다 · 숫자가 같으면 문양으로 승부 (♠ > ♦ > ♥ > ♣) · 언제든 캐시아웃 가능</p>
             </div><!-- /.hl-outer -->
         </div><!-- lg:col-span-9 -->
 
@@ -613,10 +613,10 @@ body.hl-landscape .hl-hint { display: none; }
    ═══════════════════════════════════════════════════════════════════ */
 
 const RANK_LABEL = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
-const SUITS = [
-    { char: '♠', color: 'black' }, { char: '♣', color: 'black' },
-    { char: '♥', color: 'red' },   { char: '♦', color: 'red' },
-];
+const SUITS = {
+    S: { char: '♠', color: 'black' }, C: { char: '♣', color: 'black' },
+    H: { char: '♥', color: 'red' },   D: { char: '♦', color: 'red' },
+};
 let hlBusy = false;
 let hlState = {{ session_state_json|script_json }};
 
@@ -639,9 +639,9 @@ const betInputEl = document.getElementById('hl-bet-input');
 
 function rankLabel(rank) { return RANK_LABEL[rank] || String(rank); }
 
-function paintCard(rank) {
-    // 무늬는 게임 판정에 영향 없는 순수 장식 — 매번 랜덤 선택
-    const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
+function paintCard(rank, suitCode) {
+    // 문양도 판정에 쓰인다 (숫자가 같으면 ♠ > ◆ > ♥ > ♣) — 서버가 정한 카드 그대로 그린다
+    const suit = SUITS[suitCode] || SUITS.S;
     rankEl.textContent = rankLabel(rank);
     suitEl.textContent = suit.char;
     suitEl.className = `hl-card-suit ${suit.color}`;
@@ -665,7 +665,7 @@ function render() {
     cardEl.classList.remove('hl-correct', 'hl-wrong');
 
     if (hlState && hlState.active) {
-        paintCard(hlState.rank);
+        paintCard(hlState.rank, hlState.suit);
         actionAreaEl.classList.remove('hidden');
         betAreaEl.classList.add('hidden');
         streakBadgeEl.textContent = hlState.streak;
@@ -749,7 +749,7 @@ async function hlGuess(guess) {
         cardEl.classList.remove('hl-flip');
 
         if (data.result === 'bust') {
-            paintCard(data.next_rank);
+            paintCard(data.next_rank, data.next_suit);
             cardEl.classList.add('hl-wrong');
             resultBannerEl.className = 'hl-result-banner lose';
             resultBannerEl.textContent = `아쉽게도 실패! ${data.streak === 0 ? '' : `${data.streak}`}연속에서 베팅액을 잃었습니다.`;
@@ -760,7 +760,7 @@ async function hlGuess(guess) {
             setTimeout(() => { betAreaEl.classList.remove('hidden'); }, 200);
         } else {
             hlState = data;
-            paintCard(data.rank);
+            paintCard(data.rank, data.suit);
             cardEl.classList.add('hl-correct');
             streakBadgeEl.textContent = data.streak;
             payoutAmountEl.textContent = data.potential_payout;
