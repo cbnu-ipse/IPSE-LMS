@@ -1,45 +1,35 @@
-from django.contrib.auth import get_user_model
+"""예전 강의 초안 형식(yhw_agent_project 프로토타입의 review_queue.json)을 검토용 초안으로 바꾼다.
+게시는 course/studio.py의 승인 절차를 거친다 — 여기서 강의를 직접 바꾸지 않는다."""
+import hashlib
+import json
 
-from mypage.models import Subject
+from .models import CourseDraft
+from .studio import course_title
 
-from .models import Course, CourseCategory, Lesson, Unit
+
+def legacy_to_content(subject_code, draft):
+    """{"title", "description", "units": [{"title", "lessons": [{"title", "content"}]}]} → 초안 내용 형식.
+    예전 수업 본문은 '---'로 나뉜 페이지를 개념 카드 한 장씩으로 옮긴다."""
+    chapters = []
+    for unit in draft.get("units", []):
+        sets = []
+        for lesson in unit.get("lessons", []):
+            pages = [p.strip() for p in (lesson.get("content") or "").split("\n---\n") if p.strip()]
+            if pages:
+                sets.append({"title": lesson.get("title", ""), "questions": [],
+                             "cards": [{"title": "", "body": page} for page in pages]})
+        if sets:
+            chapters.append({"title": unit.get("title", ""), "summary": "", "doc_ids": [], "source_hash": "",
+                             "sets": sets})
+    return {"title": course_title(subject_code), "description": draft.get("description", ""), "chapters": chapters}
 
 
-def sync_course_from_draft(subject_code, draft, instructor=None):
-    """draft: {"title", "description", "units": [{"title", "lessons": [{"title", "content"}]}]}
-    subject_code로 Course를 upsert하고, Unit/Lesson은 매번 새로 만든다(기존 것은 삭제 후 재생성).
-    강의 제목은 draft["title"]이 아니라 "과목 코드(과목명)" 형식으로 고정한다(Subject.code가 없으면 과목명만 사용)."""
-    instructor = instructor or get_user_model().objects.filter(is_superuser=True).first()
-    category, _ = CourseCategory.objects.get_or_create(title="AI 자동 생성")
-    subject = Subject.objects.filter(name=subject_code).first()
-    title = f"{subject.code}({subject.name})" if subject and subject.code else subject_code
-    course, created = Course.objects.get_or_create(
-        code=subject_code,
-        defaults={
-            "title": title,
-            "summary": draft["description"],
-            "category": category,
-            "instructor": instructor,
-        },
-    )
-    if not created:
-        course.title = title
-        course.summary = draft["description"]
-        course.save()
-
-    course.units.all().delete()
-    course.lessons.all().delete()
-
-    lesson_order = 0
-    for unit_idx, unit in enumerate(draft["units"]):
-        Unit.objects.create(course=course, title=unit["title"], order=unit_idx)
-        for lesson in unit["lessons"]:
-            Lesson.objects.create(
-                course=course,
-                title=lesson["title"],
-                content=lesson["content"],
-                order=lesson_order,
-            )
-            lesson_order += 1
-
-    return course, created, lesson_order
+def queue_legacy_draft(subject_code, draft):
+    """검토 대기 초안으로 넣는다. 같은 내용이 이미 있으면 (False, 기존 초안)."""
+    digest = hashlib.sha256(json.dumps(["legacy", draft], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    existing = CourseDraft.objects.filter(subject_code=subject_code, source_hash=digest).first()
+    if existing:
+        return False, existing
+    return True, CourseDraft.objects.create(subject_code=subject_code, source_hash=digest,
+                                            status=CourseDraft.Status.PENDING,
+                                            content=legacy_to_content(subject_code, draft))

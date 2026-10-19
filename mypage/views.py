@@ -22,7 +22,6 @@ from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, Process
 logger = logging.getLogger(__name__)
 
 MAX_QUESTIONS = 20
-COURSE_DRAFT_THRESHOLD = 5
 
 
 def _generate_summary_bg(document_id):
@@ -46,28 +45,14 @@ def _course_after_upload_bg(subject_code):
 
 
 def _maybe_generate_course_bg(subject_code):
-    """같은 과목 코드로 요약이 완료된 자료가 threshold 이상 쌓이면 강의를 자동 생성/갱신한다.
-    소프트 삭제된 자료도 요약 데이터 자체는 남아있으므로 누적 대상에 포함시켜, 매번 새 자료가
-    쌓일 때마다(threshold 이상인 동안 계속) 강의 내용을 더 두텁게 갱신한다.
-    ponytail: 동시 업로드 시 여러 스레드가 동시에 threshold를 넘겨 OpenAI 호출이 중복될 수 있음
-    (Course.get_or_create로 DB 정합성 자체는 보장됨) — 트래픽이 문제될 때 락 추가."""
+    """같은 과목 코드로 요약이 끝난 과제 자료가 쌓이면 AI 강의 초안을 만든다 (course/studio.py).
+    강의는 바로 바뀌지 않고, 강의자가 judge > 강의 생성 탭에서 검토·승인해야 게시된다.
+    같은 자료로는 다시 만들지 않으므로(입력 해시, DB 유니크 제약) 동시에 여러 업로드가 끝나도 AI 호출은 한 번이다."""
     if not subject_code:
         return
-    docs = PersonalDocument.objects.filter(
-        subject_code=subject_code,
-        summary_status=ProcessingStatus.DONE,
-        document_type=PersonalDocument.DocumentType.ASSIGNMENT,
-    ).exclude(summary="")
-    if docs.count() < COURSE_DRAFT_THRESHOLD:
-        return
-    try:
-        from course.ai import generate_course_draft
-        from course.services import sync_course_from_draft
+    from course.studio import build_draft
 
-        draft = generate_course_draft(subject_code, list(docs.values_list("summary", flat=True)))
-        sync_course_from_draft(subject_code, draft)
-    except Exception:
-        logger.exception("%s 과목 강의 초안 생성 실패", subject_code)
+    build_draft(subject_code)
 
 
 def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None):

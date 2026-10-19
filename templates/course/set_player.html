@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{ set_title }} · {{ course_title }}</title>
+<style>
+/* 학습 세트 화면: 상단 바 + 개념 카드 + 확인 문제 + 하단 이동 바. 한 손으로 쓰는 폰 화면이 기준 */
+:root{
+  --bg:#F1F5F4; --surface:#FFFFFF; --ink:#14201C; --muted:#5B6B66; --line:#D6E0DC;
+  --accent:#047857; --accent-ink:#FFFFFF; --accent-soft:#DDF3EA;
+  --ok:#15803D; --ok-soft:#DCFCE7; --bad:#C2410C; --bad-soft:#FFEDD5; --code:#E9EFED; --mark:#FEF3C7;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0D1412; --surface:#16211E; --ink:#E4EDEA; --muted:#93A6A0; --line:#27352F;
+  --accent:#34D399; --accent-ink:#06261B; --accent-soft:#163A2D;
+  --ok:#4ADE80; --ok-soft:#14321F; --bad:#FB923C; --bad-soft:#3A2414; --code:#1F2C28; --mark:#3D3410;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;font-size:16px;line-height:1.65;
+  word-break:keep-all;overflow-wrap:anywhere;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.top{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:10px max(16px,env(safe-area-inset-left));display:flex;align-items:center;gap:10px;min-height:56px}
+.top .t{flex:1;min-width:0}
+.eyebrow{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pos{font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap}
+.close{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:700;
+  text-decoration:none;color:var(--ink)}
+.prog{height:4px;background:var(--line)}.prog i{display:block;height:100%;background:var(--accent)}
+.banner{background:var(--mark);color:var(--ink);font-size:13px;font-weight:700;padding:8px 16px;text-align:center}
+main{max-width:720px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-left)) 120px;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px 10px}
+.card h3{margin:0 0 8px;font-size:18px;line-height:1.4}
+.card .n{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:2px}
+.card p{margin:0 0 10px}.card ul,.card ol{margin:0 0 10px;padding-left:1.2em}.card li{margin:0 0 4px}
+.card li.lc-sub{margin-left:1.1em;list-style:circle}
+.card h4{margin:12px 0 6px;font-size:15px}
+.card strong{color:var(--accent)}
+code{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:.88em;background:var(--code);padding:.05em .35em;border-radius:4px}
+.lc-pre{margin:0 0 12px;padding:10px 12px;background:var(--code);border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.55}
+.lc-pre code{background:none;padding:0;white-space:pre}
+.lc-table{overflow-x:auto;margin:0 0 12px}
+.lc-table table{border-collapse:collapse;font-size:14px;line-height:1.4}
+.lc-table th,.lc-table td{border:1px solid var(--line);padding:5px 9px;text-align:left;white-space:nowrap}
+.lc-table th{background:var(--bg)}
+h2.sec{font-size:17px;margin:10px 0 0;display:flex;align-items:center;gap:8px}
+h2.sec .score{margin-left:auto;font-size:13px;color:var(--muted);font-weight:700}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.q .qt{font-weight:800;line-height:1.5}
+.q .qn{font-size:12px;color:var(--muted);font-weight:700}
+.ox{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ox button{height:64px;border-radius:14px;border:2px solid var(--line);background:var(--surface);font-size:28px;font-weight:900}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{border:2px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 14px;text-align:left;font-size:15px;line-height:1.45}
+.sa{display:flex;gap:8px}
+.sa input{flex:1;min-width:0;font:inherit;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--ink)}
+.sa button{border:0;border-radius:12px;padding:0 16px;background:var(--accent);color:var(--accent-ink);font-weight:800}
+.picked{border-color:var(--bad)!important;background:var(--bad-soft)!important}
+.right{border-color:var(--ok)!important;background:var(--ok-soft)!important}
+button[disabled]{cursor:default}
+.fb{border-radius:12px;padding:10px 12px;font-size:14px;border:1px solid}
+.fb.ok{background:var(--ok-soft);border-color:var(--ok)}.fb.bad{background:var(--bad-soft);border-color:var(--bad)}
+.fb b{display:block}
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;text-align:center;font-weight:800}
+.summary small{display:block;color:var(--muted);font-weight:600;margin-top:4px}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);
+  padding:10px max(16px,env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom))}
+.bar div{display:flex;gap:10px;max-width:720px;margin:0 auto}
+.bar a{flex:1;text-align:center;text-decoration:none;border-radius:12px;padding:13px;font-weight:800;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink)}
+.bar a.go{flex:2;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.bar a.off{opacity:.4;pointer-events:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="t">
+    <div class="eyebrow">{{ course_title }} · {{ chapter_no }}강 {{ chapter_title }}</div>
+    <div class="title">{{ set_title }}</div>
+  </div>
+  <span class="pos">{{ position }} / {{ total }}</span>
+  <a class="close" href="{{ exit_url }}">{% if mode == 'preview' %}검토로{% else %}목록{% endif %}</a>
+</header>
+<div class="prog"><i style="width: {% widthratio position total 100 %}%"></i></div>
+{% if mode == 'preview' %}<div class="banner">미리보기 — 학생에게 보이는 화면 그대로입니다. 확인 문제 결과는 저장되지 않습니다.</div>{% endif %}
+
+<main>
+  {% for card in cards %}
+  <section class="card">
+    <div class="n">개념 {{ forloop.counter }}</div>
+    {% if card.title %}<h3>{{ card.title }}</h3>{% endif %}
+    {{ card.html|safe }}
+  </section>
+  {% endfor %}
+
+  {% if questions %}
+  <h2 class="sec">확인 문제 <span class="score" id="score"></span></h2>
+  {% if last_result %}<div class="summary">지난번 결과 {{ last_result.correct }} / {{ last_result.total }}<small>다시 풀면 새 결과로 저장됩니다.</small></div>{% endif %}
+  <div id="questions"></div>
+  <div class="summary" id="done" hidden></div>
+  {% endif %}
+</main>
+
+<nav class="bar"><div>
+  <a href="{{ prev_url|default:'#' }}" class="{% if not prev_url %}off{% endif %}">이전</a>
+  {% if next_url %}<a href="{{ next_url }}" class="go">다음 세트</a>{% else %}<a href="{{ exit_url }}" class="go">{% if mode == 'preview' %}검토로 돌아가기{% else %}강의 목록으로{% endif %}</a>{% endif %}
+</div></nav>
+
+{{ questions|json_script:"questions-data" }}
+<script>
+(function () {
+  const QS = JSON.parse(document.getElementById('questions-data').textContent);
+  const box = document.getElementById('questions');
+  if (!box || !QS.length) return;
+  const MODE = "{{ mode }}", SUBMIT = "{{ submit_url|default:'' }}", CSRF = "{{ csrf_token }}";
+  const answers = new Array(QS.length).fill(null), marks = new Array(QS.length).fill(null);
+  const norm = s => String(s || '').toLowerCase().replace(/[\s.,!?'"()\[\]{}·`~\-]+/g, '');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function feedback(el, q, ok, right) {
+    const fb = document.createElement('div');
+    fb.className = 'fb ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = `<b>${ok ? '정답' : '오답'}${ok ? '' : ' · 정답: ' + esc(right)}</b>${esc(q.explanation || '')}`;
+    el.appendChild(fb);
+  }
+  function finish(i, value, ok) {
+    answers[i] = value; marks[i] = ok;
+    const done = marks.filter(m => m !== null).length, right = marks.filter(Boolean).length;
+    document.getElementById('score').textContent = `${right} / ${done}`;
+    if (done === QS.length) complete(right);
+  }
+  async function complete(right) {
+    const out = document.getElementById('done');
+    out.hidden = false;
+    out.innerHTML = `${QS.length}문제 중 ${right}개 정답<small>${MODE === 'preview' ? '미리보기라 저장하지 않았습니다.' : '저장 중…'}</small>`;
+    if (MODE !== 'learn' || !SUBMIT) return;
+    try {
+      const res = await fetch(SUBMIT, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+                                       body: JSON.stringify({answers})});
+      const data = await res.json();
+      out.innerHTML = `${data.total}문제 중 ${data.correct}개 정답<small>결과를 저장했습니다.</small>`;
+    } catch (e) {
+      out.querySelector('small').textContent = '저장하지 못했습니다. 잠시 후 다시 시도해주세요.';
+    }
+  }
+
+  QS.forEach((q, i) => {
+    const el = document.createElement('section');
+    el.className = 'q';
+    el.innerHTML = `<div class="qn">문제 ${i + 1} · ${{ox: 'O/X', mc: '객관식', short: '단답'}[q.type]}</div><div class="qt">${esc(q.q)}</div>`;
+    if (q.type === 'ox') {
+      const row = document.createElement('div'); row.className = 'ox';
+      [['O', true], ['X', false]].forEach(([label, val]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+        b.onclick = () => {
+          const ok = val === q.answer;
+          row.querySelectorAll('button').forEach(x => x.disabled = true);
+          b.classList.add(ok ? 'right' : 'picked');
+          if (!ok) row.children[q.answer ? 0 : 1].classList.add('right');
+          feedback(el, q, ok, q.answer ? 'O' : 'X'); finish(i, val, ok);
+        };
+        row.appendChild(b);
+      });
+      el.appendChild(row);
+    } else if (q.type === 'mc') {
+      const list = document.createElement('div'); list.className = 'opts';
+      q.options.forEach((text, k) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'opt';
+        b.textContent = `${k + 1}. ${text}`;
+        b.onclick = () => {
+          const ok = k === q.answer;
+          list.querySelectorAll('button').forEach(x => x.disabled = true);
+          b.classList.add(ok ? 'right' : 'picked');
+          list.children[q.answer].classList.add('right');
+          feedback(el, q, ok, `${q.answer + 1}. ${q.options[q.answer]}`); finish(i, k, ok);
+        };
+        list.appendChild(b);
+      });
+      el.appendChild(list);
+    } else {
+      const form = document.createElement('form'); form.className = 'sa';
+      form.innerHTML = '<input type="text" autocomplete="off" placeholder="답을 입력하세요" aria-label="답"><button type="submit">확인</button>';
+      form.onsubmit = e => {
+        e.preventDefault();
+        const input = form.querySelector('input'), value = input.value.trim();
+        if (!value) return;
+        const ok = q.answers.some(a => norm(a) === norm(value));
+        input.disabled = true; form.querySelector('button').disabled = true;
+        input.classList.add(ok ? 'right' : 'picked');
+        feedback(el, q, ok, q.answers.join(' / ')); finish(i, value, ok);
+      };
+      el.appendChild(form);
+    }
+    box.appendChild(el);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,22 +1,132 @@
+"""
+AI 강의 생성 — 강의 자료(요약)로 챕터별 강의를 만든다. 호출은 core.ai를 거친다.
+
+두 단계로 나눠 토큰을 아낀다:
+  1. 목차(course_outline): 자료 제목과 요약 앞부분만 보고 챕터를 나누고 챕터마다 근거 자료를 고른다.
+  2. 챕터(course_chapter): 챕터마다 그 챕터의 자료 요약만 넣어 학습 세트(개념 카드 + 확인 문제)를 만든다.
+같은 자료로 만든 챕터는 다시 만들지 않는다 (course/studio.py의 source_hash 비교).
+
+강의 자료는 "시험 포인트 정리"가 아니라 그 챕터에서 알아야 할 것만 담은 간결한 강의 내용이다.
+원본 자료(PDF 등)는 학생에게 보여주지 않으므로 카드만 읽어도 이해되게 쓴다.
+"""
 from core import ai as core_ai
 
+OUTLINE_HEAD_CHARS = 600      # 목차를 정할 때 자료 하나당 요약 앞부분 길이
+CHAPTER_INPUT_CHARS = 9000    # 챕터 하나를 만들 때 넣는 요약 길이 상한
+MAX_CHAPTERS = 8
+MAX_SETS = 4
+MAX_CARDS = 6
+MAX_QUESTIONS = 6
 
-def generate_course_draft(subject_code, summaries):
-    """누적된 문서 요약으로 Course(제목/설명) - Unit(2~3개) - Lesson 구조의 초안을 생성한다.
-    각 Lesson의 content는 학생이 그 내용만 읽고 바로 학습할 수 있는 수준의 상세한 본문이어야 한다
-    (단순 개요/한줄 요약이 아님)."""
-    joined = "\n\n---\n\n".join(summaries)
-    prompt = (
-        f"'{subject_code}' 과목으로 학생들이 올린 학습 자료 요약들입니다. 이 내용을 바탕으로 "
-        "학생이 실제로 학습할 수 있는 상세한 강의를 만들어주세요.\n"
-        "- Course 제목과 설명\n"
-        "- Unit 2~3개, 각 Unit마다 Lesson 여러 개\n"
-        "- 각 Lesson의 content는 한두 문장짜리 개요가 아니라, 소제목(##)으로 구성을 나누고 "
-        "개념 설명·예시·핵심 포인트를 충분히 풀어쓴 최소 8문장 이상의 본문이어야 합니다.\n"
-        "- 제공된 자료 요약에 없는 내용을 지어내지 말고, 그 안의 내용을 최대한 활용해 상세히 서술하세요.\n\n"
-        '아래 JSON 형식으로만 응답하세요: {"title": "...", "description": "...", '
-        '"units": [{"title": "...", "lessons": [{"title": "...", "content": "..."}]}]}\n\n'
-        "--- 자료 요약 ---\n"
-        f"{joined[:12000]}"
-    )
-    return core_ai.complete_json("course_chapter", [{"role": "user", "content": prompt}])
+OUTLINE_SYSTEM = (
+    "대학 동아리 학습 플랫폼의 강의 설계자입니다. 학생들이 올린 강의 자료 목록을 보고 강의 목차를 만듭니다.\n"
+    "- 챕터는 배우는 순서대로 2~8개. 챕터마다 근거 자료 번호(doc_ids)를 고릅니다 (한 자료가 여러 챕터에 쓰여도 됨).\n"
+    "- 강의 제목·설명과 챕터 요약은 한두 문장으로 짧게.\n"
+    '- JSON으로만 답하세요: {"title": "...", "description": "...", '
+    '"chapters": [{"title": "...", "summary": "...", "doc_ids": [1, 2]}]}'
+)
+
+CHAPTER_SYSTEM = (
+    "대학 동아리 학습 플랫폼의 강의 자료를 씁니다. 주어진 자료 요약만 근거로 이 챕터의 강의를 만듭니다.\n"
+    "원칙:\n"
+    "- 시험 요령이 아니라 강의 자료입니다. 이 챕터에서 알아야 할 것만 간결하게. 같은 말 반복, 인사말, 군더더기 금지.\n"
+    "- 학생은 원본 자료를 보지 못합니다. 카드만 읽어도 이해되도록 정의 → 설명 → 짧은 예 순서로 씁니다.\n"
+    "- 자료에 없는 내용은 지어내지 않습니다.\n"
+    "구성:\n"
+    f"- 학습 세트(sets) 1~{MAX_SETS}개. 세트마다 개념 카드(cards) 2~{MAX_CARDS}장과 확인 문제(questions) 2~{MAX_QUESTIONS}개.\n"
+    "- 카드 body는 짧은 문장과 목록 위주. 쓸 수 있는 서식: **굵게**, `코드`, '- ' 목록(하위 항목은 앞에 공백 2칸), "
+    "'1. ' 번호 목록, '| a | b |' 표, ``` 코드 블록. 그 밖의 HTML·이미지·링크는 쓰지 않습니다.\n"
+    "- 확인 문제는 카드 내용을 이해했는지 묻는 것. 유형:\n"
+    '  OX: {"type": "ox", "q": "...", "answer": true, "explanation": "..."}\n'
+    '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 0, "explanation": "..."}'
+    " (answer는 정답 보기의 번호, 0부터)\n"
+    '  단답: {"type": "short", "q": "...", "answers": ["정답", "다른 표현"], "explanation": "..."}\n'
+    "- explanation은 한 문장.\n"
+    'JSON으로만 답하세요: {"sets": [{"title": "...", "cards": [{"title": "...", "body": "..."}], "questions": [...]}]}'
+)
+
+
+def generate_outline(subject, docs, previous=None):
+    """docs: [{"id", "title", "summary"}]. previous: 이전 목차(챕터 제목·doc_ids) — 있으면 되도록 유지하게 한다."""
+    listing = "\n".join(f"[{d['id']}] {d['title']}\n{d['summary'][:OUTLINE_HEAD_CHARS]}" for d in docs)
+    request = f"과목: {subject}\n"
+    if previous:
+        request += ("이전 목차가 있습니다. 새 자료를 알맞은 챕터에 넣고, 꼭 필요할 때만 챕터를 추가·변경하세요. "
+                    "바뀌지 않는 챕터는 제목을 그대로 두세요:\n"
+                    + "\n".join(f"- {c['title']} (자료 {c.get('doc_ids', [])})" for c in previous) + "\n")
+    data = core_ai.complete_json("course_outline", [
+        {"role": "system", "content": OUTLINE_SYSTEM},
+        {"role": "user", "content": request + core_ai.untrusted("자료목록", listing)},
+    ])
+    return normalize_outline(data, {d["id"] for d in docs})
+
+
+def generate_chapter(subject, chapter, docs):
+    """한 챕터의 학습 세트들을 만든다. docs: 이 챕터의 근거 자료 [{"id", "title", "summary"}]."""
+    material = "\n\n".join(f"## {d['title']}\n{d['summary']}" for d in docs)[:CHAPTER_INPUT_CHARS]
+    data = core_ai.complete_json("course_chapter", [
+        {"role": "system", "content": CHAPTER_SYSTEM},
+        {"role": "user", "content": f"과목: {subject}\n챕터: {chapter['title']}\n챕터 개요: {chapter.get('summary', '')}\n"
+                                    + core_ai.untrusted("자료", material)},
+    ])
+    return normalize_sets(data.get("sets"))
+
+
+# ── 정리·검증: AI 출력을 템플릿이 믿고 쓸 수 있는 모양으로 ───────────────────────
+
+def _text(value, limit):
+    return str(value or "").strip()[:limit]
+
+
+def normalize_outline(data, valid_doc_ids):
+    chapters = []
+    for c in (data.get("chapters") or [])[:MAX_CHAPTERS]:
+        title = _text(c.get("title"), 120)
+        if not title:
+            continue
+        doc_ids = [d for d in (c.get("doc_ids") or []) if isinstance(d, int) and d in valid_doc_ids]
+        chapters.append({"title": title, "summary": _text(c.get("summary"), 300),
+                         "doc_ids": sorted(set(doc_ids)) or sorted(valid_doc_ids)})
+    return {"title": _text(data.get("title"), 120), "description": _text(data.get("description"), 500),
+            "chapters": chapters}
+
+
+def normalize_question(q):
+    """잘못된 문제는 None. 템플릿·채점이 기대하는 필드만 남긴다."""
+    if not isinstance(q, dict):
+        return None
+    kind, text = q.get("type"), _text(q.get("q"), 500)
+    explanation = _text(q.get("explanation"), 400)
+    if not text:
+        return None
+    if kind == "ox":
+        answer = q.get("answer")
+        if isinstance(answer, str):
+            answer = answer.strip().upper() in ("O", "TRUE", "참", "T", "YES")
+        return {"type": "ox", "q": text, "answer": bool(answer), "explanation": explanation}
+    if kind == "mc":
+        options = [_text(o, 200) for o in (q.get("options") or []) if _text(o, 200)][:6]
+        answer = q.get("answer")
+        if len(options) < 2 or not isinstance(answer, int) or not 0 <= answer < len(options):
+            return None
+        return {"type": "mc", "q": text, "options": options, "answer": answer, "explanation": explanation}
+    if kind == "short":
+        answers = [_text(a, 100) for a in (q.get("answers") or []) if _text(a, 100)][:6]
+        if not answers:
+            return None
+        return {"type": "short", "q": text, "answers": answers, "explanation": explanation}
+    return None
+
+
+def normalize_sets(sets):
+    out = []
+    for s in (sets or [])[:MAX_SETS]:
+        if not isinstance(s, dict):
+            continue
+        cards = [{"title": _text(c.get("title"), 120), "body": _text(c.get("body"), 4000)}
+                 for c in (s.get("cards") or [])[:MAX_CARDS] if isinstance(c, dict) and _text(c.get("body"), 4000)]
+        questions = [q for q in map(normalize_question, (s.get("questions") or [])[:MAX_QUESTIONS]) if q]
+        title = _text(s.get("title"), 120)
+        if title and cards:
+            out.append({"title": title, "cards": cards, "questions": questions})
+    return out

@@ -72,6 +72,44 @@
                 {% endif %}
             </section>
 
+            {% if chapters %}
+            <section>
+                <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
+                    <h2 class="text-2xl font-semibold text-[#3F3F3F]">커리큘럼 구성</h2>
+                    {% if is_course_manager and is_ai_managed %}
+                    <form method="post" action="{% url 'course_studio_start_edit' course.slug %}">{% csrf_token %}
+                        <button class="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-sm rounded-md transition" title="내용을 바꾸려면 수정 초안을 만들어 승인해야 합니다">수정 초안 만들기</button>
+                    </form>
+                    {% endif %}
+                </div>
+                <div class="space-y-4">
+                    {% for chapter in chapters %}
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-3 bg-slate-50 border-b border-slate-100 font-bold text-slate-700">
+                            <span class="text-emerald-600 mr-1">{{ forloop.counter }}강</span>{{ chapter.unit.title }}
+                        </div>
+                        <ul class="divide-y divide-slate-100">
+                            {% for lesson in chapter.sets %}
+                            <li>
+                                <a href="{{ lesson.get_absolute_url }}" class="px-6 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition">
+                                    <i class="fa-regular fa-file-lines text-slate-400"></i>
+                                    <span class="flex-1 min-w-0 text-slate-700 font-medium truncate">{{ lesson.title }}</span>
+                                    {% if lesson.quiz %}
+                                    <span class="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full {% if lesson.quiz.correct == lesson.quiz.total %}bg-emerald-50 text-emerald-600{% else %}bg-amber-50 text-amber-700{% endif %}">{{ lesson.quiz.correct }}/{{ lesson.quiz.total }}</span>
+                                    {% elif lesson.id in completed_lesson_ids %}
+                                    <span class="shrink-0 text-xs font-bold text-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-full"><i class="fa-solid fa-check mr-1"></i>완료</span>
+                                    {% else %}
+                                    <span class="shrink-0 text-xs font-semibold text-emerald-700">시작하기</span>
+                                    {% endif %}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% else %}
             <section>
                 <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
                     <h2 class="text-2xl font-semibold text-[#3F3F3F]">커리큘럼 구성</h2>
@@ -135,6 +173,8 @@
                     </ul>
                 </div>
             </section>
+
+            {% endif %}
 
             <section class="space-y-4">
                 <div class="flex justify-between items-center mb-2 border-b border-slate-200 pb-2">
