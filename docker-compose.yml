@@ -62,6 +62,50 @@ services:
       retries: 5
       start_period: 40s
 
+  # ── 채점 ─────────────────────────────────────────────────────────────
+  # judge_worker: 채점 큐(JudgeTask)를 하나씩 꺼내 실행기에 테스트케이스를 보내고 결과를 DB에 쓴다.
+  judge_worker:
+    image: ghcr.io/cbnu-ipse/ipse-lms:latest
+    restart: unless-stopped
+    entrypoint: ["python", "manage.py", "run_judge_worker"]
+    env_file:
+      - .env.docker
+    environment:
+      JUDGE_RUNNER_URL: http://judge_runner:8080
+    networks:
+      - default
+      - judge_net
+    depends_on:
+      db:
+        condition: service_healthy
+      db_judge:
+        condition: service_healthy
+      judge_runner:
+        condition: service_started
+
+  # judge_runner: 제출 코드를 실제로 실행하는 곳. 인터넷 차단(internal 네트워크만), 비밀 환경변수 없음,
+  # 읽기 전용 파일시스템, 권한 제거, 자원 제한. 웹 서버·DB와는 연결되지 않는다 (judge_runner/runner.py 참고)
+  judge_runner:
+    build:
+      context: ./judge_runner
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    networks:
+      - judge_net
+
+networks:
+  judge_net:
+    internal: true
+
 volumes:
   postgres_data:
   postgres_judge_data:
