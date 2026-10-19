@@ -23,6 +23,24 @@ services:
       web:
         condition: service_healthy
 
+  # 매일 새벽 PostgreSQL 백업 → 서버 디스크(./backups/postgres)에 gzip으로 14일치 보관 (docker/backup.sh, docker/BACKUP.md)
+  db_backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backups/postgres:/backups
+      - ./docker/backup.sh:/backup.sh:ro
+    entrypoint: ["sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+      db_judge:
+        condition: service_healthy
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
