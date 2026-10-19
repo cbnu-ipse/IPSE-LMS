@@ -88,7 +88,14 @@ def list_my_problem_solve_status(user, **_kwargs):
     return [{"problem": r.problem.title, "status": r.status} for r in records]
 
 
+def get_my_learning_overview(user, **_kwargs):
+    from core.learning import overview_for_assistant
+
+    return overview_for_assistant(user)
+
+
 TOOL_FUNCTIONS = {
+    "get_my_learning_overview": get_my_learning_overview,
     "list_my_documents": list_my_documents,
     "get_document_detail": get_document_detail,
     "list_my_course_progress": list_my_course_progress,
@@ -98,6 +105,15 @@ TOOL_FUNCTIONS = {
 }
 
 TOOLS_SPEC = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_my_learning_overview",
+            "description": "사용자의 학습 현황을 한 번에 조회한다: 강의별 진도와 확인 문제 정답률, 다시 볼 세트, "
+                           "복습 문제·퀴즈·대회·문제 풀이 요약, 최근 학습 기록. 학습 상황 전반을 물으면 이것부터 쓴다.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
     {
         "type": "function",
         "function": {
