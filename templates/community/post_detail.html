@@ -196,6 +196,9 @@
                                             {% if question.question_description %}
                                             <p class="text-xs text-slate-500 font-medium">{{ question.question_description }}</p>
                                             {% endif %}
+                                            {% if question.allow_multiple %}
+                                            <p class="text-xs text-emerald-600 font-bold"><i class="fa-solid fa-list-check mr-1"></i>복수 선택 가능</p>
+                                            {% endif %}
                                         </div>
                                     </div>
 
@@ -206,7 +209,7 @@
                                         <div class="space-y-2">
                                             {% for choice in question.choices.all %}
                                             <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 cursor-pointer transition select-none">
-                                                <input type="radio" name="question_{{ question.id }}" value="{{ choice.id }}" class="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500" {% if question.current_answer.choice == choice %}checked{% endif %} {% if survey.is_closed %}disabled{% endif %}>
+                                                <input type="{% if question.allow_multiple %}checkbox{% else %}radio{% endif %}" name="question_{{ question.id }}" value="{{ choice.id }}" class="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 {% if question.allow_multiple %}rounded{% endif %}" {% if choice.id in question.current_choice_ids %}checked{% endif %} {% if survey.is_closed %}disabled{% endif %}>
                                                 <span class="text-sm font-semibold text-slate-700">{{ choice.choice_text }}</span>
                                             </label>
                                             {% endfor %}
@@ -1531,8 +1534,12 @@
             
             let answerValue = null;
             if (type === 'CHOICE' || type === 'SCALE') {
+                // 복수 선택 질문은 체크박스 여러 개 → 선택지 번호 목록, 아니면 라디오 하나
+                const checkedBoxes = [...qDiv.querySelectorAll('input[type="checkbox"]:checked')];
                 const checkedRadio = qDiv.querySelector('input[type="radio"]:checked');
-                if (checkedRadio) {
+                if (checkedBoxes.length) {
+                    answerValue = checkedBoxes.map(box => box.value);
+                } else if (checkedRadio) {
                     answerValue = checkedRadio.value;
                 }
             } else if (type === 'TEXT') {

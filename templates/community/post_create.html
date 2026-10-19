@@ -393,6 +393,11 @@
 
                     <div class="choices-container mt-4 hidden rounded-2xl border border-slate-200 bg-white p-4">
                         <label class="mb-3 block text-xs font-bold text-slate-500 uppercase">답변 선택지</label>
+                        <label class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold text-slate-600 cursor-pointer">
+                            <input type="checkbox" class="question-allow-multiple h-4 w-4 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                            <span class="whitespace-nowrap">복수 선택 허용</span>
+                            <span class="w-full pl-6 font-normal text-slate-400">응답자가 여러 항목을 고를 수 있습니다.</span>
+                        </label>
                         <div class="choices-list space-y-2"></div>
                         <button type="button" class="add-choice-btn mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
                             <i class="fas fa-plus"></i> 선택지 추가
@@ -491,6 +496,7 @@
         function lockQuestionStructure(questionDiv) {
             questionDiv.querySelector('.question-title')?.setAttribute('readonly', 'readonly');
             questionDiv.querySelector('.question-title')?.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
+            questionDiv.querySelector('.question-allow-multiple')?.setAttribute('disabled', 'disabled');
             questionDiv.querySelector('.question-type')?.setAttribute('disabled', 'disabled');
             questionDiv.querySelector('.question-type')?.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
             questionDiv.querySelectorAll('.choice-text').forEach(input => {
@@ -578,6 +584,7 @@
                 typeSelect.dispatchEvent(new Event('change'));
 
                 if (questionData.question_type === 'CHOICE') {
+                    questionDiv.querySelector('.question-allow-multiple').checked = Boolean(questionData.allow_multiple);
                     const choicesList = questionDiv.querySelector('.choices-list');
                     choicesList.innerHTML = '';
                     (questionData.choices || []).forEach(choiceData => {
@@ -621,6 +628,7 @@
                             title: title,
                             description: description,
                             question_type: type,
+                            allow_multiple: type === 'CHOICE' && qDiv.querySelector('.question-allow-multiple').checked,
                             choices: []
                         };
                         

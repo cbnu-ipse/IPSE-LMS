@@ -195,7 +195,8 @@ function updateTableData(data) {
     }
     data.results.forEach(question => {
         if (question.type === 'CHOICE') {
-            const total = question.stats.reduce((s, x) => s + x.count, 0) || 1;
+            // 복수 선택이면 선택 수의 합이 아니라 이 질문에 답한 응답자 수가 기준이다
+            const total = (question.allow_multiple ? question.answered : question.stats.reduce((s, x) => s + x.count, 0)) || 1;
             question.stats.forEach(stat => {
                 const pct = Math.round((stat.count / total) * 100);
                 const c = document.getElementById(`count_${stat.choice_id}`);
