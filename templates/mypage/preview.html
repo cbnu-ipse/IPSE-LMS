@@ -2,12 +2,35 @@
 {% block title %}{{ document.title }} | 개인 자료{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 py-10">
-    <a href="{% if document.folder %}{% url 'mypage:document_list' folder_id=document.folder.pk %}{% else %}{% url 'mypage:document_list' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료로 돌아가기</a>
-    <h1 class="text-2xl font-bold text-slate-800 mt-2 mb-6">{{ document.title }}</h1>
+<style>
+/* 학습 화면: 사이트 여백 없이 화면 전체를 쓴다 (헤더 아래 남은 높이를 모두 채움) */
+.ms-wrap { width: 100%; padding: 10px 12px 12px; }
+.ms-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; min-width: 0; }
+.ms-head h1 { flex: 1; min-width: 0; font-size: 1.05rem; font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+.ms-toggle { flex-shrink: 0; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 6px 12px; font-size: .75rem; font-weight: 800; color: #475569; cursor: pointer; }
+.ms-toggle:hover { background: #f8fafc; }
+.ms-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 12px; height: var(--ms-h, 80vh); }
+.ms-grid.src-closed { grid-template-columns: minmax(0, 1fr); }
+.ms-grid.src-closed .ms-src { display: none; }
+.ms-src { background: #fff; border: 1px solid #f1f5f9; border-radius: 16px; padding: 6px; min-height: 0; display: flex; }
+.ms-src > iframe, .ms-src > pre { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
+.ms-src > pre { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; }
+.ms-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+@media (max-width: 1023px) {
+    .ms-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
+    .ms-src { height: 70vh; }
+    .ms-side { min-height: 70vh; }
+}
+</style>
+<div class="ms-wrap">
+    <div class="ms-head">
+        <a href="{% if document.folder %}{% url 'mypage:document_list' folder_id=document.folder.pk %}{% else %}{% url 'mypage:document_list' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600 shrink-0">&larr; 내 자료</a>
+        <h1>{{ document.title }}</h1>
+        <button type="button" id="ms-toggle" class="ms-toggle" aria-expanded="true"><i class="fa-regular fa-file-pdf mr-1"></i><span>원문 닫기</span></button>
+    </div>
 
     {% if messages %}
-        <div class="mb-6 space-y-2">
+        <div class="mb-3 space-y-2">
             {% for message in messages %}
                 <div class="px-4 py-2.5 rounded-xl text-sm font-medium {% if message.tags == 'error' %}bg-rose-50 text-rose-700 border border-rose-100{% else %}bg-emerald-50 text-emerald-700 border border-emerald-100{% endif %}">
                     {{ message }}
@@ -16,18 +39,18 @@
         </div>
     {% endif %}
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <!-- 좌측: 문서 뷰어 -->
-        <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-100 p-2">
+    <div class="ms-grid" id="ms-grid">
+        <!-- 좌측: 문서 뷰어 (열고 닫을 수 있다) -->
+        <div class="ms-src" id="ms-src">
             {% if is_pdf %}
-                <iframe src="{{ document.file.url }}" class="w-full h-[80vh] rounded-xl"></iframe>
+                <iframe src="{{ document.file.url }}" title="원문"></iframe>
             {% else %}
-                <pre class="w-full h-[80vh] overflow-y-auto whitespace-pre-wrap break-words p-6 text-sm text-slate-700 leading-relaxed">{{ document.extracted_text|default:"미리볼 수 있는 텍스트가 없습니다." }}</pre>
+                <pre>{{ document.extracted_text|default:"미리볼 수 있는 텍스트가 없습니다." }}</pre>
             {% endif %}
         </div>
 
         <!-- 우측: 요약/퀴즈 패널 -->
-        <div class="lg:col-span-5 lg:sticky lg:top-6 lg:h-[80vh] flex flex-col gap-4">
+        <div class="ms-side">
             <div class="shrink-0 flex gap-1 bg-white rounded-2xl border border-slate-100 p-1">
                 <a href="?panel=summary" class="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold transition {% if active_panel == 'summary' %}bg-emerald-600 text-white{% else %}text-slate-500 hover:text-slate-700{% endif %}">
                     <i class="fa-solid fa-file-lines mr-1.5"></i>요약
@@ -39,16 +62,28 @@
 
             {% if active_panel == 'summary' %}
                 <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-100 p-6 flex flex-col">
-                    {% if document.summary_status == 'processing' %}
+                    {% if document.summary_status == 'processing' and not can_resummarize %}
                         <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>요약을 생성하고 있습니다...</p>
                         <script>setTimeout(() => { window.showLoader && window.showLoader(); location.reload(); }, 2500);</script>
+                    {% elif document.summary_status == 'processing' %}
+                        <p class="text-sm text-slate-500 font-medium">요약 생성이 오래 걸리고 있습니다.</p>
+                        <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
+                            {% csrf_token %}
+                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기</button>
+                        </form>
                     {% elif document.summary %}
                         <textarea id="document-summary-raw" style="display:none;">{{ document.summary }}</textarea>
                         <div id="document-summary-tabs" class="shrink-0 flex gap-1 mb-4"></div>
                         <div id="document-summary-content" class="flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
                         <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
                     {% else %}
-                        <p class="text-sm text-slate-400">요약을 생성하지 못했습니다.</p>
+                        <p class="text-sm text-slate-500 font-medium">요약을 생성하지 못했습니다.</p>
+                        {% if can_resummarize %}
+                        <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
+                            {% csrf_token %}
+                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기</button>
+                        </form>
+                        {% endif %}
                     {% endif %}
                 </div>
             {% else %}
@@ -69,7 +104,7 @@
                                     <script>setTimeout(() => { window.showLoader && window.showLoader(); location.reload(); }, 2500);</script>
                                 {% else %}
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{{ current_question.get_question_type_display }}</span>
-                                <p class="text-sm font-medium text-slate-700 mt-1">{{ current_question.question_text }}</p>
+                                <p class="text-sm font-medium text-slate-700 mt-1">{{ current_question.display_text }}</p>
 
                                 {% if current_question.is_correct is None %}
                                     {% if current_question.question_type == "ox" %}
@@ -135,6 +170,41 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+(function () {
+    const grid = document.getElementById('ms-grid');
+    const src = document.getElementById('ms-src');
+    const btn = document.getElementById('ms-toggle');
+    if (!grid || !btn) return;
+    const KEY = 'mypage-source-open';
+
+    // 헤더 아래 남은 화면 높이를 모두 쓴다 (넓은 화면에서만, 좁은 화면은 위아래로 쌓는다)
+    function fit() {
+        if (window.innerWidth < 1024) { grid.style.removeProperty('--ms-h'); return; }
+        const top = grid.getBoundingClientRect().top + window.scrollY;
+        grid.style.setProperty('--ms-h', Math.max(360, window.innerHeight - top - 12) + 'px');
+    }
+    function setOpen(open) {
+        grid.classList.toggle('src-closed', !open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('span').textContent = open ? '원문 닫기' : '원문 열기';
+        try { localStorage.setItem(KEY, open ? '1' : '0'); } catch (e) {}
+        // 닫혀 있는 동안에는 PDF를 불러오지 않고, 열 때 다시 연결한다
+        const frame = src && src.querySelector('iframe');
+        if (frame) {
+            if (open && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.src);
+            if (!open && frame.getAttribute('src')) { frame.dataset.src = frame.getAttribute('src'); frame.removeAttribute('src'); }
+        }
+    }
+    let open = true;
+    try { open = localStorage.getItem(KEY) !== '0'; } catch (e) {}
+    btn.addEventListener('click', () => setOpen(grid.classList.contains('src-closed')));
+    setOpen(open);
+    fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+})();
+</script>
 {% if document.summary %}
 <script>
     (function () {
