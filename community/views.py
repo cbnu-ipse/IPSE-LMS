@@ -1541,6 +1541,10 @@ def post_detail(request, post_id):
                     ).prefetch_related('answers').first()
             
             has_responded = (existing_response is not None) if not modify_mode else False
+            if survey.allow_duplicate_response and not modify_mode:
+                # 중복 응답 허용 설문: 응답 폼은 항상 새 응답용으로 연다. 기존 응답 번호를 폼에 실어 보내면
+                # survey_respond가 새 응답을 만들지 않고 그 응답을 덮어쓴다.
+                existing_response = None
 
         current_answers = {}
         if existing_response:
