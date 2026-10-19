@@ -181,6 +181,7 @@ class SurveyQuestion(models.Model):
     question_description = models.TextField(blank=True, verbose_name="질문 설명")
     question_type = models.CharField(max_length=10, choices=QUESTION_TYPES, default='CHOICE')
     required = models.BooleanField(default=True, verbose_name="필수 응답")
+    allow_multiple = models.BooleanField(default=False, verbose_name="복수 선택 허용")  # 객관식에서 여러 항목 선택
     order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
@@ -234,7 +235,11 @@ class SurveyAnswer(models.Model):
     scale_answer = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="척도 답변 (1~5)")
 
     class Meta:
-        unique_together = ("response", "question")
+        # 객관식은 복수 선택이면 한 질문에 답변이 여러 줄이다. 같은 선택지를 두 번 고르는 것만 막는다
+        # (choice가 비어 있는 주관식·척도형 답변은 SQL 유니크에서 서로 다른 값으로 취급되어 영향이 없다).
+        constraints = [
+            models.UniqueConstraint(fields=["response", "question", "choice"], name="uniq_survey_answer_choice"),
+        ]
 
     def __str__(self):
         return f"{self.response} — {self.question.question_text}"

@@ -69,6 +69,21 @@ def _survey_answer_text(answer):
     return ''
 
 
+def _survey_answers_text(answers):
+    """한 질문의 답변들(복수 선택이면 여러 줄)을 한 칸에 담는다. 선택지는 ', '로 이어 붙인다."""
+    answers = list(answers or [])
+    if not answers:
+        return '(미응답)'
+    return ', '.join(_survey_answer_text(a) for a in answers if _survey_answer_text(a))
+
+
+def _group_answers_by_question(answers):
+    grouped = {}
+    for answer in answers:
+        grouped.setdefault(answer.question_id, []).append(answer)
+    return grouped
+
+
 def _parse_survey_datetime(dt_str):
     if not dt_str:
         return None
@@ -169,6 +184,7 @@ def _save_survey_for_post(post, survey_data_str, user):
             question_text=question_text,
             question_description=question_description,
             question_type=question_type,
+            allow_multiple=(question_type == 'CHOICE' and bool(q_data.get('allow_multiple'))),
             order=q_data.get('sequence', 0),
             required=True,
         )
@@ -259,6 +275,10 @@ def _survey_structure_matches_existing(survey, questions_data):
         if existing_question.question_text != (incoming_question.get('title') or '').strip():
             return False
         if existing_question.question_type != incoming_question.get('question_type', 'CHOICE'):
+            return False
+        if existing_question.allow_multiple != (
+            incoming_question.get('question_type', 'CHOICE') == 'CHOICE' and bool(incoming_question.get('allow_multiple'))
+        ):
             return False
 
         incoming_choices = [
@@ -920,34 +940,40 @@ def survey_respond(request, survey_id):
                     respondent=respondent,
                 ).order_by('-created_at').first()
 
-        if existing_response:
-            response_obj = existing_response
-            response_obj.answers.all().delete()
-            message = '응답이 수정되었습니다.'
-        else:
-            response_obj = SurveyResponse.objects.create(survey=survey, respondent=respondent)
-            message = '감사합니다! 응답이 정상적으로 제출되었습니다.'
+        # 중간에 잘못된 답변이 있으면 응답 전체를 되돌린다 (빈 응답이 남거나 기존 응답이 지워지지 않도록)
+        with transaction.atomic():
+            if existing_response:
+                response_obj = existing_response
+                response_obj.answers.all().delete()
+                message = '응답이 수정되었습니다.'
+            else:
+                response_obj = SurveyResponse.objects.create(survey=survey, respondent=respondent)
+                message = '감사합니다! 응답이 정상적으로 제출되었습니다.'
 
-        # question_{{ question.id }}: value 형식 처리
-        for key, value in data.items():
-            if key.startswith('question_'):
-                question_id = int(key.replace('question_', ''))
-                question = get_object_or_404(SurveyQuestion, id=question_id, survey=survey)
+            # question_{{ question.id }}: value 형식 처리
+            for key, value in data.items():
+                if key.startswith('question_'):
+                    question_id = int(key.replace('question_', ''))
+                    question = get_object_or_404(SurveyQuestion, id=question_id, survey=survey)
 
-                if question.question_type == 'CHOICE':
-                    # value는 choice_id
-                    choice = get_object_or_404(SurveyQuestionChoice, id=value)
-                    SurveyAnswer.objects.create(response=response_obj, question=question, choice=choice)
+                    if question.question_type == 'CHOICE':
+                        # value는 choice_id, 복수 선택 질문이면 choice_id 목록
+                        choice_ids = list(dict.fromkeys(int(v) for v in (value if isinstance(value, list) else [value])))
+                        if not question.allow_multiple and len(choice_ids) > 1:
+                            raise ValueError('이 질문은 하나만 선택할 수 있습니다.')
+                        for choice_id in choice_ids:
+                            choice = get_object_or_404(SurveyQuestionChoice, id=choice_id, question=question)
+                            SurveyAnswer.objects.create(response=response_obj, question=question, choice=choice)
 
-                elif question.question_type == 'TEXT':
-                    text = value.strip()
-                    if text:
-                        SurveyAnswer.objects.create(response=response_obj, question=question, text_answer=text)
+                    elif question.question_type == 'TEXT':
+                        text = value.strip()
+                        if text:
+                            SurveyAnswer.objects.create(response=response_obj, question=question, text_answer=text)
 
-                elif question.question_type == 'SCALE':
-                    scale = int(value)
-                    if 1 <= scale <= 5:
-                        SurveyAnswer.objects.create(response=response_obj, question=question, scale_answer=scale)
+                    elif question.question_type == 'SCALE':
+                        scale = int(value)
+                        if 1 <= scale <= 5:
+                            SurveyAnswer.objects.create(response=response_obj, question=question, scale_answer=scale)
 
         return JsonResponse({
             'status': 'success',
@@ -1000,6 +1026,9 @@ def survey_results_api(request, survey_id):
         }
         
         if question.question_type == 'CHOICE':
+            question_result['allow_multiple'] = question.allow_multiple
+            # 복수 선택이면 선택 수의 합이 응답자 수보다 크다 — 비율은 이 질문에 답한 응답자 수 기준으로 낸다
+            question_result['answered'] = question.surveyanswer_set.values('response').distinct().count()
             for choice in question.choices.all():
                 count = question.surveyanswer_set.filter(choice=choice).count()
                 question_result['stats'].append({
@@ -1042,12 +1071,12 @@ def survey_results_api(request, survey_id):
             .order_by('created_at')
         )
         for response_obj in respondent_qs:
-            answers = {a.question_id: a for a in response_obj.answers.all()}
+            answers = _group_answers_by_question(response_obj.answers.all())
             rows.append({
                 'name': _user_real_name(response_obj.respondent),
                 'username': response_obj.respondent.username if response_obj.respondent else '',
                 'submitted_at': _csv_dt(response_obj.created_at),
-                'answers': [_survey_answer_text(answers.get(q.id)) for q in questions],
+                'answers': [_survey_answers_text(answers.get(q.id)) for q in questions],
             })
         payload['respondents'] = {
             'questions': [q.question_text for q in questions],
@@ -1092,8 +1121,8 @@ def survey_results_export(request, survey_id):
         row.append(_csv_dt(response_obj.created_at))
 
         for question in questions:
-            answer = response_obj.answers.filter(question=question).first()
-            row.append(_survey_answer_text(answer))
+            answers = [a for a in response_obj.answers.all() if a.question_id == question.id]
+            row.append(_survey_answers_text(answers))
         writer.writerow(row)
 
     return http_response
@@ -1515,13 +1544,12 @@ def post_detail(request, post_id):
 
         current_answers = {}
         if existing_response:
-            current_answers = {
-                answer.question_id: answer
-                for answer in existing_response.answers.all()
-            }
+            current_answers = _group_answers_by_question(existing_response.answers.all())
 
         for question in questions:
-            question.current_answer = current_answers.get(question.id)
+            question_answers = current_answers.get(question.id, [])
+            question.current_answer = question_answers[0] if question_answers else None
+            question.current_choice_ids = [a.choice_id for a in question_answers if a.choice_id]
 
     return render(request, 'community/post_detail.html', {
         'title': post.title,
@@ -1706,6 +1734,7 @@ def post_edit(request, post_id):
                     'title': question.question_text,
                     'description': question.question_description,
                     'question_type': question.question_type,
+                    'allow_multiple': question.allow_multiple,
                     'choices': [
                         {
                             'sequence': choice.order,
