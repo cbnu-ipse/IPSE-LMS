@@ -7,6 +7,13 @@ from django.urls import reverse
 class Subject(models.Model):
     name = models.CharField(max_length=50, unique=True, verbose_name="강의 이름")
     code = models.CharField(max_length=20, blank=True, default="", verbose_name="과목 코드")
+    # AI 자료 분류 (course/topics.py): 주제 설명은 다음 자료를 분류할 때 참고한다
+    description = models.TextField(blank=True, verbose_name="주제 설명")
+    # "강의를 만들 만큼 자료가 충분한가" AI 판단 — 같은 자료 묶음(해시)으로는 다시 묻지 않는다
+    readiness_hash = models.CharField(max_length=64, blank=True, verbose_name="마지막 판단 자료 묶음 해시")
+    is_ready = models.BooleanField(default=False, verbose_name="강의 개설 가능 (AI 판단)")
+    readiness_reason = models.TextField(blank=True, verbose_name="판단 이유")
+    judged_at = models.DateTimeField(null=True, blank=True, verbose_name="판단 시각")
 
     class Meta:
         ordering = ["name"]
@@ -66,6 +73,8 @@ class PersonalDocument(models.Model):
         verbose_name="자료 구분",
         help_text="과제(문제 제작용)만 자동 강의 생성 대상에 포함됩니다.",
     )
+    # 강의 생성에 쓸 만한 학습 자료인지 (업로드 후 AI가 주제와 함께 판단). 예전 '자료 구분'을 대신한다
+    is_course_material = models.BooleanField(default=True, verbose_name="강의 자료로 사용 (AI 판단)")
     is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

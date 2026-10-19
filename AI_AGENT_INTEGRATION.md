@@ -35,21 +35,18 @@ LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다
   - `document_list`: 업로드 처리 후 `threading.Thread(target=_generate_summary_bg, ...)`로
     요약 생성을 백그라운드로 돌린다(블로킹 방지).
   - `_generate_summary_bg(document_id)`: 요약 생성 → `PersonalDocument` 업데이트 →
-    `_maybe_generate_course_bg(document.subject_code)` 호출.
-  - `_maybe_generate_course_bg(subject_code)`: 같은 `subject_code`로 요약이 끝난(`is_deleted=False`,
-    `summary_status=DONE`, `summary` 비어있지 않은) 문서가 `COURSE_DRAFT_THRESHOLD = 3`건 이상이면
-    `course.ai.generate_course_draft` → `course.services.sync_course_from_draft` 순으로 호출.
-    실패해도 예외를 로그로만 남기고 업로드 자체는 성공 응답을 유지한다(`ponytail` 주석 참고 —
-    동시 업로드 시 threshold를 여러 스레드가 동시에 넘겨 OpenAI 호출이 중복될 수 있음, DB 정합성은
-    `Course.get_or_create`가 보장하므로 트래픽이 실제 문제될 때 락 추가 예정).
+    `_classify_and_build`(→ `course.topics.after_summary`). 분류·초안 단계가 실패해도 요약은 그대로 남는다.
+  - **주제는 사람이 고르지 않는다** (`course/topics.py`): 요약이 끝나면 AI가 기존 주제 목록(이름 + 설명)을
+    보고 주제(`subject_code`)와 강의 자료로 쓸지(`is_course_material`)를 정한다. 그 주제에 게시된 강의가
+    있으면 갱신 초안을, 없으면 "강의를 만들 만큼 자료가 충분한가"를 AI가 판단해(정해진 개수 기준 없음,
+    같은 자료 묶음은 다시 묻지 않음) 충분할 때 초안을 만든다. 게시는 강의자 승인(2.2절).
   - `document_delete`: 실제 삭제 대신 `is_deleted=True`만 저장(소프트 삭제) — 사용자 화면에서는
     사라지지만 요약/원문은 그대로 남아 강의 생성 자료로 계속 쓰인다.
   - `document_preview`/`generate_question_view`/`submit_answer_view` 전부 `is_deleted=False`
     필터를 거쳐 삭제된 문서에는 본인도 접근할 수 없다.
   - `document_list`의 폴더 카드 문서 개수는 `annotate(doc_count=Count("documents",
     filter=Q(documents__is_deleted=False)))`로 삭제된 문서를 제외하고 집계한다.
-- **`mypage/forms.py`**: `PersonalDocumentUploadForm`에 `subject_code`(선택 입력) 필드 — 사용자가
-  입력하면 강의 자동 생성 그룹핑 키로 쓰인다.
+- **`mypage/forms.py`**: `PersonalDocumentUploadForm`은 자료명과 파일만 받는다(과목·자료 구분 입력 없음).
 
 ### 2.2 `course` — 강의 초안 생성 → 강의자 검토·승인 → 게시
 
