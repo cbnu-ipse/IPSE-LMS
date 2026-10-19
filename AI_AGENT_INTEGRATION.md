@@ -13,7 +13,7 @@
 LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다** — 아래 2절에서 앱별로 실제
 코드를 정리한다.
 
-관련 앱: `mypage`(자료 업로드·요약·문제생성·강의 생성 트리거), `course`(강의 초안 생성·반영),
+관련 앱: `mypage`(자료 업로드·요약·문제생성·강의 생성 트리거), `course`(강의 초안 생성·검토·게시),
 `assistant`(FAB 챗봇).
 
 ## 2. 앱별 코드 인벤토리
@@ -51,30 +51,22 @@ LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다
 - **`mypage/forms.py`**: `PersonalDocumentUploadForm`에 `subject_code`(선택 입력) 필드 — 사용자가
   입력하면 강의 자동 생성 그룹핑 키로 쓰인다.
 
-### 2.2 `course` — 강의 초안 생성 및 반영
+### 2.2 `course` — 강의 초안 생성 → 강의자 검토·승인 → 게시
 
-- **`course/ai.py`**: `generate_course_draft(subject_code, summaries)` — 누적된 문서 요약들을
-  합쳐(`[:8000]`자로 자름) OpenAI JSON 모드로 `{title, description, units: [{title, lessons:
-  [{title, content_outline}]}]}` 구조의 초안을 생성한다. 승인 절차·HITL 없음 — 결과를 그대로
-  반환한다.
-- **`course/services.py`**: `sync_course_from_draft(subject_code, draft, instructor=None)` —
-  `subject_code`를 `Course.code`로 삼아 `get_or_create`(카테고리는 "AI 자동 생성" 고정,
-  `instructor`는 미지정 시 첫 슈퍼유저), 이미 있으면 title/summary만 갱신. `Unit`/`Lesson`은 매번
-  전체 삭제 후 draft 내용으로 재생성한다(멱등적 upsert, 이전 회차 Unit/Lesson이 누적되지 않음).
-- **`course/management/commands/sync_course_drafts.py`**: `mypage`가 트리거하는 실시간 경로와는
-  **별개의**, 프로토타입 검증용 수동 동기화 명령어. `yhw_agent_project/prototype/output/
-  review_queue.json`(프로토타입 CLI가 사람 승인까지 마친 결과를 기록하는 파일)을 읽어
-  `sync_course_from_draft`를 호출한다. `_latest_by_subject`는 `entry.get("approved")` 체크 없이
-  전부 자동 수락한다(`ponytail` 주석: 사람 승인이 필요해지면 이 체크를 복원).
-  **주의**: 이 명령어와 `mypage`가 트리거하는 실시간 경로는 둘 다 같은 `sync_course_from_draft`를
-  거치지만 서로 다른 입력(파일 vs. mypage 누적 문서)에서 출발하는 완전히 독립된 두 경로다.
-- **알려진 이슈 — 한글 전용 제목의 슬러그**: `course/utils.py::unique_slug_generator`가
-  `django.utils.text.slugify(instance.title)`를 `allow_unicode=True` 없이 호출한다. Django의
-  기본 `slugify`는 비-ASCII 문자를 전부 제거하므로, AI가 생성한 `draft["title"]`이 순수 한글이면
-  (예: "자료구조 개론") 슬러그가 빈 문자열이 될 수 있다. `Course.code`(=`subject_code`)를 조회
-  키로 쓰기 때문에 기능 자체는 깨지지 않지만, `Course.get_absolute_url()`(슬러그 기반 URL)이
-  영향받을 수 있다 — 이번 작업 범위에서 수정하지 않았고, 필요 시 `slugify(title,
-  allow_unicode=True)`로 교체가 다음 개선 지점이다.
+- **`course/ai.py`**: 두 단계 생성. `generate_outline`(목차: 자료 제목 + 요약 앞부분만 보고 챕터와
+  챕터별 근거 자료를 고름) → `generate_chapter`(챕터마다 그 챕터의 요약만 넣어 학습 세트 = 개념 카드 +
+  확인 문제(OX/객관식/단답)를 만듦). 출력은 `normalize_*`로 검증·정리한다.
+- **`course/studio.py`**: 초안(`CourseDraft`)의 생성·수정·승인·반려.
+  - `build_draft`: 같은 입력(요약 해시)으로는 다시 만들지 않는다(DB 유니크 제약 → 동시 업로드에도 AI 호출 1회).
+    근거 자료가 그대로인 챕터는 이전 초안의 세트를 재사용해 AI를 부르지 않는다.
+  - `publish_draft`: 저장된 초안을 그대로 Course/Unit/Lesson(cards·questions)에 옮긴다. **게시할 때 AI 호출 없음.**
+    같은 챕터 순서·세트 제목의 수업은 고쳐 써서 학생 진도를 유지한다.
+  - 게시된 AI 강의의 내용은 승인된 초안으로만 바뀐다(직접 수업 편집은 막힘, `start_edit_draft`로 수정 초안).
+- **`course/views_studio.py`** + `templates/course/studio_*.html`: judge > **강의 생성** 탭(강의자 전용).
+  학생 화면 그대로 미리보기·문제 풀이(저장 안 함), 카드·문제 수정, 승인·반려.
+- **`course/markup.py`**: 카드 본문(제한된 마크다운)을 이스케이프 후 안전한 HTML로.
+- **`course/services.py`**: 프로토타입 형식(review_queue.json)을 검토 대기 초안으로 넣는다
+  (`sync_course_drafts` 명령어도 더 이상 강의를 직접 바꾸지 않는다).
 
 ### 2.3 `assistant` — 전역 FAB 챗봇
 
@@ -136,19 +128,13 @@ LangChain/RAG/LangGraph/Guardrail/Agent
    순수 OpenAI" 패턴을 쓰고 있었다. `course` 앱만 LangGraph/RAG를 쓰면 같은 프로젝트 안에 AI
    호출 방식이 두 갈래로 갈라진다.
 
-## 4. HITL(사람 승인)에 대한 정정 — 프로토타입과 실서비스는 다르다
+## 4. HITL(사람 승인)
 
-`yhw_agent_project/prototype/`의 `course_builder.py`(LangGraph)는 강의 초안 생성 후 반드시
-`human_review_node`(터미널 `input()` 승인/반려)를 거쳐야 `output/review_queue.json`에 기록된다.
-**하지만 IPSE-LMS 실서비스 경로(`mypage` → `course.ai` → `course.services`)에는 이 승인 단계가
-없다** — `_maybe_generate_course_bg`가 threshold 도달을 감지하면 사람 개입 없이 바로
-`Course`/`Unit`/`Lesson`에 반영된다. `course/management/commands/sync_course_drafts.py`(수동
-동기화 명령어) 쪽도 마찬가지로 `entry.get("approved")` 체크를 의도적으로 제거해 전부 자동
-수락한다.
-
-**어느 쪽이 "진짜" 배포 경로인가**: `mypage` 실시간 트리거 쪽이 실제로 동작 중인 서비스 경로다.
-`sync_course_drafts` 명령어는 프로토타입 CLI 결과물(review_queue.json)을 로컬에서 확인하고 싶을
-때 쓰는 보조 도구로 남아 있다.
+실서비스에도 사람 승인이 있다. AI가 만든 강의 초안은 강의자(`is_lecturer`)가 judge > 강의 생성 탭에서
+미리 보고 확인 문제까지 풀어 본 뒤 승인해야 게시된다. 새 강의는 강의자 누구나 승인할 수 있고 승인한
+사람이 담당이 되며, 게시된 강의를 바꾸는 초안(새 자료로 다시 만든 것이든 강의자가 직접 고친 것이든)은
+담당 강의자(또는 관리자)만 승인한다. LangGraph 없이 `CourseDraft.status`(생성 중 → 검토 대기 →
+승인/반려)로 상태를 관리한다.
 
 ## 5. 외부(yhw_agent_project 밖) 변경 이력
 

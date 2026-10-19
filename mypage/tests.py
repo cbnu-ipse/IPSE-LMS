@@ -108,6 +108,8 @@ class GuardrailTests(TestCase):
 
 
 class CourseAutoGenerationTests(TestCase):
+    """업로드 후 강의 초안 생성 트리거 (자세한 흐름은 course/test_studio.py)."""
+
     def _make_doc(self, user, is_deleted=False):
         return PersonalDocument.objects.create(
             user=user, title="doc", subject_code="CS101", summary="요약 내용",
@@ -119,24 +121,26 @@ class CourseAutoGenerationTests(TestCase):
         for _ in range(4):
             self._make_doc(user)
 
-        with patch("course.ai.generate_course_draft") as mock_draft:
+        with patch("course.ai.generate_outline") as outline:
             _maybe_generate_course_bg("CS101")
 
-        mock_draft.assert_not_called()
+        outline.assert_not_called()
 
-    def test_threshold_five_counts_soft_deleted_docs(self):
+    def test_threshold_five_counts_soft_deleted_docs_and_only_makes_a_draft(self):
+        from course.models import Course, CourseDraft
+
         user = User.objects.create_user(username="course_tester_five", password="pw")
-        for _ in range(4):
-            self._make_doc(user, is_deleted=True)
-        self._make_doc(user)
-
-        with patch("course.ai.generate_course_draft") as mock_draft, \
-                patch("course.services.sync_course_from_draft") as mock_sync:
-            mock_draft.return_value = {"title": "t", "description": "d", "units": []}
+        docs = [self._make_doc(user, is_deleted=True) for _ in range(4)] + [self._make_doc(user)]
+        outline = {"title": "t", "description": "d",
+                   "chapters": [{"title": "1장", "summary": "", "doc_ids": [d.pk for d in docs]}]}
+        sets = [{"title": "세트", "cards": [{"title": "c", "body": "본문"}], "questions": []}]
+        with patch("course.ai.generate_outline", return_value=outline) as mock_outline, \
+                patch("course.ai.generate_chapter", return_value=sets):
             _maybe_generate_course_bg("CS101")
 
-        mock_draft.assert_called_once()
-        mock_sync.assert_called_once()
+        mock_outline.assert_called_once()
+        self.assertEqual(CourseDraft.objects.get().status, CourseDraft.Status.PENDING)
+        self.assertFalse(Course.objects.exists())  # 승인 전에는 강의가 생기지 않는다
 
     def test_lecture_material_docs_are_excluded_from_threshold(self):
         user = User.objects.create_user(username="course_tester_lecture", password="pw")
@@ -147,10 +151,10 @@ class CourseAutoGenerationTests(TestCase):
                 document_type=PersonalDocument.DocumentType.LECTURE,
             )
 
-        with patch("course.ai.generate_course_draft") as mock_draft:
+        with patch("course.ai.generate_outline") as outline:
             _maybe_generate_course_bg("CS101")
 
-        mock_draft.assert_not_called()
+        outline.assert_not_called()
 
 
 class SummaryMarkdownRenderTests(TestCase):

@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block title %}초안 검토 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 md:px-6 py-10">
+    {% include 'snippets/messages.html' %}
+    <a href="{% url 'course_studio' %}" class="text-sm text-slate-500 hover:text-emerald-700"><i class="fa-solid fa-arrow-left mr-1"></i>강의 생성</a>
+
+    <div class="mt-3 mb-6 bg-white border border-slate-200 rounded-2xl p-6">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span class="px-2 py-0.5 rounded-md text-[11px] font-bold {% if draft.status == 'pending' %}bg-amber-50 text-amber-700{% elif draft.status == 'approved' %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ draft.get_status_display }}</span>
+            <span class="text-xs text-slate-400">{{ draft.subject_code }} · {% if draft.is_update %}게시된 강의 «{{ draft.course.title }}» 변경{% else %}새 강의{% endif %}</span>
+        </div>
+        <h1 class="text-2xl font-extrabold text-slate-800">{{ draft.content.title|default:draft.subject_code }}</h1>
+        {% if draft.content.description %}<p class="mt-2 text-sm text-slate-600">{{ draft.content.description }}</p>{% endif %}
+        {% if draft.review_note %}<p class="mt-3 text-sm text-slate-500"><b>검토 메모</b> {{ draft.review_note }}</p>{% endif %}
+        {% if draft.error %}<p class="mt-3 text-sm text-rose-600">{{ draft.error }}</p>{% endif %}
+
+        {% if draft.status == 'pending' %}
+            {% if chapters %}
+            <a href="{% url 'course_studio_preview' draft.pk 0 0 %}" class="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold">
+                <i class="fa-solid fa-play"></i> 학생 화면으로 처음부터 테스트
+            </a>
+            {% endif %}
+            {% if can_review %}
+            <div class="mt-5 grid gap-3 md:grid-cols-2">
+                <form method="post" action="{% url 'course_studio_action' draft.pk 'approve' %}" onsubmit="return confirm('이 내용 그대로 강의를 게시할까요? (AI를 다시 부르지 않습니다)');">
+                    {% csrf_token %}
+                    <button class="w-full px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold" {% if not has_changes %}disabled title="게시된 강의와 달라진 내용이 없습니다"{% endif %}>
+                        {% if draft.is_update %}승인하고 강의에 반영{% else %}승인하고 강의 개설{% endif %}
+                    </button>
+                </form>
+                <form method="post" action="{% url 'course_studio_action' draft.pk 'reject' %}" class="flex gap-2">
+                    {% csrf_token %}
+                    <input name="note" placeholder="반려 사유 (선택)" class="flex-1 min-w-0 px-3 py-3 rounded-xl border border-slate-200 text-sm">
+                    <button class="px-4 py-3 rounded-xl bg-white border border-rose-200 text-rose-600 font-bold hover:bg-rose-50">반려</button>
+                </form>
+            </div>
+            {% if not has_changes %}<p class="mt-2 text-xs text-slate-400">게시된 강의와 달라진 내용이 없습니다. 아래에서 고친 뒤 승인하세요.</p>{% endif %}
+            {% else %}
+            <p class="mt-4 text-sm text-slate-500">게시된 강의를 바꾸는 초안은 담당 강의자만 승인할 수 있습니다. 미리보기와 테스트는 할 수 있습니다.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    {% for chapter in chapters %}
+    <div class="mb-6">
+        <h2 class="flex flex-wrap items-center gap-2 text-lg font-bold text-slate-800">
+            <span class="text-emerald-600">{{ chapter.index|add:1 }}강</span> {{ chapter.title }}
+            {% if chapter.changed %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-700">변경됨</span>{% endif %}
+            {% if chapter.reused %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500" title="근거 자료가 그대로라 AI를 다시 부르지 않고 이전 내용을 썼습니다">이전 내용 재사용</span>{% endif %}
+        </h2>
+        {% if chapter.summary %}<p class="text-sm text-slate-500 mt-1">{{ chapter.summary }}</p>{% endif %}
+
+        {% for set in chapter.sets %}
+        <div id="set-{{ chapter.index }}-{{ set.index }}" class="mt-3 bg-white border border-slate-200 rounded-2xl">
+            <div class="flex items-center gap-3 px-5 py-3 border-b border-slate-100">
+                <span class="font-bold text-slate-700 flex-1 min-w-0">{{ set.title }}</span>
+                <span class="text-xs text-slate-400 shrink-0">카드 {{ set.cards|length }} · 문제 {{ set.questions|length }}</span>
+                <a href="{% url 'course_studio_preview' draft.pk chapter.index set.index %}" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100">미리보기·테스트</a>
+            </div>
+            {% if editable %}
+            <details class="px-5 py-3">
+                <summary class="cursor-pointer text-sm font-semibold text-slate-600">카드·문제 고치기</summary>
+                <div class="mt-3 space-y-4">
+                    {% for card in set.cards %}
+                    <form method="post" action="{% url 'course_studio_action' draft.pk 'edit_card' %}" class="space-y-2 border border-slate-100 rounded-xl p-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="chapter" value="{{ chapter.index }}"><input type="hidden" name="set" value="{{ set.index }}"><input type="hidden" name="item" value="{{ forloop.counter0 }}">
+                        <div class="text-xs font-bold text-slate-400">개념 카드 {{ forloop.counter }}</div>
+                        <input name="title" value="{{ card.title }}" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold" aria-label="카드 제목">
+                        <textarea name="body" rows="6" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono" aria-label="카드 본문">{{ card.body }}</textarea>
+                        <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-white">카드 저장</button>
+                    </form>
+                    {% endfor %}
+                    {% for q in set.questions %}
+                    <div class="border border-slate-100 rounded-xl p-3 space-y-2">
+                        <form method="post" action="{% url 'course_studio_action' draft.pk 'edit_question' %}" class="space-y-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="chapter" value="{{ chapter.index }}"><input type="hidden" name="set" value="{{ set.index }}"><input type="hidden" name="item" value="{{ forloop.counter0 }}"><input type="hidden" name="type" value="{{ q.type }}">
+                            <div class="text-xs font-bold text-slate-400">문제 {{ forloop.counter }} · {% if q.type == 'ox' %}O/X{% elif q.type == 'mc' %}객관식{% else %}단답{% endif %}</div>
+                            <textarea name="q" rows="2" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" aria-label="문제">{{ q.q }}</textarea>
+                            {% if q.type == 'ox' %}
+                            <label class="text-sm">정답 <select name="answer" class="ml-1 px-2 py-1 rounded border border-slate-200"><option {% if q.answer %}selected{% endif %}>O</option><option {% if not q.answer %}selected{% endif %}>X</option></select></label>
+                            {% elif q.type == 'mc' %}
+                            <textarea name="options" rows="4" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" aria-label="보기 (한 줄에 하나)">{{ q.options_text }}</textarea>
+                            <label class="text-sm">정답 보기 번호 <input name="answer" type="number" min="1" value="{{ q.answer|add:1 }}" class="ml-1 w-16 px-2 py-1 rounded border border-slate-200"></label>
+                            {% else %}
+                            <input name="answers" value="{{ q.answers_text }}" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" aria-label="정답 (여러 표현은 / 로 구분)">
+                            {% endif %}
+                            <input name="explanation" value="{{ q.explanation }}" placeholder="해설" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" aria-label="해설">
+                            <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-white">문제 저장</button>
+                        </form>
+                        <form method="post" action="{% url 'course_studio_action' draft.pk 'delete_question' %}" onsubmit="return confirm('이 문제를 지울까요?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="chapter" value="{{ chapter.index }}"><input type="hidden" name="set" value="{{ set.index }}"><input type="hidden" name="item" value="{{ forloop.counter0 }}">
+                            <button class="text-xs font-semibold text-rose-500">문제 삭제</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% empty %}
+    <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-400">내용이 없습니다.</div>
+    {% endfor %}
+</section>
+{% endblock %}

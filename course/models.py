@@ -129,8 +129,14 @@ class Unit(models.Model):
 class Lesson(models.Model):
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lessons', verbose_name="소속 강의")
+    # AI 강의(승인된 초안으로 게시)는 챕터(Unit) 아래의 학습 세트다. 직접 만든 수업은 비어 있다.
+    unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='lessons',
+                             verbose_name="소속 챕터")
     title = models.CharField(max_length=200, verbose_name="수업명 (예: Background: SECCOMP)")
     content = models.TextField(verbose_name="강의 내용 (HTML/Markdown)")
+    # 개념 카드 [{"title", "body"(제한된 마크다운)}]와 확인 문제 [{"type": ox|mc|short, ...}] — course/studio.py 참고
+    cards = models.JSONField(default=list, blank=True, verbose_name="개념 카드")
+    questions = models.JSONField(default=list, blank=True, verbose_name="확인 문제")
     order = models.IntegerField(default=0, verbose_name="정렬 순서")
 
     class Meta:
@@ -160,3 +166,70 @@ class CourseComment(models.Model):
     def __str__(self):
         return f"{self.author} - {self.course}"
 
+
+
+# ==========================================
+# AI 강의 초안 (강의자 검토·승인 후 게시) — course/studio.py
+# ==========================================
+class CourseDraft(models.Model):
+    class Status(models.TextChoices):
+        GENERATING = "generating", "생성 중"
+        PENDING = "pending", "검토 대기"
+        APPROVED = "approved", "승인됨"
+        REJECTED = "rejected", "반려됨"
+        SUPERSEDED = "superseded", "새 초안으로 대체됨"
+        FAILED = "failed", "생성 실패"
+
+    subject_code = models.CharField(max_length=50, db_index=True, verbose_name="과목 코드")
+    # 이미 게시된 강의를 바꾸는 초안이면 그 강의 (없으면 새 강의 개설 초안)
+    course = models.ForeignKey(Course, on_delete=models.SET_NULL, null=True, blank=True, related_name="drafts",
+                               verbose_name="대상 강의")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.GENERATING,
+                              verbose_name="상태")
+    # {"title", "description", "chapters": [{"title", "summary", "doc_ids", "source_hash", "sets": [...]}]}
+    content = models.JSONField(default=dict, blank=True, verbose_name="강의 내용")
+    # 입력 자료(요약)들의 해시 — 같은 입력으로는 다시 생성하지 않는다 (토큰 절약). 직접 만든 수정 초안은 비어 있다
+    source_hash = models.CharField(max_length=64, blank=True, verbose_name="입력 해시")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="course_drafts_created", verbose_name="만든 사람 (AI면 비어 있음)")
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="course_drafts_reviewed", verbose_name="검토자")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True, verbose_name="검토 메모")
+    error = models.TextField(blank=True, verbose_name="생성 오류")
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            # 같은 과목·같은 입력으로 초안을 두 번 만들지 않는다 (동시에 들어온 생성 요청도 하나만 통과)
+            models.UniqueConstraint(fields=["subject_code", "source_hash"], condition=~models.Q(source_hash=""),
+                                    name="uniq_course_draft_source"),
+        ]
+        verbose_name = "AI 강의 초안"
+        verbose_name_plural = "AI 강의 초안"
+
+    def __str__(self):
+        return f"{self.subject_code} 초안 #{self.pk} ({self.get_status_display()})"
+
+    @property
+    def is_update(self):
+        return self.course_id is not None
+
+
+class LessonQuizResult(models.Model):
+    """학습 세트 확인 문제의 학생별 최근 결과."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="lesson_quiz_results")
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name="quiz_results")
+    correct = models.PositiveSmallIntegerField(default=0)
+    total = models.PositiveSmallIntegerField(default=0)
+    wrong = models.JSONField(default=list, blank=True, verbose_name="틀린 문제 번호")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "lesson")
+        verbose_name = "세트 확인 문제 결과"
+        verbose_name_plural = "세트 확인 문제 결과"
+
+    def __str__(self):
+        return f"{self.user} {self.lesson} {self.correct}/{self.total}"
