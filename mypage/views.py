@@ -297,3 +297,11 @@ def document_delete(request, pk):
     if folder_id:
         return redirect("mypage:document_list", folder_id=folder_id)
     return redirect("mypage:document_list")
+
+
+@login_required
+def learning_overview(request):
+    """judge > 내 학습: 강의·복습 문제·퀴즈·대회·문제 풀이 기록을 한 화면에 (core/learning.py)."""
+    from core.learning import overview
+
+    return render(request, "mypage/learning.html", {"data": overview(request.user)})

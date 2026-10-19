@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}내 학습 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 md:px-6 py-10">
+    <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800">내 학습</h1>
+    <p class="mt-1 text-sm text-slate-500">강의·복습 문제·퀴즈·대회·문제 풀이 기록을 한 곳에서 봅니다.</p>
+
+    <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-white border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs font-bold text-slate-400">강의 확인 문제</div>
+            <div class="mt-1 text-2xl font-extrabold text-slate-800">{% if data.lecture_quiz.accuracy is not None %}{{ data.lecture_quiz.accuracy }}%{% else %}-{% endif %}</div>
+            <div class="text-xs text-slate-500">{{ data.lecture_quiz.sets }}개 세트 · {{ data.lecture_quiz.correct }}/{{ data.lecture_quiz.total }}</div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs font-bold text-slate-400">복습 문제</div>
+            <div class="mt-1 text-2xl font-extrabold text-slate-800">{% if data.review_questions.accuracy is not None %}{{ data.review_questions.accuracy }}%{% else %}-{% endif %}</div>
+            <div class="text-xs text-slate-500">{{ data.review_questions.correct }}/{{ data.review_questions.answered }} 정답</div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs font-bold text-slate-400">퀴즈</div>
+            <div class="mt-1 text-2xl font-extrabold text-slate-800">{% if data.quizzes.average is not None %}{{ data.quizzes.average }}%{% else %}-{% endif %}</div>
+            <div class="text-xs text-slate-500">완료 {{ data.quizzes.completed }} / 응시 {{ data.quizzes.attempts }}</div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs font-bold text-slate-400">대회·문제</div>
+            <div class="mt-1 text-2xl font-extrabold text-slate-800">{{ data.contests.problems_solved|add:data.problems.solved }}</div>
+            <div class="text-xs text-slate-500">대회 AC {{ data.contests.accepted }}/{{ data.contests.submissions }} · 문제 해결 {{ data.problems.solved }}</div>
+        </div>
+    </div>
+
+    {% if data.weak_sets %}
+    <h2 class="mt-8 mb-3 text-lg font-bold text-slate-800">다시 볼 세트</h2>
+    <div class="bg-white border border-amber-200 rounded-2xl divide-y divide-slate-100">
+        {% for w in data.weak_sets %}
+        <a href="{{ w.url }}" class="flex items-center gap-3 px-5 py-3 hover:bg-amber-50/50">
+            <span class="flex-1 min-w-0 truncate text-slate-700">{{ w.title }}</span>
+            <span class="shrink-0 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">{{ w.score }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <h2 class="mt-8 mb-3 text-lg font-bold text-slate-800">수강 중인 강의</h2>
+    <div class="space-y-2">
+        {% for c in data.courses %}
+        <a href="{{ c.url }}" class="block bg-white border border-slate-200 rounded-2xl px-5 py-4 hover:border-emerald-300">
+            <div class="flex items-center gap-3">
+                <span class="flex-1 min-w-0 truncate font-semibold text-slate-700">{{ c.title }}</span>
+                {% if c.accuracy is not None %}<span class="shrink-0 text-xs text-slate-500">확인 문제 {{ c.accuracy }}%</span>{% endif %}
+                <span class="shrink-0 text-sm font-bold text-emerald-700">{{ c.percent }}%</span>
+            </div>
+            <div class="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width: {{ c.percent }}%"></div></div>
+            <div class="mt-1 text-xs text-slate-400">{{ c.sets_done }}/{{ c.sets_total }} 학습</div>
+        </a>
+        {% empty %}
+        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center text-sm text-slate-400">아직 수강한 강의가 없습니다.</div>
+        {% endfor %}
+    </div>
+
+    <h2 class="mt-8 mb-3 text-lg font-bold text-slate-800">최근 기록</h2>
+    <div class="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
+        {% for e in data.recent %}
+        <div class="flex items-center gap-3 px-5 py-3 text-sm">
+            <span class="w-20 shrink-0 text-xs font-bold text-slate-400">{{ e.kind }}</span>
+            {% if e.url %}<a href="{{ e.url }}" class="flex-1 min-w-0 truncate text-slate-700 hover:text-emerald-700">{{ e.title }}</a>{% else %}<span class="flex-1 min-w-0 truncate text-slate-700">{{ e.title }}</span>{% endif %}
+            {% if e.detail %}<span class="shrink-0 text-xs font-bold text-slate-600">{{ e.detail }}</span>{% endif %}
+            <span class="shrink-0 text-xs text-slate-400">{{ e.at|date:"m/d H:i" }}</span>
+        </div>
+        {% empty %}
+        <div class="px-5 py-6 text-center text-sm text-slate-400">아직 기록이 없습니다.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

@@ -196,8 +196,12 @@
                             랭킹
                         </a>
                         <a href="{% url 'mypage:document_list' %}"
-                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.app_name == 'mypage' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.app_name == 'mypage' and request.resolver_match.url_name != 'learning' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
                             개인
+                        </a>
+                        <a href="{% url 'mypage:learning' %}"
+                           class="h-full flex items-end pb-[18px] border-b-2 {% if request.resolver_match.url_name == 'learning' %}border-emerald-600 text-emerald-700 font-bold{% else %}border-transparent hover:border-emerald-600 hover:text-emerald-700{% endif %} transition">
+                            내 학습
                         </a>
                         {% if request.user.is_lecturer or request.user.is_superuser %}
                         <a href="{% url 'course_studio' %}"
@@ -428,6 +432,7 @@
                         <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">대회</a>
                         <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
                         <a href="{% url 'mypage:document_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">개인</a>
+                        <a href="{% url 'mypage:learning' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">내 학습</a>
                         {% if request.user.is_lecturer or request.user.is_superuser %}
                         <a href="{% url 'course_studio' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">강의 생성</a>
                         {% endif %}
