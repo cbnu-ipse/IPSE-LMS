@@ -8,7 +8,13 @@
     <div class="flex flex-wrap items-center gap-3 mt-2 mb-2">
         <h1 class="text-2xl font-extrabold text-slate-800">{{ name }}</h1>
         {% if course %}<a href="{{ course.get_absolute_url }}" class="px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">개설됨 · 강의 보기</a>{% endif %}
-        {% if draft and draft.status == 'pending' %}<a href="{% url 'course_studio_detail' draft.pk %}" class="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">검토 대기 초안 열기</a>{% endif %}
+        {% if draft and draft.status == 'pending' %}<a href="{% url 'course_studio_detail' draft.pk %}" class="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">초안 미리보기·수정</a>{% endif %}
+        {% if can_publish %}
+        <form method="post" action="{% url 'course_studio_action' draft.pk 'approve' %}" onsubmit="return confirm('이 초안을 {% if course %}게시된 강의에 반영{% else %}강의로 게시{% endif %}할까요?');">{% csrf_token %}
+            <input type="hidden" name="next" value="studio">
+            <button class="px-3 py-1 rounded-md text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">{% if course %}업데이트 게시{% else %}게시{% endif %}</button>
+        </form>
+        {% endif %}
         {% if generating %}<span class="text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i>초안을 만드는 중</span>{% endif %}
     </div>
     <p class="text-sm text-slate-500 mb-6">이 주제로 분류된 자료와, AI가 가공한 요약, 그리고 최신 초안의 챕터가 어떤 자료를 바탕으로 만들어졌는지 보여 줍니다. 학생에게 원문 파일은 보이지 않고, 강의는 이 요약을 참고해 새로 쓰입니다.</p>

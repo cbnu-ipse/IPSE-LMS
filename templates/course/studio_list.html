@@ -10,9 +10,9 @@
         </span>
         <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800">강의 생성</h1>
         <p class="mt-2 text-sm text-slate-500 leading-relaxed">
-            학습 자료가 올라오면 AI가 주제별로 분류하고, 강의 초안은 항상 만들어 둡니다. 강의는 원문 파일을 옮기는 것이 아니라 그 과목을
-            재미있게 잘 가르치는 것이 목표입니다. 아래에서 주제마다 어떤 자료가 어떻게 가공됐는지 볼 수 있고, 개설할 만하다고 판단되면
-            초안을 미리 보고 언제든 승인해 강의로 개설하세요. 게시된 강의의 내용이 바뀔 때도 다시 승인이 필요합니다.
+            어떤 자료가 올라오든 AI가 주제별로 분류해 강의를 새로 만들거나, 이미 있는 강의에 추가합니다. 모든 강의는 아래 주제별 현황에
+            계속 남고, 자료가 들어올 때마다 초안이 갱신됩니다. 강의자는 언제든 초안을 미리 보고 게시하거나 게시된 강의를 업데이트할 수
+            있습니다. 강의는 원문 파일을 옮기는 것이 아니라 그 과목을 재미있게 잘 가르치는 것이 목표입니다.
         </p>
     </div>
 
@@ -21,63 +21,47 @@
         <h2 class="text-lg font-bold text-slate-800">주제별 현황 <span class="text-emerald-600">{{ topics|length }}</span></h2>
         <a href="{% url 'course_studio_materials' %}" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700"><i class="fa-solid fa-list mr-1"></i>전체 자료 보기·검색·삭제</a>
     </div>
-    {% if in_progress_docs %}<p class="text-xs text-slate-500 mb-2"><i class="fa-solid fa-spinner fa-spin mr-1"></i>요약·분류 중인 자료 {{ in_progress_docs }}개 — 끝나면 주제에 들어가고 강의 초안이 만들어집니다.</p>{% endif %}
-    <div class="space-y-2 mb-10">
-        {% for t in topics %}
-        <div class="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-2xl px-5 py-3">
-            <a href="{% url 'course_studio_topic' %}?name={{ t.name|urlencode }}" class="flex-1 min-w-0">
-                <div class="font-bold text-slate-800 truncate">{{ t.name }}</div>
-                <div class="text-xs text-slate-400">자료 {{ t.doc_count }}개 · 마지막 업로드 {{ t.last_upload|date:"m/d H:i" }}</div>
-            </a>
-            {% if t.stage == 'generating' %}<span class="px-2 py-1 rounded-md text-xs font-bold bg-sky-50 text-sky-700"><i class="fa-solid fa-spinner fa-spin mr-1"></i>초안 만드는 중 · 곧 완성</span>
-            {% elif t.stage == 'pending' %}<a href="{% url 'course_studio_detail' t.pending.pk %}" class="px-2 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">검토 대기 · 개설 가능</a>
-            {% elif t.stage == 'published' %}<a href="{{ t.course.get_absolute_url }}" class="px-2 py-1 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">개설됨</a>
-            {% elif t.failed %}<span class="px-2 py-1 rounded-md text-xs font-bold bg-rose-50 text-rose-600" title="{{ t.failed.error }}">초안 생성 실패 · 다시 시도 필요</span>
-            {% else %}<span class="px-2 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-500">초안 생성 대기 (직전)</span>{% endif %}
-            <a href="{% url 'course_studio_topic' %}?name={{ t.name|urlencode }}" class="text-xs font-bold text-slate-400 hover:text-slate-600">자료·가공 결과 &rarr;</a>
-        </div>
-        {% empty %}
-        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-400">강의 자료로 분류된 자료가 아직 없습니다.</div>
-        {% endfor %}
-    </div>
-
-    <h2 class="text-lg font-bold text-slate-800 mb-3">검토 대기 <span class="text-emerald-600">{{ pending|length }}</span></h2>
+    {% if in_progress_docs %}<p class="text-xs text-slate-500 mb-2"><i class="fa-solid fa-spinner fa-spin mr-1"></i>요약·분류 중인 자료 {{ in_progress_docs }}개 — 끝나면 주제에 들어가고 강의 초안이 만들어지거나 갱신됩니다.</p>{% endif %}
     <div class="space-y-3 mb-10">
-        {% for draft in pending %}
-        <a href="{% url 'course_studio_detail' draft.pk %}" class="block bg-white border border-slate-200 rounded-2xl p-5 hover:border-emerald-300 hover:shadow-sm transition">
+        {% for t in topics %}
+        <div class="bg-white border border-slate-200 rounded-2xl p-5">
             <div class="flex flex-wrap items-center gap-2 mb-1">
-                {% if draft.is_update %}
-                <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100">{% if draft.created_by %}수정 초안{% else %}내용 갱신{% endif %}</span>
-                {% else %}
-                <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">새 강의</span>
-                {% endif %}
-                <span class="text-xs text-slate-400">{{ draft.subject_code }} · {{ draft.created_at|date:"m/d H:i" }}{% if draft.created_by %} · {{ draft.created_by.display_name }}{% endif %}</span>
-                {% if not draft.can_review %}<span class="text-[11px] text-slate-400">· 담당 강의자만 승인</span>{% endif %}
+                <a href="{% url 'course_studio_topic' %}?name={{ t.name|urlencode }}" class="font-bold text-slate-800 hover:text-emerald-700">{{ t.name }}</a>
+                {% if t.course %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">게시됨</span>{% else %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500">미게시</span>{% endif %}
+                {% if t.generating %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-50 text-sky-700"><i class="fa-solid fa-spinner fa-spin mr-1"></i>초안 만드는 중</span>
+                {% elif t.pending %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100">{% if t.course %}업데이트 대기{% else %}게시 가능{% endif %}</span>
+                {% elif t.failed %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-600" title="{{ t.failed.error }}">초안 생성 실패</span>
+                {% elif t.course %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500">최신 상태</span>
+                {% else %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500">초안 생성 대기</span>{% endif %}
             </div>
-            <div class="font-bold text-slate-800">{{ draft.content.title|default:draft.subject_code }}</div>
-            <div class="text-xs text-slate-500 mt-1">챕터 {{ draft.chapter_count }}개 · 학습 세트 {{ draft.set_count }}개</div>
-        </a>
-        {% empty %}
-        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-400">검토할 초안이 없습니다.</div>
-        {% endfor %}
-        {% for draft in generating %}
-        <div class="bg-white border border-slate-200 rounded-2xl p-4 text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i>{{ draft.subject_code }} 초안을 만드는 중입니다…</div>
-        {% endfor %}
-    </div>
-
-    {% if my_courses %}
-    <h2 class="text-lg font-bold text-slate-800 mb-3">내 AI 강의 수정</h2>
-    <div class="space-y-2 mb-10">
-        {% for course in my_courses %}
-        <div class="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-5 py-3">
-            <a href="{{ course.get_absolute_url }}" class="flex-1 min-w-0 font-semibold text-slate-700 hover:text-emerald-700 truncate">{{ course.title }}</a>
-            <form method="post" action="{% url 'course_studio_start_edit' course.slug %}">{% csrf_token %}
-                <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">수정 초안 만들기</button>
-            </form>
+            <div class="text-xs text-slate-400 mb-3">자료 {{ t.doc_count }}개{% if t.last_upload %} · 마지막 업로드 {{ t.last_upload|date:"m/d H:i" }}{% endif %}{% if t.pending %} · 초안 챕터 {{ t.chapter_count }}개 · 학습 세트 {{ t.set_count }}개{% endif %}</div>
+            <div class="flex flex-wrap items-center gap-2">
+                {% if t.pending %}
+                <a href="{% url 'course_studio_detail' t.pending.pk %}" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">초안 미리보기·수정</a>
+                {% if t.can_review %}
+                <form method="post" action="{% url 'course_studio_action' t.pending.pk 'approve' %}" onsubmit="return confirm('이 초안을 {% if t.course %}게시된 강의에 반영{% else %}강의로 게시{% endif %}할까요?');">{% csrf_token %}
+                    <input type="hidden" name="next" value="studio">
+                    <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">{% if t.course %}업데이트 게시{% else %}게시{% endif %}</button>
+                </form>
+                {% else %}<span class="text-[11px] text-slate-400">담당 강의자만 게시</span>{% endif %}
+                {% elif t.course and t.can_edit %}
+                <form method="post" action="{% url 'course_studio_start_edit' t.course.slug %}">{% csrf_token %}
+                    <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">직접 수정</button>
+                </form>
+                {% elif not t.generating and t.doc_count %}
+                <form method="post" action="{% url 'course_studio_topic_build' %}">{% csrf_token %}
+                    <input type="hidden" name="name" value="{{ t.name }}">
+                    <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">지금 초안 만들기</button>
+                </form>
+                {% endif %}
+                {% if t.course %}<a href="{{ t.course.get_absolute_url }}" class="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-700 hover:bg-emerald-50">강의 보기</a>{% endif %}
+                <a href="{% url 'course_studio_topic' %}?name={{ t.name|urlencode }}" class="ml-auto text-xs font-bold text-slate-400 hover:text-slate-600">자료·가공 결과 &rarr;</a>
+            </div>
         </div>
+        {% empty %}
+        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-400">아직 올라온 자료가 없습니다.</div>
         {% endfor %}
     </div>
-    {% endif %}
 
     <h2 class="text-lg font-bold text-slate-800 mb-3">최근 처리</h2>
     <div class="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">

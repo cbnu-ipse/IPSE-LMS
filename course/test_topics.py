@@ -22,7 +22,7 @@ class TopicsTestCase(TestCase):
 
     def test_classify_new_topic_creates_subject_with_description(self):
         d = self.doc()
-        with patch("core.ai.complete_json", return_value={"usable": True, "topic": "데이터베이스",
+        with patch("core.ai.complete_json", return_value={"topic": "데이터베이스",
                                                          "description": "관계 모델, SQL, 정규화"}) as ai:
             self.assertEqual(topics.classify_document(d), ("데이터베이스", True))
         prompt = ai.call_args.args[1][1]["content"]
@@ -31,12 +31,12 @@ class TopicsTestCase(TestCase):
         self.assertEqual((d.subject_code, d.is_course_material), ("데이터베이스", True))
         self.assertEqual(Subject.objects.get(name="데이터베이스").description, "관계 모델, SQL, 정규화")
 
-    def test_existing_topic_keeps_its_description_and_unusable_is_recorded(self):
+    def test_existing_topic_keeps_its_description_and_nothing_is_filtered_out(self):
         d = self.doc(title="동아리 회비 공지", summary="회비 납부 안내")
         with patch("core.ai.complete_json", return_value={"usable": False, "topic": "운영체제", "description": "덮어쓰면 안 됨"}):
             topics.classify_document(d)
         d.refresh_from_db()
-        self.assertFalse(d.is_course_material)
+        self.assertTrue(d.is_course_material)  # 어떤 자료든 강의에 쓰인다 (AI가 usable=false라 해도 무시)
         self.assertEqual(Subject.objects.get(name="운영체제").description, "프로세스, 스케줄링, 메모리")
 
     def test_same_file_reuses_classification_without_ai(self):
@@ -63,10 +63,3 @@ class TopicsTestCase(TestCase):
                 patch("course.studio.build_draft") as build:
             topics.after_summary(d.pk)
         build.assert_called_once_with("운영체제")
-
-    def test_unusable_material_stops_pipeline(self):
-        d = self.doc()
-        with patch.object(topics, "classify_document", return_value=("운영체제", False)), \
-                patch("course.studio.build_draft") as build:
-            self.assertIsNone(topics.after_summary(d.pk))
-        build.assert_not_called()

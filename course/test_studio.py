@@ -268,20 +268,40 @@ class LearnerTestCase(StudioBase):
 
 
 class TopicOverviewTestCase(StudioBase):
-    def stage(self):
+    def topic(self):
         topics, _ = studio.topic_overview()
-        return {t["name"]: t["stage"] for t in topics}["DB101"]
+        return {t["name"]: t for t in topics}["DB101"]
 
-    def test_stage_moves_from_waiting_to_pending_to_published(self):
+    def test_every_course_stays_in_overview_and_gets_update_drafts_after_publish(self):
         PersonalDocument.objects.filter(subject_code="DB101").update(is_course_material=True)
-        self.assertEqual(self.stage(), "waiting")  # 자료는 있고 초안은 아직 없음 = 생성 직전
+        t = self.topic()
+        self.assertEqual((t["course"], t["pending"], t["generating"]), (None, None, False))  # 생성 직전
         CourseDraft.objects.create(subject_code="DB101", status=CourseDraft.Status.GENERATING, source_hash="g")
-        self.assertEqual(self.stage(), "generating")
+        self.assertTrue(self.topic()["generating"])
         CourseDraft.objects.all().delete()
         draft, _, _ = self.build()
-        self.assertEqual(self.stage(), "pending")
+        self.assertEqual(self.topic()["pending"].pk, draft.pk)       # 게시 가능한 초안
         studio.publish_draft(draft.pk, self.lecturer)
-        self.assertEqual(self.stage(), "published")
+        t = self.topic()
+        self.assertIsNotNone(t["course"])                              # 게시 후에도 목록에 남는다
+        self.assertIsNone(t["pending"])
+        self.doc(9)                                                    # 새 자료 → 같은 주제의 갱신 초안
+        PersonalDocument.objects.filter(subject_code="DB101").update(is_course_material=True)
+        self.docs = list(PersonalDocument.objects.filter(subject_code="DB101"))
+        new, _, _ = self.build()
+        self.assertEqual(self.topic()["pending"].pk, new.pk)
+        self.client.force_login(self.lecturer)
+        page = self.client.get(reverse("course_studio"))
+        self.assertContains(page, "업데이트 게시")
+        self.assertNotContains(page, "검토 대기")
+        res = self.client.post(reverse("course_studio_action", args=[new.pk, "approve"]), {"next": "studio"})
+        self.assertRedirects(res, reverse("course_studio"), fetch_redirect_response=False)  # 목록에서 바로 게시
+
+    def test_published_course_stays_listed_even_without_materials(self):
+        draft, _, _ = self.build()
+        studio.publish_draft(draft.pk, self.lecturer)
+        PersonalDocument.objects.filter(subject_code="DB101").delete()
+        self.assertIsNotNone(self.topic()["course"])
 
     def test_topic_page_shows_docs_summaries_and_chapter_sources(self):
         PersonalDocument.objects.filter(subject_code="DB101").update(is_course_material=True)

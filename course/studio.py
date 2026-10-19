@@ -147,39 +147,36 @@ def build_draft(subject_code):
 # ── 강의자용 현황: 어떤 자료가 어떻게 가공되어 어느 강의로 가는지 ────────────────────
 
 def topic_overview():
-    """주제(과목)별 현황. 강의 자료가 있는 주제마다 강의가 어느 단계인지 보여 준다.
-    단계: generating(초안 만드는 중) → waiting(자료는 있고 초안은 아직 없음 = 곧 만들어짐/실패) →
-    pending(초안 검토 대기) → published(개설됨)."""
+    """주제(과목)별 현황 — 모든 강의가 여기서 관리된다. 게시 전이든 게시 후든 주제는 계속 남고,
+    새 자료가 들어오면 같은 주제의 초안이 갱신돼 언제든 (다시) 게시할 수 있다.
+    카드 하나 = 주제 하나: 자료 수, 게시된 강의(있으면), 게시 가능한 초안(있으면), 생성 중/실패 여부."""
     from django.db.models import Count, Max
 
     from mypage.models import PersonalDocument, ProcessingStatus
 
-    rows = (PersonalDocument.objects.filter(is_deleted=False, is_course_material=True)
-            .exclude(subject_code="").values("subject_code")
-            .annotate(doc_count=Count("id"), last_upload=Max("uploaded_at")).order_by("-last_upload"))
+    rows = {r["subject_code"]: r for r in
+            PersonalDocument.objects.filter(is_deleted=False, is_course_material=True).exclude(subject_code="")
+            .values("subject_code").annotate(doc_count=Count("id"), last_upload=Max("uploaded_at"))}
     drafts = {}
     for d in CourseDraft.objects.exclude(status=CourseDraft.Status.SUPERSEDED).order_by("created_at"):
         drafts.setdefault(d.subject_code, []).append(d)
-    courses = {c.code: c for c in Course.objects.filter(code__in=[r["subject_code"] for r in rows])}
+    # 게시된 AI 강의는 자료가 지워져도 목록에 남는다
+    published_codes = {d.subject_code for d in CourseDraft.objects.filter(status=CourseDraft.Status.APPROVED)}
+    codes = set(rows) | published_codes
+    courses = {c.code: c for c in Course.objects.filter(code__in=codes)}
     topics = []
-    for row in rows:
-        code = row["subject_code"]
+    for code in codes:
         mine = drafts.get(code, [])
-        by_status = {st: [d for d in mine if d.status == st] for st in CourseDraft.Status.values}
+        pending = next((d for d in reversed(mine) if d.status == CourseDraft.Status.PENDING), None)
         latest = mine[-1] if mine else None
-        if by_status[CourseDraft.Status.GENERATING]:
-            stage = "generating"
-        elif by_status[CourseDraft.Status.PENDING]:
-            stage = "pending"
-        elif code in courses:
-            stage = "published"
-        else:
-            stage = "waiting"
+        row = rows.get(code, {})
         topics.append({
-            "name": code, "doc_count": row["doc_count"], "last_upload": row["last_upload"], "stage": stage,
-            "course": courses.get(code), "pending": (by_status[CourseDraft.Status.PENDING] or [None])[-1],
+            "name": code, "doc_count": row.get("doc_count", 0), "last_upload": row.get("last_upload"),
+            "course": courses.get(code), "pending": pending,
+            "generating": any(d.status == CourseDraft.Status.GENERATING for d in mine),
             "failed": latest if latest and latest.status == CourseDraft.Status.FAILED else None,
         })
+    topics.sort(key=lambda t: t["last_upload"].timestamp() if t["last_upload"] else 0, reverse=True)
     # 아직 분류·요약 중인 자료 (곧 어느 주제로 들어갈지 정해짐)
     in_progress = PersonalDocument.objects.filter(is_deleted=False, subject_code="",
                                                   summary_status=ProcessingStatus.PROCESSING).count()

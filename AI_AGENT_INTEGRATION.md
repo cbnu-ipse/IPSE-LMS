@@ -40,7 +40,7 @@ LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다
     `_classify_and_build`(→ `course.topics.after_summary`). 분류·초안 단계가 실패해도 요약은 그대로 남는다.
   - **주제는 사람이 고르지 않는다** (`course/topics.py`): 요약이 끝나면 AI가 기존 주제 목록(이름 + 설명)을
     보고 주제(`subject_code`)와 강의 자료로 쓸지(`is_course_material`)를 정한다. 강의 자료면 "충분한가"를 미리
-    판단하지 않고 항상 초안을 만든다(같은 자료면 AI를 다시 부르지 않음). 강의자는 강의 생성 탭의 주제별 현황·
+    판단하지 않고, 어떤 자료든 걸러내지 않고 항상 초안을 만들거나 갱신한다(같은 자료면 AI를 다시 부르지 않음). 강의자는 강의 생성 탭의 주제별 현황·
     자료 가공 결과(`studio.topic_overview`/`topic_detail`)를 보고 언제든 승인해 개설한다(2.2절).
   - `document_delete`: 실제 삭제 대신 `is_deleted=True`만 저장(소프트 삭제) — 사용자 화면에서는
     사라지지만 요약/원문은 그대로 남아 강의 생성 자료로 계속 쓰인다.

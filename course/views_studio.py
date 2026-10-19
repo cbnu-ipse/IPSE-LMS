@@ -26,21 +26,18 @@ def _studio_only(view):
 @_studio_only
 def studio_list(request):
     drafts = CourseDraft.objects.select_related("course", "created_by", "reviewed_by")
-    pending = list(drafts.filter(status=CourseDraft.Status.PENDING))
-    for d in pending:
-        d.can_review = studio.can_review(request.user, d)
-        d.chapter_count = len(d.content.get("chapters", []))
-        d.set_count = sum(len(c.get("sets", [])) for c in d.content.get("chapters", []))
-    courses = Course.objects.filter(drafts__status=CourseDraft.Status.APPROVED).distinct().select_related("instructor")
-    if not request.user.is_superuser:
-        courses = courses.filter(instructor=request.user)
     topics, in_progress = studio.topic_overview()
+    for t in topics:
+        if t["pending"]:
+            t["can_review"] = studio.can_review(request.user, t["pending"])
+            chapters = t["pending"].content.get("chapters", [])
+            t["chapter_count"] = len(chapters)
+            t["set_count"] = sum(len(c.get("sets", [])) for c in chapters)
+        if t["course"]:
+            t["can_edit"] = request.user.is_superuser or t["course"].instructor_id == request.user.id
     return render(request, "course/studio_list.html", {
         "topics": topics, "in_progress_docs": in_progress,
-        "pending": pending,
-        "generating": drafts.filter(status=CourseDraft.Status.GENERATING),
         "history": drafts.exclude(status__in=[CourseDraft.Status.PENDING, CourseDraft.Status.GENERATING])[:20],
-        "my_courses": courses,
     })
 
 
@@ -113,6 +110,8 @@ def studio_action(request, pk, action):
         if action == "approve":
             course = studio.publish_draft(draft.pk, request.user)
             messages.success(request, f"'{course.title}' 강의를 게시했습니다.")
+            if request.POST.get("next") == "studio":
+                return redirect("course_studio")
             return redirect("course_detail", slug=course.slug)
         if action == "reject":
             studio.reject_draft(draft.pk, request.user, request.POST.get("note", ""))
@@ -150,11 +149,13 @@ def studio_topic(request):
     """한 주제(?name=)에 어떤 자료가 있고, 어떻게 가공(요약)됐고, 어느 챕터에 쓰였는지."""
     name = request.GET.get("name", "")
     docs, draft, chapters = studio.topic_detail(name)
-    if not docs:
+    course = Course.objects.filter(code=name).first()
+    if not docs and not course:
         raise Http404("없는 주제입니다.")
     return render(request, "course/studio_topic.html", {
         "name": name, "docs": docs, "draft": draft, "chapters": chapters,
-        "course": Course.objects.filter(code=name).first(),
+        "course": course, "can_publish": bool(draft and draft.status == CourseDraft.Status.PENDING
+                                              and studio.can_review(request.user, draft)),
         "generating": CourseDraft.objects.filter(subject_code=name, status=CourseDraft.Status.GENERATING).exists(),
     })
 
