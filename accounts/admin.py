@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from .models import (
     User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage, Notification, Friendship, GraduationRequest,
-    TreatTransaction,
+    TreatTransaction, CreditTransaction,
 )
 
 
@@ -178,3 +178,18 @@ class TreatTransactionAdmin(admin.ModelAdmin):
     list_display = ("user", "amount", "transaction_type", "description", "created_at")
     list_filter = ("transaction_type",)
     search_fields = ("user__username", "description")
+
+
+@admin.register(CreditTransaction)
+class CreditTransactionAdmin(DeletedWithUserOnlyMixin, admin.ModelAdmin):
+    list_display = ("user", "amount", "balance_after", "transaction_type", "description", "created_at")
+    list_filter = ("transaction_type", "created_at")
+    search_fields = ("user__username", "description")
+    readonly_fields = ("user", "amount", "balance_after", "transaction_type", "description", "created_at",
+                       "previous_hash", "hash")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
