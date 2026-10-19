@@ -1,21 +1,10 @@
-import json
-
-from django.conf import settings
-
-
-def _client():
-    from openai import OpenAI
-
-    if not settings.OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY가 설정되어 있지 않습니다. 운영 .env에 키를 추가한 뒤 다시 시도해주세요.")
-    return OpenAI(api_key=settings.OPENAI_API_KEY)
+from core import ai as core_ai
 
 
 def generate_course_draft(subject_code, summaries):
     """누적된 문서 요약으로 Course(제목/설명) - Unit(2~3개) - Lesson 구조의 초안을 생성한다.
     각 Lesson의 content는 학생이 그 내용만 읽고 바로 학습할 수 있는 수준의 상세한 본문이어야 한다
     (단순 개요/한줄 요약이 아님)."""
-    client = _client()
     joined = "\n\n---\n\n".join(summaries)
     prompt = (
         f"'{subject_code}' 과목으로 학생들이 올린 학습 자료 요약들입니다. 이 내용을 바탕으로 "
@@ -30,9 +19,4 @@ def generate_course_draft(subject_code, summaries):
         "--- 자료 요약 ---\n"
         f"{joined[:12000]}"
     )
-    response = client.chat.completions.create(
-        model=settings.MYPAGE_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-    )
-    return json.loads(response.choices[0].message.content)
+    return core_ai.complete_json("course_chapter", [{"role": "user", "content": prompt}])

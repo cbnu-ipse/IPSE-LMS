@@ -4,6 +4,7 @@ from django.core.validators import FileExtensionValidator
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings  
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -105,3 +106,29 @@ class Schedule(models.Model):
 
     def __str__(self):
         return f"{'[전체]' if self.is_global else '[개인]'} {self.title}"
+
+class AIUsage(models.Model):
+    """AI API 호출 한 번의 기록 (core/ai.py). 하루 사용량 제한과 비용 확인에 쓴다."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                             related_name="ai_usages", verbose_name="사용자 (시스템 작업이면 비어 있음)")
+    task = models.CharField(max_length=30, verbose_name="작업")
+    model = models.CharField(max_length=60, verbose_name="모델")
+    prompt_tokens = models.PositiveIntegerField(default=0, verbose_name="입력 토큰")
+    cached_tokens = models.PositiveIntegerField(default=0, verbose_name="캐시된 입력 토큰")
+    completion_tokens = models.PositiveIntegerField(default=0, verbose_name="출력 토큰")
+    counts_as_request = models.BooleanField(default=True, verbose_name="요청 수에 포함")  # 챗봇의 도구 호출 반복 등은 제외
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="시각")
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "created_at"], name="aiusage_user_created")]
+        verbose_name = "AI 사용 기록"
+        verbose_name_plural = "AI 사용 기록"
+
+    def __str__(self):
+        return f"{self.user or '시스템'} {self.task} {self.prompt_tokens}+{self.completion_tokens}"
+
+    @property
+    def total_tokens(self):
+        return self.prompt_tokens + self.completion_tokens

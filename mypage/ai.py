@@ -1,30 +1,100 @@
-import json
+"""
+mypage 자료 처리: 본문 추출(markitdown → 마크다운), 요약, 복습 문제 생성, 채점.
+AI 호출은 모두 core.ai를 거친다 (작업별 모델·사용량 제한·사용 기록).
 
-from django.conf import settings
+토큰 절감:
+- pdf/docx/pptx는 markitdown으로 표·제목 구조를 살린 마크다운으로 바꾸고, clean_markdown()으로
+  반복되는 머리글·꼬리글, 쪽 번호, 이미지 자리표시, 군더더기 공백을 지운다.
+- 문제 생성은 문서 본문을 시스템 메시지(매번 같은 앞부분)에 두어 OpenAI 프롬프트 캐시를 탄다.
+- OX 해설은 문제를 만들 때 같이 받아 두고, 틀렸을 때 다시 부르지 않는다.
+- 단답형은 정답과 글자가 같으면 AI를 부르지 않고 바로 정답 처리한다.
+"""
+import io
+import re
+from collections import Counter
 
-def extract_text(file_obj, filename):
-    """다양한 형식의 파일 객체에서 본문 텍스트를 뽑는다. 실패하면 빈 문자열을 반환한다."""
+from core import ai as core_ai
+
+MARKITDOWN_EXTENSIONS = (".pdf", ".docx", ".pptx")
+SUMMARY_INPUT_CHARS = 12000   # 요약에 넣는 본문 길이 상한
+QUESTION_INPUT_CHARS = 8000   # 문제 생성에 넣는 본문 길이 상한
+
+
+def extract_text(file_obj, filename, user=None):
+    """다양한 형식의 파일 객체에서 본문을 뽑아 정리된 마크다운/텍스트로 돌려준다. 실패하면 빈 문자열."""
     name = filename.lower()
     try:
-        if name.endswith(".pdf"):
-            return _extract_pdf(file_obj)
-        if name.endswith(".docx") or name.endswith(".doc"):
-            return _extract_docx(file_obj)
-        if name.endswith(".pptx") or name.endswith(".ppt"):
-            return _extract_pptx(file_obj)
-        if name.endswith(".txt") or name.endswith(".md"):
-            return _extract_plain_text(file_obj)
-        if name.endswith(".rtf"):
-            return _extract_rtf(file_obj)
-        if name.endswith(".hwpx"):
-            return _extract_hwpx(file_obj)
-        if name.endswith(".hwp"):
-            return _extract_hwp(file_obj)
-        if name.endswith((".jpg", ".jpeg", ".png")):
-            return _extract_image(file_obj, name)
+        raw = file_obj.read()
+        if name.endswith(MARKITDOWN_EXTENSIONS):
+            text = _markitdown(raw, name) or _legacy_extract(io.BytesIO(raw), name)
+        elif name.endswith((".jpg", ".jpeg", ".png")):
+            return _extract_image(raw, name, user)
+        else:
+            text = _legacy_extract(io.BytesIO(raw), name)
     except Exception:
         return ""
+    return clean_markdown(text)
+
+
+def _markitdown(raw, name):
+    """markitdown으로 마크다운 변환. 실패하면 빈 문자열 (기존 추출기로 대신한다)."""
+    try:
+        from markitdown import MarkItDown, StreamInfo
+
+        result = MarkItDown(enable_plugins=False).convert_stream(
+            io.BytesIO(raw), stream_info=StreamInfo(extension="." + name.rsplit(".", 1)[-1]))
+        return result.markdown or ""
+    except Exception:
+        return ""
+
+
+def _legacy_extract(f, name):
+    if name.endswith(".pdf"):
+        return _extract_pdf(f)
+    if name.endswith(".docx") or name.endswith(".doc"):
+        return _extract_docx(f)
+    if name.endswith(".pptx") or name.endswith(".ppt"):
+        return _extract_pptx(f)
+    if name.endswith(".txt") or name.endswith(".md"):
+        return _extract_plain_text(f)
+    if name.endswith(".rtf"):
+        return _extract_rtf(f)
+    if name.endswith(".hwpx"):
+        return _extract_hwpx(f)
+    if name.endswith(".hwp"):
+        return _extract_hwp(f)
     return ""
+
+
+_PAGE_NUMBER = re.compile(r"^\s*(-\s*)?(\d{1,4}|page\s*\d+|\d+\s*/\s*\d+|\d+\s*쪽)(\s*-)?\s*$", re.IGNORECASE)
+_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_TABLE_PAD = re.compile(r" *\| *")
+_ZERO_WIDTH = re.compile("[\u200b-\u200f\u2060\ufeff]")
+
+
+def clean_markdown(text):
+    """같은 뜻을 더 적은 토큰으로: 반복 머리글·꼬리글(3번 이상 나오는 짧은 줄), 쪽 번호, 이미지 자리표시,
+    표 칸의 공백 채움, 줄 끝 공백, 연속 빈 줄을 지운다. 내용 줄은 건드리지 않는다."""
+    if not text:
+        return ""
+    text = _ZERO_WIDTH.sub("", text.replace("\r\n", "\n").replace("\r", "\n"))
+    lines = [line.rstrip() for line in text.split("\n")]
+    short = Counter(line.strip() for line in lines if 0 < len(line.strip()) <= 60)
+    repeated = {line for line, n in short.items() if n >= 3 and not line.startswith(("|", "-", "*", "#"))}
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped in repeated or _PAGE_NUMBER.match(stripped):
+            continue
+        line = _IMAGE.sub("", line)
+        if stripped.startswith("|"):
+            line = _TABLE_PAD.sub("|", line).replace("|---", "|-").replace("---|", "-|")
+        if not line.strip():
+            if out and not out[-1]:
+                continue
+            line = ""
+        out.append(line)
+    return "\n".join(out).strip()
 
 
 def _extract_pdf(f):
@@ -97,118 +167,86 @@ def _extract_hwp(f):
     return raw.decode("utf-16-le", errors="ignore")
 
 
-def _extract_image(f, name):
+def _extract_image(raw, name, user=None):
     import base64
 
-    b64 = base64.b64encode(f.read()).decode()
+    b64 = base64.b64encode(raw).decode()
     mime = "jpeg" if name.endswith((".jpg", ".jpeg")) else "png"
-    client = _client()
-    response = client.chat.completions.create(
-        model=settings.MYPAGE_CHAT_MODEL,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "이 이미지에 있는 텍스트와 핵심 내용을 최대한 그대로 옮겨 적어라."},
-                {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{b64}"}},
-            ],
-        }],
-    )
-    return response.choices[0].message.content
+    return core_ai.complete("ocr", [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "이 이미지에 있는 글자와 핵심 내용을 마크다운으로 그대로 옮겨 적어라. 설명은 붙이지 마라."},
+            {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{b64}"}},
+        ],
+    }], user=user, counts_as_request=False)
 
 
-def _client():
-    from openai import OpenAI
+SUMMARY_INSTRUCTIONS = (
+    "학생이 올린 학습 자료를 요약합니다. 복습에 바로 쓸 수 있게 구조화하세요.\n"
+    "- 소제목(##)으로 나누고 필요하면 ###로 한 번 더 나눕니다.\n"
+    "- 핵심 개념·정의·중요 용어는 **볼드**로 표시합니다.\n"
+    "- 자료에 있는 정의·예시·수치는 빠뜨리지 말되, 같은 말을 되풀이하지 말고 짧은 문장·목록으로 씁니다.\n"
+    "- 자료에 없는 내용은 덧붙이지 않습니다. 요약문만 출력합니다."
+)
 
-    if not settings.OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY가 설정되어 있지 않습니다. 운영 .env에 키를 추가한 뒤 다시 시도해주세요.")
-    return OpenAI(api_key=settings.OPENAI_API_KEY)
 
-
-def generate_summary(extracted_text):
-    """업로드된 문서 본문을 길고 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열."""
+def generate_summary(extracted_text, user=None):
+    """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열."""
     if not extracted_text.strip():
         return ""
-
-    client = _client()
-    prompt = (
-        "다음은 학생이 올린 학습 자료 본문입니다. 시험 대비용으로 충분히 활용할 수 있도록 길고 "
-        "자세하게 요약해주세요.\n"
-        "- 내용을 몇 개의 소제목(##)으로 나누고, 각 소제목 안에서 더 세부적인 주제는 소소제목(###)으로 한 번 더 나누세요.\n"
-        "- 핵심 개념, 정의, 중요 용어는 **볼드**로 강조하세요.\n"
-        "- 전체 분량은 최소 10문장 이상으로, 중요한 개념/정의/예시를 빠짐없이 포함하세요.\n"
-        "- 설명 없이 요약문만 출력하세요.\n\n"
-        "--- 학습 자료 본문 ---\n"
-        f"{extracted_text[:8000]}"
-    )
-    response = client.chat.completions.create(
-        model=settings.MYPAGE_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content.strip()
+    return core_ai.complete("summary", [
+        {"role": "system", "content": SUMMARY_INSTRUCTIONS},
+        {"role": "user", "content": core_ai.untrusted("자료", extracted_text[:SUMMARY_INPUT_CHARS])},
+    ], user=user)
 
 
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}
 
 
-def generate_one_question(extracted_text, question_type, existing_questions=()):
-    """업로드된 문서 본문을 근거로 지정된 유형(ox/short/essay)의 문제를 1개 생성해 dict로 반환한다.
-    existing_questions에 담긴 문제와는 겹치지 않게 요청한다."""
-    client = _client()
-    avoid_section = ""
+def generate_one_question(extracted_text, question_type, existing_questions=(), user=None):
+    """문서 본문을 근거로 지정된 유형(ox/short/essay)의 문제를 1개 만든다.
+    반환: {"question", "answer", "explanation"} — explanation은 OX 해설(틀렸을 때 보여줌, 다시 부르지 않음).
+    문서 본문을 시스템 메시지에 고정해 같은 문서로 여러 문제를 만들 때 프롬프트 캐시가 적용되게 한다."""
+    system = (
+        "학생이 올린 학습 자료만 근거로 복습 문제를 1개 만듭니다. 자료에 없는 내용은 묻지 않습니다.\n"
+        'JSON으로만 답하세요: {"question": "...", "answer": "...", "explanation": "..."}\n'
+        "- OX 문제의 answer는 O 또는 X, explanation은 정답 근거를 한두 문장으로.\n"
+        "- 단답형의 answer는 짧은 정답(여러 표현이 맞으면 ' / '로 구분), 서술형은 모범답안.\n\n"
+        + core_ai.untrusted("자료", extracted_text[:QUESTION_INPUT_CHARS])
+    )
+    request = f"{QUESTION_TYPE_LABELS[question_type]} 문제 1개를 만들어주세요."
     if existing_questions:
-        listed = "\n".join(f"- {q}" for q in existing_questions)
-        avoid_section = f"\n다음 문제들과는 겹치지 않는 새로운 문제로 만들어주세요:\n{listed}\n"
-
-    label = QUESTION_TYPE_LABELS[question_type]
-    prompt = (
-        "다음은 학생이 올린 학습 자료 본문입니다. 이 내용만 근거로 복습 문제를 만들어주세요.\n"
-        f"- {label} 문제 1개\n"
-        f"{avoid_section}\n"
-        '아래 JSON 형식으로만 응답하세요: {"question": "...", "answer": "..."}\n\n'
-        "--- 학습 자료 본문 ---\n"
-        f"{extracted_text[:8000]}"
-    )
-
-    response = client.chat.completions.create(
-        model=settings.MYPAGE_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-    )
-    data = json.loads(response.choices[0].message.content)
-    return {"question": data.get("question", ""), "answer": data.get("answer", "")}
+        request += "\n이미 만든 문제와 겹치지 않게:\n" + "\n".join(f"- {q}" for q in existing_questions)
+    data = core_ai.complete_json("question", [
+        {"role": "system", "content": system},
+        {"role": "user", "content": request},
+    ], user=user)
+    return {
+        "question": data.get("question", ""),
+        "answer": data.get("answer", ""),
+        "explanation": data.get("explanation", "") if question_type == "ox" else "",
+    }
 
 
-def explain_ox_answer(question_text, correct_answer):
-    """OX 문제를 틀렸을 때, 정답 근거를 한두 문장으로 설명해준다."""
-    client = _client()
-    prompt = (
-        "다음 OX 문제의 정답이 왜 그런지 학생에게 한두 문장으로 간결하게 설명해주세요.\n\n"
-        f"문제: {question_text}\n"
-        f"정답: {correct_answer}\n\n"
-        "설명만 출력하세요."
-    )
-    response = client.chat.completions.create(
-        model=settings.MYPAGE_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content.strip()
+def _normalize_answer(text):
+    return re.sub(r"[\s.,!?'\"()\[\]{}·`~-]+", "", (text or "").lower())
 
 
-def grade_answer(question_text, correct_answer, user_answer):
-    """단답형/서술형 답안을 채점한다. OX는 문자열 비교로 충분해 이 함수를 거치지 않는다."""
-    client = _client()
-    prompt = (
-        "다음 문제에 대한 학생의 답안을 채점해주세요. 완전히 같은 문장이 아니어도 핵심 내용이 "
-        "모범답안과 일치하면 정답으로 관대하게 처리하세요.\n\n"
-        f"문제: {question_text}\n"
-        f"모범답안: {correct_answer}\n"
-        f"학생 답안: {user_answer}\n\n"
-        '아래 JSON 형식으로만 응답하세요: {"is_correct": true/false, "feedback": "한두 문장 피드백"}'
-    )
-    response = client.chat.completions.create(
-        model=settings.MYPAGE_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-    )
-    data = json.loads(response.choices[0].message.content)
+def matches_short_answer(correct_answer, user_answer):
+    """정답(' / '로 여러 표현 가능)과 공백·문장부호만 다르면 같은 답으로 본다."""
+    target = _normalize_answer(user_answer)
+    return bool(target) and any(target == _normalize_answer(a) for a in re.split(r"\s*/\s*", correct_answer or ""))
+
+
+def grade_answer(question_text, correct_answer, user_answer, user=None, question_type="essay"):
+    """단답형/서술형 채점. 단답형이 정답과 글자 그대로 같으면 AI를 부르지 않는다."""
+    if question_type == "short" and matches_short_answer(correct_answer, user_answer):
+        return {"is_correct": True, "feedback": ""}
+    data = core_ai.complete_json("grading", [
+        {"role": "system", "content": (
+            "학생 답안을 채점합니다. 문장이 달라도 핵심 내용이 모범답안과 맞으면 정답으로 관대하게 처리하세요.\n"
+            'JSON으로만 답하세요: {"is_correct": true/false, "feedback": "한두 문장 피드백"}')},
+        {"role": "user", "content": f"문제: {question_text}\n모범답안: {correct_answer}\n"
+                                    + core_ai.untrusted("학생답안", user_answer)},
+    ], user=user)
     return {"is_correct": bool(data.get("is_correct")), "feedback": data.get("feedback", "")}

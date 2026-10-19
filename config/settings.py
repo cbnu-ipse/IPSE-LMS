@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from decouple import config, Csv
 
@@ -255,10 +256,32 @@ EMAIL_FROM_ADDRESS = config("EMAIL_FROM_ADDRESS", default="noreply@ipse.ac.kr")
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=30, cast=int)
 DEFAULT_FROM_EMAIL = EMAIL_FROM_ADDRESS
 
-# mypage 앱: 학생 개인 자료 기반 AI 문제 생성
+# ── AI (core/ai.py) ─────────────────────────────────────────────────────
 OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
+# 예전 설정 이름 — 아래 작업별 모델의 기본값으로만 쓴다
 MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.5")
 ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.5")
+# 작업별 모델: 환경변수 AI_MODEL_<작업>으로 따로 바꾼다 (예: AI_MODEL_SUMMARY=저렴한 모델)
+AI_MODELS = {
+    "chat": config("AI_MODEL_CHAT", default=ASSISTANT_CHAT_MODEL),               # 챗봇 답변
+    "chat_compact": config("AI_MODEL_CHAT_COMPACT", default=ASSISTANT_CHAT_MODEL),  # 긴 대화 압축
+    "summary": config("AI_MODEL_SUMMARY", default=MYPAGE_CHAT_MODEL),            # 자료 요약
+    "ocr": config("AI_MODEL_OCR", default=MYPAGE_CHAT_MODEL),                    # 이미지 자료 글자 읽기
+    "question": config("AI_MODEL_QUESTION", default=MYPAGE_CHAT_MODEL),          # 복습 문제 생성
+    "grading": config("AI_MODEL_GRADING", default=MYPAGE_CHAT_MODEL),            # 단답·서술형 채점
+    "course_outline": config("AI_MODEL_COURSE_OUTLINE", default=MYPAGE_CHAT_MODEL),  # 강의 목차
+    "course_chapter": config("AI_MODEL_COURSE_CHAPTER", default=MYPAGE_CHAT_MODEL),  # 강의 챕터 본문
+}
+# 하루(KST) 사용자당 요청 수 상한 — 강의자·운영진·관리자는 제한 없음. 0이면 그 작업은 막는다
+AI_DAILY_LIMITS = {
+    "chat": config("AI_LIMIT_CHAT", default=20, cast=int),
+    "summary": config("AI_LIMIT_SUMMARY", default=5, cast=int),
+    "question": config("AI_LIMIT_QUESTION", default=10, cast=int),
+    "grading": config("AI_LIMIT_GRADING", default=10, cast=int),
+}
+AI_DAILY_TOKEN_LIMIT = config("AI_DAILY_TOKEN_LIMIT", default=80000, cast=int)  # 하루 사용자당 토큰 합계 상한
+# 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
+AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
 SERVER_EMAIL = EMAIL_FROM_ADDRESS
 
 PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
