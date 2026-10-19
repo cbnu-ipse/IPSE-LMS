@@ -63,3 +63,17 @@ class CrossDatabasePagesTestCase(TestCase):
     def test_contest_ranking_board(self):
         res = self.client.get(reverse("ranking:home") + "?board=contest")
         self.assertIn(res.status_code, (200, 302))
+
+    def test_contest_scoreboard(self):
+        res = self.client.get(reverse("contest:scoreboard", args=[self.contest.pk]))
+        self.assertContains(res, "스코어보드")
+        self.assertContains(res, "solver")
+        self.assertContains(res, ">AC<")
+
+    def test_frozen_scoreboard_hidden_for_participants(self):
+        participant = User.objects.create_user(username="player", password="pw")
+        Contest.objects.filter(pk=self.contest.pk).update(freeze_minutes=600)
+        self.client.force_login(participant)
+        self.assertContains(self.client.get(reverse("contest:scoreboard", args=[self.contest.pk])), "동결")
+        self.client.force_login(self.user)  # 운영진은 실제 순위
+        self.assertContains(self.client.get(reverse("contest:scoreboard", args=[self.contest.pk])), "solver")

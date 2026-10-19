@@ -187,3 +187,28 @@ class QuizMergeTests(TestCase):
         question = self.document.questions.get()
         self.assertEqual(question.question_type, "essay")
         self.assertEqual(mocked_thread.call_args.kwargs["args"][2], "essay")
+
+
+class FolderDeleteTests(TestCase):
+    def setUp(self):
+        from .models import PersonalFolder
+        self.user = User.objects.create_user(username="folder_owner", password="pw")
+        self.folder = PersonalFolder.objects.create(user=self.user, name="지울 폴더")
+        self.doc = PersonalDocument.objects.create(user=self.user, folder=self.folder, title="자료", file="a.txt")
+        self.client.force_login(self.user)
+
+    def test_root_page_offers_delete_for_each_folder(self):
+        res = self.client.get(reverse("mypage:document_list"))
+        url = reverse("mypage:folder_delete", args=[self.folder.pk])
+        self.assertEqual(res.content.decode().count(f'action="{url}"'), 2)  # 사이드바 + 폴더 카드
+
+    def test_delete_moves_documents_to_root_and_is_owner_only(self):
+        from .models import PersonalFolder
+        other = User.objects.create_user(username="intruder", password="pw")
+        self.client.force_login(other)
+        self.assertEqual(self.client.post(reverse("mypage:folder_delete", args=[self.folder.pk])).status_code, 403)
+        self.client.force_login(self.user)
+        self.client.post(reverse("mypage:folder_delete", args=[self.folder.pk]))
+        self.assertFalse(PersonalFolder.objects.filter(pk=self.folder.pk).exists())
+        self.doc.refresh_from_db()
+        self.assertIsNone(self.doc.folder)

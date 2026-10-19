@@ -514,6 +514,8 @@ class HighLowSession(models.Model):
     )
     bet = models.PositiveIntegerField(verbose_name="베팅 낙엽")
     current_rank = models.PositiveSmallIntegerField(verbose_name="현재 카드 랭크 (2~14, 11~14=J/Q/K/A)")
+    # 숫자가 같으면 문양으로 높낮이를 가린다: ♠(S) > ◆(D) > ♥(H) > ♣(C)
+    current_suit = models.CharField(max_length=1, default="S", verbose_name="현재 카드 문양 (S/D/H/C)")
     streak = models.PositiveIntegerField(default=0, verbose_name="연속 성공 횟수")
     potential_payout = models.PositiveIntegerField(default=0, verbose_name="지금 캐시아웃 시 받을 낙엽")
     created_at = models.DateTimeField(auto_now_add=True)

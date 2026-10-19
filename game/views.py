@@ -622,17 +622,28 @@ def season_reward_debug(request):
 # 하이로우 (Hi-Lo)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _highlow_draw_rank():
-    return random.randint(2, 14)
+# 카드 52장의 높낮이: 숫자(2~14, A가 가장 높음) → 같은 숫자면 문양 ♠ > ◆ > ♥ > ♣
+HIGHLOW_SUITS = "CHDS"  # 낮은 문양부터
 
 
-def _highlow_multiplier(rank, guess):
-    """`guess`(higher/lower)가 맞았을 때 배당 배수. 그 랭크에서 나올 수 없는 방향이면 None."""
-    favorable = (14 - rank) if guess == "higher" else (rank - 2)
+def _highlow_card_index(rank, suit):
+    """0(2♣) ~ 51(A♠). 클수록 높은 카드."""
+    return (rank - 2) * 4 + HIGHLOW_SUITS.index(suit)
+
+
+def _highlow_draw_card(current=None):
+    """다음 카드 (rank, suit). 현재 카드를 뺀 나머지 51장에서 뽑으므로 완전히 같은 카드(동점)는 나오지 않는다."""
+    cards = [(r, s) for r in range(2, 15) for s in HIGHLOW_SUITS if (r, s) != current]
+    return random.choice(cards)
+
+
+def _highlow_multiplier(rank, suit, guess):
+    """`guess`(higher/lower)가 맞았을 때 배당 배수 (남은 51장 중 맞는 카드 비율로). 나올 수 없는 방향이면 None."""
+    index = _highlow_card_index(rank, suit)
+    favorable = (51 - index) if guess == "higher" else index
     if favorable <= 0:
         return None
-    probability = favorable / 13
-    return round(HIGHLOW_RTP / probability, 4)
+    return round(HIGHLOW_RTP / (favorable / 51), 4)
 
 
 def _highlow_state(session):
@@ -641,10 +652,11 @@ def _highlow_state(session):
         "active": True,
         "bet": session.bet,
         "rank": session.current_rank,
+        "suit": session.current_suit,
         "streak": session.streak,
         "potential_payout": session.potential_payout,
-        "higher_multiplier": _highlow_multiplier(session.current_rank, "higher"),
-        "lower_multiplier": _highlow_multiplier(session.current_rank, "lower"),
+        "higher_multiplier": _highlow_multiplier(session.current_rank, session.current_suit, "higher"),
+        "lower_multiplier": _highlow_multiplier(session.current_rank, session.current_suit, "lower"),
     }
 
 
@@ -690,8 +702,9 @@ def highlow_start(request):
         wallet.chips -= bet
         wallet.save(update_fields=["chips"])
 
+        rank, suit = _highlow_draw_card()
         session = HighLowSession.objects.create(
-            user=user, bet=bet, current_rank=_highlow_draw_rank(), streak=0, potential_payout=0,
+            user=user, bet=bet, current_rank=rank, current_suit=suit, streak=0, potential_payout=0,
         )
 
     return JsonResponse({"status": "success", "chips": wallet.chips, **_highlow_state(session)})
@@ -713,13 +726,15 @@ def highlow_guess(request):
         if not session:
             return JsonResponse({"status": "error", "message": "진행 중인 판이 없습니다."}, status=400)
 
-        multiplier = _highlow_multiplier(session.current_rank, guess)
+        multiplier = _highlow_multiplier(session.current_rank, session.current_suit, guess)
         if multiplier is None:
             return JsonResponse({"status": "error", "message": "그 카드에서는 선택할 수 없는 방향입니다."}, status=400)
 
-        next_rank = _highlow_draw_rank()
-        # 동점(next_rank == current_rank)은 항상 실패 처리 (단순하고 공정한 규칙)
-        correct = next_rank > session.current_rank if guess == "higher" else next_rank < session.current_rank
+        current = (session.current_rank, session.current_suit)
+        next_rank, next_suit = _highlow_draw_card(current)
+        # 숫자가 같으면 문양으로 가린다 (같은 카드는 나오지 않으므로 동점이 없다)
+        higher = _highlow_card_index(next_rank, next_suit) > _highlow_card_index(*current)
+        correct = higher if guess == "higher" else not higher
 
         if not correct:
             HighLowPlayLog.objects.create(
@@ -729,18 +744,18 @@ def highlow_guess(request):
             house = HouseBank.locked()
             house.chips += session.bet
             house.save(update_fields=["chips"])
-            prev_rank = session.current_rank
+            prev_rank, prev_suit = current
             session.delete()
             return JsonResponse({
                 "status": "success", "result": "bust",
-                "prev_rank": prev_rank, "next_rank": next_rank,
+                "prev_rank": prev_rank, "prev_suit": prev_suit, "next_rank": next_rank, "next_suit": next_suit,
                 "streak": 0,
             })
 
         base = session.potential_payout if session.streak > 0 else session.bet
         session.potential_payout = round(base * multiplier)
         session.streak += 1
-        session.current_rank = next_rank
+        session.current_rank, session.current_suit = next_rank, next_suit
         session.save()
 
     return JsonResponse({"status": "success", "result": "continue", **_highlow_state(session)})
