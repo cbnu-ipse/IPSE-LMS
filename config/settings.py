@@ -256,6 +256,11 @@ EMAIL_FROM_ADDRESS = config("EMAIL_FROM_ADDRESS", default="noreply@ipse.ac.kr")
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=30, cast=int)
 DEFAULT_FROM_EMAIL = EMAIL_FROM_ADDRESS
 
+# 채점 실행기 (judge_runner 컨테이너). 비어 있으면 채점 작업은 실행기가 생길 때까지 대기열에 남는다.
+JUDGE_RUNNER_URL = config("JUDGE_RUNNER_URL", default="")
+JUDGE_TIME_LIMIT_MS = config("JUDGE_TIME_LIMIT_MS", default=2000, cast=int)
+JUDGE_MEMORY_MB = config("JUDGE_MEMORY_MB", default=256, cast=int)
+
 # ── AI (core/ai.py) ─────────────────────────────────────────────────────
 OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
 # 예전 설정 이름 — 아래 작업별 모델의 기본값으로만 쓴다

@@ -10,6 +10,7 @@ from .views import (
     my_submissions,
     problem_detail,
     submission_detail,
+    submission_status,
     submit_solution,
     terminate_contest,
 )
@@ -23,6 +24,7 @@ urlpatterns = [
     path("<int:pk>/scoreboard/", contest_scoreboard, name="scoreboard"),
     path("<int:pk>/my-submissions/", my_submissions, name="my_submissions"),
     path("<int:pk>/submissions/", contest_submissions, name="submissions"),
+    path("<int:pk>/submissions/status/", submission_status, name="submission_status"),
     path("<int:pk>/terminate/confirm/", contest_terminate_confirm, name="terminate_confirm"),
     path("<int:pk>/terminate/", terminate_contest, name="terminate"),
     path(

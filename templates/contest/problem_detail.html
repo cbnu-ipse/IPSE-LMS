@@ -130,7 +130,7 @@
                         </div>
 
                         {% for submission in submissions %}
-                            <div class="grid grid-cols-12 items-center px-6 py-5 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition">
+                            <div class="grid grid-cols-12 items-center px-6 py-5 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition" {% if submission.result == "PENDING" %}data-pending-submission="{{ submission.pk }}"{% endif %}>
                                 <div class="col-span-4">
                                     <a href="{% url 'contest:submission_detail' contest.pk submission.pk %}"
                                        class="font-medium text-slate-700 hover:text-emerald-700 transition">
@@ -138,7 +138,7 @@
                                     </a>
                                 </div>
                                 <div class="col-span-2 text-center text-slate-700 font-semibold">{{ submission.language }}</div>
-                                <div class="col-span-2 text-center">
+                                <div class="col-span-2 text-center" data-cell="result">
                                     {% if submission.result == "AC" %}
                                         <span class="inline-flex px-3 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
                                             AC
@@ -161,8 +161,8 @@
                                         </span>
                                     {% endif %}
                                         </div>                                
-                                        <div class="col-span-2 text-center text-slate-700 font-semibold">{{ submission.passed_count }} / {{ submission.total_count }}</div>
-                                <div class="col-span-2 text-center text-slate-700 font-semibold">{{ submission.judge_task.status }}</div>
+                                        <div class="col-span-2 text-center text-slate-700 font-semibold" data-cell="passed">{{ submission.passed_count }} / {{ submission.total_count }}</div>
+                                <div class="col-span-2 text-center text-slate-700 font-semibold" data-cell="status">{{ submission.judge_task.status }}</div>
                             </div>
                         {% endfor %}
                     </div>
@@ -213,4 +213,32 @@
         </div>
     </div>
 </section>
+<script>
+// 채점은 서버의 채점 워커가 따로 처리한다 — 대기 중인 제출만 2초마다 상태를 받아 그 줄만 바꾼다 (작성 중인 코드는 그대로)
+(function () {
+    const rows = () => [...document.querySelectorAll('[data-pending-submission]')];
+    const COLORS = { AC: 'bg-emerald-50 text-emerald-700 border-emerald-100', WA: 'bg-rose-50 text-rose-700 border-rose-100' };
+    async function poll() {
+        const pending = rows();
+        if (!pending.length) return;
+        const ids = pending.map(r => r.dataset.pendingSubmission).join(',');
+        try {
+            const res = await fetch(`{% url 'contest:submission_status' contest.pk %}?ids=${ids}`, { headers: { 'Accept': 'application/json' } });
+            const data = await res.json();
+            (data.submissions || []).forEach(s => {
+                const row = document.querySelector(`[data-pending-submission="${s.id}"]`);
+                if (!row) return;
+                row.querySelector('[data-cell="status"]').textContent = s.status;
+                if (s.result === 'PENDING') return;
+                const color = COLORS[s.result] || 'bg-amber-50 text-amber-700 border-amber-100';
+                row.querySelector('[data-cell="result"]').innerHTML = `<span class="inline-flex px-3 py-1 rounded-md text-xs font-medium border ${color}">${s.result}</span>`;
+                row.querySelector('[data-cell="passed"]').textContent = `${s.passed_count} / ${s.total_count}`;
+                row.removeAttribute('data-pending-submission');
+            });
+        } catch (e) { /* 다음 주기에 다시 */ }
+        if (rows().length) setTimeout(poll, 2000);
+    }
+    setTimeout(poll, 1500);
+})();
+</script>
 {% endblock %}
