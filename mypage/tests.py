@@ -426,3 +426,14 @@ class SummaryPagingTests(TestCase):
         self.assertContains(res, "splitMarkdownPages")
         self.assertNotContains(res, "splitMarkdownSections")
         self.assertIn("350자", SUMMARY_INSTRUCTIONS)
+
+
+class SummaryNeverBlankTests(TestCase):
+    def test_scripts_are_versioned_and_summary_has_fallback_rendering(self):
+        user = User.objects.create_user(username="blank", password="pw")
+        self.client.force_login(user)
+        doc = PersonalDocument.objects.create(user=user, title="d", file="d.txt", summary="## a\n내용",
+                                              summary_status=ProcessingStatus.DONE)
+        res = self.client.get(f"/mypage/{doc.pk}/")
+        self.assertContains(res, "markdown-lite.js?v=")        # 배포 뒤 옛 스크립트 캐시를 쓰지 않도록
+        self.assertContains(res, "function showWhole()")        # 조각 나누기가 실패해도 요약 전체를 보여 줌
