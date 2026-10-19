@@ -35,6 +35,18 @@
                 {% else %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500">초안 생성 대기</span>{% endif %}
             </div>
             <div class="text-xs text-slate-400 mb-3">자료 {{ t.doc_count }}개{% if t.last_upload %} · 마지막 업로드 {{ t.last_upload|date:"m/d H:i" }}{% endif %}{% if t.pending %} · 초안 챕터 {{ t.chapter_count }}개 · 학습 세트 {{ t.set_count }}개{% endif %}</div>
+            {% if t.diff %}
+            <div class="flex flex-wrap gap-1.5 mb-3 text-[11px] font-bold">
+                {% if t.diff.counts.total == 0 %}<span class="text-slate-400">게시된 강의와 달라진 내용 없음</span>{% else %}
+                <span class="text-slate-500">변경:</span>
+                {% if t.diff.counts.chapters_added %}<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">챕터 +{{ t.diff.counts.chapters_added }}</span>{% endif %}
+                {% if t.diff.counts.sets_added %}<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">세트 +{{ t.diff.counts.sets_added }}</span>{% endif %}
+                {% if t.diff.counts.sets_modified %}<span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">세트 수정 {{ t.diff.counts.sets_modified }}</span>{% endif %}
+                {% if t.diff.counts.sets_removed or t.diff.counts.chapters_removed %}<span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-600">삭제 {{ t.diff.counts.sets_removed|add:t.diff.counts.chapters_removed }}</span>{% endif %}
+                {% for title in t.diff.new_docs|slice:":3" %}<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600" title="새로 반영된 자료">+자료 {{ title|truncatechars:16 }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            {% endif %}
             <div class="flex flex-wrap items-center gap-2">
                 {% if t.pending %}
                 <a href="{% url 'course_studio_detail' t.pending.pk %}" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">초안 미리보기·수정</a>

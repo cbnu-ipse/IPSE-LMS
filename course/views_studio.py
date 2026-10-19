@@ -33,6 +33,8 @@ def studio_list(request):
             chapters = t["pending"].content.get("chapters", [])
             t["chapter_count"] = len(chapters)
             t["set_count"] = sum(len(c.get("sets", [])) for c in chapters)
+        if t["pending"] and t["course"]:
+            t["diff"] = studio.diff_draft(t["pending"])
         if t["course"]:
             t["can_edit"] = request.user.is_superuser or t["course"].instructor_id == request.user.id
     return render(request, "course/studio_list.html", {
@@ -44,7 +46,8 @@ def studio_list(request):
 @_studio_only
 def studio_detail(request, pk):
     draft = get_object_or_404(CourseDraft.objects.select_related("course"), pk=pk)
-    changed = studio.changed_chapters(draft) if draft.status == CourseDraft.Status.PENDING else None
+    diff = studio.diff_draft(draft) if draft.status == CourseDraft.Status.PENDING else None
+    changed = {c["index"] for c in diff["chapters"] if c["status"] != "same"} if diff else None
     chapters = []
     for ci, chapter in enumerate(draft.content.get("chapters", [])):
         chapters.append({
@@ -59,7 +62,8 @@ def studio_detail(request, pk):
     return render(request, "course/studio_detail.html", {
         "draft": draft, "chapters": chapters, "can_review": studio.can_review(request.user, draft),
         "editable": draft.status == CourseDraft.Status.PENDING and studio.can_review(request.user, draft),
-        "has_changes": changed is None or bool(changed),
+        "has_changes": diff is None or bool(diff["counts"]["total"]),
+        "diff": diff,
     })
 
 
@@ -191,11 +195,11 @@ def studio_materials(request):
 
     q = request.GET.get("q", "").strip()
     scope = request.GET.get("scope", "all")
-    docs = PersonalDocument.objects.select_related("user").order_by("-uploaded_at")
+    docs = PersonalDocument.objects.select_related("user").prefetch_related("topics").order_by("-uploaded_at")
     if q:
         docs = docs.filter(Q(title__icontains=q) | Q(summary__icontains=q) | Q(extracted_text__icontains=q))
     if scope == "unassigned":      # 주제가 없거나 강의 자료에서 제외된 자료 = 주제별 현황에 안 잡히는 자료
-        docs = docs.filter(Q(subject_code="") | Q(is_course_material=False))
+        docs = docs.filter(Q(topics__isnull=True) | Q(is_course_material=False)).distinct()
     elif scope == "deleted":       # 사용자가 지웠지만 강의 생성용으로 남아 있는 자료
         docs = docs.filter(is_deleted=True)
     page = Paginator(docs, MATERIALS_PER_PAGE).get_page(request.GET.get("page"))

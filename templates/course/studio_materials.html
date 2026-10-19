@@ -23,7 +23,7 @@
         <details class="bg-white border border-slate-200 rounded-2xl">
             <summary class="flex flex-wrap items-center gap-2 px-5 py-3 cursor-pointer list-none">
                 <span class="font-bold text-slate-800 flex-1 min-w-0 truncate">{{ doc.title }}</span>
-                {% if doc.subject_code %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">{{ doc.subject_code }}</span>{% else %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500">주제 없음</span>{% endif %}
+                {% for topic in doc.topics.all %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">{{ topic.name }}</span>{% empty %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500">주제 없음</span>{% endfor %}
                 {% if not doc.is_course_material %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600">강의 제외</span>{% endif %}
                 {% if doc.is_deleted %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">사용자 삭제</span>{% endif %}
                 {% if doc.summary_status != 'done' %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">요약 {{ doc.get_summary_status_display }}</span>{% endif %}
