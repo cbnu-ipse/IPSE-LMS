@@ -144,6 +144,75 @@ def build_draft(subject_code):
         return None
 
 
+# ── 강의자용 현황: 어떤 자료가 어떻게 가공되어 어느 강의로 가는지 ────────────────────
+
+def topic_overview():
+    """주제(과목)별 현황. 강의 자료가 있는 주제마다 강의가 어느 단계인지 보여 준다.
+    단계: generating(초안 만드는 중) → waiting(자료는 있고 초안은 아직 없음 = 곧 만들어짐/실패) →
+    pending(초안 검토 대기) → published(개설됨)."""
+    from django.db.models import Count, Max
+
+    from mypage.models import PersonalDocument, ProcessingStatus
+
+    rows = (PersonalDocument.objects.filter(is_deleted=False, is_course_material=True)
+            .exclude(subject_code="").values("subject_code")
+            .annotate(doc_count=Count("id"), last_upload=Max("uploaded_at")).order_by("-last_upload"))
+    drafts = {}
+    for d in CourseDraft.objects.exclude(status=CourseDraft.Status.SUPERSEDED).order_by("created_at"):
+        drafts.setdefault(d.subject_code, []).append(d)
+    courses = {c.code: c for c in Course.objects.filter(code__in=[r["subject_code"] for r in rows])}
+    topics = []
+    for row in rows:
+        code = row["subject_code"]
+        mine = drafts.get(code, [])
+        by_status = {st: [d for d in mine if d.status == st] for st in CourseDraft.Status.values}
+        latest = mine[-1] if mine else None
+        if by_status[CourseDraft.Status.GENERATING]:
+            stage = "generating"
+        elif by_status[CourseDraft.Status.PENDING]:
+            stage = "pending"
+        elif code in courses:
+            stage = "published"
+        else:
+            stage = "waiting"
+        topics.append({
+            "name": code, "doc_count": row["doc_count"], "last_upload": row["last_upload"], "stage": stage,
+            "course": courses.get(code), "pending": (by_status[CourseDraft.Status.PENDING] or [None])[-1],
+            "failed": latest if latest and latest.status == CourseDraft.Status.FAILED else None,
+        })
+    # 아직 분류·요약 중인 자료 (곧 어느 주제로 들어갈지 정해짐)
+    in_progress = PersonalDocument.objects.filter(is_deleted=False, subject_code="",
+                                                  summary_status=ProcessingStatus.PROCESSING).count()
+    return topics, in_progress
+
+
+def topic_detail(subject_code):
+    """한 주제의 자료별 가공 결과와, 최신 초안의 챕터가 어떤 자료를 근거로 만들어졌는지."""
+    from mypage.models import PersonalDocument
+
+    docs = list(PersonalDocument.objects.filter(subject_code=subject_code, is_deleted=False)
+                .select_related("user").order_by("uploaded_at"))
+    draft = (CourseDraft.objects.filter(subject_code=subject_code,
+                                        status__in=[CourseDraft.Status.PENDING, CourseDraft.Status.APPROVED])
+             .exclude(content={}).order_by("-created_at").first())
+    used = {}
+    chapters = []
+    if draft:
+        for ci, chapter in enumerate(draft.content.get("chapters", [])):
+            ids = chapter.get("doc_ids", [])
+            chapters.append({"index": ci, "title": chapter["title"], "summary": chapter.get("summary", ""),
+                             "reused": chapter.get("reused", False), "doc_ids": ids,
+                             "set_count": len(chapter.get("sets", []))})
+            for i in ids:
+                used.setdefault(i, []).append(chapter["title"])
+    for doc in docs:
+        doc.used_in = used.get(doc.pk, [])
+    titles = {d.pk: d.title for d in docs}
+    for chapter in chapters:
+        chapter["doc_titles"] = [titles[i] for i in chapter["doc_ids"] if i in titles]
+    return docs, draft, chapters
+
+
 def content_from_course(course):
     """게시된 강의를 초안 내용 형식으로 (강의자가 직접 고치는 수정 초안의 시작점)."""
     chapters = []

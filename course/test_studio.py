@@ -265,3 +265,36 @@ class LearnerTestCase(StudioBase):
         self.client.force_login(self.lecturer)
         self.assertContains(self.client.get(reverse("course_list")), "강의 생성")
         self.assertEqual(self.client.get(reverse("course_studio")).status_code, 200)
+
+
+class TopicOverviewTestCase(StudioBase):
+    def stage(self):
+        topics, _ = studio.topic_overview()
+        return {t["name"]: t["stage"] for t in topics}["DB101"]
+
+    def test_stage_moves_from_waiting_to_pending_to_published(self):
+        PersonalDocument.objects.filter(subject_code="DB101").update(is_course_material=True)
+        self.assertEqual(self.stage(), "waiting")  # 자료는 있고 초안은 아직 없음 = 생성 직전
+        CourseDraft.objects.create(subject_code="DB101", status=CourseDraft.Status.GENERATING, source_hash="g")
+        self.assertEqual(self.stage(), "generating")
+        CourseDraft.objects.all().delete()
+        draft, _, _ = self.build()
+        self.assertEqual(self.stage(), "pending")
+        studio.publish_draft(draft.pk, self.lecturer)
+        self.assertEqual(self.stage(), "published")
+
+    def test_topic_page_shows_docs_summaries_and_chapter_sources(self):
+        PersonalDocument.objects.filter(subject_code="DB101").update(is_course_material=True)
+        self.build()
+        self.client.force_login(self.lecturer)
+        res = self.client.get(reverse("course_studio_topic"), {"name": "DB101"})
+        self.assertContains(res, "자료0")
+        self.assertContains(res, "요약 1")
+        self.assertContains(res, "조인")           # 챕터 제목
+        self.assertContains(res, "근거:")
+        self.assertContains(self.client.get(reverse("course_studio")), "주제별 현황")
+
+    def test_topic_page_is_lecturer_only(self):
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(reverse("course_studio_topic"), {"name": "DB101"}).status_code, 403)
+        self.assertEqual(self.client.post(reverse("course_studio_topic_build"), {"name": "DB101"}).status_code, 403)
