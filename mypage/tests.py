@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from .ai import extract_text
 from .forms import PersonalDocumentUploadForm
-from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
+from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, ProcessingStatus
 from .views import _classify_and_build, _generate_question_bg, _generate_summary_bg
 
 User = get_user_model()
@@ -387,3 +387,28 @@ class AsyncGradingTests(TestCase):
         self.assertContains(res, "<textarea")
         self.assertContains(res, 'rows="8"')
         self.assertNotContains(res, "data-src")
+
+
+class RenameTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="renamer", password="pw")
+        self.other = User.objects.create_user(username="someone", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="old", file="d.txt")
+        self.folder = PersonalFolder.objects.create(user=self.user, name="old folder")
+
+    def test_owner_can_rename_document_and_folder(self):
+        self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "  새 이름 "})
+        self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "새 폴더"})
+        self.doc.refresh_from_db(); self.folder.refresh_from_db()
+        self.assertEqual((self.doc.title, self.folder.name), ("새 이름", "새 폴더"))
+
+    def test_blank_or_too_long_names_are_rejected_and_others_cannot_rename(self):
+        self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "  "})
+        self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "x" * 201})
+        self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "y" * 101})
+        self.doc.refresh_from_db(); self.folder.refresh_from_db()
+        self.assertEqual((self.doc.title, self.folder.name), ("old", "old folder"))
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "hack"}).status_code, 403)
+        self.assertEqual(self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "hack"}).status_code, 403)

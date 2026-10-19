@@ -43,6 +43,7 @@
                         <a href="{% url 'mypage:document_list' folder_id=f.pk %}" class="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition {% if current_folder.pk == f.pk %}bg-emerald-50 text-emerald-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                             <i class="fa-solid fa-folder text-amber-400 w-4"></i><span class="truncate">{{ f.name }}</span>
                         </a>
+                        <button type="button" data-rename-url="{% url 'mypage:folder_rename' f.pk %}" data-rename-field="name" data-rename-value="{{ f.name }}" class="shrink-0 px-2 py-2 text-slate-400 hover:text-slate-600 text-xs lg:opacity-0 lg:group-hover:opacity-100 transition" title="이름 바꾸기" aria-label="{{ f.name }} 이름 바꾸기"><i class="fa-solid fa-pen"></i></button>
                         <form method="post" action="{% url 'mypage:folder_delete' f.pk %}" onsubmit="return confirm('\'{{ f.name|escapejs }}\' 폴더를 삭제하시겠습니까? 안의 자료는 루트로 이동합니다.');" class="shrink-0 lg:opacity-0 lg:group-hover:opacity-100 transition">
                             {% csrf_token %}
                             <button type="submit" class="px-2 py-2 text-rose-400 hover:text-rose-600 text-xs" title="폴더 삭제" aria-label="{{ f.name }} 폴더 삭제"><i class="fa-solid fa-trash-can"></i></button>
@@ -92,6 +93,7 @@
                             <p class="text-sm font-bold text-slate-700 truncate w-full">{{ f.name }}</p>
                             <p class="text-[11px] text-slate-400">{{ f.doc_count }}개</p>
                         </a>
+                        <button type="button" data-rename-url="{% url 'mypage:folder_rename' f.pk %}" data-rename-field="name" data-rename-value="{{ f.name }}" class="absolute top-2 left-2 text-xs text-slate-400 hover:text-slate-600 px-2 py-1 lg:opacity-0 lg:group-hover:opacity-100 transition" title="이름 바꾸기" aria-label="{{ f.name }} 이름 바꾸기"><i class="fa-solid fa-pen"></i></button>
                         <form method="post" action="{% url 'mypage:folder_delete' f.pk %}" onsubmit="return confirm('\'{{ f.name|escapejs }}\' 폴더를 삭제하시겠습니까? 안의 자료는 루트로 이동합니다.');" class="absolute top-2 right-2 lg:opacity-0 lg:group-hover:opacity-100 transition">
                             {% csrf_token %}
                             <button type="submit" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1" title="폴더 삭제" aria-label="{{ f.name }} 폴더 삭제"><i class="fa-solid fa-trash-can"></i></button>
@@ -114,6 +116,7 @@
                     </form>
                     {% endif %}
                     {% endif %}
+                    <button type="button" data-rename-url="{% url 'mypage:document_rename' document.pk %}" data-rename-field="title" data-rename-value="{{ document.title }}" class="absolute top-2 left-2 text-xs text-slate-400 hover:text-slate-600 px-2 py-1 lg:opacity-0 lg:group-hover:opacity-100 transition" title="이름 바꾸기" aria-label="{{ document.title }} 이름 바꾸기"><i class="fa-solid fa-pen"></i></button>
                     <form method="post" action="{% url 'mypage:document_delete' document.pk %}" onsubmit="return confirm('삭제하시겠습니까?');" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
                         {% csrf_token %}
                         <button type="submit" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
@@ -130,5 +133,26 @@
         </main>
     </div>
 </section>
+
+<form id="rename-form" method="post" class="hidden">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <input type="hidden" id="rename-input">
+</form>
+<script>
+// 연필 버튼: 새 이름을 물어보고 서버에 저장한다
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-rename-url]');
+    if (!btn) return;
+    e.preventDefault();
+    const next = window.prompt('새 이름', btn.dataset.renameValue);
+    if (next === null || !next.trim() || next.trim() === btn.dataset.renameValue) return;
+    const form = document.getElementById('rename-form'), input = document.getElementById('rename-input');
+    form.action = btn.dataset.renameUrl;
+    input.name = btn.dataset.renameField;
+    input.value = next.trim();
+    form.submit();
+});
+</script>
 {% endblock %}
 

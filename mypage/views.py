@@ -185,6 +185,39 @@ def folder_delete(request, pk):
 
 
 @login_required
+@require_POST
+def folder_rename(request, pk):
+    folder = get_object_or_404(PersonalFolder, pk=pk)
+    if folder.user != request.user:
+        return HttpResponseForbidden("본인의 폴더만 이름을 바꿀 수 있습니다.")
+    name = request.POST.get("name", "").strip()
+    if not name or len(name) > 100:
+        messages.error(request, "폴더 이름은 1~100자로 입력해주세요.")
+    else:
+        folder.name = name
+        folder.save(update_fields=["name"])
+        messages.success(request, "폴더 이름을 바꿨습니다.")
+    return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+
+
+@login_required
+@require_POST
+def document_rename(request, pk):
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 이름을 바꿀 수 있습니다.")
+    title = request.POST.get("title", "").strip()
+    max_len = PersonalDocument._meta.get_field("title").max_length
+    if not title or len(title) > max_len:
+        messages.error(request, f"자료 이름은 1~{max_len}자로 입력해주세요.")
+    else:
+        document.title = title
+        document.save(update_fields=["title"])
+        messages.success(request, "자료 이름을 바꿨습니다.")
+    return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+
+
+@login_required
 def document_preview(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
