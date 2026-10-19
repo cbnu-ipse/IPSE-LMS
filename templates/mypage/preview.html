@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-ipse.svg' %}">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="{% static 'css/markdown-lite.css' %}?v={% now 'U' %}">
+    <link rel="stylesheet" href="{% static 'css/markdown-lite.css' %}?v={{ static_version }}">
     <style>
     /* 독립 학습 화면: 사이트 레이아웃(헤더·푸터·페이지 스크롤)과 분리된 한 화면짜리 UI. 스크롤은 각 패널 안에서만 생긴다. */
     html { font-size: 90%; }
@@ -251,7 +251,7 @@
 </script>
 
 {{ initial_state|json_script:"ms-initial-state" }}
-<script src="{% static 'js/markdown-lite.js' %}"></script>
+<script src="{% static 'js/markdown-lite.js' %}?v={{ static_version }}"></script>
 <script>
 (function () {
     const grid = document.getElementById('ms-grid');
@@ -306,11 +306,17 @@
         if (!summaryContent || !summaryTabs || !summaryNav || !summaryRaw) return;
 
         // 요약을 화면 한 장 분량의 작은 조각으로 나눠 한 조각씩 보여 준다 (스크롤 최소화)
-        const pages = window.splitMarkdownPages(summaryRaw.value);
-        if (pages.length <= 1) {
-            summaryContent.innerHTML = window.renderMarkdown(summaryRaw.value);
-            return;
+        // 어떤 이유로든(옛 스크립트 캐시, 예기치 못한 형식 등) 조각 나누기·렌더링이 실패해도 요약은 항상 보여 준다
+        function showWhole() {
+            try { summaryContent.innerHTML = window.renderMarkdown(summaryRaw.value); }
+            catch (e) { summaryContent.textContent = summaryRaw.value; }
+            if (!summaryContent.textContent.trim()) summaryContent.textContent = summaryRaw.value;
+            summaryTabs.innerHTML = ''; summaryNav.innerHTML = '';
         }
+        let pages = null;
+        try { pages = typeof window.splitMarkdownPages === 'function' ? window.splitMarkdownPages(summaryRaw.value) : null; }
+        catch (e) { pages = null; }
+        if (!pages || pages.length <= 1) { showWhole(); return; }
 
         const TAB_ACTIVE = 'flex-1 h-1.5 rounded-full transition bg-emerald-600';
         const TAB_INACTIVE = 'flex-1 h-1.5 rounded-full transition bg-slate-100 hover:bg-slate-200';
@@ -325,7 +331,9 @@
             const page = pages[index];
             // 상위 주제(##) 안의 세부 조각이면 어느 주제인지, 이어지는 조각이면 '이어서'를 작게 표시
             const label = page.cont ? esc(page.title) + ' · 이어서' : (page.crumb ? esc(page.crumb) : '');
-            summaryContent.innerHTML = (label ? '<div class="ms-crumb">' + label + '</div>' : '') + window.renderMarkdown(page.body);
+            try {
+                summaryContent.innerHTML = (label ? '<div class="ms-crumb">' + label + '</div>' : '') + window.renderMarkdown(page.body);
+            } catch (e) { showWhole(); return; }
             summaryContent.scrollTop = 0;
             Array.from(summaryTabs.children).forEach((btn, i) => {
                 btn.className = i === index ? TAB_ACTIVE : TAB_INACTIVE;
