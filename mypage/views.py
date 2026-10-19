@@ -29,30 +29,32 @@ def _generate_summary_bg(document_id):
         document = PersonalDocument.objects.select_related("user").get(pk=document_id)
         summary = generate_summary(document.extracted_text, user=document.user)
         PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
-        _maybe_generate_course_bg(document.subject_code)
     except Exception:
         logger.exception("문서 %s 자동 요약 생성 실패", document_id)
         PersonalDocument.objects.filter(pk=document_id).update(summary_status=ProcessingStatus.FAILED)
-    finally:
         connection.close()
-
-
-def _course_after_upload_bg(subject_code):
-    try:
-        _maybe_generate_course_bg(subject_code)
-    finally:
-        connection.close()
-
-
-def _maybe_generate_course_bg(subject_code):
-    """같은 과목 코드로 요약이 끝난 과제 자료가 쌓이면 AI 강의 초안을 만든다 (course/studio.py).
-    강의는 바로 바뀌지 않고, 강의자가 judge > 강의 생성 탭에서 검토·승인해야 게시된다.
-    같은 자료로는 다시 만들지 않으므로(입력 해시, DB 유니크 제약) 동시에 여러 업로드가 끝나도 AI 호출은 한 번이다."""
-    if not subject_code:
         return
-    from course.studio import build_draft
+    _classify_and_build(document_id)
+    connection.close()
 
-    build_draft(subject_code)
+
+def _course_after_upload_bg(document_id):
+    try:
+        _classify_and_build(document_id)
+    finally:
+        connection.close()
+
+
+def _classify_and_build(document_id):
+    """AI가 자료의 주제를 정하고, 그 주제에 강의를 만들 만큼 자료가 모였다고 판단하면 강의 초안을 만든다
+    (course/topics.py). 강의는 바로 바뀌지 않고 강의자가 judge > 강의 생성 탭에서 승인해야 게시된다.
+    여기서 실패해도 요약은 그대로 남는다."""
+    try:
+        from course.topics import after_summary
+
+        after_summary(document_id)
+    except Exception:
+        logger.exception("문서 %s 주제 분류·강의 초안 처리 실패", document_id)
 
 
 def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None):
@@ -99,7 +101,7 @@ def document_list(request, folder_id=None):
                 document.summary = same.summary
                 document.summary_status = ProcessingStatus.DONE
                 document.save()
-                threading.Thread(target=_course_after_upload_bg, args=(document.subject_code,), daemon=True).start()
+                threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 요약을 바로 불러왔습니다.")
                 return redirect(request.path)
             try:

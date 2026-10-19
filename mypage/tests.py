@@ -9,8 +9,8 @@ from django.urls import reverse
 
 from .ai import extract_text
 from .forms import PersonalDocumentUploadForm
-from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus, Subject
-from .views import _generate_question_bg, _generate_summary_bg, _maybe_generate_course_bg
+from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
+from .views import _classify_and_build, _generate_question_bg, _generate_summary_bg
 
 User = get_user_model()
 
@@ -108,53 +108,24 @@ class GuardrailTests(TestCase):
 
 
 class CourseAutoGenerationTests(TestCase):
-    """업로드 후 강의 초안 생성 트리거 (자세한 흐름은 course/test_studio.py)."""
+    """요약이 끝난 뒤 주제 분류·강의 초안 단계로 넘어간다 (자세한 흐름은 course/test_topics.py)."""
 
-    def _make_doc(self, user, is_deleted=False):
-        return PersonalDocument.objects.create(
-            user=user, title="doc", subject_code="CS101", summary="요약 내용",
-            summary_status=ProcessingStatus.DONE, is_deleted=is_deleted,
-        )
+    def test_summary_then_classification_is_triggered(self):
+        user = User.objects.create_user(username="pipeline", password="pw")
+        doc = PersonalDocument.objects.create(user=user, title="d", extracted_text="본문",
+                                              summary_status=ProcessingStatus.PROCESSING)
+        with patch("mypage.views.generate_summary", return_value="요약"), \
+                patch("course.topics.after_summary") as after:
+            _generate_summary_bg(doc.pk)
+        after.assert_called_once_with(doc.pk)
 
-    def test_below_threshold_does_not_trigger(self):
-        user = User.objects.create_user(username="course_tester_below", password="pw")
-        for _ in range(4):
-            self._make_doc(user)
-
-        with patch("course.ai.generate_outline") as outline:
-            _maybe_generate_course_bg("CS101")
-
-        outline.assert_not_called()
-
-    def test_threshold_five_counts_soft_deleted_docs_and_only_makes_a_draft(self):
-        from course.models import Course, CourseDraft
-
-        user = User.objects.create_user(username="course_tester_five", password="pw")
-        docs = [self._make_doc(user, is_deleted=True) for _ in range(4)] + [self._make_doc(user)]
-        outline = {"title": "t", "description": "d",
-                   "chapters": [{"title": "1장", "summary": "", "doc_ids": [d.pk for d in docs]}]}
-        sets = [{"title": "세트", "cards": [{"title": "c", "body": "본문"}], "questions": []}]
-        with patch("course.ai.generate_outline", return_value=outline) as mock_outline, \
-                patch("course.ai.generate_chapter", return_value=sets):
-            _maybe_generate_course_bg("CS101")
-
-        mock_outline.assert_called_once()
-        self.assertEqual(CourseDraft.objects.get().status, CourseDraft.Status.PENDING)
-        self.assertFalse(Course.objects.exists())  # 승인 전에는 강의가 생기지 않는다
-
-    def test_lecture_material_docs_are_excluded_from_threshold(self):
-        user = User.objects.create_user(username="course_tester_lecture", password="pw")
-        for _ in range(5):
-            PersonalDocument.objects.create(
-                user=user, title="doc", subject_code="CS101", summary="요약 내용",
-                summary_status=ProcessingStatus.DONE,
-                document_type=PersonalDocument.DocumentType.LECTURE,
-            )
-
-        with patch("course.ai.generate_outline") as outline:
-            _maybe_generate_course_bg("CS101")
-
-        outline.assert_not_called()
+    def test_classification_failure_keeps_summary(self):
+        user = User.objects.create_user(username="pipeline2", password="pw")
+        doc = PersonalDocument.objects.create(user=user, title="d", summary="요약", summary_status=ProcessingStatus.DONE)
+        with patch("course.topics.after_summary", side_effect=RuntimeError("api down")):
+            _classify_and_build(doc.pk)  # 예외가 밖으로 나오지 않는다
+        doc.refresh_from_db()
+        self.assertEqual(doc.summary_status, ProcessingStatus.DONE)
 
 
 class SummaryMarkdownRenderTests(TestCase):
@@ -173,61 +144,13 @@ class SummaryMarkdownRenderTests(TestCase):
         self.assertContains(response, "js/markdown-lite.js")
 
 
-class SubjectDropdownTests(TestCase):
-    def setUp(self):
-        self.subject = Subject.objects.create(name="데이터베이스")
-        self.student = User.objects.create_user(username="subject_student", password="pw")
-        self.admin = User.objects.create_user(username="subject_admin", password="pw", is_superuser=True)
-
-    def _upload_data(self, subject_code, custom_subject_code="", custom_subject_display_code=""):
-        return {
-            "title": "",
-            "subject_code": subject_code,
-            "custom_subject_code": custom_subject_code,
-            "custom_subject_display_code": custom_subject_display_code,
-            "file": SimpleUploadedFile("note.txt", b"content"),
-        }
-
-    def test_existing_subject_choice_is_valid_for_student(self):
-        form = PersonalDocumentUploadForm(
-            data=self._upload_data(self.subject.name), files={"file": SimpleUploadedFile("note.txt", b"content")},
-            user=self.student,
-        )
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["subject_code"], "데이터베이스")
-
-    def test_custom_option_not_offered_and_rejected_for_student(self):
-        form = PersonalDocumentUploadForm(user=self.student)
-        self.assertNotIn("__custom__", dict(form.fields["subject_code"].choices))
-
-        form = PersonalDocumentUploadForm(
-            data=self._upload_data("__custom__", "새로운과목"),
-            files={"file": SimpleUploadedFile("note.txt", b"content")},
-            user=self.student,
-        )
-        self.assertFalse(form.is_valid())
-
-    def test_admin_can_add_new_subject_via_custom_option(self):
-        form = PersonalDocumentUploadForm(user=self.admin)
-        self.assertIn("__custom__", dict(form.fields["subject_code"].choices))
-
-        form = PersonalDocumentUploadForm(
-            data=self._upload_data("__custom__", "새로운과목"),
-            files={"file": SimpleUploadedFile("note.txt", b"content")},
-            user=self.admin,
-        )
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["subject_code"], "새로운과목")
-        self.assertTrue(Subject.objects.filter(name="새로운과목").exists())
-
-    def test_admin_custom_subject_code_is_saved(self):
-        form = PersonalDocumentUploadForm(
-            data=self._upload_data("__custom__", "새로운과목2", "CS202"),
-            files={"file": SimpleUploadedFile("note.txt", b"content")},
-            user=self.admin,
-        )
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(Subject.objects.get(name="새로운과목2").code, "CS202")
+class UploadFormTests(TestCase):
+    def test_upload_form_does_not_ask_subject_or_type(self):
+        user = User.objects.create_user(username="upload_form", password="pw")
+        self.client.force_login(user)
+        html = self.client.get(reverse("mypage:document_list")).content.decode()
+        for name in ("subject_code", "custom_subject_code", "document_type"):
+            self.assertNotIn(f'name="{name}"', html)
 
 
 class QuizMergeTests(TestCase):

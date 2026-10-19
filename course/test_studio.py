@@ -38,7 +38,7 @@ class StudioBase(TestCase):
         self.lecturer = User.objects.create_user(username="lec", password="pw", is_lecturer=True)
         self.lecturer2 = User.objects.create_user(username="lec2", password="pw", is_lecturer=True)
         self.student = User.objects.create_user(username="stu", password="pw", is_student=True)
-        self.docs = [self.doc(i) for i in range(studio.COURSE_DRAFT_THRESHOLD)]
+        self.docs = [self.doc(i) for i in range(3)]
 
     def doc(self, i, summary=None):
         return PersonalDocument.objects.create(user=self.student, title=f"자료{i}", subject_code="DB101",
@@ -80,8 +80,8 @@ class MarkupAndNormalizeTestCase(TestCase):
 
 
 class BuildDraftTestCase(StudioBase):
-    def test_below_threshold_no_ai(self):
-        self.docs[-1].delete()
+    def test_no_course_material_no_ai(self):
+        PersonalDocument.objects.update(is_course_material=False)  # AI가 강의 자료가 아니라고 본 자료
         draft, outline, _ = self.build()
         self.assertIsNone(draft)
         outline.assert_not_called()

@@ -2,8 +2,8 @@
 AI 강의 초안 → 강의자 검토 → 게시.
 
 흐름:
-  1. 같은 과목 코드로 요약된 과제 자료가 COURSE_DRAFT_THRESHOLD개 이상이면 build_draft()가 초안을 만든다
-     (mypage 업로드 후 백그라운드). 강의는 바로 바뀌지 않는다.
+  1. 업로드된 자료는 AI가 주제로 분류하고, 그 주제에 강의를 만들 만큼 자료가 모였다고 AI가 판단하면
+     build_draft()가 초안을 만든다 (course/topics.py, mypage 업로드 후 백그라운드). 강의는 바로 바뀌지 않는다.
   2. 강의자(is_lecturer)가 judge > 강의 생성 탭에서 초안을 학생 화면 그대로 미리 보고, 확인 문제까지 풀어 본다.
      카드·문제 문구는 고칠 수 있다 (AI 호출 없음).
   3. 승인하면 publish_draft()가 저장된 내용을 그대로 강의로 옮긴다 — 게시할 때 AI를 다시 부르지 않는다.
@@ -30,7 +30,6 @@ from .models import Course, CourseCategory, CourseDraft, Lesson, LessonQuizResul
 
 logger = logging.getLogger(__name__)
 
-COURSE_DRAFT_THRESHOLD = 5
 AI_CATEGORY = "AI 자동 생성"
 
 
@@ -60,8 +59,7 @@ def eligible_docs(subject_code):
     from mypage.models import PersonalDocument, ProcessingStatus
 
     rows = (PersonalDocument.objects
-            .filter(subject_code=subject_code, summary_status=ProcessingStatus.DONE,
-                    document_type=PersonalDocument.DocumentType.ASSIGNMENT)
+            .filter(subject_code=subject_code, summary_status=ProcessingStatus.DONE, is_course_material=True)
             .exclude(summary="").order_by("id").values("id", "title", "summary"))
     return list(rows)
 
@@ -97,12 +95,13 @@ def _previous(subject_code):
 
 
 def build_draft(subject_code):
-    """조건이 되면 AI 초안을 만든다. 만들었으면 CourseDraft, 아니면 None.
+    """이 주제의 강의 자료로 AI 초안을 만든다. 만들었으면 CourseDraft, 아니면 None.
+    만들지 말지(자료가 충분한지)는 부르는 쪽(course/topics.py)이 AI 판단으로 정한다.
     같은 입력으로 이미 만들었거나 만드는 중이면 AI를 부르지 않고 None."""
     if not subject_code:
         return None
     docs = eligible_docs(subject_code)
-    if len(docs) < COURSE_DRAFT_THRESHOLD:
+    if not docs:
         return None
     source_hash = _sha("draft", _doc_fingerprint(docs))
     try:

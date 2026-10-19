@@ -30,6 +30,8 @@ MAX_OUTPUT_TOKENS = {
     "ocr": 3000,
     "question": 500,
     "grading": 300,
+    "classify": 300,
+    "course_readiness": 300,
     "course_outline": 1500,
     "course_chapter": 6000,
 }

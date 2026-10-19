@@ -274,6 +274,8 @@ AI_MODELS = {
     "ocr": config("AI_MODEL_OCR", default=MYPAGE_CHAT_MODEL),                    # 이미지 자료 글자 읽기
     "question": config("AI_MODEL_QUESTION", default=MYPAGE_CHAT_MODEL),          # 복습 문제 생성
     "grading": config("AI_MODEL_GRADING", default=MYPAGE_CHAT_MODEL),            # 단답·서술형 채점
+    "classify": config("AI_MODEL_CLASSIFY", default=MYPAGE_CHAT_MODEL),          # 자료 주제 분류
+    "course_readiness": config("AI_MODEL_COURSE_READINESS", default=MYPAGE_CHAT_MODEL),  # 강의 개설 가능 판단
     "course_outline": config("AI_MODEL_COURSE_OUTLINE", default=MYPAGE_CHAT_MODEL),  # 강의 목차
     "course_chapter": config("AI_MODEL_COURSE_CHAPTER", default=MYPAGE_CHAT_MODEL),  # 강의 챕터 본문
 }
