@@ -3,6 +3,7 @@ from django.db import models, transaction
 from django.urls import reverse
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.conf import settings
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.db.models import Q, F
 from PIL import Image
@@ -57,6 +58,8 @@ class User(AbstractUser):
     leaves = models.PositiveIntegerField(default=0, verbose_name="낙엽")
     # 할로윈 이벤트 전용 재화 (accounts/treats.py). 낙엽과 별개, 이벤트가 끝난 뒤에만 낙엽으로 환전
     treats = models.PositiveIntegerField(default=0, verbose_name="사탕")
+    # 학습 모듈(judge 사이트) 재화 (accounts/credits.py). 낙엽·사탕과 별개, 잔액은 원장(CreditTransaction)과 함께만 바뀐다
+    credits = models.PositiveIntegerField(default=0, verbose_name="크레딧")
     # 놀이터 게임의 AI 플레이어 계정 (is_active=False로 만들어 로그인·랭킹·목록에서 빠진다)
     is_bot = models.BooleanField(default=False, verbose_name="AI 봇")
     # 졸업생: 본인 신청 → 운영진 승인. 기능 제한 없이 이름 옆에 졸업생 마크만 붙는다.
@@ -467,6 +470,38 @@ class Friendship(models.Model):
         return cls.objects.filter(
             models.Q(from_user=a, to_user=b) | models.Q(from_user=b, to_user=a)
         ).first()
+
+
+class CreditTransaction(models.Model):
+    """크레딧 원장. 거래마다 거래 후 잔액과 회원별 해시 체인(낙엽 원장과 같은 방식)을 남기고, 한 번 쓰면 고칠 수 없다.
+    거래는 accounts/credits.py의 grant / spend로만 만든다."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="credit_transactions")
+    amount = models.IntegerField(verbose_name="변동 수량")  # 양수: 획득, 음수: 사용
+    balance_after = models.PositiveIntegerField(verbose_name="거래 후 잔액")
+    transaction_type = models.CharField(max_length=50, verbose_name="거래 유형")
+    description = models.CharField(max_length=255, blank=True, verbose_name="상세 내용")
+    created_at = models.DateTimeField(default=timezone.now, editable=False, verbose_name="거래 일시")
+    previous_hash = models.CharField(max_length=64, blank=True, verbose_name="이전 거래 해시")
+    hash = models.CharField(max_length=64, blank=True, verbose_name="현재 거래 해시")
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["user", "created_at"], name="credit_tx_user_created")]
+        verbose_name = "크레딧 거래 내역"
+        verbose_name_plural = "크레딧 거래 내역"
+
+    def __str__(self):
+        return f"{self.user} {self.amount:+d} ({self.transaction_type})"
+
+    def calculate_hash(self):
+        raw = (f"{self.previous_hash}{self.user_id}{self.amount}{self.balance_after}"
+               f"{self.transaction_type}{self.created_at.isoformat()}")
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise PermissionError("이미 기록된 거래 이력은 수정할 수 없습니다.")
+        super().save(*args, **kwargs)
 
 
 class TreatTransaction(models.Model):
