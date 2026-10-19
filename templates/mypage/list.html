@@ -106,6 +106,14 @@
                         <p class="text-sm font-bold text-slate-700 truncate w-full">{{ document.title }}</p>
                         <p class="text-[11px] text-slate-400">{{ document.uploaded_at|date:"Y-m-d" }}</p>
                     </a>
+                    {% if document.summary_status == 'failed' or not document.summary %}
+                    {% if document.summary_status != 'processing' %}
+                    <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="text-center">
+                        {% csrf_token %}
+                        <button type="submit" class="text-[11px] font-bold text-amber-600 hover:text-amber-700"><i class="fa-solid fa-rotate-right mr-1"></i>요약 실패 · 다시 만들기</button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
                     <form method="post" action="{% url 'mypage:document_delete' document.pk %}" onsubmit="return confirm('삭제하시겠습니까?');" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
                         {% csrf_token %}
                         <button type="submit" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-xmark"></i></button>

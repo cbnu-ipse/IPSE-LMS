@@ -203,7 +203,7 @@ def generate_summary(extracted_text, user=None):
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}
 
 
-def generate_one_question(extracted_text, question_type, existing_questions=(), user=None):
+def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0):
     """문서 본문을 근거로 지정된 유형(ox/short/essay)의 문제를 1개 만든다.
     반환: {"question", "answer", "explanation"} — explanation은 OX 해설(틀렸을 때 보여줌, 다시 부르지 않음).
     문서 본문을 시스템 메시지에 고정해 같은 문서로 여러 문제를 만들 때 프롬프트 캐시가 적용되게 한다."""
@@ -211,21 +211,72 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         "학생이 올린 학습 자료만 근거로 복습 문제를 1개 만듭니다. 자료에 없는 내용은 묻지 않습니다.\n"
         'JSON으로만 답하세요: {"question": "...", "answer": "...", "explanation": "..."}\n'
         "- OX 문제의 answer는 O 또는 X, explanation은 정답 근거를 한두 문장으로.\n"
-        "- 단답형의 answer는 짧은 정답(여러 표현이 맞으면 ' / '로 구분), 서술형은 모범답안.\n\n"
-        + core_ai.untrusted("자료", extracted_text[:QUESTION_INPUT_CHARS])
+        "- 단답형의 answer는 짧은 정답(여러 표현이 맞으면 ' / '로 구분), 서술형은 모범답안.\n"
+        "- 문제 문장에 'OX로 답하시오', '단답으로 쓰시오' 같은 답변 방식 안내는 붙이지 마세요 (화면에 입력 방법이 있습니다).\n\n"
+        + core_ai.untrusted("자료", question_window(extracted_text, index))
     )
     request = f"{QUESTION_TYPE_LABELS[question_type]} 문제 1개를 만들어주세요."
     if existing_questions:
-        request += "\n이미 만든 문제와 겹치지 않게:\n" + "\n".join(f"- {q}" for q in existing_questions)
+        request += ("\n이미 만든 문제들입니다. 같은 내용을 묻거나 표현만 바꾼 문제는 만들지 말고, "
+                    "자료의 다른 부분에서 새 문제를 만드세요:\n" + "\n".join(f"- {q}" for q in existing_questions))
     data = core_ai.complete_json("question", [
         {"role": "system", "content": system},
         {"role": "user", "content": request},
     ], user=user)
     return {
-        "question": data.get("question", ""),
+        "question": clean_question_text(data.get("question", "")),
         "answer": data.get("answer", ""),
         "explanation": data.get("explanation", "") if question_type == "ox" else "",
     }
+
+
+# 문제 끝에 붙은 답변 방식 지시 ("OX로 답하시오.", "O/X 중에서 고르시오." 등) — 화면에 이미 O/X 버튼이 있다
+_ANSWER_INSTRUCTION = re.compile(
+    r"[\s,.]*[(\[]?\s*(?:OX|O\s*/\s*X|O\s*,\s*X|O\s*또는\s*X|참\s*/\s*거짓|참\s*또는\s*거짓)"
+    r"\s*(?:문제)?\s*(?:중에서|중|으로|로|를|만)?\s*(?:답|고르|선택|판단|표시|응답)\w*\s*(?:하시오|하세요|하라|오|시오|십시오)?"
+    r"[.\s!]*[)\]]?\s*$")
+
+
+def clean_question_text(text):
+    """문제 문장 끝의 'OX로 답하시오.' 같은 답변 방식 지시를 떼어 낸다 (문장이 남으면 마침표를 붙인다)."""
+    text = (text or "").strip()
+    cleaned = _ANSWER_INSTRUCTION.sub("", text).strip()
+    if not cleaned:
+        return text
+    return cleaned if cleaned[-1] in ".?!。" else cleaned + "."
+
+
+def _normalize_for_compare(text):
+    return re.sub(r"[\s.,!?'\"()\[\]{}·`~\-]+", "", clean_question_text(text).lower())
+
+
+def is_duplicate_question(text, others, threshold=0.82):
+    """이미 있는 문제와 같거나 거의 같은 문장인지 (공백·문장부호 무시, 유사도 threshold 이상)."""
+    from difflib import SequenceMatcher
+
+    target = _normalize_for_compare(text)
+    if not target:
+        return True
+    for other in others:
+        o = _normalize_for_compare(other)
+        if o and (o == target or SequenceMatcher(None, o, target).ratio() >= threshold):
+            return True
+    return False
+
+
+def question_window(text, index):
+    """긴 문서는 앞부분만 넣으면 매번 같은 문제가 나오므로, 문제를 만들 때마다 문서의 다른 구간을 준다.
+    index번째 문제 → index % (구간 수)번째 구간 (구간 크기 QUESTION_INPUT_CHARS, 문단 경계에 맞춰 자름)."""
+    size = QUESTION_INPUT_CHARS
+    if len(text) <= size:
+        return text
+    count = -(-len(text) // size)
+    start = (index % count) * size
+    chunk = text[start:start + size]
+    # 구간 앞이 문장 중간이면 다음 줄바꿈부터 시작
+    if start and "\n" in chunk[:300]:
+        chunk = chunk.split("\n", 1)[1]
+    return chunk
 
 
 def _normalize_answer(text):
