@@ -43,6 +43,69 @@
         {% endif %}
     </div>
 
+    {% if diff %}
+    <div class="mb-8 bg-white border border-amber-200 rounded-2xl p-6">
+        <h2 class="text-lg font-bold text-slate-800 mb-1"><i class="fa-solid fa-code-compare text-amber-500 mr-1.5"></i>게시된 강의에서 달라진 부분</h2>
+        {% if diff.counts.total == 0 %}
+        <p class="text-sm text-slate-500">게시된 강의와 달라진 내용이 없습니다.</p>
+        {% else %}
+        <div class="flex flex-wrap gap-2 my-3 text-xs font-bold">
+            {% if diff.counts.chapters_added %}<span class="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700">챕터 추가 {{ diff.counts.chapters_added }}</span>{% endif %}
+            {% if diff.counts.chapters_removed %}<span class="px-2 py-1 rounded-md bg-rose-50 text-rose-600">챕터 삭제 {{ diff.counts.chapters_removed }}</span>{% endif %}
+            {% if diff.counts.sets_added %}<span class="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700">세트 추가 {{ diff.counts.sets_added }}</span>{% endif %}
+            {% if diff.counts.sets_modified %}<span class="px-2 py-1 rounded-md bg-amber-50 text-amber-700">세트 수정 {{ diff.counts.sets_modified }}</span>{% endif %}
+            {% if diff.counts.sets_removed %}<span class="px-2 py-1 rounded-md bg-rose-50 text-rose-600">세트 삭제 {{ diff.counts.sets_removed }}</span>{% endif %}
+            {% if diff.meta_changed %}<span class="px-2 py-1 rounded-md bg-slate-100 text-slate-600">강의 제목·설명 변경</span>{% endif %}
+        </div>
+        {% if diff.new_docs %}
+        <p class="text-xs text-slate-500 mb-3"><b>새로 반영된 자료</b> · {% for title in diff.new_docs %}{{ title }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+        {% endif %}
+        <div class="space-y-2">
+            {% for ch in diff.chapters %}{% if ch.status != 'same' %}
+            <details class="border border-slate-100 rounded-xl" open>
+                <summary class="flex flex-wrap items-center gap-2 px-4 py-2.5 cursor-pointer list-none">
+                    <span class="font-bold text-slate-800">{{ ch.index|add:1 }}강 {{ ch.title }}</span>
+                    {% if ch.old_title %}<span class="text-xs text-slate-400">(이전 제목: {{ ch.old_title }})</span>{% endif %}
+                    {% if ch.status == 'added' %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">새 챕터</span>
+                    {% elif ch.status == 'removed' %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600">삭제됨</span>
+                    {% else %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">수정</span>{% endif %}
+                </summary>
+                <div class="px-4 pb-3 space-y-3">
+                    {% for st in ch.sets %}{% if st.status != 'same' %}
+                    <div class="text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-slate-700">{{ st.title }}</span>
+                            {% if st.status == 'added' %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">추가 · 카드 {{ st.card_count }} · 문제 {{ st.question_count }}</span>
+                            {% elif st.status == 'removed' %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600">삭제</span>
+                            {% else %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">수정</span>{% endif %}
+                        </div>
+                        {% for card in st.cards %}
+                        <div class="mt-2 border border-slate-100 rounded-lg overflow-hidden">
+                            <div class="px-3 py-1.5 bg-slate-50 text-xs font-bold text-slate-500">카드 «{{ card.title }}»{% if card.old_title %} (이전 제목: {{ card.old_title }}){% endif %} · {% if card.status == 'added' %}추가{% elif card.status == 'removed' %}삭제{% else %}수정{% endif %}</div>
+                            <div class="font-mono text-xs leading-relaxed">
+                                {% for kind, line in card.lines %}
+                                <div class="px-3 whitespace-pre-wrap break-words {% if kind == 'add' %}bg-emerald-50 text-emerald-800{% elif kind == 'del' %}bg-rose-50 text-rose-700 line-through decoration-rose-300{% elif kind == 'gap' %}text-slate-300{% else %}text-slate-500{% endif %}">{% if kind == 'add' %}+ {% elif kind == 'del' %}− {% else %}&nbsp; {% endif %}{{ line }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% if st.questions.added or st.questions.removed or st.questions.modified %}
+                        <ul class="mt-2 text-xs space-y-0.5">
+                            {% for q in st.questions.added %}<li class="text-emerald-700">+ 문제 추가: {{ q }}</li>{% endfor %}
+                            {% for q in st.questions.removed %}<li class="text-rose-600">− 문제 삭제: {{ q }}</li>{% endfor %}
+                            {% for q in st.questions.modified %}<li class="text-amber-700">~ 문제 수정(보기·정답·해설): {{ q }}</li>{% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    {% endif %}{% endfor %}
+                </div>
+            </details>
+            {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     {% for chapter in chapters %}
     <div class="mb-6">
         <h2 class="flex flex-wrap items-center gap-2 text-lg font-bold text-slate-800">

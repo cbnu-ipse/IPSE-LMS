@@ -39,7 +39,7 @@ LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다
   - `_generate_summary_bg(document_id)`: 요약 생성 → `PersonalDocument` 업데이트 →
     `_classify_and_build`(→ `course.topics.after_summary`). 분류·초안 단계가 실패해도 요약은 그대로 남는다.
   - **주제는 사람이 고르지 않는다** (`course/topics.py`): 요약이 끝나면 AI가 기존 주제 목록(이름 + 설명)을
-    보고 주제(`subject_code`)와 강의 자료로 쓸지(`is_course_material`)를 정한다. 강의 자료면 "충분한가"를 미리
+    보고 주제들(`PersonalDocument.topics` 다대다, 최대 3개 — 새 강의를 만들면서 기존 강의에도 추가될 수 있음, 대표 주제는 `subject_code`)을 정한다. 강의 자료면 "충분한가"를 미리
     판단하지 않고, 어떤 자료든 걸러내지 않고 항상 초안을 만들거나 갱신한다(같은 자료면 AI를 다시 부르지 않음). 강의자는 강의 생성 탭의 주제별 현황·
     자료 가공 결과(`studio.topic_overview`/`topic_detail`)를 보고 언제든 승인해 개설한다(2.2절).
   - `document_delete`: 실제 삭제 대신 `is_deleted=True`만 저장(소프트 삭제) — 사용자 화면에서는
@@ -54,7 +54,8 @@ LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다
 
 - **`course/ai.py`**: 두 단계 생성. `generate_outline`(목차: 자료 제목 + 요약 앞부분만 보고 챕터와
   챕터별 근거 자료를 고름) → `generate_chapter`(챕터마다 그 챕터의 요약만 넣어 학습 세트 = 개념 카드 +
-  확인 문제(OX/객관식/단답)를 만듦). 강의의 목적은 원문 재현이 아니라 그 과목을 재미있게 잘 가르치는 것이라
+  확인 문제(OX/객관식/단답)를 만듦). 강의는 스크롤 없이 한 걸음씩 배우도록 챕터를 짧은 세트(카드 1~3장, 카드당 250자 안팎, 문제 1~3개)로
+  잘게 쪼갠다(`FORMAT_VERSION`이 해시에 들어가 형식이 바뀌면 다시 생성). 강의의 목적은 원문 재현이 아니라 그 과목을 재미있게 잘 가르치는 것이라
   프롬프트가 자료를 참고용으로만 쓰게 한다. 출력은 `normalize_*`로 검증·정리한다.
 - **`course/studio.py`**: 초안(`CourseDraft`)의 생성·수정·승인·반려.
   - `build_draft`: 같은 입력(요약 해시)으로는 다시 만들지 않는다(DB 유니크 제약 → 동시 업로드에도 AI 호출 1회).

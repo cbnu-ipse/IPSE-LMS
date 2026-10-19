@@ -73,6 +73,8 @@ class PersonalDocument(models.Model):
         verbose_name="자료 구분",
         help_text="과제(문제 제작용)만 자동 강의 생성 대상에 포함됩니다.",
     )
+    # 한 자료가 여러 강의(주제)에 쓰일 수 있다. subject_code는 그중 첫 번째(대표) 주제 이름 — 목록 표시용
+    topics = models.ManyToManyField(Subject, blank=True, related_name="documents", verbose_name="소속 주제")
     # 강의 생성에 쓸 만한 학습 자료인지 (업로드 후 AI가 주제와 함께 판단). 예전 '자료 구분'을 대신한다
     is_course_material = models.BooleanField(default=True, verbose_name="강의 자료로 사용 (AI 판단)")
     is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")

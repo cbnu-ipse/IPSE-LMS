@@ -1,46 +1,44 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+{% load static %}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{{ set_title }} · {{ course_title }}</title>
 <style>
 /* 학습 세트 화면: 상단 바 + 개념 카드 + 확인 문제 + 하단 이동 바. 한 손으로 쓰는 폰 화면이 기준 */
 :root{
-  --bg:#F1F5F4; --surface:#FFFFFF; --ink:#14201C; --muted:#5B6B66; --line:#D6E0DC;
-  --accent:#047857; --accent-ink:#FFFFFF; --accent-soft:#DDF3EA;
-  --ok:#15803D; --ok-soft:#DCFCE7; --bad:#C2410C; --bad-soft:#FFEDD5; --code:#E9EFED; --mark:#FEF3C7;
+  /* 잎새 사이트와 같은 팔레트 (slate + emerald), 다크 모드 없음 */
+  --bg:#f8fafc; --surface:#ffffff; --ink:#1e293b; --muted:#64748b; --line:#e2e8f0;
+  --accent:#059669; --accent-dark:#047857; --accent-ink:#ffffff; --accent-soft:#ecfdf5;
+  --ok:#059669; --ok-soft:#ecfdf5; --bad:#e11d48; --bad-soft:#fff1f2; --code:#f1f5f9; --mark:#fef3c7;
 }
-@media (prefers-color-scheme: dark){:root{
-  --bg:#0D1412; --surface:#16211E; --ink:#E4EDEA; --muted:#93A6A0; --line:#27352F;
-  --accent:#34D399; --accent-ink:#06261B; --accent-soft:#163A2D;
-  --ok:#4ADE80; --ok-soft:#14321F; --bad:#FB923C; --bad-soft:#3A2414; --code:#1F2C28; --mark:#3D3410;
-  color-scheme:dark;
-}}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink)}
-body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;font-size:16px;line-height:1.65;
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:15px;line-height:1.7;
   word-break:keep-all;overflow-wrap:anywhere;-webkit-text-size-adjust:100%}
 button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.top{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+.top{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);box-shadow:0 1px 2px rgba(15,23,42,.04);
   padding:10px max(16px,env(safe-area-inset-left));display:flex;align-items:center;gap:10px;min-height:56px}
 .top .t{flex:1;min-width:0}
 .eyebrow{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.title{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title{font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pos{font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap}
-.close{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:700;
+.brand{display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--accent-dark);font-weight:900;font-size:15px;flex-shrink:0}
+.brand img{width:26px;height:26px;border-radius:8px}
+.close{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:6px 12px;font-size:13px;font-weight:700;
   text-decoration:none;color:var(--ink)}
 .prog{height:4px;background:var(--line)}.prog i{display:block;height:100%;background:var(--accent)}
-.banner{background:var(--mark);color:var(--ink);font-size:13px;font-weight:700;padding:8px 16px;text-align:center}
+.banner{background:#fffbeb;border-bottom:1px solid #fde68a;color:var(--ink);font-size:13px;font-weight:700;padding:8px 16px;text-align:center}
 main{max-width:720px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-left)) 120px;display:flex;flex-direction:column;gap:14px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px 10px}
-.card h3{margin:0 0 8px;font-size:18px;line-height:1.4}
-.card .n{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 20px 12px;box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.card h3{margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:800;color:var(--ink)}
+.card .n{display:inline-block;font-size:11px;color:var(--accent-dark);background:var(--accent-soft);font-weight:800;margin-bottom:6px;padding:2px 8px;border-radius:999px}
 .card p{margin:0 0 10px}.card ul,.card ol{margin:0 0 10px;padding-left:1.2em}.card li{margin:0 0 4px}
 .card li.lc-sub{margin-left:1.1em;list-style:circle}
 .card h4{margin:12px 0 6px;font-size:15px}
-.card strong{color:var(--accent)}
+.card strong{color:var(--accent-dark);font-weight:800}
 code{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:.88em;background:var(--code);padding:.05em .35em;border-radius:4px}
 .lc-pre{margin:0 0 12px;padding:10px 12px;background:var(--code);border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.55}
 .lc-pre code{background:none;padding:0;white-space:pre}
@@ -50,7 +48,7 @@ code{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:.88em;b
 .lc-table th{background:var(--bg)}
 h2.sec{font-size:17px;margin:10px 0 0;display:flex;align-items:center;gap:8px}
 h2.sec .score{margin-left:auto;font-size:13px;color:var(--muted);font-weight:700}
-.q{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:10px}
 .q .qt{font-weight:800;line-height:1.5}
 .q .qn{font-size:12px;color:var(--muted);font-weight:700}
 .ox{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -60,6 +58,7 @@ h2.sec .score{margin-left:auto;font-size:13px;color:var(--muted);font-weight:700
 .sa{display:flex;gap:8px}
 .sa input{flex:1;min-width:0;font:inherit;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--ink)}
 .sa button{border:0;border-radius:12px;padding:0 16px;background:var(--accent);color:var(--accent-ink);font-weight:800}
+.sa button:hover{background:var(--accent-dark)}
 .picked{border-color:var(--bad)!important;background:var(--bad-soft)!important}
 .right{border-color:var(--ok)!important;background:var(--ok-soft)!important}
 button[disabled]{cursor:default}
@@ -74,12 +73,14 @@ button[disabled]{cursor:default}
 .bar a{flex:1;text-align:center;text-decoration:none;border-radius:12px;padding:13px;font-weight:800;border:1px solid var(--line);
   background:var(--surface);color:var(--ink)}
 .bar a.go{flex:2;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.bar a.go:hover{background:var(--accent-dark)}
 .bar a.off{opacity:.4;pointer-events:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <header class="top">
+  <a class="brand" href="/" title="잎새 홈"><img src="{% static 'img/IPSE-LOGO.png' %}" alt="">잎새</a>
   <div class="t">
     <div class="eyebrow">{{ course_title }} · {{ chapter_no }}강 {{ chapter_title }}</div>
     <div class="title">{{ set_title }}</div>

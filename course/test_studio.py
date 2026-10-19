@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from mypage.models import PersonalDocument, ProcessingStatus
+from mypage.models import PersonalDocument, ProcessingStatus, Subject
 
 from . import ai as course_ai
 from . import markup, studio
@@ -41,8 +41,10 @@ class StudioBase(TestCase):
         self.docs = [self.doc(i) for i in range(3)]
 
     def doc(self, i, summary=None):
-        return PersonalDocument.objects.create(user=self.student, title=f"자료{i}", subject_code="DB101",
-                                               summary=summary or f"요약 {i}", summary_status=ProcessingStatus.DONE)
+        doc = PersonalDocument.objects.create(user=self.student, title=f"자료{i}", subject_code="DB101",
+                                              summary=summary or f"요약 {i}", summary_status=ProcessingStatus.DONE)
+        doc.topics.add(Subject.objects.get_or_create(name="DB101")[0])
+        return doc
 
     def build(self, titles=("조인",), sets=SETS):
         with patch.object(course_ai, "generate_outline", return_value=outline_for(self.docs, titles)) as outline, \
@@ -324,8 +326,9 @@ class MaterialsListTestCase(StudioBase):
     def test_lecturer_sees_unassigned_and_user_deleted_docs_and_can_search(self):
         PersonalDocument.objects.create(user=self.student, title="미분류 노트", subject_code="", summary="캐시 일관성",
                                         summary_status=ProcessingStatus.DONE)
-        PersonalDocument.objects.create(user=self.student, title="삭제된노트", subject_code="DB101", is_deleted=True,
+        gone = PersonalDocument.objects.create(user=self.student, title="삭제된노트", subject_code="DB101", is_deleted=True,
                                         extracted_text="트리거 설명")
+        gone.topics.add(Subject.objects.get(name="DB101"))
         self.client.force_login(self.lecturer)
         res = self.client.get(reverse("course_studio_materials"))
         self.assertContains(res, "미분류 노트")
@@ -342,3 +345,47 @@ class MaterialsListTestCase(StudioBase):
         self.client.force_login(self.lecturer)
         self.client.post(reverse("course_studio_material_delete", args=[doc.pk]))
         self.assertFalse(PersonalDocument.objects.filter(pk=doc.pk).exists())
+
+
+class DraftDiffTestCase(StudioBase):
+    def published_course(self):
+        draft, _, _ = self.build()
+        return studio.publish_draft(draft.pk, self.lecturer)
+
+    def test_new_course_draft_has_no_diff(self):
+        draft, _, _ = self.build()
+        self.assertIsNone(studio.diff_draft(draft))
+
+    def test_diff_reports_modified_added_and_removed_parts_with_line_changes(self):
+        course = self.published_course()
+        edit = studio.start_edit_draft(course, self.lecturer)
+        self.assertEqual(studio.diff_draft(edit)["counts"]["total"], 0)
+        studio.update_card(edit.pk, 0, 0, 0, "JOIN", "**JOIN**은 짝이 있는 행만 남긴다.\n- 짝 없는 행은 **버린다**\n새 줄")
+        edit.refresh_from_db()
+        edit.content["chapters"][0]["sets"].append({"title": "새 세트", "cards": [{"title": "c", "body": "b"}],
+                                                    "questions": []})
+        edit.save()
+        diff = studio.diff_draft(edit)
+        self.assertEqual((diff["counts"]["sets_modified"], diff["counts"]["sets_added"]), (1, 1))
+        card = diff["chapters"][0]["sets"][0]["cards"][0]
+        kinds = {k for k, _ in card["lines"]}
+        self.assertTrue({"add", "del"} <= kinds)
+        self.assertIn(("add", "새 줄"), card["lines"])
+        edit.content["chapters"][0]["sets"].pop(0)                       # 첫 세트 삭제
+        edit.save()
+        self.assertEqual(studio.diff_draft(edit)["counts"]["sets_removed"], 1)
+
+    def test_question_changes_and_detail_page_shows_them(self):
+        course = self.published_course()
+        edit = studio.start_edit_draft(course, self.lecturer)
+        edit.content["chapters"][0]["sets"][0]["questions"][0]["answer"] = True      # 정답 수정
+        edit.content["chapters"][0]["sets"][0]["questions"].pop()                    # 문제 삭제
+        edit.save()
+        diff = studio.diff_draft(edit)
+        q = diff["chapters"][0]["sets"][0]["questions"]
+        self.assertEqual((len(q["modified"]), len(q["removed"])), (1, 1))
+        self.client.force_login(self.lecturer)
+        res = self.client.get(reverse("course_studio_detail", args=[edit.pk]))
+        self.assertContains(res, "게시된 강의에서 달라진 부분")
+        self.assertContains(res, "문제 삭제")
+        self.assertContains(self.client.get(reverse("course_studio")), "세트 수정 1")

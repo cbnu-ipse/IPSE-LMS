@@ -3,8 +3,8 @@
 
 업로드 → 요약이 끝나면 after_summary(document_id):
   1. classify_document: 자료 제목과 요약 앞부분, 기존 주제 목록(이름 + 설명)을 보고 AI가 어느 주제인지
-     (기존 주제 중 하나, 없으면 새 주제 이름과 한 줄 설명)를 정한다. 자료는 걸러내지 않는다 — 어떤 자료든 강의에 쓰인다.
-     결과는 PersonalDocument.subject_code, 새 주제는 Subject에 남는다.
+     (기존 주제 중 하나 이상 + 필요하면 새 주제, 최대 3개)를 정한다. 그래서 한 자료가 새 강의를 만들면서 기존 강의에도 추가될 수 있다. 자료는 걸러내지 않는다 — 어떤 자료든 강의에 쓰인다.
+     결과는 PersonalDocument.topics(다대다)와 대표 주제 subject_code, 새 주제는 Subject에 남는다.
   2. 강의는 항상 만든다: 자료가 한 주제에 들어올 때마다 그 주제의 강의 초안을 (자료가 바뀌었을 때만) 만들거나 갱신한다
      (course/studio.build_draft, 근거가 그대로인 챕터는 재사용하므로 바뀐 챕터만 AI가 다시 쓴다).
      "충분한가"를 AI가 미리 판단해 막지 않는다. 초안은 강의자가 judge > 강의 생성에서 언제든 보고, 개설할 수 있다고
@@ -21,15 +21,16 @@ logger = logging.getLogger(__name__)
 HEAD_CHARS = 800          # 분류할 때 넣는 요약 앞부분
 MAX_TOPICS_IN_PROMPT = 60
 
-CLASSIFY_SYSTEM = (
-    "대학 동아리 학습 플랫폼에 올라온 자료를 분류합니다.\n"
-    "어떤 자료든 일단 강의에 쓰입니다(걸러내지 않음). 아래 항목만 정하세요.\n"
-    "1. topic: 기존 주제 중 같은 과목·분야면 그 이름을 글자 그대로 쓰고, 맞는 게 없을 때만 새 주제 이름을 짓는다. "
-    "새 이름은 과목 단위로 넓게(예: '데이터베이스', '운영체제'), 20자 이내.\n"
-    "2. description: 새 주제일 때만 그 주제가 다루는 범위를 한 문장으로.\n"
-    'JSON으로만 답하세요: {"topic": "...", "description": "..."}'
-)
+MAX_TOPICS_PER_DOC = 3
 
+CLASSIFY_SYSTEM = (
+    "대학 동아리 학습 플랫폼에 올라온 자료를 분류합니다. 어떤 자료든 걸러내지 않고 강의에 씁니다.\n"
+    "- topics: 이 자료가 다루는 주제(과목·분야) 1~3개. 자료가 한 과목만 다루면 하나만 씁니다.\n"
+    "- 기존 주제와 맞으면 그 이름을 글자 그대로 쓰고, 맞는 게 없을 때만 새 주제 이름을 짓습니다. "
+    "기존 주제와 새 주제를 함께 써도 됩니다 (예: 기존 '데이터베이스'에 더해 새 주제 '트랜잭션 심화').\n"
+    "- 새 이름은 과목 단위로 넓게(예: '데이터베이스', '운영체제'), 20자 이내. description은 새 주제일 때만 그 범위를 한 문장으로.\n"
+    'JSON으로만 답하세요: {"topics": [{"name": "...", "description": "..."}]}'
+)
 
 
 def _topics_listing():
@@ -40,29 +41,43 @@ def _topics_listing():
 
 
 def classify_document(document):
-    """주제·사용 여부를 정해 저장한다. 같은 파일이 이미 분류돼 있으면 AI를 부르지 않고 그 결과를 쓴다."""
+    """자료가 속한 주제들을 정해 저장하고 이름 목록을 돌려준다 (대표 주제 = 첫 번째, subject_code에도 남김).
+    같은 파일이 이미 분류돼 있으면 AI를 부르지 않고 그 결과를 쓴다."""
     from mypage.models import PersonalDocument, Subject
 
     same = (PersonalDocument.objects.filter(content_hash=document.content_hash).exclude(pk=document.pk)
-            .exclude(subject_code="").first()) if document.content_hash else None
+            .filter(topics__isnull=False).first()) if document.content_hash else None
     if same:
-        topic = same.subject_code
+        subjects = list(same.topics.all())
     else:
         data = core_ai.complete_json("classify", [
             {"role": "system", "content": CLASSIFY_SYSTEM},
             {"role": "user", "content": "기존 주제:\n" + _topics_listing() + "\n\n"
                                         + core_ai.untrusted("자료", f"제목: {document.title}\n{document.summary[:HEAD_CHARS]}")},
         ], user=document.user, counts_as_request=False)
-        topic = str(data.get("topic") or "").strip()[:50]
-        if topic:
-            subject, created = Subject.objects.get_or_create(name=topic)
-            description = str(data.get("description") or "").strip()[:300]
+        entries = data.get("topics")
+        if not isinstance(entries, list):  # 예전 형식({"topic": ...})도 받아 준다
+            entries = [{"name": data.get("topic"), "description": data.get("description")}]
+        subjects = []
+        for entry in entries:
+            if len(subjects) >= MAX_TOPICS_PER_DOC:
+                break
+            entry = entry if isinstance(entry, dict) else {"name": entry}
+            name = str(entry.get("name") or "").strip()[:50]
+            if not name or any(s.name == name for s in subjects):
+                continue
+            subject, created = Subject.objects.get_or_create(name=name)
+            description = str(entry.get("description") or "").strip()[:300]
             if created and description:
                 subject.description = description
                 subject.save(update_fields=["description"])
-    PersonalDocument.objects.filter(pk=document.pk).update(subject_code=topic, is_course_material=True)
-    document.subject_code, document.is_course_material = topic, True
-    return topic, True
+            subjects.append(subject)
+    names = [s.name for s in subjects]
+    document.topics.set(subjects)
+    PersonalDocument.objects.filter(pk=document.pk).update(subject_code=names[0] if names else "",
+                                                           is_course_material=True)
+    document.subject_code, document.is_course_material = (names[0] if names else ""), True
+    return names
 
 
 def after_summary(document_id):
@@ -74,7 +89,5 @@ def after_summary(document_id):
     document = PersonalDocument.objects.select_related("user").get(pk=document_id)
     if not document.summary.strip():
         return None
-    topic, _ = classify_document(document)
-    if not topic:
-        return None
-    return build_draft(topic)  # 같은 자료로 이미 만든 초안이 있으면 AI를 부르지 않는다
+    drafts = [build_draft(name) for name in classify_document(document)]  # 주제마다 강의 초안 생성/갱신
+    return next((d for d in drafts if d), None)  # 같은 자료로 이미 만든 초안이 있으면 AI를 부르지 않는다
