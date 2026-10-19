@@ -1100,7 +1100,7 @@ footer { display: none !important; }
                     <li>진행 중인 방도 "관전"으로 들어가 볼 수 있습니다 (남의 손패는 공개된 것만). 빈자리가 있으면 관전하다 바로 앉을 수 있습니다.</li>
                     <li>사람이 부족하면 방에서 "AI 추가"를 누르세요. AI는 하우스 칩으로 앉고, 방이 가득 찼을 때 사람이 들어오면 자리를 비켜줍니다.</li>
                     <li>차례 제한시간 20초. 시간을 넘기면 AI가 대신 두고, 4번 연속이면 그 핸드가 끝난 뒤 퇴장합니다.</li>
-                    <li><b>블랙잭</b>: 하우스 딜러와 겨룹니다. 배팅은 빅블라인드의 1~10배, 딜러는 16 이하 히트·17 이상 스탠드(소프트 17 포함).
+                    <li><b>블랙잭</b>: 하우스 딜러와 겨룹니다. 배팅은 빅블라인드의 1~50배, 딜러는 16 이하 히트·17 이상 스탠드(소프트 17 포함).
                         블랙잭은 1.5배, 더블다운·스플릿(1회) 가능, 보험·서렌더 없음. AI와 시간초과 대리는 기본 전략표대로 둡니다.</li>
                 </ul>
             </details>`;
@@ -1781,7 +1781,7 @@ footer { display: none !important; }
         }
         if (state.can_bet) {
             const maxBet = Math.min(state.max_bet, state.my_stack);
-            const quick = [...new Set([state.min_bet, state.min_bet * 2, state.min_bet * 5, maxBet])].filter(v => v <= maxBet);
+            const quick = [...new Set([state.min_bet, state.min_bet * 5, state.min_bet * 10, state.min_bet * 25, maxBet])].filter(v => v <= maxBet);
             const prevInput = document.getElementById('pk-bj-amount');
             const value = prevInput ? prevInput.value : state.min_bet;
             rows.push(`<span class="pk-turn-countdown"><span data-countdown="bet">${state.bet_seconds_left}</span>초</span>

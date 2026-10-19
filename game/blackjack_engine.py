@@ -5,7 +5,7 @@
 규칙 계산과 AI 판단(기본 전략)은 game/blackjack.py.
 
 한 판의 흐름 (table.bj_state["phase"]):
-  betting  — BJ_BET_SECONDS 동안 배팅 (빅블라인드의 1~10배). AI는 최소 금액. 다 걸면 바로 다음으로.
+  betting  — BJ_BET_SECONDS 동안 배팅 (빅블라인드의 1~50배). AI는 최소 금액. 다 걸면 바로 다음으로.
              시간 안에 안 건 사람은 이번 판을 쉬고, 연속 POKER_MAX_TIMEOUTS번 쉬면 퇴장.
   playing  — 두 장씩 나눠준 뒤 (딜러가 A·10 카드를 보이면 블랙잭인지 먼저 확인), 자리 순서대로
              히트/스탠드/더블/스플릿. 시간초과하면 기본 전략으로 대신 둔다.
@@ -24,7 +24,7 @@ from .models import HouseBank, PokerHandLog
 BJ_BET_SECONDS = 12          # 배팅 시간(초)
 BJ_RESULT_SECONDS = 6        # 결과를 보여주는 시간(초)
 BJ_NEXT_ROUND_DELAY = BJ_RESULT_SECONDS + 3
-BJ_MAX_BET_MULTIPLIER = 10   # 최대 배팅 = 빅블라인드 × 10
+BJ_MAX_BET_MULTIPLIER = 50   # 최대 배팅 = 빅블라인드 × 50 (초보 1,000 · 중수 10,000 · 고수 100,000)
 BJ_RESHUFFLE_AT = 52         # 슈에 이만큼 안 남으면 새로 섞는다
 
 

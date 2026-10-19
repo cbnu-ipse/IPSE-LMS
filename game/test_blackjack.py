@@ -102,11 +102,12 @@ class BlackjackRoomTestCase(TestCase):
         state = poker_engine.get_state_for(self.u)
         self.assertEqual(state["table"]["game_type"], "blackjack")
         self.assertEqual(state["tables"][0]["game_type"], "blackjack")
-        self.assertEqual((state["min_bet"], state["max_bet"]), (200, 2000))
+        self.assertEqual((state["min_bet"], state["max_bet"]), (200, 10000))
         self.assertFalse(poker_engine.create_table(self.u, "intermediate", 4, "uno")[0])
         self.start_round()
         self.assertFalse(poker_engine.blackjack_bet(self.u, 199)[0])
-        self.assertFalse(poker_engine.blackjack_bet(self.u, 2001)[0])
+        self.assertFalse(poker_engine.blackjack_bet(self.u, 10001)[0])
+        self.assertTrue(poker_engine.blackjack_bet(self.u, 10000)[0])  # 최대 = 빅블라인드 × 50
         self.assertFalse(poker_engine.player_action(self.u, "call")[0])  # 홀덤 액션은 안 받는다
 
     def test_hit_stand_win_and_dealer_hole_card_hidden(self):
