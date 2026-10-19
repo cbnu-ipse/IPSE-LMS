@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import connection, transaction
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponseForbidden
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -218,6 +218,7 @@ def document_preview(request, pk):
         "question_types": GeneratedQuestion.QuestionType.choices,
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
+        "initial_state": _document_state(document),
     })
 
 
@@ -386,3 +387,21 @@ def document_resummarize(request, pk):
         threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
         messages.success(request, "요약을 다시 만들고 있습니다.")
     return back
+
+
+def _document_state(document):
+    """학습 화면이 폴링으로 비교하는 상태. 값이 바뀌면 화면을 새로 읽는다."""
+    return {
+        "summary_status": document.summary_status,
+        "has_summary": bool(document.summary.strip()),
+        "can_resummarize": _can_resummarize(document),
+        "questions": [[q.pk, q.status] for q in document.questions.order_by("pk")],
+    }
+
+
+@login_required
+def document_status(request, pk):
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
+    return JsonResponse(_document_state(document))

@@ -51,7 +51,11 @@ class ExtractionTestCase(TestCase):
         self.assertIn("원자성", md)
 
     def test_short_answer_local_match(self):
-        self.assertTrue(ai.matches_short_answer("정보 처리 / information processing", "Information-Processing"))
+        self.assertTrue(ai.matches_short_answer("정보 처리 | information processing", "Information-Processing"))
+        # ' / '는 항목 구분일 수 있어 대안으로 보지 않는다 (6개 중 하나만 써도 정답이 되면 안 된다)
+        self.assertFalse(ai.matches_short_answer("Ut / Re / Mi / Fa / Sol / La", "Ut"))
+        self.assertTrue(ai.matches_short_answer("Ut / Re / Mi / Fa / Sol / La", "Ut Re Mi Fa Sol La"))
+        self.assertEqual(ai.answer_diff("Ut / Re / Mi / Fa / Sol / La", "Ut Le Mi Fa Sol La"), (["le"], ["re"]))
         self.assertFalse(ai.matches_short_answer("LEFT JOIN", "JOIN"))
         with patch("core.ai.complete_json") as llm:
             self.assertTrue(ai.grade_answer("q", "LEFT JOIN", "left join", question_type="short")["is_correct"])

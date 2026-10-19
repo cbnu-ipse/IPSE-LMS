@@ -182,10 +182,19 @@ def _extract_image(raw, name, user=None):
 
 
 SUMMARY_INSTRUCTIONS = (
-    "학생이 올린 학습 자료를 요약합니다. 복습에 바로 쓸 수 있게 구조화하세요.\n"
-    "- 소제목(##)으로 나누고 필요하면 ###로 한 번 더 나눕니다.\n"
-    "- 핵심 개념·정의·중요 용어는 **볼드**로 표시합니다.\n"
-    "- 자료에 있는 정의·예시·수치는 빠뜨리지 말되, 같은 말을 되풀이하지 말고 짧은 문장·목록으로 씁니다.\n"
+    "학생이 올린 학습 자료를 요약합니다. 복습에 바로 쓸 수 있게 마크다운 서식을 적극 활용해 구조화하세요.\n"
+    "구조\n"
+    "- 큰 주제마다 `## 제목`, 그 안의 세부 주제는 `### 부제목`으로 나눕니다. 제목은 짧은 명사구로.\n"
+    "- 설명은 짧은 문장과 목록(`-`, 하위는 앞에 공백 2칸)으로. 순서·절차는 `1.` 번호 목록.\n"
+    "- 비교할 대상이 둘 이상이면 표(`| 구분 | 내용 |` + `|---|---|`)로 정리합니다.\n"
+    "- 정의·법칙은 `> ` 인용 한 줄로 따로 눈에 띄게.\n"
+    "강조 (적재적소에, 남발하지 않기)\n"
+    "- 핵심 용어·개념은 **굵게**.\n"
+    "- 꼭 외워야 할 핵심 한 구절은 ==형광펜==.\n"
+    "- 헷갈리기 쉬운 부분·주의할 점은 ~물결 밑줄~ (앞뒤를 띄어 쓰고, 연도·범위 표기의 `~`와 섞이지 않게).\n"
+    "- 코드·수식·고유 표기는 `인라인 코드`.\n"
+    "내용\n"
+    "- 자료에 있는 정의·예시·수치는 빠뜨리지 말되 같은 말을 되풀이하지 않습니다.\n"
     "- 자료에 없는 내용은 덧붙이지 않습니다. 요약문만 출력합니다."
 )
 
@@ -211,7 +220,8 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         "학생이 올린 학습 자료만 근거로 복습 문제를 1개 만듭니다. 자료에 없는 내용은 묻지 않습니다.\n"
         'JSON으로만 답하세요: {"question": "...", "answer": "...", "explanation": "..."}\n'
         "- OX 문제의 answer는 O 또는 X, explanation은 정답 근거를 한두 문장으로.\n"
-        "- 단답형의 answer는 짧은 정답(여러 표현이 맞으면 ' / '로 구분), 서술형은 모범답안.\n"
+        "- 단답형은 하나의 답(단어나 짧은 구)만 묻습니다. '~를 여섯 개 쓰시오'처럼 여러 개를 나열하게 하는 문제는 만들지 마세요. "
+        "같은 답을 가리키는 다른 표현만 ' | '로 구분해 answer에 씁니다 (예: 'JOIN | 조인'). 서술형은 모범답안.\n"
         "- 문제 문장에 'OX로 답하시오', '단답으로 쓰시오' 같은 답변 방식 안내는 붙이지 마세요 (화면에 입력 방법이 있습니다).\n\n"
         + core_ai.untrusted("자료", question_window(extracted_text, index))
     )
@@ -280,24 +290,57 @@ def question_window(text, index):
 
 
 def _normalize_answer(text):
-    return re.sub(r"[\s.,!?'\"()\[\]{}·`~-]+", "", (text or "").lower())
+    return re.sub(r"[\s.,!?'\"()\[\]{}·`~/|\-]+", "", (text or "").lower())
+
+
+def _word_tokens(text):
+    """글자 비교용 단어 목록 (공백·쉼표·슬래시·중점으로 나눔, 소문자, 문장부호 제거)."""
+    return [t for t in (re.sub(r"[.!?'\"()\[\]{}`~\-]+", "", w).lower()
+                        for w in re.split(r"[\s,/|·;]+", text or "")) if t]
 
 
 def matches_short_answer(correct_answer, user_answer):
-    """정답(' / '로 여러 표현 가능)과 공백·문장부호만 다르면 같은 답으로 본다."""
+    """AI 없이 바로 정답으로 볼 수 있는 경우: ① 공백·문장부호만 다른 같은 답, ② ' | '로 적어 둔 대안 표현 중 하나.
+    (' / '는 항목 구분일 수도 있어서 대안으로 취급하지 않는다 — 예: 'Ut / Re / Mi'에서 'Ut'만 써도 정답이 되면 안 된다.)"""
     target = _normalize_answer(user_answer)
-    return bool(target) and any(target == _normalize_answer(a) for a in re.split(r"\s*/\s*", correct_answer or ""))
+    if not target:
+        return False
+    correct = correct_answer or ""
+    if target == _normalize_answer(correct):
+        return True
+    return "|" in correct and any(target == _normalize_answer(a) for a in re.split(r"\s*\|\s*", correct))
+
+
+def answer_diff(correct_answer, user_answer):
+    """(학생 답에만 있는 단어, 모범답안에만 있는 단어) — AI 채점이 틀린 부분을 지어내지 않고 그대로 인용하게 한다."""
+    correct, given = _word_tokens(correct_answer), _word_tokens(user_answer)
+    return [w for w in given if w not in correct], [w for w in correct if w not in given]
+
+
+GRADING_SYSTEM = (
+    "학생 답안을 채점합니다.\n"
+    "- 표현이 달라도 핵심 내용이 모범답안과 같으면 정답입니다. 한두 글자 오타·띄어쓰기·대소문자 차이는 정답으로 인정하되 "
+    "피드백에 올바른 표기를 알려 주세요.\n"
+    "- 모범답안의 ' | '는 같은 답의 다른 표현입니다. ' / '나 쉼표는 항목 구분일 수도, 대안 표현일 수도 있으니 문제를 보고 판단하세요. "
+    "문제가 여러 항목을 쓰라고 했다면 모든 항목이 맞아야 정답이고, 하나만 고르라고 했다면 하나만 맞아도 정답입니다.\n"
+    "- 사용자 메시지의 '차이'는 프로그램이 계산한 값입니다. 피드백에서 틀린 부분을 말할 때는 이 값을 그대로 인용하고, "
+    "학생이 쓰지 않은 내용을 쓴 것처럼 말하지 마세요. 정답이면 feedback은 비워도 됩니다.\n"
+    'JSON으로만 답하세요: {"is_correct": true/false, "feedback": "한두 문장"}'
+)
 
 
 def grade_answer(question_text, correct_answer, user_answer, user=None, question_type="essay"):
     """단답형/서술형 채점. 단답형이 정답과 글자 그대로 같으면 AI를 부르지 않는다."""
     if question_type == "short" and matches_short_answer(correct_answer, user_answer):
         return {"is_correct": True, "feedback": ""}
+    diff = ""
+    if question_type == "short":
+        extra, missing = answer_diff(correct_answer, user_answer)
+        diff = (f"차이 — 학생 답에만 있는 단어: {', '.join(extra) or '없음'} / "
+                f"모범답안에만 있는 단어: {', '.join(missing) or '없음'}\n")
     data = core_ai.complete_json("grading", [
-        {"role": "system", "content": (
-            "학생 답안을 채점합니다. 문장이 달라도 핵심 내용이 모범답안과 맞으면 정답으로 관대하게 처리하세요.\n"
-            'JSON으로만 답하세요: {"is_correct": true/false, "feedback": "한두 문장 피드백"}')},
-        {"role": "user", "content": f"문제: {question_text}\n모범답안: {correct_answer}\n"
+        {"role": "system", "content": GRADING_SYSTEM},
+        {"role": "user", "content": f"문제: {question_text}\n모범답안: {correct_answer}\n{diff}"
                                     + core_ai.untrusted("학생답안", user_answer)},
     ], user=user)
     return {"is_correct": bool(data.get("is_correct")), "feedback": data.get("feedback", "")}

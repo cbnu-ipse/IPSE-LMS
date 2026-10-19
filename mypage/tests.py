@@ -327,3 +327,32 @@ class QuizAndSummaryFixesTests(TestCase):
     def test_list_card_offers_retry_for_failed_documents(self):
         PersonalDocument.objects.filter(pk=self.doc.pk).update(summary="", summary_status=ProcessingStatus.FAILED)
         self.assertContains(self.client.get("/mypage/"), "요약 실패 · 다시 만들기")
+
+
+class StandaloneStudyPageTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="studier", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="d", file="d.txt", extracted_text="본문",
+                                                   summary="## 제목\n**굵게**", summary_status=ProcessingStatus.DONE)
+
+    def test_page_is_standalone_without_site_loader(self):
+        res = self.client.get(f"/mypage/{self.doc.pk}/")
+        self.assertNotContains(res, "showLoader")
+        self.assertContains(res, "markdown-lite.css")
+        self.assertContains(res, 'id="ms-initial-state"')
+
+    def test_status_endpoint_reports_pending_work_for_owner_only(self):
+        GeneratedQuestion.objects.create(document=self.doc, question_type="ox", status=ProcessingStatus.PROCESSING)
+        data = self.client.get(f"/mypage/{self.doc.pk}/status/").json()
+        self.assertEqual(data["summary_status"], ProcessingStatus.DONE)
+        self.assertEqual(data["questions"][0][1], ProcessingStatus.PROCESSING)
+        other = User.objects.create_user(username="other", password="pw")
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(f"/mypage/{self.doc.pk}/status/").status_code, 403)
+
+    def test_grading_passes_computed_diff_to_ai(self):
+        from .ai import grade_answer
+        with patch("core.ai.complete_json", return_value={"is_correct": False, "feedback": "x"}) as llm:
+            grade_answer("음이름?", "Ut / Re / Mi / Fa / Sol / La", "Ut Le Mi Fa Sol La", question_type="short")
+        self.assertIn("학생 답에만 있는 단어: le", llm.call_args.args[1][1]["content"])

@@ -29,6 +29,8 @@ LangGraph·pgvector·벡터 검색·RAG는 **IPSE-LMS 본체 어디에도 없다
   - `generate_one_question(extracted_text, question_type, existing_questions)`: OX/단답/서술형
     문제 1개를 JSON 모드(`response_format={"type": "json_object"}`)로 생성.
   - `explain_ox_answer`, `grade_answer`: 오답 해설/서술형 채점.
+    단답 채점은 `' | '`로 적은 대안 표현만 로컬에서 바로 정답 처리하고(`' / '`는 항목 구분일 수 있어 제외),
+    그 외에는 프로그램이 계산한 단어 차이(`answer_diff`)를 AI에 함께 넘겨 틀린 부분을 지어내지 않게 한다.
   - 가드레일·RAG·벡터 검색 없음 — 방금 업로드된 문서의 원문(`extracted_text[:8000]`)을 그대로
     프롬프트에 넣는 단발성 생성이다.
 - **`mypage/views.py`**:
