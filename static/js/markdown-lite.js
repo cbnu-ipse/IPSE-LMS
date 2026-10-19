@@ -45,15 +45,23 @@ window.renderMarkdown = function (text) {
         if (h) { out.push('<h' + h[1].length + ' class="md-h md-h' + h[1].length + '">' + inline(h[2]) + '</h' + h[1].length + '>'); i++; continue; }
         if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { out.push('<hr class="md-hr">'); i++; continue; }
 
-        if (isTableRow(line) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
-            const head = cells(line);
-            i += 2;
-            const rows = [];
-            while (i < lines.length && isTableRow(lines[i])) rows.push(cells(lines[i++]));
-            out.push('<div class="md-table"><table><thead><tr>' + head.map((c) => '<th>' + inline(c) + '</th>').join('') +
-                '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((c) => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('') +
-                '</tbody></table></div>');
-            continue;
+        // 표: 헤더 행 + 구분 행(|---|---|) + 데이터 행. 행 사이에 빈 줄이 끼어 있어도 하나의 표로 읽는다
+        const nextFilled = (from) => { let k = from; while (k < lines.length && !lines[k].trim()) k++; return k; };
+        if (isTableRow(line)) {
+            const sepAt = nextFilled(i + 1);
+            if (sepAt < lines.length && isTableSep(lines[sepAt])) {
+                const head = cells(line);
+                const rows = [];
+                i = sepAt + 1;
+                for (let k = nextFilled(i); k < lines.length && isTableRow(lines[k]); k = nextFilled(i)) {
+                    rows.push(cells(lines[k]));
+                    i = k + 1;
+                }
+                out.push('<div class="md-table"><table><thead><tr>' + head.map((c) => '<th>' + inline(c) + '</th>').join('') +
+                    '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((c) => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('') +
+                    '</tbody></table></div>');
+                continue;
+            }
         }
         if (t.startsWith('>')) {
             const body = [];
