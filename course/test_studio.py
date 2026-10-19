@@ -298,3 +298,27 @@ class TopicOverviewTestCase(StudioBase):
         self.client.force_login(self.student)
         self.assertEqual(self.client.get(reverse("course_studio_topic"), {"name": "DB101"}).status_code, 403)
         self.assertEqual(self.client.post(reverse("course_studio_topic_build"), {"name": "DB101"}).status_code, 403)
+
+
+class MaterialsListTestCase(StudioBase):
+    def test_lecturer_sees_unassigned_and_user_deleted_docs_and_can_search(self):
+        PersonalDocument.objects.create(user=self.student, title="미분류 노트", subject_code="", summary="캐시 일관성",
+                                        summary_status=ProcessingStatus.DONE)
+        PersonalDocument.objects.create(user=self.student, title="삭제된노트", subject_code="DB101", is_deleted=True,
+                                        extracted_text="트리거 설명")
+        self.client.force_login(self.lecturer)
+        res = self.client.get(reverse("course_studio_materials"))
+        self.assertContains(res, "미분류 노트")
+        self.assertContains(res, "사용자 삭제")
+        self.assertNotContains(self.client.get(reverse("course_studio_materials"), {"q": "캐시"}), "삭제된노트")
+        self.assertContains(self.client.get(reverse("course_studio_materials"), {"q": "트리거"}), "삭제된노트")  # 본문 검색
+        self.assertContains(self.client.get(reverse("course_studio_materials"), {"scope": "unassigned"}), "미분류 노트")
+
+    def test_delete_removes_row_from_db_and_is_lecturer_only(self):
+        doc = self.docs[0]
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.post(reverse("course_studio_material_delete", args=[doc.pk])).status_code, 403)
+        self.assertTrue(PersonalDocument.objects.filter(pk=doc.pk).exists())
+        self.client.force_login(self.lecturer)
+        self.client.post(reverse("course_studio_material_delete", args=[doc.pk]))
+        self.assertFalse(PersonalDocument.objects.filter(pk=doc.pk).exists())
