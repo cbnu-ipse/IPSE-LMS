@@ -33,6 +33,8 @@
                             <span class="inline-flex px-4 py-2 rounded-md text-sm font-semibold bg-slate-100 text-slate-600 border border-slate-200">
                                 PENDING
                             </span>
+                            {# 채점 워커가 끝내면 결과가 보이도록 잠시 뒤 다시 불러온다 #}
+                            <script>setTimeout(() => location.reload(), 2500);</script>
                         {% else %}
                             <span class="inline-flex px-4 py-2 rounded-md text-sm font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                                 {{ submission.result }}

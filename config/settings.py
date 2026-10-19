@@ -256,6 +256,11 @@ EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=30, cast=int)
 DEFAULT_FROM_EMAIL = EMAIL_FROM_ADDRESS
 
 # mypage 앱: 학생 개인 자료 기반 AI 문제 생성
+# 채점 실행기 (judge_runner 컨테이너). 비어 있으면 채점 작업은 실행기가 생길 때까지 대기열에 남는다.
+JUDGE_RUNNER_URL = config("JUDGE_RUNNER_URL", default="")
+JUDGE_TIME_LIMIT_MS = config("JUDGE_TIME_LIMIT_MS", default=2000, cast=int)
+JUDGE_MEMORY_MB = config("JUDGE_MEMORY_MB", default=256, cast=int)
+
 OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
 MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.5")
 ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.5")
