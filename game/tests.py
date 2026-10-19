@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from . import consumers as game_consumers, poker_engine, views as game_views
-from .models import HouseBank, PokerSeat, PokerTable, PokerChipWallet, HighLowSession, HighLowPlayLog
+from .models import HouseBank, PokerSeat, PokerTable, PokerChipWallet, HighLowSession, HighLowPlayLog, POKER_CHIPS_PER_LEAF
 from .poker_engine import evaluate_best_of_7, _build_side_pots
 
 
@@ -575,3 +575,44 @@ class PokerHandDescTestCase(TestCase):
         self.assertEqual(poker_engine.hand_desc(["AS", "KH"], []), "하이카드")
         self.assertEqual(poker_engine.hand_desc(["AS", "KH"], ["AD", "KC", "2S"]), "투페어")
         self.assertEqual(poker_engine.hand_desc(["AS", "KS"], ["QS", "JS", "TS", "2H"]), "스트레이트 플러시")
+
+
+class ChipFarmingGuardTests(TestCase):
+    databases = {"default", "beta_judge"}
+
+    def setUp(self):
+        from accounts.models import LeafTransaction  # noqa: F401
+        self.user = User.objects.create_user(username="farmer", password="pw")
+        PokerChipWallet.objects.create(user=self.user, chips=100 * POKER_CHIPS_PER_LEAF * 10)
+        self.user.leaves = 0
+        self.user.save(update_fields=["leaves"])
+
+    def test_daily_net_cashout_cap_blocks_extra_cashout_when_enabled(self):
+        from django.test import override_settings
+        from . import poker_engine
+        with override_settings(POKER_DAILY_NET_CASHOUT_CAP=300):
+            ok, _ = poker_engine.cash_out_chips(self.user, 200 * POKER_CHIPS_PER_LEAF)
+            self.assertTrue(ok)
+            ok, msg = poker_engine.cash_out_chips(self.user, 200 * POKER_CHIPS_PER_LEAF)   # 합 400 > 상한 300
+            self.assertFalse(ok)
+            self.assertIn("한도", msg)
+            ok, _ = poker_engine.cash_out_chips(self.user, 100 * POKER_CHIPS_PER_LEAF)     # 딱 상한까지는 가능
+            self.assertTrue(ok)
+
+    def test_no_cap_by_default(self):
+        from . import poker_engine
+        ok, _ = poker_engine.cash_out_chips(self.user, 900 * POKER_CHIPS_PER_LEAF)
+        self.assertTrue(ok)
+
+    def test_report_lists_net_earners_and_flags_them(self):
+        from io import StringIO
+        from django.core.management import call_command
+        self.user.adjust_leaves(1000, "TEST_GRANT", "지급")
+        self.user.adjust_leaves(-1000, "POKER_BUYIN", "충전")
+        self.user.adjust_leaves(30000, "POKER_CASHOUT", "환전")
+        out = StringIO()
+        call_command("report_chip_farmers", "--days", "7", stdout=out)
+        text = out.getvalue()
+        self.assertIn("farmer", text)
+        self.assertIn("29,000", text)
+        self.assertIn("순수익 큼", text)

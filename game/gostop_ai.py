@@ -17,6 +17,9 @@ import time
 from . import gostop_engine as eng
 
 AI_TIME_BUDGET = 0.8  # 한 번 둘 때 생각하는 시간(초)
+# 어려움(고수)은 서버가 바빠 시간 안에 못 돌아도 이 라운드 수는 반드시 채운다 (한가할 때 0.8초에 약 90~100라운드).
+# 예전엔 최소 1라운드라 서버가 바쁘면 거의 무작위로 두는 수준까지 약해졌다
+HARD_MIN_ROUNDS = 40
 
 
 def _card_value(c):
@@ -163,6 +166,7 @@ def _determinize(st, me, rng):
 
 
 def choose(st, me, budget=None, rng=None):
+    min_rounds = HARD_MIN_ROUNDS if budget is None else 1  # 보통 난이도(짧은 budget)는 일부러 약하게 둔다
     budget = AI_TIME_BUDGET if budget is None else budget
     rng = rng or random.Random()
     cands = candidates(st, me)
@@ -171,7 +175,7 @@ def choose(st, me, budget=None, rng=None):
     totals = [0.0] * len(cands)
     rounds = 0
     deadline = time.monotonic() + budget
-    while rounds == 0 or time.monotonic() < deadline:
+    while rounds < min_rounds or time.monotonic() < deadline:
         base = _determinize(st, me, rng)
         for k, cand in enumerate(cands):
             sim = _clone(base)

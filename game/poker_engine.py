@@ -32,11 +32,12 @@ import random
 from datetime import timedelta
 from itertools import combinations
 
+from django.conf import settings
 from django.db import transaction
-from django.db.models import Min, Q
+from django.db.models import Min, Q, Sum
 from django.utils import timezone
 
-from accounts.models import User
+from accounts.models import LeafTransaction, User
 from . import blackjack_engine
 from .models import (
     HouseBank, PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
@@ -484,6 +485,15 @@ def cash_out_chips(user, chips_amount):
         leaves_gained = chips_amount // POKER_CHIPS_PER_LEAF
         if leaves_gained <= 0:
             return False, f"최소 {POKER_CHIPS_PER_LEAF}칩부터 환전할 수 있습니다."
+        cap = getattr(settings, "POKER_DAILY_NET_CASHOUT_CAP", None)
+        if cap:  # 하루(24시간) 동안 칩으로 번 낙엽(환전 − 충전)의 상한 — 매크로 파밍 방지. 설정이 없으면 제한 없음
+            since = timezone.now() - timedelta(hours=24)
+            earned = LeafTransaction.objects.filter(
+                user=user, created_at__gte=since, transaction_type__in=("POKER_BUYIN", "POKER_CASHOUT"),
+            ).aggregate(total=Sum("amount"))["total"] or 0
+            if earned + leaves_gained > cap:
+                room = max(0, cap - earned) * POKER_CHIPS_PER_LEAF
+                return False, f"하루 환전 한도를 넘었습니다. 지금은 {room:,}칩까지 환전할 수 있고, 24시간 뒤 다시 풀립니다."
         wallet.chips -= leaves_gained * POKER_CHIPS_PER_LEAF
         wallet.save(update_fields=["chips"])
         user.adjust_leaves(leaves_gained, "POKER_CASHOUT", "포커 칩 환전")

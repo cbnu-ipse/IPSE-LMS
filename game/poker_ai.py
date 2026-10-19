@@ -23,9 +23,12 @@ from .poker_engine import FULL_DECK, blinds, evaluate_best_of_7
 
 AI_TIME_BUDGET = 0.1   # 승률 계산에 쓰는 시간(초) — 시뮬레이션으로 강도를 맞춘 값 (길수록 더 세진다)
 MAX_SIMS = 1500
+# 서버가 바쁘면 시간 안에 돌린 횟수가 줄어 승률이 부정확해지고 AI가 약해진다(예전엔 최소 30번).
+# 시간이 모자라도 이 횟수는 반드시 채운다 — 한가할 때 0.1초에 도는 횟수(상대 1~5명 기준 150~500)와 비슷한 수준
+MIN_SIMS = 300
 
 
-def equity(hole, board, n_opp, budget=None, rng=None, max_sims=MAX_SIMS, min_sims=30):
+def equity(hole, board, n_opp, budget=None, rng=None, max_sims=MAX_SIMS, min_sims=MIN_SIMS):
     """상대 n_opp명을 상대로 이 핸드를 끝까지 갔을 때 이길 확률 (비기면 반)."""
     budget = AI_TIME_BUDGET if budget is None else budget
     rng = rng or random.Random()

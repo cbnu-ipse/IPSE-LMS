@@ -115,3 +115,29 @@ class PokerBotSeatingTestCase(TestCase):
                 self.assertTrue(table.current_bet == 0 and 0 < amount <= me.stack)
             if action == "raise":
                 self.assertTrue(table.current_bet < amount <= me.current_bet + me.stack)
+
+
+class AiStrengthFloorTestCase(TestCase):
+    def test_equity_runs_minimum_sims_even_with_no_time(self):
+        calls = []
+        real = poker_engine.evaluate_best_of_7
+        with patch.object(poker_ai, "evaluate_best_of_7", side_effect=lambda c: calls.append(1) or real(c)):
+            poker_ai.equity(["AS", "KD"], [], 1, budget=0, rng=random.Random(1))   # 시간이 0이어도
+        self.assertGreaterEqual(len(calls) // 2, poker_ai.MIN_SIMS)                  # 최소 횟수는 채운다
+
+    def test_gostop_hard_ai_runs_min_rounds_but_normal_does_not(self):
+        from . import gostop_ai, gostop_engine as eng
+        for seed in range(30):                                   # 고를 수 있는 수가 여럿인 판을 찾는다
+            st, _ = eng.new_game("matgo", 0, random.Random(seed))
+            if len(gostop_ai.candidates(st, st["turn"])) >= 3:
+                break
+        me, rounds = st["turn"], []
+        real = gostop_ai._determinize
+        with patch.object(gostop_ai, "_determinize", side_effect=lambda *a, **k: rounds.append(1) or real(*a, **k)):
+            with patch.object(gostop_ai, "AI_TIME_BUDGET", 0):                  # 시간이 0이어도
+                gostop_ai.choose(st, me, rng=random.Random(1))
+            hard = len(rounds)
+            rounds.clear()
+            gostop_ai.choose(st, me, budget=0, rng=random.Random(1))            # 보통 난이도는 일부러 약하게
+        self.assertGreaterEqual(hard, gostop_ai.HARD_MIN_ROUNDS)
+        self.assertEqual(len(rounds), 1)
