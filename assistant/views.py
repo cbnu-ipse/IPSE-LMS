@@ -5,6 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
+from core.ai import AIQuotaExceeded
+
 from .ai import answer
 from .models import ChatSession
 
@@ -25,6 +27,8 @@ def chat_message_view(request):
 
     try:
         reply = answer(request.user, user_message, current_path=body.get("current_path", ""))
+    except AIQuotaExceeded as exc:
+        return JsonResponse({"error": str(exc)}, status=429)
     except Exception:
         logger.exception("어시스턴트 응답 생성 실패 (user=%s)", request.user.pk)
         return JsonResponse({"error": "답변 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}, status=500)

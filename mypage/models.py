@@ -51,6 +51,8 @@ class PersonalDocument(models.Model):
     )
     extracted_text = models.TextField(blank=True, verbose_name="추출된 본문 (미리보기·문제생성에 사용)")
     summary = models.TextField(blank=True, verbose_name="AI 자동 요약")
+    # 파일 내용의 SHA-256 — 같은 파일이 이미 요약돼 있으면 AI를 다시 부르지 않고 그 결과를 재사용한다
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True, verbose_name="파일 해시")
     summary_status = models.CharField(
         max_length=10, choices=ProcessingStatus.choices, default=ProcessingStatus.DONE,
         verbose_name="요약 생성 상태 (백그라운드 처리 추적용)",
