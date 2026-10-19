@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}{{ name }} 자료·가공 결과 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 md:px-6 py-10">
+    {% include 'snippets/messages.html' %}
+    <a href="{% url 'course_studio' %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 강의 생성</a>
+    <div class="flex flex-wrap items-center gap-3 mt-2 mb-2">
+        <h1 class="text-2xl font-extrabold text-slate-800">{{ name }}</h1>
+        {% if course %}<a href="{{ course.get_absolute_url }}" class="px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">개설됨 · 강의 보기</a>{% endif %}
+        {% if draft and draft.status == 'pending' %}<a href="{% url 'course_studio_detail' draft.pk %}" class="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">초안 미리보기·수정</a>{% endif %}
+        {% if can_publish %}
+        <form method="post" action="{% url 'course_studio_action' draft.pk 'approve' %}" onsubmit="return confirm('이 초안을 {% if course %}게시된 강의에 반영{% else %}강의로 게시{% endif %}할까요?');">{% csrf_token %}
+            <input type="hidden" name="next" value="studio">
+            <button class="px-3 py-1 rounded-md text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">{% if course %}업데이트 게시{% else %}게시{% endif %}</button>
+        </form>
+        {% endif %}
+        {% if generating %}<span class="text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i>초안을 만드는 중</span>{% endif %}
+    </div>
+    <p class="text-sm text-slate-500 mb-6">이 주제로 분류된 자료와, AI가 가공한 요약, 그리고 최신 초안의 챕터가 어떤 자료를 바탕으로 만들어졌는지 보여 줍니다. 학생에게 원문 파일은 보이지 않고, 강의는 이 요약을 참고해 새로 쓰입니다.</p>
+
+    <h2 class="text-lg font-bold text-slate-800 mb-3">챕터별 근거 자료</h2>
+    <div class="space-y-2 mb-8">
+        {% for ch in chapters %}
+        <div class="bg-white border border-slate-200 rounded-2xl px-5 py-3">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="font-bold text-slate-800">{{ forloop.counter }}. {{ ch.title }}</span>
+                <span class="text-[11px] text-slate-400">학습 세트 {{ ch.set_count }}개</span>
+                {% if ch.reused %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500">이전 내용 재사용</span>{% endif %}
+            </div>
+            {% if ch.summary %}<p class="text-xs text-slate-500 mt-1">{{ ch.summary }}</p>{% endif %}
+            <p class="text-xs text-slate-400 mt-1">근거: {% for t in ch.doc_titles %}<span class="text-slate-600 font-medium">{{ t }}</span>{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</p>
+        </div>
+        {% empty %}
+        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center text-sm text-slate-400">아직 만들어진 초안이 없습니다.</div>
+        {% endfor %}
+        <form method="post" action="{% url 'course_studio_topic_build' %}">{% csrf_token %}
+            <input type="hidden" name="name" value="{{ name }}">
+            <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700"><i class="fa-solid fa-rotate-right mr-1"></i>지금 초안 만들기 (자료가 그대로면 건너뜀)</button>
+        </form>
+    </div>
+
+    <h2 class="text-lg font-bold text-slate-800 mb-3">자료 {{ docs|length }}개 — 가공 결과</h2>
+    <div class="space-y-3">
+        {% for doc in docs %}
+        <details class="bg-white border border-slate-200 rounded-2xl group">
+            <summary class="flex flex-wrap items-center gap-2 px-5 py-3 cursor-pointer list-none">
+                <span class="font-bold text-slate-800 flex-1 min-w-0 truncate">{{ doc.title }}</span>
+                {% if not doc.is_course_material %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600">강의 제외</span>{% endif %}
+                {% if doc.summary_status != 'done' %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">요약 {{ doc.get_summary_status_display }}</span>{% endif %}
+                <span class="text-[11px] text-slate-400">{{ doc.user.display_name }} · {{ doc.uploaded_at|date:"m/d H:i" }}</span>
+            </summary>
+            <div class="px-5 pb-4 border-t border-slate-100 pt-3">
+                <p class="text-xs text-slate-400 mb-2">
+                    쓰인 챕터: {% for t in doc.used_in %}<span class="text-slate-600 font-medium">{{ t }}</span>{% if not forloop.last %}, {% endif %}{% empty %}아직 어느 챕터에도 쓰이지 않음{% endfor %}
+                    · 추출 본문 {{ doc.extracted_text|length }}자
+                </p>
+                {% if doc.summary %}
+                <textarea class="ms-sum-raw" style="display:none;">{{ doc.summary }}</textarea>
+                <div class="ms-sum text-sm text-slate-600 leading-relaxed max-h-96 overflow-y-auto"></div>
+                {% else %}
+                <p class="text-sm text-slate-400">요약 결과가 없습니다.</p>
+                {% endif %}
+            </div>
+        </details>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
+    if (!d.open) return;
+    const raw = d.querySelector('.ms-sum-raw'), box = d.querySelector('.ms-sum');
+    if (raw && box && !box.dataset.done) { box.innerHTML = window.renderMarkdown(raw.value); box.dataset.done = '1'; }
+}));
+</script>
+{% endblock %}

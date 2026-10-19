@@ -33,7 +33,7 @@ MAX_OUTPUT_TOKENS = {
     "classify": 300,
     "course_readiness": 300,
     "course_outline": 1500,
-    "course_chapter": 6000,
+    "course_chapter": 9000,
 }
 
 

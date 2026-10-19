@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import connection, transaction
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponseForbidden
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -185,6 +185,39 @@ def folder_delete(request, pk):
 
 
 @login_required
+@require_POST
+def folder_rename(request, pk):
+    folder = get_object_or_404(PersonalFolder, pk=pk)
+    if folder.user != request.user:
+        return HttpResponseForbidden("본인의 폴더만 이름을 바꿀 수 있습니다.")
+    name = request.POST.get("name", "").strip()
+    if not name or len(name) > 100:
+        messages.error(request, "폴더 이름은 1~100자로 입력해주세요.")
+    else:
+        folder.name = name
+        folder.save(update_fields=["name"])
+        messages.success(request, "폴더 이름을 바꿨습니다.")
+    return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+
+
+@login_required
+@require_POST
+def document_rename(request, pk):
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 이름을 바꿀 수 있습니다.")
+    title = request.POST.get("title", "").strip()
+    max_len = PersonalDocument._meta.get_field("title").max_length
+    if not title or len(title) > max_len:
+        messages.error(request, f"자료 이름은 1~{max_len}자로 입력해주세요.")
+    else:
+        document.title = title
+        document.save(update_fields=["title"])
+        messages.success(request, "자료 이름을 바꿨습니다.")
+    return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+
+
+@login_required
 def document_preview(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
@@ -218,6 +251,7 @@ def document_preview(request, pk):
         "question_types": GeneratedQuestion.QuestionType.choices,
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
+        "initial_state": _document_state(document),
     })
 
 
@@ -282,15 +316,20 @@ def submit_answer_view(request, pk, question_id):
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
 
     redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&q={request.GET.get('q', 0)}"
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def fail(message, status=400):
+        if wants_json:
+            return JsonResponse({"ok": False, "error": message}, status=status)
+        messages.error(request, message)
+        return redirect(redirect_base)
 
     if question.status != ProcessingStatus.DONE:
-        messages.error(request, "문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")
-        return redirect(redirect_base)
+        return fail("문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")
 
     user_answer = request.POST.get("user_answer", "").strip()
     if not user_answer:
-        messages.error(request, "답을 입력해주세요.")
-        return redirect(redirect_base)
+        return fail("답을 입력해주세요.")
 
     if question.question_type == GeneratedQuestion.QuestionType.OX:
         # 해설은 문제를 만들 때 받아 둔 것(question.feedback)을 그대로 쓴다 — AI를 다시 부르지 않음
@@ -302,17 +341,18 @@ def submit_answer_view(request, pk, question_id):
                                   question_type=question.question_type)
             is_correct, feedback = result["is_correct"], result["feedback"]
         except AIQuotaExceeded as exc:
-            messages.error(request, str(exc))
-            return redirect(redirect_base)
+            return fail(str(exc), status=429)
         except Exception:
             logger.exception("문제 %s 채점 실패", question.pk)
-            messages.error(request, "채점 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-            return redirect(redirect_base)
+            return fail("채점 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", status=500)
 
     question.user_answer = user_answer
     question.is_correct = is_correct
     question.feedback = feedback
     question.save(update_fields=["user_answer", "is_correct", "feedback"])
+    if wants_json:
+        return JsonResponse({"ok": True, "is_correct": is_correct, "feedback": feedback,
+                             "user_answer": user_answer, "answer": question.answer})
     return redirect(redirect_base)
 
 
@@ -386,3 +426,21 @@ def document_resummarize(request, pk):
         threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
         messages.success(request, "요약을 다시 만들고 있습니다.")
     return back
+
+
+def _document_state(document):
+    """학습 화면이 폴링으로 비교하는 상태. 값이 바뀌면 화면을 새로 읽는다."""
+    return {
+        "summary_status": document.summary_status,
+        "has_summary": bool(document.summary.strip()),
+        "can_resummarize": _can_resummarize(document),
+        "questions": [[q.pk, q.status] for q in document.questions.order_by("pk")],
+    }
+
+
+@login_required
+def document_status(request, pk):
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
+    return JsonResponse(_document_state(document))

@@ -16,6 +16,7 @@ AI 강의 초안 → 강의자 검토 → 게시.
     동시에 들어온 생성 요청도 하나만 진행된다).
   - 챕터마다 근거 자료의 해시를 저장해 두고, 다시 만들 때 근거가 그대로인 챕터는 AI를 부르지 않고 이전 것을 쓴다.
 """
+import difflib
 import hashlib
 import json
 import logging
@@ -59,7 +60,7 @@ def eligible_docs(subject_code):
     from mypage.models import PersonalDocument, ProcessingStatus
 
     rows = (PersonalDocument.objects
-            .filter(subject_code=subject_code, summary_status=ProcessingStatus.DONE, is_course_material=True)
+            .filter(topics__name=subject_code, summary_status=ProcessingStatus.DONE, is_course_material=True)
             .exclude(summary="").order_by("id").values("id", "title", "summary"))
     return list(rows)
 
@@ -103,7 +104,7 @@ def build_draft(subject_code):
     docs = eligible_docs(subject_code)
     if not docs:
         return None
-    source_hash = _sha("draft", _doc_fingerprint(docs))
+    source_hash = _sha("draft", course_ai.FORMAT_VERSION, _doc_fingerprint(docs))
     try:
         with transaction.atomic():
             draft = CourseDraft.objects.create(
@@ -120,7 +121,7 @@ def build_draft(subject_code):
         chapters = []
         for chapter in outline["chapters"]:
             chapter_docs = [by_id[i] for i in chapter["doc_ids"] if i in by_id]
-            digest = _sha("chapter", chapter["title"], _doc_fingerprint(chapter_docs))
+            digest = _sha("chapter", course_ai.FORMAT_VERSION, chapter["title"], _doc_fingerprint(chapter_docs))
             reused = digest in reuse
             sets = reuse[digest] if reused else course_ai.generate_chapter(subject_code, chapter, chapter_docs)
             if sets:
@@ -142,6 +143,72 @@ def build_draft(subject_code):
         CourseDraft.objects.filter(pk=draft.pk).update(status=CourseDraft.Status.FAILED, source_hash="",
                                                         error=str(exc)[:2000])
         return None
+
+
+# ── 강의자용 현황: 어떤 자료가 어떻게 가공되어 어느 강의로 가는지 ────────────────────
+
+def topic_overview():
+    """주제(과목)별 현황 — 모든 강의가 여기서 관리된다. 게시 전이든 게시 후든 주제는 계속 남고,
+    새 자료가 들어오면 같은 주제의 초안이 갱신돼 언제든 (다시) 게시할 수 있다.
+    카드 하나 = 주제 하나: 자료 수, 게시된 강의(있으면), 게시 가능한 초안(있으면), 생성 중/실패 여부."""
+    from django.db.models import Count, Max
+
+    from mypage.models import PersonalDocument, ProcessingStatus
+
+    rows = {r["topics__name"]: r for r in
+            PersonalDocument.objects.filter(is_deleted=False, is_course_material=True, topics__isnull=False)
+            .values("topics__name").annotate(doc_count=Count("id"), last_upload=Max("uploaded_at"))}
+    drafts = {}
+    for d in CourseDraft.objects.exclude(status=CourseDraft.Status.SUPERSEDED).order_by("created_at"):
+        drafts.setdefault(d.subject_code, []).append(d)
+    # 게시된 AI 강의는 자료가 지워져도 목록에 남는다
+    published_codes = {d.subject_code for d in CourseDraft.objects.filter(status=CourseDraft.Status.APPROVED)}
+    codes = set(rows) | published_codes
+    courses = {c.code: c for c in Course.objects.filter(code__in=codes)}
+    topics = []
+    for code in codes:
+        mine = drafts.get(code, [])
+        pending = next((d for d in reversed(mine) if d.status == CourseDraft.Status.PENDING), None)
+        latest = mine[-1] if mine else None
+        row = rows.get(code, {})
+        topics.append({
+            "name": code, "doc_count": row.get("doc_count", 0), "last_upload": row.get("last_upload"),
+            "course": courses.get(code), "pending": pending,
+            "generating": any(d.status == CourseDraft.Status.GENERATING for d in mine),
+            "failed": latest if latest and latest.status == CourseDraft.Status.FAILED else None,
+        })
+    topics.sort(key=lambda t: t["last_upload"].timestamp() if t["last_upload"] else 0, reverse=True)
+    # 아직 분류·요약 중인 자료 (곧 어느 주제로 들어갈지 정해짐)
+    in_progress = PersonalDocument.objects.filter(is_deleted=False, topics__isnull=True,
+                                                  summary_status=ProcessingStatus.PROCESSING).count()
+    return topics, in_progress
+
+
+def topic_detail(subject_code):
+    """한 주제의 자료별 가공 결과와, 최신 초안의 챕터가 어떤 자료를 근거로 만들어졌는지."""
+    from mypage.models import PersonalDocument
+
+    docs = list(PersonalDocument.objects.filter(topics__name=subject_code, is_deleted=False)
+                .select_related("user").order_by("uploaded_at"))
+    draft = (CourseDraft.objects.filter(subject_code=subject_code,
+                                        status__in=[CourseDraft.Status.PENDING, CourseDraft.Status.APPROVED])
+             .exclude(content={}).order_by("-created_at").first())
+    used = {}
+    chapters = []
+    if draft:
+        for ci, chapter in enumerate(draft.content.get("chapters", [])):
+            ids = chapter.get("doc_ids", [])
+            chapters.append({"index": ci, "title": chapter["title"], "summary": chapter.get("summary", ""),
+                             "reused": chapter.get("reused", False), "doc_ids": ids,
+                             "set_count": len(chapter.get("sets", []))})
+            for i in ids:
+                used.setdefault(i, []).append(chapter["title"])
+    for doc in docs:
+        doc.used_in = used.get(doc.pk, [])
+    titles = {d.pk: d.title for d in docs}
+    for chapter in chapters:
+        chapter["doc_titles"] = [titles[i] for i in chapter["doc_ids"] if i in titles]
+    return docs, draft, chapters
 
 
 def content_from_course(course):
@@ -301,17 +368,115 @@ def is_ai_managed(course):
     return CourseDraft.objects.filter(course=course, status=CourseDraft.Status.APPROVED).exists()
 
 
-def changed_chapters(draft):
-    """수정 초안에서 게시된 강의와 달라진 챕터 번호 집합 (검토 화면 표시용)."""
+def _line_diff(before, after, context=1):
+    """줄 단위 변경 보기. [(종류, 글)] — 종류: add(추가) / del(삭제) / ctx(변하지 않은 주변 줄) / gap(생략)."""
+    old, new = (before or "").splitlines(), (after or "").splitlines()
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+        if tag == "equal":
+            chunk = old[i1:i2]
+            if len(chunk) > 2 * context:
+                head = [("ctx", l) for l in chunk[:context]] if out else []
+                tail = [("ctx", l) for l in chunk[-context:]] if j2 < len(new) else []
+                out += head + [("gap", "…")] + tail if (head or tail) else []
+            else:
+                out += [("ctx", l) for l in chunk]
+        else:
+            out += [("del", l) for l in old[i1:i2]] + [("add", l) for l in new[j1:j2]]
+    return out
+
+
+def _question_changes(before, after):
+    old = {q["q"]: q for q in before}
+    new = {q["q"]: q for q in after}
+    return {
+        "added": [q["q"] for q in after if q["q"] not in old],
+        "removed": [q["q"] for q in before if q["q"] not in new],
+        "modified": [q["q"] for q in after if q["q"] in old and old[q["q"]] != q],
+    }
+
+
+def _diff_set(old, new):
+    """세트 하나의 변경. old/new 중 없는 쪽은 통째로 추가/삭제."""
+    if old is None or new is None:
+        side = new if old is None else old
+        return {"title": side["title"], "status": "added" if old is None else "removed", "cards": [],
+                "questions": {"added": [], "removed": [], "modified": []},
+                "card_count": len(side["cards"]), "question_count": len(side.get("questions", []))}
+    cards = []
+    for i in range(max(len(old["cards"]), len(new["cards"]))):
+        b = old["cards"][i] if i < len(old["cards"]) else None
+        a = new["cards"][i] if i < len(new["cards"]) else None
+        if b is None or a is None:
+            card = a or b
+            cards.append({"title": card["title"], "status": "added" if b is None else "removed",
+                          "lines": [("add" if b is None else "del", l) for l in card["body"].splitlines()]})
+        elif b != a:
+            cards.append({"title": a["title"], "old_title": b["title"] if b["title"] != a["title"] else "",
+                          "status": "modified", "lines": _line_diff(b["body"], a["body"])})
+    questions = _question_changes(old.get("questions", []), new.get("questions", []))
+    changed = bool(cards) or any(questions.values())
+    return {"title": new["title"], "status": "modified" if changed else "same", "cards": cards,
+            "questions": questions, "card_count": len(new["cards"]), "question_count": len(new.get("questions", []))}
+
+
+def diff_draft(draft):
+    """게시된 강의와 초안의 차이 (강의자 검토용). 새 강의 초안이면 None.
+    챕터는 순서(게시할 때 단원이 순서로 이어지므로), 세트는 제목으로 짝지어 비교한다."""
     if not draft.course_id:
         return None
     published = content_from_course(draft.course)["chapters"]
-    changed = set()
-    for i, chapter in enumerate(draft.content.get("chapters", [])):
+    chapters = (draft.content or {}).get("chapters", [])
+    out = []
+    for i in range(max(len(published), len(chapters))):
         before = published[i] if i < len(published) else None
-        if before is None or before["title"] != chapter["title"] or before["sets"] != chapter["sets"]:
-            changed.add(i)
-    return changed
+        after = chapters[i] if i < len(chapters) else None
+        if before is None or after is None:
+            ch = after or before
+            sets = [_diff_set(None if before is None else s, s if before is None else None) for s in ch["sets"]]
+            out.append({"index": i, "title": ch["title"], "old_title": "", "status": "added" if before is None else "removed",
+                        "sets": sets})
+            continue
+        old_sets = {s["title"]: s for s in before["sets"]}
+        sets = [_diff_set(old_sets.pop(s["title"], None), s) for s in after["sets"]]
+        sets += [_diff_set(s, None) for s in old_sets.values()]
+        retitled = before["title"] != after["title"]
+        changed = retitled or any(s["status"] != "same" for s in sets)
+        out.append({"index": i, "title": after["title"], "old_title": before["title"] if retitled else "",
+                    "status": "modified" if changed else "same", "sets": sets})
+    counts = {"chapters_added": 0, "chapters_removed": 0, "sets_added": 0, "sets_removed": 0, "sets_modified": 0,
+              "chapters_retitled": 0}
+    for ch in out:
+        counts["chapters_added"] += ch["status"] == "added"
+        counts["chapters_removed"] += ch["status"] == "removed"
+        counts["chapters_retitled"] += bool(ch["old_title"])
+        for st in ch["sets"]:
+            counts["sets_added"] += st["status"] == "added"
+            counts["sets_removed"] += st["status"] == "removed"
+            counts["sets_modified"] += st["status"] == "modified"
+    meta_changed = (draft.content or {}).get("title") not in (None, draft.course.title) or \
+        ((draft.content or {}).get("description") or "") != (draft.course.summary or "")
+    counts["total"] = sum(v for k, v in counts.items()) + int(meta_changed)
+    return {"chapters": out, "counts": counts, "meta_changed": meta_changed, "new_docs": _new_docs(draft)}
+
+
+def _new_docs(draft):
+    """이번 초안에서 처음 반영된 자료 (직전에 게시된 초안의 근거 자료에 없던 것)."""
+    from mypage.models import PersonalDocument
+
+    def ids(d):
+        return {i for ch in (d.content or {}).get("chapters", []) for i in ch.get("doc_ids", [])}
+
+    last = (CourseDraft.objects.filter(subject_code=draft.subject_code, status=CourseDraft.Status.APPROVED)
+            .exclude(content={}).order_by("-reviewed_at", "-created_at").first())
+    fresh = ids(draft) - (ids(last) if last else set())
+    return list(PersonalDocument.objects.filter(pk__in=fresh).values_list("title", flat=True)) if fresh else []
+
+
+def changed_chapters(draft):
+    """초안에서 게시된 강의와 달라진 챕터 번호 집합 (새 강의 초안이면 None)."""
+    diff = diff_draft(draft)
+    return None if diff is None else {c["index"] for c in diff["chapters"] if c["status"] != "same"}
 
 
 # ── 학습 화면 ───────────────────────────────────────────────────────────────

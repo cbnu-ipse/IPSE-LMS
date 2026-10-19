@@ -1,6 +1,10 @@
 """judge > 강의 생성 탭 (강의자 전용): AI 강의 초안 검토·미리보기·수정·승인. 로직은 course/studio.py."""
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -22,26 +26,28 @@ def _studio_only(view):
 @_studio_only
 def studio_list(request):
     drafts = CourseDraft.objects.select_related("course", "created_by", "reviewed_by")
-    pending = list(drafts.filter(status=CourseDraft.Status.PENDING))
-    for d in pending:
-        d.can_review = studio.can_review(request.user, d)
-        d.chapter_count = len(d.content.get("chapters", []))
-        d.set_count = sum(len(c.get("sets", [])) for c in d.content.get("chapters", []))
-    courses = Course.objects.filter(drafts__status=CourseDraft.Status.APPROVED).distinct().select_related("instructor")
-    if not request.user.is_superuser:
-        courses = courses.filter(instructor=request.user)
+    topics, in_progress = studio.topic_overview()
+    for t in topics:
+        if t["pending"]:
+            t["can_review"] = studio.can_review(request.user, t["pending"])
+            chapters = t["pending"].content.get("chapters", [])
+            t["chapter_count"] = len(chapters)
+            t["set_count"] = sum(len(c.get("sets", [])) for c in chapters)
+        if t["pending"] and t["course"]:
+            t["diff"] = studio.diff_draft(t["pending"])
+        if t["course"]:
+            t["can_edit"] = request.user.is_superuser or t["course"].instructor_id == request.user.id
     return render(request, "course/studio_list.html", {
-        "pending": pending,
-        "generating": drafts.filter(status=CourseDraft.Status.GENERATING),
+        "topics": topics, "in_progress_docs": in_progress,
         "history": drafts.exclude(status__in=[CourseDraft.Status.PENDING, CourseDraft.Status.GENERATING])[:20],
-        "my_courses": courses,
     })
 
 
 @_studio_only
 def studio_detail(request, pk):
     draft = get_object_or_404(CourseDraft.objects.select_related("course"), pk=pk)
-    changed = studio.changed_chapters(draft) if draft.status == CourseDraft.Status.PENDING else None
+    diff = studio.diff_draft(draft) if draft.status == CourseDraft.Status.PENDING else None
+    changed = {c["index"] for c in diff["chapters"] if c["status"] != "same"} if diff else None
     chapters = []
     for ci, chapter in enumerate(draft.content.get("chapters", [])):
         chapters.append({
@@ -56,7 +62,8 @@ def studio_detail(request, pk):
     return render(request, "course/studio_detail.html", {
         "draft": draft, "chapters": chapters, "can_review": studio.can_review(request.user, draft),
         "editable": draft.status == CourseDraft.Status.PENDING and studio.can_review(request.user, draft),
-        "has_changes": changed is None or bool(changed),
+        "has_changes": diff is None or bool(diff["counts"]["total"]),
+        "diff": diff,
     })
 
 
@@ -107,6 +114,8 @@ def studio_action(request, pk, action):
         if action == "approve":
             course = studio.publish_draft(draft.pk, request.user)
             messages.success(request, f"'{course.title}' 강의를 게시했습니다.")
+            if request.POST.get("next") == "studio":
+                return redirect("course_studio")
             return redirect("course_detail", slug=course.slug)
         if action == "reject":
             studio.reject_draft(draft.pk, request.user, request.POST.get("note", ""))
@@ -137,3 +146,80 @@ def studio_start_edit(request, slug):
     draft = studio.start_edit_draft(course, request.user)
     messages.info(request, "수정 초안을 만들었습니다. 고친 뒤 승인해야 강의에 반영됩니다.")
     return redirect("course_studio_detail", pk=draft.pk)
+
+
+@_studio_only
+def studio_topic(request):
+    """한 주제(?name=)에 어떤 자료가 있고, 어떻게 가공(요약)됐고, 어느 챕터에 쓰였는지."""
+    name = request.GET.get("name", "")
+    docs, draft, chapters = studio.topic_detail(name)
+    course = Course.objects.filter(code=name).first()
+    if not docs and not course:
+        raise Http404("없는 주제입니다.")
+    return render(request, "course/studio_topic.html", {
+        "name": name, "docs": docs, "draft": draft, "chapters": chapters,
+        "course": course, "can_publish": bool(draft and draft.status == CourseDraft.Status.PENDING
+                                              and studio.can_review(request.user, draft)),
+        "generating": CourseDraft.objects.filter(subject_code=name, status=CourseDraft.Status.GENERATING).exists(),
+    })
+
+
+@require_POST
+@_studio_only
+def studio_topic_build(request):
+    """초안을 지금 만든다 (자료가 그대로면 AI를 부르지 않는다). 실패해서 멈춘 주제를 다시 시도할 때도 쓴다."""
+    import threading
+
+    from django.db import connection
+
+    name = request.POST.get("name", "")
+
+    def run():
+        try:
+            studio.build_draft(name)
+        finally:
+            connection.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    messages.info(request, "초안 만들기를 시작했습니다. 잠시 뒤 강의 생성 화면에서 확인하세요.")
+    return redirect("course_studio")
+
+
+MATERIALS_PER_PAGE = 30
+
+
+@_studio_only
+def studio_materials(request):
+    """모든 자료를 제목 목록으로 (주제 분류와 무관하게). 제목·요약·본문 검색, 필터, 삭제."""
+    from mypage.models import PersonalDocument
+
+    q = request.GET.get("q", "").strip()
+    scope = request.GET.get("scope", "all")
+    docs = PersonalDocument.objects.select_related("user").prefetch_related("topics").order_by("-uploaded_at")
+    if q:
+        docs = docs.filter(Q(title__icontains=q) | Q(summary__icontains=q) | Q(extracted_text__icontains=q))
+    if scope == "unassigned":      # 주제가 없거나 강의 자료에서 제외된 자료 = 주제별 현황에 안 잡히는 자료
+        docs = docs.filter(Q(topics__isnull=True) | Q(is_course_material=False)).distinct()
+    elif scope == "deleted":       # 사용자가 지웠지만 강의 생성용으로 남아 있는 자료
+        docs = docs.filter(is_deleted=True)
+    page = Paginator(docs, MATERIALS_PER_PAGE).get_page(request.GET.get("page"))
+    return render(request, "course/studio_materials.html", {
+        "page": page, "q": q, "scope": scope, "total": page.paginator.count,
+        "query": urlencode({"q": q, "scope": scope}),
+    })
+
+
+@require_POST
+@_studio_only
+def studio_material_delete(request, pk):
+    """자료를 DB에서 완전히 지운다 (파일 포함). 사용자 화면의 소프트 삭제와 달리 되돌릴 수 없다."""
+    from mypage.models import PersonalDocument
+
+    doc = get_object_or_404(PersonalDocument, pk=pk)
+    title = doc.title
+    if doc.file:
+        doc.file.delete(save=False)
+    doc.delete()
+    messages.success(request, f"'{title}' 자료를 삭제했습니다.")
+    nxt = request.POST.get("next", "")
+    return redirect(nxt if nxt.startswith("/course/studio/materials/") else "course_studio_materials")

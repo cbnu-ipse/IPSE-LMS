@@ -1,0 +1,28 @@
+/* markdown-lite.js가 만드는 md-* 요소의 스타일 (요약, 챗봇). 색은 부모의 글자색을 따르고 강조색만 쓴다. */
+.md-h { font-weight: 800; line-height: 1.35; margin: 1.1em 0 .45em; color: inherit; }
+.md-h:first-child { margin-top: 0; }
+.md-h1 { font-size: 1.35em; padding-bottom: .25em; border-bottom: 2px solid #10b981; }
+.md-h2 { font-size: 1.15em; color: #047857; padding-bottom: .2em; border-bottom: 1px solid #d1fae5; }
+.md-h3 { font-size: 1.02em; color: #0f766e; padding-left: .55em; border-left: 3px solid #5eead4; }
+.md-h4, .md-h5, .md-h6 { font-size: .95em; color: #475569; }
+.md-p { margin: 0 0 .7em; line-height: 1.75; }
+.md-list { margin: 0 0 .7em; padding-left: 1.3em; line-height: 1.7; }
+ul.md-list { list-style: disc; }
+ul.md-list ul.md-list { list-style: circle; }
+ul.md-list ul.md-list ul.md-list { list-style: square; }
+ol.md-list { list-style: decimal; }
+.md-list > li { margin: .15em 0; }
+.md-list .md-list { margin: .2em 0; }
+.md-quote { margin: 0 0 .8em; padding: .6em .9em; border-left: 4px solid #10b981; background: #ecfdf5; color: #065f46; border-radius: 0 10px 10px 0; line-height: 1.7; }
+.md-hr { border: 0; border-top: 1px dashed #cbd5e1; margin: 1em 0; }
+.md-code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: .88em; background: #f1f5f9; color: #be123c; padding: .08em .4em; border-radius: 5px; }
+.md-pre { margin: 0 0 .8em; padding: .75em .9em; background: #1e293b; color: #e2e8f0; border-radius: 10px; overflow-x: auto; font-size: .82em; line-height: 1.6; }
+.md-pre .md-code, .md-pre code { background: none; color: inherit; padding: 0; white-space: pre; }
+.md-mark { background: linear-gradient(transparent 35%, #fde68a 35%); color: inherit; padding: 0 .1em; border-radius: 2px; font-weight: 700; }
+.md-wavy { text-decoration: underline wavy #f43f5e; text-decoration-thickness: 1.5px; text-underline-offset: .22em; }
+.md-table { overflow-x: auto; margin: 0 0 .9em; }
+.md-table table { border-collapse: collapse; font-size: .92em; min-width: 50%; }
+.md-table th, .md-table td { border: 1px solid #e2e8f0; padding: .4em .75em; text-align: left; vertical-align: top; }
+.md-table th { background: #f1f5f9; font-weight: 800; white-space: nowrap; }
+.md-table tr:nth-child(even) td { background: #f8fafc; }
+strong { font-weight: 800; }

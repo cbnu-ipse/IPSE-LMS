@@ -48,7 +48,7 @@ def overview(user):
     weak = sorted((r for r in results if r.total and r.correct / r.total < WEAK_RATIO),
                   key=lambda r: r.correct / r.total)[:5]
 
-    review = GeneratedQuestion.objects.filter(document__user=user, is_correct__isnull=False).aggregate(
+    review = GeneratedQuestion.objects.filter(document__user=user, document__is_deleted=False, is_correct__isnull=False).aggregate(
         answered=Count("id"), correct=Count("id", filter=Q(is_correct=True)))
     sittings = Sitting.objects.filter(user=user).select_related("quiz")
     completed = [s for s in sittings if s.complete]

@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from .ai import extract_text
 from .forms import PersonalDocumentUploadForm
-from .models import GeneratedQuestion, PersonalDocument, ProcessingStatus
+from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, ProcessingStatus
 from .views import _classify_and_build, _generate_question_bg, _generate_summary_bg
 
 User = get_user_model()
@@ -327,3 +327,102 @@ class QuizAndSummaryFixesTests(TestCase):
     def test_list_card_offers_retry_for_failed_documents(self):
         PersonalDocument.objects.filter(pk=self.doc.pk).update(summary="", summary_status=ProcessingStatus.FAILED)
         self.assertContains(self.client.get("/mypage/"), "요약 실패 · 다시 만들기")
+
+
+class StandaloneStudyPageTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="studier", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="d", file="d.txt", extracted_text="본문",
+                                                   summary="## 제목\n**굵게**", summary_status=ProcessingStatus.DONE)
+
+    def test_page_is_standalone_without_site_loader(self):
+        res = self.client.get(f"/mypage/{self.doc.pk}/")
+        self.assertNotContains(res, "showLoader")
+        self.assertContains(res, "markdown-lite.css")
+        self.assertContains(res, 'id="ms-initial-state"')
+
+    def test_status_endpoint_reports_pending_work_for_owner_only(self):
+        GeneratedQuestion.objects.create(document=self.doc, question_type="ox", status=ProcessingStatus.PROCESSING)
+        data = self.client.get(f"/mypage/{self.doc.pk}/status/").json()
+        self.assertEqual(data["summary_status"], ProcessingStatus.DONE)
+        self.assertEqual(data["questions"][0][1], ProcessingStatus.PROCESSING)
+        other = User.objects.create_user(username="other", password="pw")
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(f"/mypage/{self.doc.pk}/status/").status_code, 403)
+
+    def test_grading_passes_computed_diff_to_ai(self):
+        from .ai import grade_answer
+        with patch("core.ai.complete_json", return_value={"is_correct": False, "feedback": "x"}) as llm:
+            grade_answer("음이름?", "Ut / Re / Mi / Fa / Sol / La", "Ut Le Mi Fa Sol La", question_type="short")
+        self.assertIn("학생 답에만 있는 단어: le", llm.call_args.args[1][1]["content"])
+
+
+class AsyncGradingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="grader", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="d", file="d.txt", extracted_text="본문",
+                                                   summary="요약", summary_status=ProcessingStatus.DONE)
+        self.q = GeneratedQuestion.objects.create(document=self.doc, question_type="essay", status=ProcessingStatus.DONE,
+                                                  question_text="정규화를 설명하시오.", answer="중복을 줄인다")
+
+    def test_ajax_submit_returns_json_without_redirect(self):
+        with patch("mypage.views.grade_answer", return_value={"is_correct": True, "feedback": "좋아요"}):
+            res = self.client.post(f"/mypage/{self.doc.pk}/answer/{self.q.pk}/", {"user_answer": "중복 제거"},
+                                   HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["is_correct"], True)
+        self.q.refresh_from_db()
+        self.assertEqual(self.q.user_answer, "중복 제거")
+
+    def test_ajax_errors_are_json(self):
+        res = self.client.post(f"/mypage/{self.doc.pk}/answer/{self.q.pk}/", {"user_answer": " "},
+                               HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(res.json()["ok"])
+
+    def test_essay_uses_large_textarea_and_page_has_no_iframe_src_swap(self):
+        res = self.client.get(f"/mypage/{self.doc.pk}/?panel=quiz")
+        self.assertContains(res, "<textarea")
+        self.assertContains(res, 'rows="8"')
+        self.assertNotContains(res, "data-src")
+
+
+class RenameTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="renamer", password="pw")
+        self.other = User.objects.create_user(username="someone", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="old", file="d.txt")
+        self.folder = PersonalFolder.objects.create(user=self.user, name="old folder")
+
+    def test_owner_can_rename_document_and_folder(self):
+        self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "  새 이름 "})
+        self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "새 폴더"})
+        self.doc.refresh_from_db(); self.folder.refresh_from_db()
+        self.assertEqual((self.doc.title, self.folder.name), ("새 이름", "새 폴더"))
+
+    def test_blank_or_too_long_names_are_rejected_and_others_cannot_rename(self):
+        self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "  "})
+        self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "x" * 201})
+        self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "y" * 101})
+        self.doc.refresh_from_db(); self.folder.refresh_from_db()
+        self.assertEqual((self.doc.title, self.folder.name), ("old", "old folder"))
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "hack"}).status_code, 403)
+        self.assertEqual(self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "hack"}).status_code, 403)
+
+
+class SummaryPagingTests(TestCase):
+    def test_study_page_uses_small_summary_pages_and_prompt_asks_for_short_sections(self):
+        from .ai import SUMMARY_INSTRUCTIONS
+
+        user = User.objects.create_user(username="pager", password="pw")
+        self.client.force_login(user)
+        doc = PersonalDocument.objects.create(user=user, title="d", file="d.txt", summary="## a\n내용",
+                                              summary_status=ProcessingStatus.DONE)
+        res = self.client.get(f"/mypage/{doc.pk}/")
+        self.assertContains(res, "splitMarkdownPages")
+        self.assertNotContains(res, "splitMarkdownSections")
+        self.assertIn("350자", SUMMARY_INSTRUCTIONS)

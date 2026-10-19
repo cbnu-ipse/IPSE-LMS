@@ -153,3 +153,30 @@ class ScheduleRecurrenceTestCase(TestCase):
         # 둘 다 2시간씩 시간이 밀렸는지 검증
         self.assertEqual(t1.start_date.hour, new_start.hour)
         self.assertEqual(t2.start_date, base_time + datetime.timedelta(days=1, hours=2))
+
+
+class JudgeSectionTests(TestCase):
+    def test_problem_and_contest_ranking_stay_in_judge_section(self):
+        from django.test import RequestFactory
+
+        from core.context_processors import site_section
+
+        rf = RequestFactory()
+        self.assertEqual(site_section(rf.get("/ranking/"))["site_section"], "judge")
+        self.assertEqual(site_section(rf.get("/ranking/community/"))["site_section"], "community")
+
+
+class LearningOverviewDeletedDocsTests(TestCase):
+    databases = {"default", "beta_judge"}
+
+    def test_review_stats_ignore_deleted_documents(self):
+        from core.learning import overview
+        from mypage.models import GeneratedQuestion, PersonalDocument
+
+        user = get_user_model().objects.create_user(username="rv", password="pw")
+        kept = PersonalDocument.objects.create(user=user, title="a", file="a.txt")
+        gone = PersonalDocument.objects.create(user=user, title="b", file="b.txt", is_deleted=True)
+        for doc, ok in ((kept, True), (gone, False), (gone, False)):
+            GeneratedQuestion.objects.create(document=doc, question_type="ox", status="done", answer="O",
+                                             question_text="q", is_correct=ok)
+        self.assertEqual(overview(user)["review_questions"], {"answered": 1, "correct": 1, "accuracy": 100})
