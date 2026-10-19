@@ -24,11 +24,22 @@
     .ms-src { background: #fff; border: 1px solid #f1f5f9; border-radius: 16px; padding: 6px; min-height: 0; display: flex; }
     .ms-src > iframe, .ms-src > pre { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
     .ms-src > pre { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; }
-    /* 요약: 읽기 좋은 폭의 칼럼을 가운데에 두고, 제목·표도 가운데로 */
+    /* 요약: 읽기 좋은 폭의 칼럼을 가운데에 두고, 글씨에 위계(제목 > 부제목 > 본문 > 강조)를 준다 */
+    .ms-sum-center { font-size: 1.05rem; line-height: 1.9; color: #334155; }
     .ms-sum-center > * { max-width: 40rem; margin-left: auto; margin-right: auto; }
     .ms-sum-center .md-h { text-align: center; }
-    .ms-sum-center .md-h3, .ms-sum-center .md-h4 { border-left: 0; padding-left: 0; }
+    .ms-sum-center .md-h1, .ms-sum-center .md-h2 { font-size: 1.6em; color: #047857; border-bottom: 3px solid #a7f3d0; padding-bottom: .3em; margin-bottom: .8em; }
+    .ms-sum-center .md-h3 { font-size: 1.3em; color: #0f766e; border-left: 0; padding-left: 0; margin-bottom: .6em; }
+    .ms-sum-center .md-h4 { font-size: 1.1em; color: #334155; }
+    .ms-sum-center strong { color: #0f172a; font-weight: 800; }
+    .ms-sum-center ul.md-list > li::marker { color: #10b981; }
+    .ms-sum-center .md-list > li { margin: .35em 0; }
+    .ms-sum-center .md-quote { font-size: 1.02em; padding: .9em 1.1em; font-weight: 600; }
     .ms-sum-center .md-table { display: flex; justify-content: center; }
+    .ms-sum-center .md-table table { font-size: .95em; }
+    .ms-sum-center .md-table td:first-child { white-space: nowrap; font-weight: 700; }
+    .ms-sum-center .md-table th { background: #ecfdf5; color: #047857; }
+    .ms-crumb { display: block; width: fit-content; margin: 0 auto .8em !important; padding: .1em .8em; border-radius: 999px; background: #ecfdf5; color: #047857; font-size: .72em; font-weight: 800; line-height: 1.8; }
     .ms-essay { min-height: 11rem; resize: vertical; line-height: 1.6; }
     .ms-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
     @media (max-width: 1023px) {
@@ -294,22 +305,28 @@
         const summaryRaw = document.getElementById('document-summary-raw');
         if (!summaryContent || !summaryTabs || !summaryNav || !summaryRaw) return;
 
-        const sections = window.splitMarkdownSections(summaryRaw.value);
-        if (sections.length <= 1) {
+        // 요약을 화면 한 장 분량의 작은 조각으로 나눠 한 조각씩 보여 준다 (스크롤 최소화)
+        const pages = window.splitMarkdownPages(summaryRaw.value);
+        if (pages.length <= 1) {
             summaryContent.innerHTML = window.renderMarkdown(summaryRaw.value);
             return;
         }
 
         const TAB_ACTIVE = 'flex-1 h-1.5 rounded-full transition bg-emerald-600';
         const TAB_INACTIVE = 'flex-1 h-1.5 rounded-full transition bg-slate-100 hover:bg-slate-200';
-        const NAV_ACTIVE = 'flex-1 text-center text-xs font-bold py-2 rounded-lg transition bg-slate-50 text-slate-600 hover:bg-slate-100';
-        const NAV_DISABLED = 'flex-1 text-center text-xs font-bold py-2 rounded-lg transition bg-slate-50 text-slate-300 pointer-events-none';
+        const NAV_ACTIVE = 'flex-1 text-center text-xs font-bold py-2.5 rounded-lg transition bg-slate-50 text-slate-600 hover:bg-slate-100';
+        const NAV_DISABLED = 'flex-1 text-center text-xs font-bold py-2.5 rounded-lg transition bg-slate-50 text-slate-300 pointer-events-none';
+        const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
         let currentIndex = 0;
 
-        function showSection(index) {
+        function showPage(index) {
             currentIndex = index;
-            summaryContent.innerHTML = window.renderMarkdown(sections[index].body);
+            const page = pages[index];
+            // 상위 주제(##) 안의 세부 조각이면 어느 주제인지, 이어지는 조각이면 '이어서'를 작게 표시
+            const label = page.cont ? esc(page.title) + ' · 이어서' : (page.crumb ? esc(page.crumb) : '');
+            summaryContent.innerHTML = (label ? '<div class="ms-crumb">' + label + '</div>' : '') + window.renderMarkdown(page.body);
+            summaryContent.scrollTop = 0;
             Array.from(summaryTabs.children).forEach((btn, i) => {
                 btn.className = i === index ? TAB_ACTIVE : TAB_INACTIVE;
             });
@@ -322,26 +339,31 @@
             prevBtn.type = 'button';
             prevBtn.innerHTML = '&larr; 이전';
             prevBtn.className = currentIndex === 0 ? NAV_DISABLED : NAV_ACTIVE;
-            prevBtn.addEventListener('click', () => showSection(currentIndex - 1));
+            prevBtn.addEventListener('click', () => showPage(currentIndex - 1));
+
+            const counter = document.createElement('span');
+            counter.className = 'shrink-0 self-center px-2 text-xs font-bold text-slate-400';
+            counter.textContent = (currentIndex + 1) + ' / ' + pages.length;
 
             const nextBtn = document.createElement('button');
             nextBtn.type = 'button';
             nextBtn.innerHTML = '다음 &rarr;';
-            nextBtn.className = currentIndex >= sections.length - 1 ? NAV_DISABLED : NAV_ACTIVE;
-            nextBtn.addEventListener('click', () => showSection(currentIndex + 1));
+            nextBtn.className = currentIndex >= pages.length - 1 ? NAV_DISABLED : NAV_ACTIVE;
+            nextBtn.addEventListener('click', () => showPage(currentIndex + 1));
 
             summaryNav.appendChild(prevBtn);
+            summaryNav.appendChild(counter);
             summaryNav.appendChild(nextBtn);
         }
 
-        sections.forEach((section, index) => {
+        pages.forEach((page, index) => {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.title = section.title;
-            btn.addEventListener('click', () => showSection(index));
+            btn.title = page.title;
+            btn.addEventListener('click', () => showPage(index));
             summaryTabs.appendChild(btn);
         });
-        showSection(0);
+        showPage(0);
     })();
 </script>
 {% endif %}

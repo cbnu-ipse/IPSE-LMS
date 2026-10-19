@@ -412,3 +412,17 @@ class RenameTests(TestCase):
         self.client.force_login(self.other)
         self.assertEqual(self.client.post(f"/mypage/{self.doc.pk}/rename/", {"title": "hack"}).status_code, 403)
         self.assertEqual(self.client.post(f"/mypage/folder/{self.folder.pk}/rename/", {"name": "hack"}).status_code, 403)
+
+
+class SummaryPagingTests(TestCase):
+    def test_study_page_uses_small_summary_pages_and_prompt_asks_for_short_sections(self):
+        from .ai import SUMMARY_INSTRUCTIONS
+
+        user = User.objects.create_user(username="pager", password="pw")
+        self.client.force_login(user)
+        doc = PersonalDocument.objects.create(user=user, title="d", file="d.txt", summary="## a\n내용",
+                                              summary_status=ProcessingStatus.DONE)
+        res = self.client.get(f"/mypage/{doc.pk}/")
+        self.assertContains(res, "splitMarkdownPages")
+        self.assertNotContains(res, "splitMarkdownSections")
+        self.assertIn("350자", SUMMARY_INSTRUCTIONS)
