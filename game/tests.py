@@ -164,9 +164,33 @@ class HighLowGameTestCase(TestCase):
         )
 
     def test_multiplier_is_none_for_impossible_direction(self):
-        self.assertIsNone(game_views._highlow_multiplier(2, "lower"))   # 2보다 낮은 랭크는 없음
-        self.assertIsNone(game_views._highlow_multiplier(14, "higher"))  # A(14)보다 높은 랭크는 없음
-        self.assertIsNotNone(game_views._highlow_multiplier(8, "higher"))
+        self.assertIsNone(game_views._highlow_multiplier(2, "C", "lower"))    # 2♣보다 낮은 카드는 없음
+        self.assertIsNone(game_views._highlow_multiplier(14, "S", "higher"))  # A♠보다 높은 카드는 없음
+        self.assertIsNotNone(game_views._highlow_multiplier(14, "H", "higher"))  # A♥ 위에는 A♠, A◆가 있다
+        self.assertIsNotNone(game_views._highlow_multiplier(8, "S", "higher"))
+
+    def test_suit_breaks_ties_and_same_card_never_drawn(self):
+        idx = game_views._highlow_card_index
+        self.assertGreater(idx(7, "S"), idx(7, "D"))
+        self.assertGreater(idx(7, "D"), idx(7, "H"))
+        self.assertGreater(idx(7, "H"), idx(7, "C"))
+        self.assertGreater(idx(8, "C"), idx(7, "S"))
+        self.assertEqual((idx(2, "C"), idx(14, "S")), (0, 51))
+        for _ in range(300):
+            self.assertNotEqual(game_views._highlow_draw_card((7, "H")), (7, "H"))
+        # 배당: 51장 중 맞는 장수 기준 (7♥ 위 카드 = 51 - 21 = 30장)
+        self.assertEqual(game_views._highlow_multiplier(7, "H", "higher"), round(0.92 / (30 / 51), 4))
+
+    def test_same_rank_higher_suit_wins_higher_guess(self):
+        self.client.force_login(self.user)
+        with patch.object(game_views, "_highlow_draw_card", return_value=(9, "H")):
+            self.client.post("/game/highlow/start/", data='{"bet": 10}', content_type="application/json")
+        with patch.object(game_views, "_highlow_draw_card", return_value=(9, "S")):
+            res = self.client.post("/game/highlow/guess/", data='{"guess": "higher"}', content_type="application/json").json()
+        self.assertEqual((res["result"], res["rank"], res["suit"]), ("continue", 9, "S"))
+        with patch.object(game_views, "_highlow_draw_card", return_value=(9, "C")):
+            res = self.client.post("/game/highlow/guess/", data='{"guess": "higher"}', content_type="application/json").json()
+        self.assertEqual((res["result"], res["next_suit"]), ("bust", "C"))
 
     def test_start_rejected_when_chip_wallet_insufficient(self):
         self.wallet.chips = 3  # 최소 베팅(5)보다 적은 칩만 보유
@@ -176,7 +200,7 @@ class HighLowGameTestCase(TestCase):
         self.assertFalse(HighLowSession.objects.filter(user=self.user).exists())
 
     def test_start_deducts_bet_and_creates_session(self):
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             res = self._post("start", {"bet": 10})
         self.assertEqual(res.status_code, 200)
         self.wallet.refresh_from_db()
@@ -184,9 +208,9 @@ class HighLowGameTestCase(TestCase):
         self.assertTrue(HighLowSession.objects.filter(user=self.user).exists())
 
     def test_correct_guess_increases_streak_and_payout(self):
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             self._post("start", {"bet": 10})
-        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(12, "H")):
             res = self._post("guess", {"guess": "higher"})
         data = res.json()
         self.assertEqual(data["result"], "continue")
@@ -198,9 +222,9 @@ class HighLowGameTestCase(TestCase):
     def test_correct_guess_at_min_bet_still_grows_payout(self):
         # 회귀 테스트: int()로 소수점을 버리면 최소 베팅 시 배당이 반올림 전까지
         # 그대로 남아 배수가 적용 안 되는 것처럼 보였던 버그 (round()로 수정).
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             self._post("start", {"bet": game_views.HIGHLOW_MIN_BET})
-        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(12, "H")):
             res = self._post("guess", {"guess": "higher"})
         data = res.json()
         self.assertEqual(data["result"], "continue")
@@ -209,9 +233,9 @@ class HighLowGameTestCase(TestCase):
 
     def test_wrong_guess_busts_and_forfeits_bet(self):
         house_before = HouseBank.objects.get_or_create(pk=1)[0].chips
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             self._post("start", {"bet": 10})
-        with patch.object(game_views, "_highlow_draw_rank", return_value=3):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(3, "H")):
             res = self._post("guess", {"guess": "higher"})
         data = res.json()
         self.assertEqual(data["result"], "bust")
@@ -224,9 +248,9 @@ class HighLowGameTestCase(TestCase):
         self.assertEqual(log.payout, 0)
 
     def test_cashout_pays_out_and_clears_session(self):
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             self._post("start", {"bet": 10})
-        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(12, "H")):
             self._post("guess", {"guess": "higher"})
         expected_payout = HighLowSession.objects.get(user=self.user).potential_payout
 
@@ -242,15 +266,15 @@ class HighLowGameTestCase(TestCase):
 
     def test_cashout_is_paid_from_house_and_can_go_negative(self):
         HouseBank.objects.update_or_create(pk=1, defaults={"chips": 0})
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             self._post("start", {"bet": 10})
-        with patch.object(game_views, "_highlow_draw_rank", return_value=12):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(12, "H")):
             self._post("guess", {"guess": "higher"})
         payout = self._post("cashout").json()["payout"]
         self.assertEqual(HouseBank.objects.get(pk=1).chips, -payout)  # 잔액이 없어도 지급하고 음수로
 
     def test_cashout_without_any_correct_guess_is_rejected(self):
-        with patch.object(game_views, "_highlow_draw_rank", return_value=8):
+        with patch.object(game_views, "_highlow_draw_card", return_value=(8, "H")):
             self._post("start", {"bet": 10})
         res = self._post("cashout")
         self.assertEqual(res.status_code, 400)
