@@ -17,7 +17,10 @@
     </div>
 
 
-    <h2 class="text-lg font-bold text-slate-800 mb-3">주제별 현황 <span class="text-emerald-600">{{ topics|length }}</span></h2>
+    <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold text-slate-800">주제별 현황 <span class="text-emerald-600">{{ topics|length }}</span></h2>
+        <a href="{% url 'course_studio_materials' %}" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700"><i class="fa-solid fa-list mr-1"></i>전체 자료 보기·검색·삭제</a>
+    </div>
     {% if in_progress_docs %}<p class="text-xs text-slate-500 mb-2"><i class="fa-solid fa-spinner fa-spin mr-1"></i>요약·분류 중인 자료 {{ in_progress_docs }}개 — 끝나면 주제에 들어가고 강의 초안이 만들어집니다.</p>{% endif %}
     <div class="space-y-2 mb-10">
         {% for t in topics %}

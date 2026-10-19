@@ -1,6 +1,10 @@
 """judge > 강의 생성 탭 (강의자 전용): AI 강의 초안 검토·미리보기·수정·승인. 로직은 course/studio.py."""
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -174,3 +178,43 @@ def studio_topic_build(request):
     threading.Thread(target=run, daemon=True).start()
     messages.info(request, "초안 만들기를 시작했습니다. 잠시 뒤 강의 생성 화면에서 확인하세요.")
     return redirect("course_studio")
+
+
+MATERIALS_PER_PAGE = 30
+
+
+@_studio_only
+def studio_materials(request):
+    """모든 자료를 제목 목록으로 (주제 분류와 무관하게). 제목·요약·본문 검색, 필터, 삭제."""
+    from mypage.models import PersonalDocument
+
+    q = request.GET.get("q", "").strip()
+    scope = request.GET.get("scope", "all")
+    docs = PersonalDocument.objects.select_related("user").order_by("-uploaded_at")
+    if q:
+        docs = docs.filter(Q(title__icontains=q) | Q(summary__icontains=q) | Q(extracted_text__icontains=q))
+    if scope == "unassigned":      # 주제가 없거나 강의 자료에서 제외된 자료 = 주제별 현황에 안 잡히는 자료
+        docs = docs.filter(Q(subject_code="") | Q(is_course_material=False))
+    elif scope == "deleted":       # 사용자가 지웠지만 강의 생성용으로 남아 있는 자료
+        docs = docs.filter(is_deleted=True)
+    page = Paginator(docs, MATERIALS_PER_PAGE).get_page(request.GET.get("page"))
+    return render(request, "course/studio_materials.html", {
+        "page": page, "q": q, "scope": scope, "total": page.paginator.count,
+        "query": urlencode({"q": q, "scope": scope}),
+    })
+
+
+@require_POST
+@_studio_only
+def studio_material_delete(request, pk):
+    """자료를 DB에서 완전히 지운다 (파일 포함). 사용자 화면의 소프트 삭제와 달리 되돌릴 수 없다."""
+    from mypage.models import PersonalDocument
+
+    doc = get_object_or_404(PersonalDocument, pk=pk)
+    title = doc.title
+    if doc.file:
+        doc.file.delete(save=False)
+    doc.delete()
+    messages.success(request, f"'{title}' 자료를 삭제했습니다.")
+    nxt = request.POST.get("next", "")
+    return redirect(nxt if nxt.startswith("/course/studio/materials/") else "course_studio_materials")
