@@ -1200,45 +1200,6 @@
       })();
       {% endif %}
 
-      // 📱 모바일 환경에서 일부 탭(학습, 문제, 대회, 퀴즈) 제한 기능
-      (function() {
-        const isMobileSize = () => window.innerWidth < 768;
-        const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
-        const currentPath = window.location.pathname;
-
-        // 1. 직접 URL 접속 차단 (로딩 시점 즉시 실행)
-        if (restrictedPaths.some(path => currentPath.startsWith(path)) && isMobileSize()) {
-          alert("학습, 문제 풀이 및 대회 기능은 PC 환경에서만 이용하실 수 있습니다.");
-          window.location.href = "/";
-        }
-
-        // 2. 링크 클릭 시 동적 차단 및 토스트 안내
-        document.addEventListener('click', function(e) {
-          const a = e.target.closest('a[href]');
-          if (!a) return;
-          const href = a.getAttribute('href');
-          if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-
-          try {
-            const urlObj = new URL(href, window.location.origin);
-            const path = urlObj.pathname;
-            const isRestricted = restrictedPaths.some(p => path.startsWith(p));
-            
-            if (isRestricted && isMobileSize()) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation(); // 동일 타겟(document)의 다른 클릭 이벤트(로딩바 등) 리스너 실행 전면 차단
-              if (window.showToast) {
-                window.showToast("💻 이 기능은 PC 환경에서만 이용 가능합니다.", "error");
-              } else {
-                alert("이 기능은 PC 환경에서만 이용 가능합니다.");
-              }
-            }
-          } catch(err) {
-            // URL 파싱 예외 처리
-          }
-        }, { capture: true });
-      })();
     </script>
     <script>
       // 유저 프로필 정보 모달 (클릭 시 블러 배경과 함께 표시)
