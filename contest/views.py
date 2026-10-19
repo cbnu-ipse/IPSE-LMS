@@ -70,7 +70,7 @@ def contest_list(request):
 
         participant_rows = ContestParticipant.objects.filter(
             contest=live_contest
-        ).select_related("user")
+        ).prefetch_related("user")
         user_map = {participant.user_id: participant.user for participant in participant_rows}
 
         submission_user_ids = ContestSubmission.objects.filter(
@@ -310,7 +310,7 @@ def contest_submissions(request, pk):
 
     submissions = ContestSubmission.objects.filter(
         contest=contest,
-    ).select_related("problem", "user", "judge_task").order_by("-submitted_at")
+    ).select_related("problem", "judge_task").prefetch_related("user").order_by("-submitted_at")
 
     return render(
         request,
@@ -328,7 +328,7 @@ def my_submissions(request, pk):
     submissions = ContestSubmission.objects.filter(
         contest=contest,
         user=request.user,
-    ).select_related("problem", "user", "judge_task").order_by("-submitted_at")
+    ).select_related("problem", "judge_task").prefetch_related("user").order_by("-submitted_at")
 
     return render(
         request,
@@ -412,7 +412,7 @@ def contest_scoreboard(request, pk):
     contest_problems = contest.contest_problems.select_related("problem").order_by("order", "id")
     problem_labels = [contest_problem.label for contest_problem in contest_problems]
 
-    participant_rows = ContestParticipant.objects.filter(contest=contest).select_related("user")
+    participant_rows = ContestParticipant.objects.filter(contest=contest).prefetch_related("user")
     user_map = {participant.user_id: participant.user for participant in participant_rows}
 
     submission_user_ids = ContestSubmission.objects.filter(

@@ -100,11 +100,12 @@ def ranking_home(request):
 		messages.info(request, "표시할 대회 시즌이 없습니다.")
 		return redirect("ranking:home")
 
-	participant_rows = ContestParticipant.objects.filter(contest=selected_contest).select_related("user", "user__student")
+	participant_rows = ContestParticipant.objects.filter(contest=selected_contest).prefetch_related("user__student")
 	user_map = {participant.user_id: participant.user for participant in participant_rows}
 
 	submissions_qs = ContestSubmission.objects.filter(contest=selected_contest)
-	submission_user_ids = submissions_qs.values_list("user_id", flat=True).distinct()
+	# judge DB 쿼리를 기본 DB 쿼리의 서브쿼리로 넣으면 다른 DB의 테이블을 찾다 깨지므로 값으로 먼저 꺼낸다
+	submission_user_ids = list(submissions_qs.values_list("user_id", flat=True).distinct())
 
 	for user in User.objects.filter(id__in=submission_user_ids).select_related("student"):
 		user_map[user.id] = user

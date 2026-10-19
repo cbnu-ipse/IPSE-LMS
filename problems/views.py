@@ -4,7 +4,7 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from ranking.utils import sync_user_profile_metrics
+from ranking.utils import get_problem_points_map, sync_user_profile_metrics
 from course.models import CourseCategory
 from core.models import ActivityLog
 from .models import Problem, ProblemComment, SolveRecord
@@ -12,8 +12,10 @@ from .models import Problem, ProblemComment, SolveRecord
 User = get_user_model()
 
 
+# 문제·풀이 기록은 judge DB, 사용자·강의 카테고리는 기본 DB에 있다. 두 DB는 한 SQL로 JOIN할 수 없으므로
+# select_related 대신 prefetch_related(DB별로 따로 조회)를 쓰고, 사용자별 합계는 judge DB에서 따로 낸다.
 def problem_list(request):
-    problems = Problem.objects.select_related("category", "author").annotate(
+    problems = Problem.objects.prefetch_related("category", "author").annotate(
         solve_count=Count("solverecord", filter=Q(solverecord__status="SOLVED"))
     )
 
@@ -38,19 +40,12 @@ def problem_list(request):
     else:
         problems = problems.order_by("-created_at")
 
-    top_rankers = (
-        User.objects.select_related("student").annotate(
-            problem_score=Sum(
-                'solve_records__problem__points',
-                filter=Q(solve_records__status='SOLVED')
-            )
-        )
-        .filter(problem_score__gt=0)
-        .order_by('-problem_score', 'username')[:10]
-    )
-
-    for ranker in top_rankers:
-        ranker.problem_score = ranker.problem_score or 0
+    points = get_problem_points_map()  # {user_id: 해결한 문제 점수 합} — judge DB에서 계산
+    rankers = {u.id: u for u in User.objects.filter(id__in=[uid for uid, p in points.items() if p > 0])
+               .select_related("student")}
+    for user_id, user in rankers.items():
+        user.problem_score = points[user_id]
+    top_rankers = sorted(rankers.values(), key=lambda u: (-u.problem_score, u.username))[:10]
 
     user_status = {}
     if request.user.is_authenticated:
@@ -74,15 +69,15 @@ def problem_list(request):
 
 def problem_detail(request, pk):
     problem = get_object_or_404(
-        Problem.objects.select_related("author", "author__student", "category"),
+        Problem.objects.prefetch_related("author__student", "category"),
         pk=pk,
     )
 
-    comments = problem.comments.select_related("author").all()
+    comments = problem.comments.prefetch_related("author").all()
 
     solved_records = (
         SolveRecord.objects.filter(problem=problem, status="SOLVED")
-        .select_related("user")
+        .prefetch_related("user")
         .order_by("solved_at")
     )
 
