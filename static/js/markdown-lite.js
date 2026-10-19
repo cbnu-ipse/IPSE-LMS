@@ -125,3 +125,71 @@ window.splitMarkdownSections = function (text) {
         .map((s) => ({ title: s.title, body: s.body.join('\n').trim() }))
         .filter((s) => s.body !== '');
 };
+
+// 요약을 화면 한 장에 들어갈 만큼 잘게 나눈다 (스크롤을 줄이기 위해). `#`~`###` 제목에서 나누고, 그래도 긴 부분은
+// 빈 줄 단위로 더 나눈다(표·코드 블록은 쪼개지 않는다). 너무 짧은 조각은 다음 조각과 합친다.
+// 반환: [{title, crumb(상위 ## 제목), body, cont(앞 조각의 이어서인지)}]
+window.splitMarkdownPages = function (text, maxChars, minChars) {
+    maxChars = maxChars || 480; minChars = minChars == null ? 140 : minChars;
+    const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+    const sections = [];
+    let cur = null, inCode = false, crumb = '';
+    lines.forEach((line) => {
+        if (line.trim().startsWith('```')) inCode = !inCode;
+        const m = !inCode && line.match(/^(#{1,3})\s+(.*)$/);
+        if (m) {
+            if (m[1].length <= 2) crumb = m[2].trim();
+            cur = { title: m[2].trim(), crumb: m[1].length === 3 ? crumb : '', level: m[1].length, lines: [line] };
+            sections.push(cur);
+            return;
+        }
+        if (!cur) { cur = { title: '개요', crumb: '', level: 2, lines: [] }; sections.push(cur); }
+        cur.lines.push(line);
+    });
+
+    const isRow = (l) => /^\s*\|/.test(l || '');
+    const pages = [];
+    sections.forEach((sec) => {
+        // 빈 줄 기준 블록으로 나누되, 코드 블록 안의 빈 줄과 표 사이의 빈 줄은 같은 블록으로 묶는다
+        const blocks = [];
+        let block = [], fence = false;
+        const flush = () => { if (block.length) { blocks.push(block); block = []; } };
+        sec.lines.forEach((l) => {
+            if (l.trim().startsWith('```')) fence = !fence;
+            if (!fence && !l.trim()) { flush(); return; }
+            block.push(l);
+        });
+        flush();
+        const merged = [];
+        blocks.forEach((b) => {
+            const prev = merged[merged.length - 1];
+            if (prev && isRow(prev[prev.length - 1]) && isRow(b[0])) prev.push(...b); else merged.push(b.slice());
+        });
+        let body = [], size = 0, first = true;
+        const emit = () => {
+            if (!body.length) return;
+            pages.push({ title: sec.title, crumb: sec.crumb, level: sec.level, body: body.map((b) => b.join('\n')).join('\n\n'), cont: !first });
+            body = []; size = 0; first = false;
+        };
+        merged.forEach((b) => {
+            const len = b.join('\n').length;
+            if (body.length && size + len > maxChars) emit();
+            body.push(b); size += len;
+        });
+        emit();
+    });
+
+    // 너무 짧은 조각은 다음 조각과 합친다 (합쳐도 한 장 분량일 때만)
+    const out = [];
+    for (let i = 0; i < pages.length; i++) {
+        let p = pages[i];
+        // 새 `##` 주제로 넘어가는 경계는 넘지 않는다 (`###` 세부 항목이나 이어지는 조각끼리만 합침)
+        while (p.body.length < minChars && i + 1 < pages.length && (pages[i + 1].level >= 3 || pages[i + 1].cont) &&
+               p.body.length + pages[i + 1].body.length <= maxChars) {
+            p = { title: p.title, crumb: p.crumb, level: p.level, body: p.body + '\n\n' + pages[i + 1].body, cont: p.cont };
+            i++;
+        }
+        if (p.body.trim()) out.push(p);
+    }
+    return out;
+};
