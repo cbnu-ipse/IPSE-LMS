@@ -683,3 +683,16 @@ class GostopTierMaxChipsTestCase(TestCase):
         eng.create_room(u, "matgo", "beginner")
         eng.add_bots(u)
         self.assertEqual(GostopSeat.objects.get(user__is_bot=True).stack, 9999)
+
+
+class GostopAiLevelTestCase(TestCase):
+    def test_every_tier_uses_hard_ai(self):
+        for tier in ("beginner", "intermediate", "expert"):
+            self.assertEqual(eng.ai_level(GostopRoom(tier=tier, mode="matgo")), "hard")
+        user = User.objects.create_user(username="lvl", password="x")
+        tiers = eng.get_state_for(user)["tiers"]
+        self.assertEqual({t["ai_level"] for t in tiers}, {"hard"})
+
+    def test_yacht_keeps_tier_levels(self):
+        from .models import TIER_AI_LEVEL
+        self.assertEqual(TIER_AI_LEVEL, {"beginner": "easy", "intermediate": "normal", "expert": "hard"})
