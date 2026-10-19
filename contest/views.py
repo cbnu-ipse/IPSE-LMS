@@ -1,8 +1,8 @@
+from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.admin.views.decorators import staff_member_required
-from .tasks import process_judge_task
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.db.models import Q
@@ -292,12 +292,11 @@ def submit_solution(request, contest_pk, problem_pk):
                 judge_message="채점 대기 중입니다.",
             )
 
-            judge_task = JudgeTask.objects.create(
+            # 채점은 judge_worker가 대기열에서 꺼내 처리한다 (요청 안에서 코드를 실행하지 않는다)
+            JudgeTask.objects.create(
                 submission=submission,
                 status="QUEUED",
             )
-
-            process_judge_task(judge_task.id)
 
     return redirect(
         "contest:problem_detail",
@@ -500,3 +499,17 @@ def contest_scoreboard(request, pk):
     )
 
     return redirect("contest:detail", pk=contest.pk)
+
+@login_required
+def submission_status(request, pk):
+    """내 제출들의 채점 상태 (문제 화면이 대기 중인 제출만 주기적으로 조회한다)."""
+    try:
+        ids = [int(i) for i in request.GET.get("ids", "").split(",") if i][:50]
+    except ValueError:
+        ids = []
+    submissions = ContestSubmission.objects.filter(contest_id=pk, user_id=request.user.id, pk__in=ids).select_related("judge_task")
+    return JsonResponse({"submissions": [
+        {"id": s.pk, "result": s.result, "passed_count": s.passed_count, "total_count": s.total_count,
+         "status": getattr(getattr(s, "judge_task", None), "status", "")}
+        for s in submissions
+    ]})
