@@ -408,6 +408,9 @@ def terminate_contest(request, pk):
 
 def contest_scoreboard(request, pk):
     contest = get_object_or_404(Contest, pk=pk, is_active=True)
+    # 동결 시간에는 운영진만 실제 순위를 본다 (참가자에게는 동결 안내)
+    if contest.is_frozen() and not request.user.is_staff:
+        return render(request, "contest/scoreboard_frozen.html", {"contest": contest})
 
     contest_problems = contest.contest_problems.select_related("problem").order_by("order", "id")
     problem_labels = [contest_problem.label for contest_problem in contest_problems]
@@ -415,9 +418,9 @@ def contest_scoreboard(request, pk):
     participant_rows = ContestParticipant.objects.filter(contest=contest).prefetch_related("user")
     user_map = {participant.user_id: participant.user for participant in participant_rows}
 
-    submission_user_ids = ContestSubmission.objects.filter(
+    submission_user_ids = list(ContestSubmission.objects.filter(
         contest=contest
-    ).values_list("user_id", flat=True).distinct()
+    ).values_list("user_id", flat=True).distinct())
 
     missing_user_ids = [user_id for user_id in submission_user_ids if user_id not in user_map]
 
