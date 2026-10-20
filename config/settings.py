@@ -266,19 +266,31 @@ OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
 # 예전 설정 이름 — 아래 작업별 모델의 기본값으로만 쓴다
 MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.5")
 ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.5")
-# 작업별 모델: 환경변수 AI_MODEL_<작업>으로 따로 바꾼다 (예: AI_MODEL_SUMMARY=저렴한 모델)
-AI_MODELS = {
-    "chat": config("AI_MODEL_CHAT", default=ASSISTANT_CHAT_MODEL),               # 챗봇 답변
-    "chat_compact": config("AI_MODEL_CHAT_COMPACT", default=ASSISTANT_CHAT_MODEL),  # 긴 대화 압축
-    "summary": config("AI_MODEL_SUMMARY", default=MYPAGE_CHAT_MODEL),            # 자료 요약
-    "ocr": config("AI_MODEL_OCR", default=MYPAGE_CHAT_MODEL),                    # 이미지 자료 글자 읽기
-    "question": config("AI_MODEL_QUESTION", default=MYPAGE_CHAT_MODEL),          # 복습 문제 생성
-    "grading": config("AI_MODEL_GRADING", default=MYPAGE_CHAT_MODEL),            # 단답·서술형 채점
-    "classify": config("AI_MODEL_CLASSIFY", default=MYPAGE_CHAT_MODEL),          # 자료 주제 분류
-    "course_readiness": config("AI_MODEL_COURSE_READINESS", default=MYPAGE_CHAT_MODEL),  # 강의 개설 가능 판단
-    "course_outline": config("AI_MODEL_COURSE_OUTLINE", default=MYPAGE_CHAT_MODEL),  # 강의 목차
-    "course_chapter": config("AI_MODEL_COURSE_CHAPTER", default=MYPAGE_CHAT_MODEL),  # 강의 챕터 본문
+# 공급자: 키가 있는 곳만 쓴다. Gemini·Claude는 OpenAI SDK와 호환되는 주소로 부르므로 새 패키지가 필요 없다.
+# 작업에 지정된 공급자의 키가 없으면 OpenAI(MYPAGE_CHAT_MODEL)로 대신 부른다 — 키를 넣기 전까지는 예전과 똑같이 동작.
+GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
+ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
+AI_PROVIDERS = {
+    "openai": {"key": OPENAI_API_KEY, "base_url": None},
+    "gemini": {"key": GEMINI_API_KEY, "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"},
+    "anthropic": {"key": ANTHROPIC_API_KEY, "base_url": "https://api.anthropic.com/v1/"},
 }
+# 작업별 (공급자, 모델). 환경변수로 하나씩 바꿀 수 있다: AI_PROVIDER_<작업>, AI_MODEL_<작업>
+#   주제 분류·챗봇·요약 = Gemini / 문제 생성·채점 = GPT / 강의 목차·챕터 = Claude
+_AI_TASK_DEFAULTS = {
+    "chat": ("gemini", "gemini-2.5-flash"),                 # 챗봇 답변 (도구 호출)
+    "chat_compact": ("gemini", "gemini-2.5-flash"),         # 긴 대화 압축
+    "summary": ("gemini", "gemini-2.5-flash"),              # 자료 요약
+    "ocr": ("openai", MYPAGE_CHAT_MODEL),                   # 이미지 자료 글자 읽기
+    "question": ("openai", MYPAGE_CHAT_MODEL),              # 복습 문제 생성
+    "grading": ("openai", MYPAGE_CHAT_MODEL),               # 단답·서술형 채점
+    "classify": ("gemini", "gemini-2.5-flash-lite"),        # 자료 주제 분류
+    "course_readiness": ("openai", MYPAGE_CHAT_MODEL),      # (더 이상 쓰지 않음)
+    "course_outline": ("anthropic", "claude-haiku-5-5"),    # 강의 목차
+    "course_chapter": ("anthropic", "claude-sonnet-5-5"),   # 강의 챕터 본문
+}
+AI_TASK_PROVIDERS = {t: config(f"AI_PROVIDER_{t.upper()}", default=d[0]) for t, d in _AI_TASK_DEFAULTS.items()}
+AI_MODELS = {t: config(f"AI_MODEL_{t.upper()}", default=d[1]) for t, d in _AI_TASK_DEFAULTS.items()}
 # 하루(KST) 사용자당 요청 수 상한 — 강의자·운영진·관리자는 제한 없음. 0이면 그 작업은 막는다
 AI_DAILY_LIMITS = {
     "chat": config("AI_LIMIT_CHAT", default=20, cast=int),

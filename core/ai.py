@@ -1,7 +1,8 @@
 """
-AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 OpenAI를 직접 부르지 않고 여기를 거친다.
+AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 AI를 직접 부르지 않고 여기를 거친다.
 
-- 작업(task)마다 모델을 따로 고른다 (settings.AI_MODELS, 환경변수 AI_MODEL_<작업>).
+- 작업(task)마다 공급자(OpenAI·Gemini·Claude)와 모델을 따로 고른다 (settings.AI_TASK_PROVIDERS·AI_MODELS,
+  환경변수 AI_PROVIDER_<작업>·AI_MODEL_<작업>). 지정한 공급자의 키가 없으면 OpenAI로 대신 부른다.
 - 사용자별 하루 사용량 제한 (settings.AI_DAILY_LIMITS / AI_DAILY_TOKEN_LIMIT). 강의자·운영진·관리자와
   시스템 작업(user=None)은 제한하지 않는다.
 - 호출마다 토큰 사용량을 AIUsage에 남긴다.
@@ -12,8 +13,10 @@ AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 OpenAI를 �
   OpenAI는 앞부분이 같은 프롬프트를 자동으로 캐시해 그만큼 싸게 계산한다 (cached_tokens로 기록됨).
 - 같은 입력이면 다시 부르지 않는다 (문서는 content_hash, 강의는 source_hash로 재사용).
 """
+import contextlib
 import json
 import logging
+import time
 from datetime import timedelta
 
 from django.conf import settings
@@ -46,17 +49,52 @@ class AIUnavailable(Exception):
 
 
 def model_for(task):
-    return settings.AI_MODELS.get(task) or settings.MYPAGE_CHAT_MODEL
+    return route(task)[1]
 
 
-def _client():
+def route(task):
+    """(공급자, 모델). 작업에 지정된 공급자의 키가 없으면 OpenAI 기본 모델로 대신한다 (서비스가 멈추지 않게)."""
+    override = _OVERRIDES.get(task)
+    if override:
+        return override
+    provider = settings.AI_TASK_PROVIDERS.get(task, "openai")
+    if provider != "openai" and not (settings.AI_PROVIDERS.get(provider) or {}).get("key"):
+        logger.warning("AI provider %s has no API key; task %s falls back to OpenAI", provider, task)
+        return "openai", settings.MYPAGE_CHAT_MODEL
+    return provider, settings.AI_MODELS.get(task) or settings.MYPAGE_CHAT_MODEL
+
+
+def _client(provider="openai"):
     from openai import OpenAI
 
     if getattr(settings, "AI_BLOCK_NETWORK", False):
         raise AIUnavailable("테스트 중에는 실제 AI API를 부르지 않습니다.")
-    if not settings.OPENAI_API_KEY:
-        raise AIUnavailable("OPENAI_API_KEY가 설정되어 있지 않습니다. 운영 .env에 키를 추가한 뒤 다시 시도해주세요.")
-    return OpenAI(api_key=settings.OPENAI_API_KEY)
+    cfg = settings.AI_PROVIDERS.get(provider) or {}
+    if not cfg.get("key"):
+        raise AIUnavailable(f"{provider} API 키가 설정되어 있지 않습니다. 운영 .env에 키를 추가한 뒤 다시 시도해주세요.")
+    return OpenAI(api_key=cfg["key"], base_url=cfg.get("base_url"))
+
+
+# 평가 스크립트(eval_ai_models)가 작업의 공급자·모델을 잠깐 바꿔 실제 함수를 그대로 돌릴 때 쓴다.
+# 덮어쓴 동안에는 사용량(AIUsage)을 DB에 남기지 않고 _EVAL_USAGE에만 모은다.
+_OVERRIDES = {}
+_EVAL_USAGE = []
+
+
+@contextlib.contextmanager
+def override_route(provider, model, tasks=None):
+    tasks = list(tasks or settings.AI_MODELS)
+    saved = {t: _OVERRIDES.get(t) for t in tasks}
+    _OVERRIDES.update({t: (provider, model) for t in tasks})
+    _EVAL_USAGE.clear()
+    try:
+        yield _EVAL_USAGE
+    finally:
+        for t, v in saved.items():
+            if v is None:
+                _OVERRIDES.pop(t, None)
+            else:
+                _OVERRIDES[t] = v
 
 
 def _is_exempt(user):
@@ -119,13 +157,22 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
     check=False는 이미 같은 요청 안에서 한도를 확인했을 때(도구 호출 반복 등) 쓴다."""
     if check and counts_as_request:
         check_quota(user, task)
-    model = model_for(task)
+    provider, model = route(task)
+    limit = max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000)
+    # OpenAI의 새 모델은 max_completion_tokens, 호환 주소(Gemini·Claude)는 max_tokens를 쓴다
     params = {"model": model, "messages": messages,
-              "max_completion_tokens": max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000), **kwargs}
-    if json_mode:
+              ("max_completion_tokens" if provider == "openai" else "max_tokens"): limit, **kwargs}
+    if json_mode and provider != "anthropic":   # Claude 호환 주소는 response_format을 무시한다 → 프롬프트와 파서로 처리
         params["response_format"] = {"type": "json_object"}
-    response = _client().chat.completions.create(**params)
-    _record(user, task, model, response, counts_as_request)
+    started = time.monotonic()
+    response = _client().chat.completions.create(**params) if provider == "openai" \
+        else _client(provider).chat.completions.create(**params)
+    if _OVERRIDES.get(task):
+        _EVAL_USAGE.append({"task": task, "model": model, "latency": time.monotonic() - started,
+                            "prompt": getattr(getattr(response, "usage", None), "prompt_tokens", 0) or 0,
+                            "completion": getattr(getattr(response, "usage", None), "completion_tokens", 0) or 0})
+    else:
+        _record(user, task, model, response, counts_as_request)
     return response
 
 
@@ -134,9 +181,23 @@ def complete(task, messages, **kwargs):
     return (chat(task, messages, **kwargs).choices[0].message.content or "").strip()
 
 
+def parse_json(text):
+    """모델 답에서 JSON 객체를 꺼낸다. 코드 펜스(```json)나 앞뒤 설명이 붙어도 첫 { ~ 마지막 }를 읽는다."""
+    text = (text or "").strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except ValueError:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            raise
+        return json.loads(text[start:end + 1])
+
+
 def complete_json(task, messages, **kwargs):
-    """JSON 모드로 불러 dict로 돌려준다."""
-    return json.loads(chat(task, messages, json_mode=True, **kwargs).choices[0].message.content or "{}")
+    """JSON 모드로 불러 dict로 돌려준다 (공급자에 따라 JSON 모드가 없으면 파서가 보완)."""
+    return parse_json(chat(task, messages, json_mode=True, **kwargs).choices[0].message.content or "{}")
 
 
 def untrusted(label, text):

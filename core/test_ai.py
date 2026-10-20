@@ -34,6 +34,7 @@ class _Client:
 
 @override_settings(
     AI_MODELS={"chat": "model-chat", "summary": "model-cheap", "grading": "model-grade"},
+    AI_TASK_PROVIDERS={"chat": "openai", "summary": "openai", "grading": "openai"},
     AI_DAILY_LIMITS={"chat": 2, "summary": 1}, AI_DAILY_TOKEN_LIMIT=1000,
 )
 class CoreAITestCase(TestCase):
@@ -118,3 +119,74 @@ class GuardrailTestCase(TestCase):
         c = Client()
         c.force_login(user)
         return c
+
+
+class ProviderRoutingTestCase(TestCase):
+    PROVIDERS = {"openai": {"key": "k-o", "base_url": None},
+                 "gemini": {"key": "k-g", "base_url": "https://g.example/v1/"},
+                 "anthropic": {"key": "k-a", "base_url": "https://a.example/v1/"}}
+
+    def test_each_task_goes_to_its_provider_and_model(self):
+        with override_settings(AI_PROVIDERS=self.PROVIDERS,
+                               AI_TASK_PROVIDERS={"classify": "gemini", "grading": "openai", "course_chapter": "anthropic"},
+                               AI_MODELS={"classify": "g-lite", "grading": "gpt-x", "course_chapter": "claude-y"}):
+            self.assertEqual(ai.route("classify"), ("gemini", "g-lite"))
+            self.assertEqual(ai.route("grading"), ("openai", "gpt-x"))
+            self.assertEqual(ai.route("course_chapter"), ("anthropic", "claude-y"))
+
+    def test_missing_key_falls_back_to_openai_default_model(self):
+        providers = {**self.PROVIDERS, "gemini": {"key": "", "base_url": "x"}}
+        with override_settings(AI_PROVIDERS=providers, AI_TASK_PROVIDERS={"classify": "gemini"},
+                               AI_MODELS={"classify": "g-lite"}, MYPAGE_CHAT_MODEL="gpt-default"):
+            self.assertEqual(ai.route("classify"), ("openai", "gpt-default"))
+
+    def test_non_openai_uses_max_tokens_and_claude_skips_json_mode(self):
+        calls = {}
+
+        def fake_client(provider="openai"):
+            calls["provider"] = provider
+            return _Client(_response('```json\n{"a": 1}\n```'))
+
+        with override_settings(AI_PROVIDERS=self.PROVIDERS, AI_TASK_PROVIDERS={"course_outline": "anthropic"},
+                               AI_MODELS={"course_outline": "claude-y"}):
+            client = fake_client("anthropic")
+            with patch.object(ai, "_client", side_effect=lambda provider="openai": client):
+                data = ai.complete_json("course_outline", [{"role": "user", "content": "x"}])
+        self.assertEqual(data, {"a": 1})                              # 코드 펜스가 붙어도 읽는다
+        params = client.calls[0]
+        self.assertIn("max_tokens", params)
+        self.assertNotIn("max_completion_tokens", params)
+        self.assertNotIn("response_format", params)                   # Claude 호환 주소는 JSON 모드 없음
+
+    def test_parse_json_extracts_object_from_chatty_reply(self):
+        self.assertEqual(ai.parse_json('여기 결과입니다: {"ok": true} 끝'), {"ok": True})
+        with self.assertRaises(ValueError):
+            ai.parse_json("JSON이 아닙니다")
+
+
+class EvalCommandTestCase(TestCase):
+    def test_eval_runs_real_functions_with_overridden_model_and_records_nothing(self):
+        import json
+        import tempfile
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        cases = {"grading": [
+            {"question": "q1", "answer": "정답A", "user_answer": "오답", "expected": False, "type": "essay"},
+            {"question": "q2", "answer": "정답B", "user_answer": "맞는 서술", "expected": True, "type": "essay"},
+        ]}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump(cases, f, ensure_ascii=False)
+        client = _Client(_response('{"is_correct": true, "feedback": ""}'))     # 항상 정답이라고 답하는 모델
+        out = StringIO()
+        with override_settings(AI_PROVIDERS={"openai": {"key": "k", "base_url": None}}), \
+                patch.object(ai, "_client", return_value=client):
+            call_command("eval_ai_models", "--candidates", "openai:gpt-test", "--tasks", "grading",
+                         "--cases", f.name, stdout=out)
+        text = out.getvalue()
+        self.assertIn("gpt-test", text)
+        self.assertIn("50%", text)                                  # 2문제 중 1문제만 맞힘
+        self.assertEqual(client.calls[0]["model"], "gpt-test")      # 후보 모델로 실제 호출됨
+        self.assertEqual(AIUsage.objects.count(), 0)                # 평가는 사용량을 DB에 남기지 않는다
+        self.assertEqual(ai._OVERRIDES, {})                         # 끝나면 원래 설정으로 복구

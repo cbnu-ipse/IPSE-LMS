@@ -148,3 +148,14 @@ LangChain/RAG/LangGraph/Guardrail/Agent
 
 이후 `mypage`/`course`/`assistant` 앱에 대한 모든 변경은 이 예외가 아니라 IPSE-LMS 본체 개발
 자체이므로 통상적인 커밋 이력(`git log`)으로 추적된다.
+
+## 공급자·모델 라우팅 (core/ai.py)
+
+- 작업마다 (공급자, 모델)을 따로 정한다: `settings.AI_TASK_PROVIDERS`·`AI_MODELS` (환경변수 `AI_PROVIDER_<작업>`·`AI_MODEL_<작업>`).
+  기본 배정은 주제 분류·챗봇·요약 = Gemini, 문제 생성·채점 = OpenAI, 강의 목차·챕터 = Claude.
+- Gemini·Claude는 OpenAI SDK와 호환되는 주소(`base_url`)로 부르므로 새 패키지가 필요 없다. 지정한 공급자의 키가 없으면
+  OpenAI 기본 모델로 대신 부른다(`route()`).
+- 공급자 차이: OpenAI는 `max_completion_tokens`, 호환 주소는 `max_tokens`. Claude 호환 주소는 `response_format`(JSON 모드)을
+  무시하므로 `complete_json`이 코드 펜스·앞뒤 설명이 붙어도 읽는 `parse_json`으로 보완한다.
+- 모델 비교는 `python manage.py eval_ai_models` (사례: `core/eval/cases.json`). 서비스 함수를 후보 모델로 바꿔 그대로 돌리고
+  사용량은 DB에 남기지 않는다.
