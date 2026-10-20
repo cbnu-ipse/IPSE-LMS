@@ -437,3 +437,41 @@ class SummaryNeverBlankTests(TestCase):
         res = self.client.get(f"/mypage/{doc.pk}/")
         self.assertContains(res, "markdown-lite.js?v=")        # 배포 뒤 옛 스크립트 캐시를 쓰지 않도록
         self.assertContains(res, "function showWhole()")        # 조각 나누기가 실패해도 요약 전체를 보여 줌
+
+
+class OxAnswerBalanceTests(TestCase):
+    def fake_model(self, seen):
+        """요청에 적힌 정답(O/X)을 그대로 따르는 가짜 모델."""
+        def fake(task, messages, **kw):
+            request = messages[1]["content"]
+            seen.append(request)
+            return {"question": "문장", "answer": "X" if "정답은 X" in request else "O", "explanation": "근거"}
+        return fake
+
+    def test_target_answer_is_chosen_by_code_and_balanced(self):
+        import random as _r
+        from .ai import generate_one_question
+        seen, answers = [], []
+        with patch("core.ai.complete_json", side_effect=self.fake_model(seen)):
+            rng = _r.Random(1)
+            for i in range(200):
+                answers.append(generate_one_question("본문", "ox", rng=rng)["answer"])
+        self.assertTrue(80 <= answers.count("O") <= 120)                 # 한쪽으로 쏠리지 않는다
+        self.assertEqual(len(seen), 200)                                  # 모델이 따르면 재호출 없음
+        self.assertTrue(any("거짓인 진술" in r for r in seen))
+
+    def test_retry_once_when_model_ignores_target_and_non_ox_has_no_target(self):
+        import random as _r
+        from .ai import generate_one_question
+        calls = []
+        with patch("core.ai.complete_json", side_effect=lambda t, m, **k: calls.append(m[1]["content"]) or
+                   {"question": "q", "answer": "O", "explanation": ""}):
+            class AlwaysX:
+                def choice(self, seq): return "X"
+            generate_one_question("본문", "ox", rng=AlwaysX())
+            self.assertEqual(len(calls), 2)                               # X를 요구했는데 O가 와서 한 번 더
+            self.assertIn("반드시 answer는 X", calls[1])
+            calls.clear()
+            generate_one_question("본문", "short")
+            self.assertEqual(len(calls), 1)
+            self.assertNotIn("정답은 O", calls[0])

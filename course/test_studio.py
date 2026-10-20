@@ -389,3 +389,34 @@ class DraftDiffTestCase(StudioBase):
         self.assertContains(res, "게시된 강의에서 달라진 부분")
         self.assertContains(res, "문제 삭제")
         self.assertContains(self.client.get(reverse("course_studio")), "세트 수정 1")
+
+
+class ChoiceBalanceTestCase(TestCase):
+    def sets(self, n=200):
+        qs = [{"type": "mc", "q": f"문제 {i}", "options": ["정답", "오답1", "오답2", "오답3"], "answer": 0, "explanation": ""}
+              for i in range(n)]
+        return [{"title": "t", "cards": [{"title": "c", "body": "b"}], "questions": qs}]
+
+    def test_shuffle_spreads_correct_position_and_keeps_answer_correct(self):
+        from collections import Counter
+        sets = course_ai.shuffle_choices(self.sets())
+        qs = sets[0]["questions"]
+        self.assertTrue(all(q["options"][q["answer"]] == "정답" for q in qs))      # 정답 내용은 그대로
+        counts = Counter(q["answer"] for q in qs)
+        self.assertTrue(all(counts[i] >= 30 for i in range(4)), counts)            # 첫 번째 보기에 몰리지 않는다
+
+    def test_shuffle_is_deterministic_and_normalize_does_not_reorder_edited_questions(self):
+        a = course_ai.shuffle_choices(self.sets(20))
+        b = course_ai.shuffle_choices(self.sets(20))
+        self.assertEqual(a, b)
+        q = {"type": "mc", "q": "수정한 문제", "options": ["가", "나", "다"], "answer": 2, "explanation": ""}
+        self.assertEqual(course_ai.normalize_question(q)["options"], ["가", "나", "다"])   # 고친 문제는 순서 유지
+
+    def test_generate_chapter_returns_shuffled_choices(self):
+        data = {"sets": [{"title": "세트", "cards": [{"title": "c", "body": "b"}],
+                          "questions": [{"type": "mc", "q": f"q{i}", "options": ["정답", "x", "y", "z"], "answer": 0,
+                                         "explanation": ""} for i in range(12)]}]}
+        with patch("core.ai.complete_json", return_value=data):
+            sets = course_ai.generate_chapter("과목", {"title": "챕터"}, [{"title": "d", "summary": "s"}])
+        answers = {q["answer"] for q in sets[0]["questions"]}
+        self.assertGreater(len(answers), 1)

@@ -10,6 +10,7 @@ AI 호출은 모두 core.ai를 거친다 (작업별 모델·사용량 제한·�
 - 단답형은 정답과 글자가 같으면 AI를 부르지 않고 바로 정답 처리한다.
 """
 import io
+import random
 import re
 from collections import Counter
 
@@ -215,7 +216,7 @@ def generate_summary(extracted_text, user=None):
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}
 
 
-def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0):
+def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0, rng=None):
     """문서 본문을 근거로 지정된 유형(ox/short/essay)의 문제를 1개 만든다.
     반환: {"question", "answer", "explanation"} — explanation은 OX 해설(틀렸을 때 보여줌, 다시 부르지 않음).
     문서 본문을 시스템 메시지에 고정해 같은 문서로 여러 문제를 만들 때 프롬프트 캐시가 적용되게 한다."""
@@ -232,10 +233,18 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
     if existing_questions:
         request += ("\n이미 만든 문제들입니다. 같은 내용을 묻거나 표현만 바꾼 문제는 만들지 말고, "
                     "자료의 다른 부분에서 새 문제를 만드세요:\n" + "\n".join(f"- {q}" for q in existing_questions))
-    data = core_ai.complete_json("question", [
-        {"role": "system", "content": system},
-        {"role": "user", "content": request},
-    ], user=user)
+    # OX는 정답(O/X)을 코드가 먼저 정해 모델에 알려 준다 — 그냥 두면 자료 문장을 그대로 옮긴 '참' 진술만 만들어 늘 O가 정답이 된다
+    target = (rng or random).choice(["O", "X"]) if question_type == "ox" else None
+    if target == "O":
+        request += "\n이번 문제의 정답은 O입니다: 자료의 내용과 일치하는 참인 진술로 만드세요."
+    elif target == "X":
+        request += ("\n이번 문제의 정답은 X입니다: 자료의 사실 하나(숫자·용어·조건·방향·주체 등)를 그럴듯하게 바꿔 "
+                    "거짓인 진술로 만들고, explanation에 올바른 사실을 쓰세요.")
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": request}]
+    data = core_ai.complete_json("question", messages, user=user)
+    if target and str(data.get("answer", "")).strip().upper() != target:   # 모델이 정해 준 정답을 따르지 않으면 한 번 더
+        messages[1] = {"role": "user", "content": request + f"\n(반드시 answer는 {target}이어야 합니다. 다시 만들어 주세요.)"}
+        data = core_ai.complete_json("question", messages, user=user)
     return {
         "question": clean_question_text(data.get("question", "")),
         "answer": data.get("answer", ""),

@@ -9,6 +9,9 @@ AI 강의 생성 — 강의 자료(요약)로 챕터별 강의를 만든다. 호
 강의 자료는 "시험 포인트 정리"가 아니라 그 챕터에서 알아야 할 것만 담은 간결한 강의 내용이다.
 원본 자료(PDF 등)는 학생에게 보여주지 않으므로 카드만 읽어도 이해되게 쓴다.
 """
+import random
+import zlib
+
 from core import ai as core_ai
 
 OUTLINE_HEAD_CHARS = 600      # 목차를 정할 때 자료 하나당 요약 앞부분 길이
@@ -18,7 +21,7 @@ MAX_CHAPTERS = 8
 MAX_SETS = 12
 MAX_CARDS = 3
 MAX_QUESTIONS = 3
-FORMAT_VERSION = 2          # 강의 형식(프롬프트)이 바뀌면 올린다 — 해시에 들어가 다음 생성 때 새 형식으로 다시 만든다
+FORMAT_VERSION = 3          # 강의 형식(프롬프트)이 바뀌면 올린다 — 해시에 들어가 다음 생성 때 새 형식으로 다시 만든다
 
 OUTLINE_SYSTEM = (
     "대학 동아리 학습 플랫폼의 강의 설계자입니다. 학생들이 올린 강의 자료 목록을 보고 강의 목차를 만듭니다.\n"
@@ -48,10 +51,12 @@ CHAPTER_SYSTEM = (
     "- 카드 body에 쓸 수 있는 서식: **굵게**, `코드`, '- ' 목록(하위 항목은 앞에 공백 2칸), "
     "'1. ' 번호 목록, '| a | b |' 표(행 사이에 빈 줄 없이), ``` 코드 블록. 그 밖의 HTML·이미지·링크는 쓰지 않습니다. 표는 작게(3열·4행 이내).\n"
     "- 확인 문제는 카드 내용을 이해했는지 묻는 것. 유형:\n"
-    '  OX: {"type": "ox", "q": "...", "answer": true, "explanation": "..."}\n'
-    '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 0, "explanation": "..."}'
+    '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
+    '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 2, "explanation": "..."}'
     " (answer는 정답 보기의 번호, 0부터)\n"
     '  단답: {"type": "short", "q": "...", "answers": ["정답", "다른 표현"], "explanation": "..."}\n'
+    "- 정답이 한쪽으로 쏠리면 안 됩니다: OX는 정답이 O인 문제와 X인 문제를 섞고(X 문제는 자료의 사실 하나를 그럴듯하게 바꿔 거짓 진술로), "
+    "객관식 정답 번호도 골고루 두세요 (첫 번째 보기에 몰지 마세요).\n"
     "- explanation은 한 문장.\n"
     'JSON으로만 답하세요: {"sets": [{"title": "...", "cards": [{"title": "...", "body": "..."}], "questions": [...]}]}'
 )
@@ -80,7 +85,21 @@ def generate_chapter(subject, chapter, docs):
         {"role": "user", "content": f"과목: {subject}\n챕터: {chapter['title']}\n챕터 개요: {chapter.get('summary', '')}\n"
                                     + core_ai.untrusted("자료", material)},
     ])
-    return normalize_sets(data.get("sets"))
+    return shuffle_choices(normalize_sets(data.get("sets")))
+
+
+def shuffle_choices(sets):
+    """객관식 보기 순서를 섞고 정답 번호를 따라 옮긴다. 모델이 정답을 첫 보기에 몰아 두는 경향이 있어서다.
+    문제 글로 정해지는 고정 방식이라 같은 문제는 늘 같게 섞이고, 생성 직후에 한 번만 부른다
+    (강의자가 고친 문제를 다시 정리할 때 보기 순서가 바뀌지 않도록 normalize_*에는 넣지 않는다)."""
+    for s in sets:
+        for q in s["questions"]:
+            if q["type"] != "mc":
+                continue
+            order = list(range(len(q["options"])))
+            random.Random(zlib.crc32(q["q"].encode())).shuffle(order)
+            q["options"], q["answer"] = [q["options"][i] for i in order], order.index(q["answer"])
+    return sets
 
 
 # ── 정리·검증: AI 출력을 템플릿이 믿고 쓸 수 있는 모양으로 ───────────────────────
