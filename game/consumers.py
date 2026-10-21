@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gostop_engine, poker_engine, yacht_engine
+from . import gomoku_engine, gostop_engine, poker_engine, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +29,11 @@ _online_users = {}  # user_id -> {"user_id", "display_name", "picture_url", "cou
 # 실제로 자리에 앉아 있을 때만 '플레이 중'으로 본다. 아무것도 하지 않거나 방만 둘러보면 '로비'.
 LOBBY_LABEL = "로비"
 GAME_LABELS = {
-    "poker": "포커", "gostop": "고스톱", "yacht": "요트 다이스", "highlow": "하이로우", "apple_game": "마지막 잎새",
+    "poker": "포커", "gostop": "고스톱", "yacht": "요트 다이스", "gomoku": "오목", "highlow": "하이로우", "apple_game": "마지막 잎새",
     "slot_machine": "학점 캡슐 슬롯머신", "memory_match": "카드 매칭", "number_speed": "넘버 스피드",
     "pattern_recall": "패턴 리콜", "trick_or_treat": "트릭 오어 트릿",
 }
-ROOM_GAMES = {"poker", "gostop", "yacht"}   # 앉아야 플레이 중 (그 외는 화면을 열고 있으면 플레이 중)
+ROOM_GAMES = {"poker", "gostop", "yacht", "gomoku"}   # 앉아야 플레이 중 (그 외는 화면을 열고 있으면 플레이 중)
 ACTIVITY_REFRESH_SECONDS = 5                # 앉고 일어남을 이 주기로 반영한다
 ACTIVITY_MIN_INTERVAL = 3.0                 # 여러 접속이 있어도 DB 조회는 이 간격 이상으로만
 FRIEND_REFRESH_TICKS = 12                   # 친구 목록 갱신 주기 (틱 단위 = 약 1분)
@@ -63,7 +63,7 @@ def _page_slug(query_string):
 
 def _seated_games(user_ids):
     """방에 앉아 있는 사용자 {user_id: 게임 이름} (포커 홀덤/블랙잭, 맞고/고스톱, 요트)."""
-    from .models import GostopSeat, PokerSeat, YachtSeat
+    from .models import GomokuSeat, GostopSeat, PokerSeat, YachtSeat
 
     seated = {}
     for uid, game_type in (PokerSeat.objects.filter(user_id__in=user_ids)
@@ -73,6 +73,8 @@ def _seated_games(user_ids):
         seated[uid] = "맞고" if mode == "matgo" else "고스톱"
     for uid in YachtSeat.objects.filter(user_id__in=user_ids).values_list("user_id", flat=True):
         seated[uid] = "요트 다이스"
+    for uid in GomokuSeat.objects.filter(user_id__in=user_ids).values_list("user_id", flat=True):
+        seated[uid] = "오목"
     return seated
 
 
@@ -858,4 +860,132 @@ class YachtConsumer(AsyncWebsocketConsumer):
 
     async def _send_state(self):
         state = await database_sync_to_async(yacht_engine.get_state_for)(self.scope["user"])
+        await self.send(text_data=json.dumps(state, ensure_ascii=False))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 오목 — 요트와 같은 구조 (방 목록 + 내 방 상태를 한 소켓/그룹, 신호만 보내고 각 연결이 자기 시점으로
+# 다시 만든다). 칩이 없어 지갑 메시지는 없다. 연결이 끊긴 채 유예를 넘기면 판 중이면 기권패로 나간다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+GOMOKU_GROUP = "gomoku"
+GOMOKU_DISCONNECT_GRACE_SECONDS = 20
+_gomoku_watchdog_task = None
+_gomoku_disconnect_tasks = {}  # user_id -> asyncio.Task
+
+
+async def _broadcast_gomoku_state():
+    channel_layer = get_channel_layer()
+    if channel_layer is not None:
+        await channel_layer.group_send(GOMOKU_GROUP, {"type": "broadcast_state"})
+
+
+def _ensure_gomoku_watchdog():
+    global _gomoku_watchdog_task
+    if _gomoku_watchdog_task is None or _gomoku_watchdog_task.done():
+        _gomoku_watchdog_task = asyncio.create_task(_gomoku_watchdog_loop())
+
+
+async def _gomoku_watchdog_loop():
+    global _gomoku_watchdog_task
+    try:
+        while True:
+            try:
+                deadline = await database_sync_to_async(gomoku_engine.next_deadline_at)()
+                if deadline is None:
+                    return
+                wait = (deadline - timezone.now()).total_seconds()
+                if wait > 0:
+                    await asyncio.sleep(min(wait, 2))
+                    continue
+                await database_sync_to_async(gomoku_engine.process_due_deadlines, thread_sensitive=False)()
+                await _broadcast_gomoku_state()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("gomoku watchdog tick failed, retrying")
+                await database_sync_to_async(close_old_connections)()
+                await asyncio.sleep(POKER_WATCHDOG_ERROR_RETRY_SECONDS)
+    finally:
+        _gomoku_watchdog_task = None
+
+
+async def _gomoku_disconnect_grace(user, seconds=None):
+    try:
+        await asyncio.sleep(GOMOKU_DISCONNECT_GRACE_SECONDS if seconds is None else seconds)
+        ok, _ = await database_sync_to_async(gomoku_engine.leave_room)(user)
+        if ok:
+            await _broadcast_gomoku_state()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _gomoku_disconnect_tasks.pop(user.id, None)
+
+
+class GomokuConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+        task = _gomoku_disconnect_tasks.pop(user.id, None)
+        if task and not task.done():
+            task.cancel()
+        await self.channel_layer.group_add(GOMOKU_GROUP, self.channel_name)
+        await self.accept()
+        _ensure_gomoku_watchdog()
+        await self._send_state()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(GOMOKU_GROUP, self.channel_name)
+        user = self.scope.get("user")
+        if user and user.is_authenticated and user.id not in _gomoku_disconnect_tasks:
+            seconds = PAGE_LEAVE_GRACE_SECONDS if getattr(self, "page_left", False) else None
+            _gomoku_disconnect_tasks[user.id] = asyncio.create_task(_gomoku_disconnect_grace(user, seconds))
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        user = self.scope["user"]
+        msg_type = data.get("type")
+        _ensure_gomoku_watchdog()
+        if msg_type == "__ping__":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+        if msg_type == "page_leave":
+            self.page_left = True
+            return
+        handlers = {
+            "create": lambda: gomoku_engine.create_room(user),
+            "join": lambda: gomoku_engine.join_room(user, data.get("room_id")),
+            "leave": lambda: gomoku_engine.leave_room(user),
+            "add_bot": lambda: gomoku_engine.add_bot(user),
+            "place": lambda: gomoku_engine.place(user, data.get("x"), data.get("y")),
+            "resign": lambda: gomoku_engine.resign(user),
+        }
+        handler = handlers.get(msg_type)
+        if handler is None:
+            return
+        try:
+            ok, result = await database_sync_to_async(handler)()
+        except Exception:
+            logger.exception("gomoku action failed: type=%s user=%s", msg_type, getattr(user, "id", None))
+            await database_sync_to_async(close_old_connections)()
+            await self.send(text_data=json.dumps(
+                {"type": "error", "message": "처리 중 오류가 발생했습니다. 새로고침 후 다시 시도해주세요."},
+                ensure_ascii=False,
+            ))
+            return
+        if not ok:
+            await self.send(text_data=json.dumps({"type": "error", "message": result}, ensure_ascii=False))
+            return
+        await _broadcast_gomoku_state()
+
+    async def broadcast_state(self, event):
+        await self._send_state()
+
+    async def _send_state(self):
+        state = await database_sync_to_async(gomoku_engine.get_state_for)(self.scope["user"])
         await self.send(text_data=json.dumps(state, ensure_ascii=False))

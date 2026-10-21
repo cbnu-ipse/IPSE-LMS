@@ -1,0 +1,933 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 오목{% endblock %}
+
+{% block content %}
+<section class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+
+        <!-- 오목 판 -->
+        <div class="lg:col-span-9 min-w-0">
+            <div class="gm-outer">
+                <div class="gm-stat-bar">
+                    <span class="gm-stat-chip"><i class="fa-solid fa-door-open"></i> <span id="gm-room-label">방 목록</span></span>
+                    <span class="gm-stat-chip"><i class="fa-solid fa-trophy"></i> 내 전적 <strong id="gm-my-record">-</strong></span>
+                    <a href="{% url 'game_ranking' %}?board=gomoku" class="gm-stat-chip gm-rank-link"><i class="fa-solid fa-ranking-star"></i> 승 수 랭킹</a>
+                </div>
+
+                <div class="gm-felt" id="gm-felt">
+                    <!-- 방 목록 -->
+                    <div id="gm-lobby-view" class="gm-lobby"></div>
+
+                    <!-- 게임판 -->
+                    <div id="gm-game-view" class="gm-game hidden">
+                        <div id="gm-players" class="gm-players"></div>
+                        <div id="gm-turn-info" class="gm-turn-info"></div>
+                        <div class="gm-board-wrap"><div id="gm-board" class="gm-board"></div></div>
+                        <div id="gm-center-msg" class="gm-center-msg hidden"></div>
+                    </div>
+                </div>
+
+                <!-- 하단 액션 바 -->
+                <div class="gm-action-bar" id="gm-action-bar">
+                    <div class="gm-hint">연결 중...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: 사이드 패널 -->
+        <div class="lg:col-span-3 mobile-hidden" id="gm-side-col">
+            <div class="game-side-panel">
+                <div class="gsp-tabs">
+                    <button class="gsp-tab gsp-tab--active" onclick="gspSwitch(this,'gm-tab-chat')">
+                        <i class="fa-solid fa-comments"></i> 채팅
+                    </button>
+                    <button class="gsp-tab" onclick="gspSwitch(this,'gm-tab-online')">
+                        <i class="fa-solid fa-users"></i> 접속자 <span id="gm-online-count"></span>
+                    </button>
+                </div>
+
+                <!-- 채팅 탭 -->
+                <div id="gm-tab-chat" class="gsp-pane">
+                    <div class="gsp-pane-head">
+                        <span id="gm-chat-status" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                            연결 중...
+                        </span>
+                    </div>
+                    <div id="gm-chat-messages" class="gsp-messages">
+                        {% for msg in chat_messages %}
+                        <div class="flex gap-2 items-start">
+                            {% if msg.user.picture and msg.user.picture.name != "default.png" %}
+                            <img src="{{ msg.user.picture.url }}"{% include "game/_chat_card_attrs.html" with u=msg.user %} class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">
+                            {% else %}
+                            <span{% include "game/_chat_card_attrs.html" with u=msg.user %} class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">{{ msg.user.display_chat_name|slice:":1" }}</span>
+                            {% endif %}
+                            <div>
+                                <span class="font-semibold text-slate-700"{% include "game/_chat_card_attrs.html" with u=msg.user %}>{{ msg.user.display_chat_name }}</span>{{ msg.user.graduate_badge_html }}
+                                <span class="text-[10px] text-slate-400 ml-1">{{ msg.created_at|time:"H:i" }}</span>
+                                <p class="text-slate-600 mt-0.5 break-all">{{ msg.message }}</p>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-slate-400 text-center pt-4">아직 메시지가 없습니다.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="gsp-input-row">
+                        <input id="gm-chat-input" maxlength="300" placeholder="메시지를 입력하세요..." disabled
+                               class="flex-1 px-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs outline-none focus:border-indigo-500 focus:bg-white transition">
+                        <button id="gm-chat-send" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">전송</button>
+                    </div>
+                </div>
+
+                <!-- 접속자 탭 -->
+                <div id="gm-tab-online" class="gsp-pane" style="display:none">
+                    <div id="gm-online-list" class="gsp-ranking">
+                        <div class="py-6 text-center text-slate-400 text-sm">로딩 중...</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div><!-- grid -->
+<!-- 모바일 전용 채팅 FAB -->
+<button type="button" id="gm-toggle-chat-fab"
+    class="lg:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border border-indigo-500"
+    title="채팅 열기/닫기" onclick="toggleGmChat()">
+    <i id="gm-fab-icon" class="fa-solid fa-comments text-xl"></i>
+</button>
+</section>
+
+<style>
+/* ── 우측 탭 패널 ──────────────────────────────── */
+.game-side-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0/.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 580px;
+}
+.gsp-tabs {
+    display: flex;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+.gsp-tab {
+    flex: 1;
+    padding: .55rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: #64748b;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+    gap: .3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.gsp-tab:hover { background: #f1f5f9; color: #334155; }
+.gsp-tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.gsp-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.gsp-pane-head {
+    padding: .5rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.gsp-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: .75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    font-size: .78rem;
+    color: #475569;
+}
+.gsp-input-row {
+    display: flex;
+    gap: .4rem;
+    padding: .6rem .75rem;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+.gsp-ranking {
+    flex: 1;
+    overflow-y: auto;
+}
+/* ── 상태 바 ─────────────────────────────────────────────────────── */
+.gm-stat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.gm-sound-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: .8rem;
+    padding: .2rem .3rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.gm-sound-toggle:hover { color: #475569; }
+.gm-sound-toggle.muted { color: #cbd5e1; }
+.gm-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #64748b;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.gm-stat-chip strong { color: #1e293b; font-weight: 800; font-variant-numeric: tabular-nums; }
+.gm-stat-chip i { color: #b91c1c; font-size: .68rem; }
+.gm-chip-exchange-btn { cursor: pointer; color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.gm-chip-exchange-btn:hover { background: #fef3c7; }
+.gm-chip-exchange-btn i { color: #b45309; }
+
+/* ── 외곽 / 담요 ─────────────────────────────────────────────────── */
+.gm-outer {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+}
+.gm-felt {
+    position: relative;
+    min-height: 520px;
+    padding: 14px 16px;
+    background: radial-gradient(circle at 50% 40%, #6b4423 0%, #4a2f17 70%, #35210f 100%);
+    color: #fff;
+}
+.gm-outer .hidden { display: none !important; }
+
+/* ── 방 목록 ─────────────────────────────────────────────────────── */
+.gm-lobby { max-width: 640px; margin: 0 auto; padding: 10px 0; }
+.gm-lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.gm-lobby-head h3 { font-size: 1.05rem; font-weight: 800; }
+.gm-lobby-head p { font-size: .74rem; color: #bbf7d0; margin-top: 2px; }
+.gm-room-list { display: flex; flex-direction: column; gap: 8px; }
+.gm-room {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: .82rem;
+}
+.gm-room--mine { border-color: #fde047; }
+.gm-room-no { font-weight: 800; color: #fde68a; min-width: 34px; }
+.gm-lobby-create { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.gm-room-players { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.gm-room-player { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.gm-room-player img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; }
+.gm-room-vs { color: #86efac; font-size: .7rem; font-weight: 800; }
+.gm-room-empty { color: #86efac; font-size: .75rem; }
+.gm-ai-badge { margin-left: 4px; padding: 0 5px; border-radius: 4px; background: #7c3aed; color: #fff; font-size: .58rem; font-weight: 900; }
+.gm-room-status { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.25); white-space: nowrap; }
+.gm-lobby-empty { text-align: center; color: #bbf7d0; font-size: .82rem; padding: 28px 0; }
+.gm-lobby-warn { margin-top: 14px; text-align: center; font-size: .78rem; color: #fde68a; }
+.gm-rules { margin-top: 18px; font-size: .74rem; color: #dcfce7; background: rgba(0,0,0,.18); border-radius: 12px; padding: 10px 14px; }
+.gm-rules summary { cursor: pointer; font-weight: 800; color: #fff; }
+.gm-rules ul { margin-top: 8px; padding-left: 16px; list-style: disc; display: flex; flex-direction: column; gap: 3px; }
+
+/* ── 버튼 / 액션 바 ──────────────────────────────────────────────── */
+.gm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 22px;
+    background: linear-gradient(135deg, #991b1b, #7f1d1d);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 16px rgba(153,27,27,0.35);
+}
+.gm-btn:hover { transform: translateY(-1px); }
+.gm-btn:active { transform: scale(0.97); }
+.gm-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.gm-btn-ghost { background: #fff; color: #475569; box-shadow: none; border: 1px solid #cbd5e1; }
+.gm-btn-ghost:hover { background: #f1f5f9; }
+.gm-btn-call { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 6px 16px rgba(5,150,105,.35); }
+.gm-btn-raise { background: linear-gradient(135deg, #b45309, #92400e); box-shadow: 0 6px 16px rgba(180,83,9,.35); }
+.gm-btn-sm { padding: 6px 14px; font-size: .74rem; border-radius: 10px; }
+.gm-action-bar {
+    padding: 14px 20px;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: 64px;
+}
+.gm-hint { color: #94a3b8; font-size: .8rem; text-align: center; }
+.gm-hint strong { color: #1e293b; }
+.gm-turn-countdown { font-weight: 800; color: #dc2626; font-variant-numeric: tabular-nums; font-size: .85rem; }
+.gm-bet-input {
+    width: 90px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    font-size: .82rem;
+    font-weight: 700;
+    text-align: center;
+}
+.gm-chip-panel { padding: .9rem 1rem; display: flex; flex-direction: column; gap: 10px; }
+.gm-chip-rate {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .72rem; font-weight: 700; color: #64748b;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 6px 10px;
+}
+.gm-chip-row { display: flex; align-items: center; justify-content: space-between; font-size: .82rem; color: #475569; padding: 4px 2px; }
+.gm-chip-row strong { color: #1e293b; font-variant-numeric: tabular-nums; }
+.gm-chip-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.gm-chip-actions.hidden { display: none; }
+.gm-chip-label { font-size: .72rem; font-weight: 700; color: #94a3b8; margin-top: 6px; }
+.gm-chip-input-row { display: flex; gap: 6px; }
+.gm-chip-input-row .gm-bet-input { flex: 1; width: auto; }
+.gm-chip-input-row .gm-btn { padding: 8px 14px; font-size: .76rem; }
+.gm-chip-btn-row { display: flex; gap: 6px; margin-top: 4px; }
+.gm-chip-btn-row .gm-btn { flex: 1; padding: 8px 4px; font-size: .76rem; white-space: nowrap; }
+.gm-chip-hint { color: #94a3b8; font-size: .74rem; text-align: center; padding: 8px 0; }
+
+
+/* ── 오목판 ───────────────────────────────────────────────────────── */
+.gm-game { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.gm-players { display: flex; gap: 12px; width: 100%; max-width: 560px; justify-content: space-between; }
+.gm-player { flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: rgba(0,0,0,.25); border: 2px solid transparent; min-width: 0; }
+.gm-player--turn { border-color: #fde047; background: rgba(0,0,0,.4); }
+.gm-player img, .gm-player .gm-initial { width: 30px; height: 30px; border-radius: 999px; object-fit: cover; flex-shrink: 0; background: #78350f; color: #fde68a; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: .8rem; }
+.gm-player-name { font-weight: 800; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-player-sub { font-size: .68rem; color: #fde68a; }
+.gm-dot { display: inline-block; width: 14px; height: 14px; border-radius: 999px; vertical-align: -2px; margin-right: 4px; }
+.gm-dot--b { background: radial-gradient(circle at 35% 30%, #666, #000 70%); }
+.gm-dot--w { background: radial-gradient(circle at 35% 30%, #fff, #cfcfcf 80%); border: 1px solid #999; }
+.gm-turn-info { font-size: .9rem; font-weight: 800; min-height: 22px; text-align: center; }
+.gm-turn-countdown { color: #fecaca; font-variant-numeric: tabular-nums; margin-left: 6px; }
+.gm-board-wrap { width: 100%; max-width: 560px; }
+.gm-board {
+    display: grid; grid-template-columns: repeat(15, 1fr); aspect-ratio: 1 / 1; width: 100%;
+    background: #dcb35c; border-radius: 8px; padding: calc(100% / 30); box-sizing: border-box;
+    box-shadow: 0 6px 24px rgba(0,0,0,.45), inset 0 0 0 2px #a97c2f; touch-action: manipulation;
+}
+.gm-cell { position: relative; border: 0; padding: 0; margin: 0; background: transparent; cursor: default; min-width: 0; min-height: 0; }
+.gm-cell::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #5b3d12; }
+.gm-cell::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: #5b3d12; }
+.gm-cell.cx0::before { left: 50%; } .gm-cell.cx14::before { right: 50%; }
+.gm-cell.cy0::after { top: 50%; } .gm-cell.cy14::after { bottom: 50%; }
+.gm-cell.can { cursor: pointer; }
+.gm-cell.can:hover { background: rgba(0,0,0,.10); }
+.gm-star { position: absolute; left: 50%; top: 50%; width: 22%; height: 22%; transform: translate(-50%, -50%); border-radius: 999px; background: #5b3d12; z-index: 1; }
+.gm-stone { position: absolute; left: 6%; top: 6%; width: 88%; height: 88%; border-radius: 999px; z-index: 2; box-shadow: 0 2px 3px rgba(0,0,0,.45); }
+.gm-stone--b { background: radial-gradient(circle at 35% 30%, #777, #050505 72%); }
+.gm-stone--w { background: radial-gradient(circle at 35% 30%, #fff, #d4d4d4 78%); border: 1px solid #9a9a9a; box-sizing: border-box; }
+.gm-last { position: absolute; left: 50%; top: 50%; width: 26%; height: 26%; transform: translate(-50%, -50%); border-radius: 999px; background: #ef4444; z-index: 3; }
+.gm-win .gm-stone { box-shadow: 0 0 0 3px #f59e0b, 0 0 12px #f59e0b; }
+.gm-center-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; padding: 14px 22px; border-radius: 14px; background: rgba(15,23,42,.92); text-align: center; font-weight: 800; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.gm-center-msg small { display: block; margin-top: 4px; font-weight: 600; font-size: .75rem; color: #fde68a; }
+.gm-rank-link { text-decoration: none; cursor: pointer; }
+.gm-rank-link:hover { background: #fef3c7; }
+.gm-stat-chip i { color: #b45309; }
+.gm-lobby-create { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── 모바일 최적화 ───────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    section.max-w-7xl { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .gm-felt { padding: 10px 8px; min-height: 460px; }
+    .gm-die { width: 46px; height: 46px; padding: 6px; border-radius: 10px; }
+    .gm-die i { width: 8px; height: 8px; }
+    .gm-dice { gap: 6px; }
+    .gm-board { font-size: .72rem; }
+    .gm-board th, .gm-board td { padding: 4px 5px; }
+    .gm-stat-bar { font-size: .7rem; padding: 6px 10px; }
+    .gm-action-bar { padding: 10px 12px; }
+}
+body.gm-landscape section.max-w-7xl { padding: 44px 2px 16px !important; }
+body.gm-landscape .gm-outer { border: none; border-radius: 0; box-shadow: none; }
+body.gm-landscape .gm-stat-bar { display: none; }
+
+
+/* ── 모바일 채팅/대기열 패널 (< 1024px) ────────────────────────── */
+@media (max-width: 1023px) {
+    #gm-side-col {
+        position: fixed !important;
+        bottom: 88px !important;
+        right: 24px !important;
+        z-index: 9999 !important;
+        width: 360px !important;
+        max-width: calc(100vw - 48px) !important;
+        height: 500px !important;
+        height: min(500px, calc(100vh - 120px)) !important;
+        height: min(500px, calc(100dvh - 120px)) !important;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.15), 0 8px 10px -6px rgba(0,0,0,.1) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+    }
+    #gm-side-col .game-side-panel { height: 100% !important; }
+    #gm-side-col.mobile-hidden { display: none !important; }
+}
+/* ── 모바일 세로 모드: 상단 여백 확보 + 화면 수직 중앙 정렬 ──────── */
+@media (max-width: 1023px) {
+    body:not(.gm-landscape) section.max-w-7xl {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-sizing: border-box;
+        min-height: 100dvh;
+        padding-top: 56px !important;
+    }
+}
+
+/* 게임 페이지에서는 사이트 푸터 숨김 */
+footer { display: none !important; }
+@media (max-width: 1023px) {
+    .gm-outer { overscroll-behavior: none; }
+}
+</style>
+
+<script>
+(function () {
+    const SIZE = 15;
+    const lobbyViewEl = document.getElementById('gm-lobby-view');
+    const gameViewEl = document.getElementById('gm-game-view');
+    const playersEl = document.getElementById('gm-players');
+    const turnInfoEl = document.getElementById('gm-turn-info');
+    const boardEl = document.getElementById('gm-board');
+    const centerMsgEl = document.getElementById('gm-center-msg');
+    const actionBarEl = document.getElementById('gm-action-bar');
+    const roomLabelEl = document.getElementById('gm-room-label');
+    const recordEl = document.getElementById('gm-my-record');
+    const STARS = [[3, 3], [3, 11], [7, 7], [11, 3], [11, 11]];
+    const MY_ID = {{ request.user.id }};
+    const inviteRoom = new URLSearchParams(location.search).get('room');
+
+    let socket = null, heartbeatTimer = null, lastState = null, lastStateAt = 0, joinedFromLink = false;
+
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    function send(obj) { if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(obj)); }
+
+    function showToast(message) {
+        let el = document.getElementById('gm-toast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'gm-toast';
+            el.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:10000;background:#1e293b;color:#fff;padding:10px 16px;border-radius:12px;font-size:.85rem;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:90vw';
+            document.body.appendChild(el);
+        }
+        el.textContent = message;
+        el.style.display = 'block';
+        clearTimeout(el._t);
+        el._t = setTimeout(() => { el.style.display = 'none'; }, 2600);
+    }
+
+    function playerChip(p, game, colorSide) {
+        const avatar = p.picture ? `<img src="${esc(p.picture)}" alt="">` : `<span class="gm-initial">${esc((p.display_name || '?').charAt(0))}</span>`;
+        const dot = colorSide === undefined ? '' : `<span class="gm-dot ${colorSide === game.black ? 'gm-dot--b' : 'gm-dot--w'}"></span>`;
+        const label = colorSide === undefined ? '' : (colorSide === game.black ? '흑 (선공)' : '백');
+        const turn = game && game.turn === p.side ? ' gm-player--turn' : '';
+        return `<div class="gm-player${turn}">${avatar}<div style="min-width:0"><div class="gm-player-name">${esc(p.display_name)}${p.is_bot ? ' <span class="gm-ai-badge">AI</span>' : ''}</div><div class="gm-player-sub">${dot}${label}</div></div></div>`;
+    }
+
+    function renderLobby(state) {
+        const rooms = state.rooms || [];
+        const rows = rooms.map((r) => {
+            const players = r.players.length
+                ? r.players.map((p) => `<span class="gm-room-player">${esc(p.display_name)}${p.is_bot ? '<span class="gm-ai-badge">AI</span>' : ''}</span>`).join('<span class="gm-room-vs">vs</span>')
+                : '<span class="gm-room-empty">빈 방</span>';
+            const full = r.players.length >= 2;
+            const canJoin = !full || r.players.some((p) => p.is_bot);
+            return `<div class="gm-room"><span class="gm-room-no">#${r.id}</span><div class="gm-room-players">${players}</div>
+                <span class="gm-room-status">${r.status === 'playing' ? '대국 중' : (full ? '곧 시작' : '대기 중')}</span>
+                <button type="button" class="gm-btn gm-btn-sm gm-btn-call" data-join="${r.id}" ${canJoin ? '' : 'disabled'}>입장</button></div>`;
+        }).join('');
+        lobbyViewEl.innerHTML = `
+            <div class="gm-lobby-head"><div><h3>오목 방</h3><p>5목을 먼저 이으면 승리 · 승 수로 랭킹이 매겨집니다</p></div>
+                <div class="gm-lobby-create"><button type="button" class="gm-btn gm-btn-call" id="gm-create">방 만들기</button></div></div>
+            <div class="gm-room-list">${rows || '<div class="gm-lobby-empty">열린 방이 없습니다. 방을 만들어 보세요!</div>'}</div>
+            <details class="gm-rules"><summary>규칙</summary><ul>
+                <li>15×15 판, 흑이 먼저 둡니다. 판마다 흑/백이 바뀝니다.</li>
+                <li>가로·세로·대각선으로 같은 색 5개 이상을 먼저 이으면 승리 (자유룰, 6목 이상도 승리).</li>
+                <li>한 수는 60초 안에 두어야 하며, 시간 초과·기권·판 중 퇴장은 패배입니다.</li>
+                <li>승 수 랭킹은 사람끼리 9수 이상 둔 판만 집계하며, AI 연습 대국은 제외됩니다.</li></ul></details>`;
+        lobbyViewEl.querySelectorAll('[data-join]').forEach((b) => b.addEventListener('click', () => send({ type: 'join', room_id: +b.dataset.join })));
+        document.getElementById('gm-create').addEventListener('click', () => send({ type: 'create' }));
+    }
+
+    function buildBoard(game, canPlay, winLine) {
+        const win = new Set((winLine || []).map((c) => c[0] + ',' + c[1]));
+        const cells = [];
+        for (let y = 0; y < SIZE; y++) {
+            for (let x = 0; x < SIZE; x++) {
+                const v = game.board[y][x];
+                const isLast = game.last && game.last[0] === x && game.last[1] === y;
+                const cls = ['gm-cell', 'cx' + x, 'cy' + y, !v && canPlay ? 'can' : '', win.has(x + ',' + y) ? 'gm-win' : ''].join(' ');
+                const star = STARS.some((s) => s[0] === x && s[1] === y) && !v ? '<span class="gm-star"></span>' : '';
+                const stone = v ? `<span class="gm-stone ${v === 1 ? 'gm-stone--b' : 'gm-stone--w'}"></span>${isLast ? '<span class="gm-last"></span>' : ''}` : '';
+                cells.push(`<button type="button" class="${cls}" data-x="${x}" data-y="${y}" aria-label="${x + 1}열 ${y + 1}행">${star}${stone}</button>`);
+            }
+        }
+        boardEl.innerHTML = cells.join('');
+    }
+
+    function renderGame(state) {
+        const room = state.room;
+        const game = room.game;
+        const result = room.last_result || {};
+        const mine = room.seats.find((s) => s.user_id === MY_ID);
+        roomLabelEl.textContent = `오목 ${room.id}번 방`;
+        centerMsgEl.classList.add('hidden');
+        let board = game ? game.board : (result.board || null);
+        if (!board) { board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0)); }
+        const view = { board, last: game ? game.last : null, black: game ? game.black : result.black, turn: game ? game.turn : -1 };
+        if (!game && result.line) view.last = null;
+        playersEl.innerHTML = room.seats.map((p) => playerChip(p, view, view.black === undefined ? undefined : p.side)).join('');
+        buildBoard(view, !!(game && game.my_turn), game ? null : result.line);
+
+        if (game) {
+            const left = game.turn_seconds_left;
+            turnInfoEl.innerHTML = game.my_turn
+                ? `<span style="color:#fde047">내 차례입니다</span><span class="gm-turn-countdown" id="gm-countdown">${left != null ? left + '초' : ''}</span>`
+                : `상대 차례 <span class="gm-turn-countdown" id="gm-countdown">${left != null ? left + '초' : ''}</span>`;
+            actionBarEl.innerHTML = `<button type="button" class="gm-btn gm-btn-ghost gm-btn-sm" id="gm-resign">기권</button>`;
+            document.getElementById('gm-resign').addEventListener('click', () => { if (confirm('기권하면 패배로 기록됩니다. 기권할까요?')) send({ type: 'resign' }); });
+        } else {
+            const waiting = room.seats.length < 2;
+            const next = room.next_game_seconds_left;
+            turnInfoEl.textContent = waiting ? '상대를 기다리는 중...' : (next != null ? `${next}초 뒤 다음 판이 시작됩니다` : '');
+            if (result.reason) {
+                const iWon = result.winner_side !== null && mine && result.winner_side === mine.side;
+                const title = result.winner_side === null ? '무승부' : (iWon ? '승리!' : '패배');
+                const why = { five: '5목 완성', resign: '기권', timeout: '시간 초과', leave: '상대 퇴장', draw: '판이 가득 참' }[result.reason] || '';
+                centerMsgEl.innerHTML = `${title}<small>${esc(why)} · ${result.moves}수${result.ranked ? ' · 랭킹 반영' : ''}</small>`;
+                centerMsgEl.classList.remove('hidden');
+            }
+            actionBarEl.innerHTML = `${waiting ? '<button type="button" class="gm-btn gm-btn-call gm-btn-sm" id="gm-bot">AI와 연습하기</button>' : ''}<button type="button" class="gm-btn gm-btn-ghost gm-btn-sm" id="gm-leave">방 나가기</button>`;
+            const bot = document.getElementById('gm-bot');
+            if (bot) bot.addEventListener('click', () => send({ type: 'add_bot' }));
+            document.getElementById('gm-leave').addEventListener('click', () => send({ type: 'leave' }));
+        }
+        if (game) {
+            const bar = actionBarEl;
+            bar.insertAdjacentHTML('beforeend', `<span class="gm-hint" style="margin-left:6px">${game.moves}수째</span>`);
+        }
+    }
+
+    function applyState(state) {
+        lastState = state;
+        lastStateAt = Date.now();
+        const r = state.record || {};
+        recordEl.textContent = `${r.wins || 0}승 ${r.losses || 0}패`;
+        if (state.room) {
+            lobbyViewEl.classList.add('hidden');
+            gameViewEl.classList.remove('hidden');
+            renderGame(state);
+        } else {
+            gameViewEl.classList.add('hidden');
+            lobbyViewEl.classList.remove('hidden');
+            roomLabelEl.textContent = '방 목록';
+            actionBarEl.innerHTML = '<div class="gm-hint">방을 만들거나 입장하세요.</div>';
+            renderLobby(state);
+            if (inviteRoom && !joinedFromLink) {   // 친구 초대 링크(?room=)로 들어오면 바로 입장
+                joinedFromLink = true;
+                send({ type: 'join', room_id: +inviteRoom });
+            }
+        }
+    }
+
+    boardEl.addEventListener('click', (e) => {
+        const cell = e.target.closest('.gm-cell.can');
+        if (!cell) return;
+        send({ type: 'place', x: +cell.dataset.x, y: +cell.dataset.y });
+    });
+
+    // 남은 시간 표시는 서버가 준 값에서 매초 줄여 보여 준다
+    setInterval(() => {
+        if (!lastState || !lastState.room) return;
+        const game = lastState.room.game;
+        const el = document.getElementById('gm-countdown');
+        if (game && el && game.turn_seconds_left != null) {
+            const left = Math.max(0, game.turn_seconds_left - Math.floor((Date.now() - lastStateAt) / 1000));
+            el.textContent = left + '초';
+        }
+    }, 500);
+
+    // ── 오목 WebSocket ────────────────────────────────────────────
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${wsProto}://${location.host}/ws/gomoku/`;
+    const HEARTBEAT_INTERVAL_MS = 10000;
+    const CONNECTION_STALE_MS = HEARTBEAT_INTERVAL_MS * 2 + 5000;
+    let lastMessageAt = 0;
+    let reconnectTimer = null;
+    function connect() {
+        clearTimeout(reconnectTimer);
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+        const ws = socket = new WebSocket(wsUrl);
+        socket.onopen = () => {
+            lastMessageAt = Date.now();
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => send({ type: '__ping__' }), HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = (e) => {
+            lastMessageAt = Date.now();
+            const data = JSON.parse(e.data);
+            if (data.type === 'error') showToast(data.message);
+            else if (data.type === 'state') applyState(data);
+        };
+        socket.onclose = () => {
+            if (socket !== ws) return;
+            clearInterval(heartbeatTimer);
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, document.hidden ? 5000 : 1000);
+        };
+        socket.onerror = () => ws.close();
+    }
+    connect();
+    function checkConnectionNow() {
+        if (document.hidden) return;
+        if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) { connect(); return; }
+        if (socket.readyState !== WebSocket.OPEN) return;
+        const before = lastMessageAt, ws = socket;
+        send({ type: '__ping__' });
+        setTimeout(() => { if (socket === ws && lastMessageAt === before) ws.close(); }, 3000);
+    }
+    document.addEventListener('visibilitychange', checkConnectionNow);
+    window.addEventListener('online', checkConnectionNow);
+    window.addEventListener('pageshow', (e) => { if (e.persisted) checkConnectionNow(); });
+    // 페이지를 떠나면 서버가 곧바로 퇴장(판 중이면 기권패)을 처리하도록 알린다
+    window.addEventListener('pagehide', () => send({ type: 'page_leave' }));
+    setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > CONNECTION_STALE_MS) socket.close();
+    }, 5000);
+})();
+
+function gspSwitch(btn, paneId) {
+    const panel = btn.closest('.game-side-panel');
+    panel.querySelectorAll('.gsp-tab').forEach(b => b.classList.remove('gsp-tab--active'));
+    panel.querySelectorAll('.gsp-pane').forEach(p => p.style.display = 'none');
+    btn.classList.add('gsp-tab--active');
+    document.getElementById(paneId).style.display = '';
+}
+
+function toggleGmChat() {
+    const col  = document.getElementById('gm-side-col');
+    const icon = document.getElementById('gm-fab-icon');
+    const hidden = col.classList.toggle('mobile-hidden');
+    icon.className = hidden ? 'fa-solid fa-comments text-xl' : 'fa-solid fa-xmark text-xl';
+    if (!hidden) {
+        const msgs = document.getElementById('gm-chat-messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+}
+</script>
+
+<script src="{% static 'js/chat-unread.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/chat-profile.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/friends.js' %}?v={{ static_version }}"></script>
+<script>
+// ── 로비 채팅 WebSocket ───────────────────────────────────────────────────
+(function () {
+    const box   = document.getElementById('gm-chat-messages');
+    const input = document.getElementById('gm-chat-input');
+    const btn   = document.getElementById('gm-chat-send');
+    const badge = document.getElementById('gm-chat-status');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ChatUnread.setup({ panel: document.getElementById('gm-side-col'), fab: document.getElementById('gm-toggle-chat-fab'), chatPane: document.getElementById('gm-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=gomoku`;
+    const HEARTBEAT_INTERVAL_MS = 25000;
+    let socket = null;
+    let heartbeatTimer = null;
+
+    function setStatus(open) {
+        if (open) {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span> 연결됨';
+            input.disabled  = false;
+        } else {
+            badge.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold';
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span> 연결 중...';
+            input.disabled  = true;
+        }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function append(name, message, time, isSystem, pictureUrl) {
+        const empty = box.querySelector('p.text-slate-400');
+        if (empty) empty.remove();
+
+        const d = document.createElement('div');
+        if (isSystem) {
+            d.className = 'flex gap-2 items-start bg-rose-50 border border-rose-100 rounded-xl p-2.5 my-1';
+            d.innerHTML = `<div class="flex-grow"><span class="font-semibold text-rose-700"><i class="fa-solid fa-triangle-exclamation"></i> 시스템</span><p class="text-rose-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        } else {
+            const avatar = pictureUrl
+                ? `<img src="${esc(pictureUrl)}" class="shrink-0 w-6 h-6 rounded-full object-cover border border-slate-200">`
+                : `<span class="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center uppercase">${esc(name.charAt(0))}</span>`;
+            d.className = 'flex gap-2 items-start';
+            d.innerHTML = `${avatar}<div><span class="font-semibold text-slate-700">${esc(name)}</span><span class="text-[10px] text-slate-400 ml-1">${esc(time)}</span><p class="text-slate-600 mt-0.5 break-all">${esc(message)}</p></div>`;
+        }
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen  = () => {
+            setStatus(true);
+            box.scrollTop = box.scrollHeight;
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ message: '' }));
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        };
+        socket.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if (data.type === 'presence') {
+                renderOnlineUsers(data.users);
+            } else if (data.error) {
+                append('SYSTEM', data.message, '', true, '');
+            } else {
+                append(data.display_name || data.username, data.message, data.created_at, false, data.picture_url || '');
+                ChatProfile.tag(box.lastElementChild, data); ChatUnread.bump(data.username);
+            }
+        };
+        socket.onclose = () => { setStatus(false); clearInterval(heartbeatTimer); setTimeout(connect, 5000); };
+        socket.onerror = () => socket.close();
+    }
+
+    // ─── 실시간 접속자 탭 ───
+    const onlineList  = document.getElementById('gm-online-list');
+    const onlineCount = document.getElementById('gm-online-count');
+    const MY_USER_ID  = {{ request.user.id }};
+    FriendsPanel.mount({ listEl: onlineList, countEl: onlineCount, myUserId: MY_USER_ID, csrf: '{{ csrf_token }}',
+        inviteGame: 'gomoku', panel: document.getElementById('gm-side-col'), fab: document.getElementById('gm-toggle-chat-fab') });
+    function renderOnlineUsers(users) {
+        FriendsPanel.render(users);
+    }
+
+    function send() {
+        const msg = input.value.trim();
+        if (!msg || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ message: msg }));
+        input.value = '';
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        send();
+    });
+
+    connect();
+    box.scrollTop = box.scrollHeight;
+})();
+</script>
+
+<style>
+  /* Collapsed game-page navbar */
+  nav[data-game-collapsed] {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 9998 !important;
+    transform: translateY(-100%);
+    transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  nav[data-game-collapsed].game-nav-open {
+    transform: translateY(0);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  nav[data-game-collapsed] > div:first-of-type { padding-right: 56px !important; }
+  #game-top-pills {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.15s;
+  }
+  #game-top-pills.pill-hidden { opacity: 0; pointer-events: none; }
+  #game-nav-pill {
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    user-select: none;
+    transition: box-shadow 0.15s;
+    font-family: inherit;
+    line-height: 1;
+    border: none;
+  }
+  #game-nav-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  .game-quick-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.22);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    color: #374151;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: box-shadow 0.15s;
+  }
+  .game-quick-pill:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+  #game-nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    background: rgba(15,23,42,0.22);
+    backdrop-filter: blur(1px);
+  }
+  #game-nav-backdrop.open { display: block; }
+  #game-nav-close {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    z-index: 1;
+  }
+  nav[data-game-collapsed] #game-nav-close { display: flex; }
+  #game-nav-close:hover { background: rgba(0,0,0,0.06); color: #475569; }
+</style>
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var nav = document.querySelector('nav');
+    if (!nav) return;
+
+    var closeBtn = document.createElement('button');
+    closeBtn.id = 'game-nav-close';
+    closeBtn.title = '닫기';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    nav.appendChild(closeBtn);
+
+    var topPills = document.createElement('div');
+    topPills.id = 'game-top-pills';
+    document.body.appendChild(topPills);
+
+    var pill = document.createElement('button');
+    pill.id = 'game-nav-pill';
+    pill.title = 'IPSE 메뉴';
+    pill.innerHTML =
+      '<i class="fa-solid fa-leaf" style="color:#059669;font-size:14px"></i>' +
+      '<span>IPSE</span>' +
+      '<i class="fa-solid fa-bars" style="color:#94a3b8;font-size:11px"></i>';
+    topPills.appendChild(pill);
+
+    var lobbyBtn = document.createElement('a');
+    lobbyBtn.href = "{% url 'game_lobby' %}";
+    lobbyBtn.className = 'game-quick-pill';
+    lobbyBtn.title = '게임 로비로 이동';
+    lobbyBtn.innerHTML = '<i class="fa-solid fa-house"></i>';
+    topPills.appendChild(lobbyBtn);
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'game-nav-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openNav() {
+      nav.classList.add('game-nav-open');
+      backdrop.classList.add('open');
+      topPills.classList.add('pill-hidden');
+    }
+    function closeNav() {
+      nav.classList.remove('game-nav-open');
+      backdrop.classList.remove('open');
+      topPills.classList.remove('pill-hidden');
+    }
+
+    pill.addEventListener('click', openNav);
+    backdrop.addEventListener('click', closeNav);
+    closeBtn.addEventListener('click', closeNav);
+
+    function applyNavMode() {
+      if (window.innerWidth < 1024) {
+        nav.setAttribute('data-game-collapsed', '');
+        topPills.style.display = '';
+      } else {
+        closeNav();
+        nav.removeAttribute('data-game-collapsed');
+        topPills.style.display = 'none';
+      }
+    }
+    window.addEventListener('resize', applyNavMode);
+    applyNavMode();
+  });
+})();
+</script>
+{% endblock %}

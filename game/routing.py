@@ -6,4 +6,5 @@ websocket_urlpatterns = [
     re_path(r"^ws/poker/$", consumers.PokerConsumer.as_asgi()),
     re_path(r"^ws/gostop/$", consumers.GostopConsumer.as_asgi()),
     re_path(r"^ws/yacht/$", consumers.YachtConsumer.as_asgi()),
+    re_path(r"^ws/gomoku/$", consumers.GomokuConsumer.as_asgi()),
 ]
