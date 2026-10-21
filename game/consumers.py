@@ -23,15 +23,100 @@ SPAM_COOLDOWN_SECONDS = 1.0  # 스팸 방지 쿨타임 (초)
 # ponytail: 프로세스 메모리 dict — 단일 daphne 프로세스 전제(포커 워치독과 동일).
 # 멀티 워커로 확장하면 Redis 등 공유 저장소로 옮겨야 한다.
 PRESENCE_GROUP = "lobby_presence"
-_online_users = {}  # user_id -> {"user_id", "display_name", "picture_url", "count"}
+_online_users = {}  # user_id -> {"user_id", "display_name", "picture_url", "count", "pages", "activity"}
+
+# 접속자 목록에서 친구에게 보여 주는 활동. 페이지(?game=)로 어떤 게임 화면인지 알고, 방이 있는 게임(포커·고스톱·요트)은
+# 실제로 자리에 앉아 있을 때만 '플레이 중'으로 본다. 아무것도 하지 않거나 방만 둘러보면 '로비'.
+LOBBY_LABEL = "로비"
+GAME_LABELS = {
+    "poker": "포커", "gostop": "고스톱", "yacht": "요트 다이스", "highlow": "하이로우", "apple_game": "마지막 잎새",
+    "slot_machine": "학점 캡슐 슬롯머신", "memory_match": "카드 매칭", "number_speed": "넘버 스피드",
+    "pattern_recall": "패턴 리콜", "trick_or_treat": "트릭 오어 트릿",
+}
+ROOM_GAMES = {"poker", "gostop", "yacht"}   # 앉아야 플레이 중 (그 외는 화면을 열고 있으면 플레이 중)
+ACTIVITY_REFRESH_SECONDS = 5                # 앉고 일어남을 이 주기로 반영한다
+ACTIVITY_MIN_INTERVAL = 3.0                 # 여러 접속이 있어도 DB 조회는 이 간격 이상으로만
+FRIEND_REFRESH_TICKS = 12                   # 친구 목록 갱신 주기 (틱 단위 = 약 1분)
+_activity_checked = 0.0
+_activity_lock = None
 
 
-def _presence_payload():
-    users = sorted(
-        ({k: v for k, v in u.items() if k != "count"} for u in _online_users.values()),
-        key=lambda u: u["display_name"].lower(),
-    )
+def _presence_payload(friend_ids=frozenset()):
+    """접속자 목록. 활동(무엇을 하는 중인지)은 친구에게만 보낸다."""
+    users = []
+    for u in sorted(_online_users.values(), key=lambda u: u["display_name"].lower()):
+        item = {k: v for k, v in u.items() if k not in ("count", "pages", "activity")}
+        if u["user_id"] in friend_ids:
+            item["activity"] = u.get("activity") or LOBBY_LABEL
+        users.append(item)
     return json.dumps({"type": "presence", "users": users}, ensure_ascii=False)
+
+
+def _page_slug(query_string):
+    """?game=<slug>. 모르는 값이면 로비로 본다."""
+    for part in (query_string or b"").decode("utf-8", "ignore").split("&"):
+        key, _, value = part.partition("=")
+        if key == "game" and (value in GAME_LABELS):
+            return value
+    return "lobby"
+
+
+def _seated_games(user_ids):
+    """방에 앉아 있는 사용자 {user_id: 게임 이름} (포커 홀덤/블랙잭, 맞고/고스톱, 요트)."""
+    from .models import GostopSeat, PokerSeat, YachtSeat
+
+    seated = {}
+    for uid, game_type in (PokerSeat.objects.filter(user_id__in=user_ids)
+                           .values_list("user_id", "table__game_type")):
+        seated[uid] = "블랙잭" if game_type == "blackjack" else "포커"
+    for uid, mode in GostopSeat.objects.filter(user_id__in=user_ids).values_list("user_id", "room__mode"):
+        seated[uid] = "맞고" if mode == "matgo" else "고스톱"
+    for uid in YachtSeat.objects.filter(user_id__in=user_ids).values_list("user_id", flat=True):
+        seated[uid] = "요트 다이스"
+    return seated
+
+
+def _activity_of(entry, seated):
+    if seated:
+        return seated
+    for slug in entry.get("pages", []):          # 앉지 않았으면 열려 있는 아케이드 게임 화면
+        if slug in GAME_LABELS and slug not in ROOM_GAMES:
+            return GAME_LABELS[slug]
+    return LOBBY_LABEL
+
+
+@database_sync_to_async
+def _load_friend_ids(user_id):
+    from django.db.models import Q
+
+    from accounts.models import Friendship
+
+    rows = (Friendship.objects.filter(status="accepted").filter(Q(from_user_id=user_id) | Q(to_user_id=user_id))
+            .values_list("from_user_id", "to_user_id"))
+    return {b if a == user_id else a for a, b in rows}
+
+
+async def _refresh_activity(force=False):
+    """접속자들의 활동을 다시 계산하고 바뀐 게 있으면 접속자 목록을 다시 보낸다."""
+    global _activity_checked, _activity_lock
+    if _activity_lock is None:
+        _activity_lock = asyncio.Lock()
+    async with _activity_lock:
+        if not force and time.monotonic() - _activity_checked < ACTIVITY_MIN_INTERVAL:
+            return
+        _activity_checked = time.monotonic()
+        ids = list(_online_users)
+        if not ids:
+            return
+        seated = await database_sync_to_async(_seated_games)(ids)
+        changed = False
+        for uid, entry in list(_online_users.items()):
+            label = _activity_of(entry, seated.get(uid))
+            if entry.get("activity") != label:
+                entry["activity"] = label
+                changed = True
+    if changed:
+        await get_channel_layer().group_send(PRESENCE_GROUP, {"type": "presence_update"})
 
 
 class LobbyChatConsumer(AsyncWebsocketConsumer):
@@ -58,32 +143,58 @@ class LobbyChatConsumer(AsyncWebsocketConsumer):
         entry = _online_users.get(user.id)
         is_new_user = entry is None
         if is_new_user:
-            entry = _online_users[user.id] = {"user_id": user.id, **info, "count": 0}
+            entry = _online_users[user.id] = {"user_id": user.id, **info, "count": 0, "pages": [], "activity": LOBBY_LABEL}
         entry["count"] += 1  # 같은 유저가 탭을 여러 개 열어도 한 명으로 센다
+        self.page = _page_slug(self.scope.get("query_string", b""))
+        entry["pages"].append(self.page)
         self.presence_counted = True
+        self.friend_ids = frozenset()
+        self._ticker = None
 
         if b"presence=1" in self.scope.get("query_string", b""):
+            self.friend_ids = frozenset(await _load_friend_ids(user.id))
             await self.channel_layer.group_add(PRESENCE_GROUP, self.channel_name)
             if not is_new_user:  # 새 유저면 아래 브로드캐스트로 받는다
-                await self.send(text_data=_presence_payload())
+                await self.send(text_data=_presence_payload(self.friend_ids))
+            self._ticker = asyncio.ensure_future(self._activity_ticker(user.id))
         if is_new_user:
             await self.channel_layer.group_send(PRESENCE_GROUP, {"type": "presence_update"})
+        await _refresh_activity(force=True)   # 이미 방에 앉아 있거나 아케이드 게임을 열었으면 바로 반영
+
+    async def _activity_ticker(self, user_id):
+        """이 접속이 살아 있는 동안 주기적으로 활동(앉음/일어남)과 친구 목록을 갱신한다."""
+        ticks = 0
+        try:
+            while True:
+                await asyncio.sleep(ACTIVITY_REFRESH_SECONDS)
+                ticks += 1
+                if ticks % FRIEND_REFRESH_TICKS == 0:
+                    self.friend_ids = frozenset(await _load_friend_ids(user_id))
+                await _refresh_activity()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("lobby activity ticker failed")
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(LOBBY_GROUP, self.channel_name)
         await self.channel_layer.group_discard(PRESENCE_GROUP, self.channel_name)
+        if getattr(self, "_ticker", None):
+            self._ticker.cancel()
         if not getattr(self, "presence_counted", False):
             return
         user_id = self.scope["user"].id
         entry = _online_users.get(user_id)
         if entry:
+            if getattr(self, "page", None) in entry["pages"]:
+                entry["pages"].remove(self.page)
             entry["count"] -= 1
             if entry["count"] <= 0:
                 del _online_users[user_id]
                 await self.channel_layer.group_send(PRESENCE_GROUP, {"type": "presence_update"})
 
     async def presence_update(self, event):
-        await self.send(text_data=_presence_payload())
+        await self.send(text_data=_presence_payload(getattr(self, "friend_ids", frozenset())))
 
     async def receive(self, text_data):
         """클라이언트로부터 메시지 수신 → DB 저장 → 그룹 브로드캐스트"""

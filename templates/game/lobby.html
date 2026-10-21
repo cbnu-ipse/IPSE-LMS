@@ -642,7 +642,7 @@
     // ─── 프로토콜 자동 분기 및 WebSocket 설정 ───
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('lobby-chat-container'), fab: document.getElementById('toggle-chat-fab'), chatPane: document.getElementById('lobby-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl = `${wsProtocol}://${window.location.host}/ws/lobby/chat/?presence=1&game=lobby`;
 
     let socket = null;
     const HEARTBEAT_INTERVAL_MS = 25000;

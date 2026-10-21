@@ -1677,7 +1677,7 @@ function toggleGsChat() {
     const badge = document.getElementById('gs-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('gs-side-col'), fab: document.getElementById('gs-toggle-chat-fab'), chatPane: document.getElementById('gs-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=gostop`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
     let heartbeatTimer = null;

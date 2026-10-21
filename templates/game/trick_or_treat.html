@@ -605,7 +605,7 @@ function toggleTtChat() {
     const badge  = document.getElementById('tt-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('tt-side-col'), fab: document.getElementById('tt-toggle-chat-fab'), chatPane: document.getElementById('tt-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=trick_or_treat`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket   = null;
     let heartbeatTimer = null;

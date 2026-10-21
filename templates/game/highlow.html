@@ -924,7 +924,7 @@ function toggleHlChat() {
     const badge  = document.getElementById('hl-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('hl-side-col'), fab: document.getElementById('hl-toggle-chat-fab'), chatPane: document.getElementById('hl-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=highlow`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket   = null;
     let heartbeatTimer = null;

@@ -730,7 +730,7 @@ function toggleNsChat() {
     const badge = document.getElementById('ns-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('ns-side-col'), fab: document.getElementById('ns-toggle-chat-fab'), chatPane: document.getElementById('ns-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=number_speed`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
     let heartbeatTimer = null;
