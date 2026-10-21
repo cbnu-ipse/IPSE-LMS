@@ -1,7 +1,8 @@
 """오목 규칙 엔진 + 방 상태머신 (칩 없이 승패만 기록).
 
-규칙: 15×15 판, 흑이 먼저 두고 번갈아 한 수씩. 가로·세로·대각선으로 같은 색 5개 이상(자유룰)을 먼저 이으면 승.
-판이 꽉 차면 무승부. 판마다 흑/백을 바꾼다 (첫 판은 무작위).
+규칙(렌주룰): 15×15 판, 흑이 먼저 두고 번갈아 한 수씩. 흑은 정확히 5목을 만들어야 이기고 3-3·4-4·장목(6목 이상)은 둘 수
+없다 (금수 판정은 game/gomoku_rules.py). 백은 제한 없이 5목 이상이면 이긴다. 판이 꽉 차면 무승부.
+판마다 흑/백을 바꾼다 (첫 판은 무작위). 렌주룰 도입 전에 시작된 판(state에 renju 없음)은 끝까지 자유룰(5목 이상 승).
 차례: 60초 안에 두지 않으면 시간 초과 패. 기권하거나 판 중에 나가면 패 (연결이 끊긴 채 유예를 넘겨도 같다).
 AI(방장이 부르는 연습 상대)는 game/gomoku_ai.py. AI와의 대국은 기록만 하고 랭킹에는 넣지 않는다.
 
@@ -21,6 +22,7 @@ from django.db.models import Count, Min, Q
 from django.utils import timezone
 
 from accounts.models import User
+from . import gomoku_rules
 from .bots import free_bot
 from .models import GomokuMatch, GomokuRoom, GomokuSeat
 
@@ -41,9 +43,9 @@ def new_board():
     return [[0] * SIZE for _ in range(SIZE)]
 
 
-def new_game(black_side, bots=()):
+def new_game(black_side, bots=(), renju=True):
     return {"board": new_board(), "black": black_side, "turn": black_side, "moves": [], "last": None,
-            "bots": list(bots), "win_line": None}
+            "bots": list(bots), "win_line": None, "renju": renju}
 
 
 def color_of(st, side):
@@ -76,10 +78,16 @@ def place_stone(st, side, x, y):
         raise ValueError("판 밖입니다.")
     if st["board"][y][x]:
         raise ValueError("이미 돌이 있는 자리입니다.")
+    renju_black = bool(st.get("renju")) and side == st["black"]
+    if renju_black:
+        reason = gomoku_rules.forbidden_reason(st["board"], x, y)
+        if reason:
+            raise ValueError(f"금수입니다: {gomoku_rules.FORBIDDEN_LABELS[reason]}. 흑은 둘 수 없는 자리입니다.")
     st["board"][y][x] = color_of(st, side)
     st["moves"].append([x, y, side])
     st["last"] = [x, y]
-    line = find_five(st["board"], x, y)
+    # 렌주룰의 흑은 정확히 5목일 때만 승 (금수 판정이 6목 이상은 이미 막았다), 그 외에는 5목 이상
+    line = gomoku_rules.exact_five_line(st["board"], x, y, 1) if renju_black else find_five(st["board"], x, y)
     if line:
         st["win_line"] = [list(c) for c in line]
         return {"winner": side, "reason": "five", "line": st["win_line"]}
@@ -312,7 +320,7 @@ def process_due_deadlines():
                 st = room.state
                 side = st["turn"]
                 if side in st["bots"]:
-                    move = gomoku_ai.choose_move(st["board"], color_of(st, side))
+                    move = gomoku_ai.choose_move(st["board"], color_of(st, side), renju=bool(st.get("renju")))
                     outcome = place_stone(st, side, *move) if move else {"winner": None, "reason": "draw", "line": None}
                     room.state = st
                     if outcome:
@@ -356,8 +364,12 @@ def get_state_for(user):
             game = {
                 "board": st["board"], "black": st["black"], "turn": st["turn"], "last": st["last"],
                 "my_turn": st["turn"] == my_seat.seat and my_room.status == "playing",
-                "moves": len(st["moves"]), "turn_seconds_left": turn_left,
+                "moves": len(st["moves"]), "turn_seconds_left": turn_left, "renju": bool(st.get("renju")),
+                "forbidden": [],
             }
+            if game["renju"] and game["my_turn"] and my_seat.seat == st["black"]:
+                # 내가 흑이고 내 차례일 때만: 지금 둘 수 없는 자리를 알려 준다 (× 표시)
+                game["forbidden"] = [[x, y, reason] for x, y, reason in gomoku_rules.forbidden_cells(st["board"])]
         next_left = None
         if my_room.next_game_at:
             next_left = max(0, round((my_room.next_game_at - timezone.now()).total_seconds()))

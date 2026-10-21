@@ -362,6 +362,8 @@
 .gm-win .gm-stone { box-shadow: 0 0 0 3px #f59e0b, 0 0 12px #f59e0b; }
 .gm-center-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; padding: 14px 22px; border-radius: 14px; background: rgba(15,23,42,.92); text-align: center; font-weight: 800; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
 .gm-center-msg small { display: block; margin-top: 4px; font-weight: 600; font-size: .75rem; color: #fde68a; }
+.gm-forbid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #dc2626; font-weight: 900; font-size: clamp(12px, 3.2vw, 22px); line-height: 1; z-index: 3; pointer-events: none; text-shadow: 0 0 2px rgba(255,255,255,.6); }
+.gm-cell.gm-bad { cursor: not-allowed; }
 .gm-rank-link { text-decoration: none; cursor: pointer; }
 .gm-rank-link:hover { background: #fef3c7; }
 .gm-stat-chip i { color: #b45309; }
@@ -478,29 +480,34 @@ footer { display: none !important; }
                 <button type="button" class="gm-btn gm-btn-sm gm-btn-call" data-join="${r.id}" ${canJoin ? '' : 'disabled'}>입장</button></div>`;
         }).join('');
         lobbyViewEl.innerHTML = `
-            <div class="gm-lobby-head"><div><h3>오목 방</h3><p>5목을 먼저 이으면 승리 · 승 수로 랭킹이 매겨집니다</p></div>
+            <div class="gm-lobby-head"><div><h3>오목 방</h3><p>렌주룰 · 5목을 먼저 이으면 승리 · 승 수로 랭킹이 매겨집니다</p></div>
                 <div class="gm-lobby-create"><button type="button" class="gm-btn gm-btn-call" id="gm-create">방 만들기</button></div></div>
             <div class="gm-room-list">${rows || '<div class="gm-lobby-empty">열린 방이 없습니다. 방을 만들어 보세요!</div>'}</div>
             <details class="gm-rules"><summary>규칙</summary><ul>
-                <li>15×15 판, 흑이 먼저 둡니다. 판마다 흑/백이 바뀝니다.</li>
-                <li>가로·세로·대각선으로 같은 색 5개 이상을 먼저 이으면 승리 (자유룰, 6목 이상도 승리).</li>
+                <li>15×15 판, 흑이 먼저 둡니다. 판마다 흑/백이 바뀝니다. <strong>렌주룰</strong>로 진행합니다.</li>
+                <li>흑은 <strong>정확히 5목</strong>을 이어야 승리하고, <strong>3-3 · 4-4 · 장목(6목 이상)</strong>은 둘 수 없습니다 (두면 안 되는 자리는 ×로 표시). 5목이 완성되는 수는 예외입니다.</li>
+                <li>백은 제한이 없고 5목 이상이면 승리합니다. 4-3은 흑도 둘 수 있습니다.</li>
                 <li>한 수는 60초 안에 두어야 하며, 시간 초과·기권·판 중 퇴장은 패배입니다.</li>
                 <li>승 수 랭킹은 사람끼리 9수 이상 둔 판만 집계하며, AI 연습 대국은 제외됩니다.</li></ul></details>`;
         lobbyViewEl.querySelectorAll('[data-join]').forEach((b) => b.addEventListener('click', () => send({ type: 'join', room_id: +b.dataset.join })));
         document.getElementById('gm-create').addEventListener('click', () => send({ type: 'create' }));
     }
 
-    function buildBoard(game, canPlay, winLine) {
+    function buildBoard(game, canPlay, winLine, forbidden) {
         const win = new Set((winLine || []).map((c) => c[0] + ',' + c[1]));
+        const forb = new Map((forbidden || []).map((f) => [f[0] + ',' + f[1], f[2]]));
+        const FORB_LABEL = { overline: '장목', double_four: '4-4', double_three: '3-3' };
         const cells = [];
         for (let y = 0; y < SIZE; y++) {
             for (let x = 0; x < SIZE; x++) {
                 const v = game.board[y][x];
                 const isLast = game.last && game.last[0] === x && game.last[1] === y;
-                const cls = ['gm-cell', 'cx' + x, 'cy' + y, !v && canPlay ? 'can' : '', win.has(x + ',' + y) ? 'gm-win' : ''].join(' ');
+                const bad = !v && forb.get(x + ',' + y);
+                const cls = ['gm-cell', 'cx' + x, 'cy' + y, !v && canPlay && !bad ? 'can' : '', win.has(x + ',' + y) ? 'gm-win' : '', bad ? 'gm-bad' : ''].join(' ');
                 const star = STARS.some((s) => s[0] === x && s[1] === y) && !v ? '<span class="gm-star"></span>' : '';
                 const stone = v ? `<span class="gm-stone ${v === 1 ? 'gm-stone--b' : 'gm-stone--w'}"></span>${isLast ? '<span class="gm-last"></span>' : ''}` : '';
-                cells.push(`<button type="button" class="${cls}" data-x="${x}" data-y="${y}" aria-label="${x + 1}열 ${y + 1}행">${star}${stone}</button>`);
+                const mark = bad ? `<span class="gm-forbid" title="금수: ${FORB_LABEL[bad] || ''}">×</span>` : '';
+                cells.push(`<button type="button" class="${cls}" data-x="${x}" data-y="${y}" aria-label="${x + 1}열 ${y + 1}행${bad ? ' 금수' : ''}">${star}${stone}${mark}</button>`);
             }
         }
         boardEl.innerHTML = cells.join('');
@@ -518,14 +525,15 @@ footer { display: none !important; }
         const view = { board, last: game ? game.last : null, black: game ? game.black : result.black, turn: game ? game.turn : -1 };
         if (!game && result.line) view.last = null;
         playersEl.innerHTML = room.seats.map((p) => playerChip(p, view, view.black === undefined ? undefined : p.side)).join('');
-        buildBoard(view, !!(game && game.my_turn), game ? null : result.line);
+        buildBoard(view, !!(game && game.my_turn), game ? null : result.line, game ? game.forbidden : null);
 
         if (game) {
             const left = game.turn_seconds_left;
             turnInfoEl.innerHTML = game.my_turn
                 ? `<span style="color:#fde047">내 차례입니다</span><span class="gm-turn-countdown" id="gm-countdown">${left != null ? left + '초' : ''}</span>`
                 : `상대 차례 <span class="gm-turn-countdown" id="gm-countdown">${left != null ? left + '초' : ''}</span>`;
-            actionBarEl.innerHTML = `<button type="button" class="gm-btn gm-btn-ghost gm-btn-sm" id="gm-resign">기권</button>`;
+            const forbidNote = game.forbidden && game.forbidden.length ? '<span class="gm-hint" style="margin-right:8px"><span style="color:#dc2626;font-weight:900">×</span> 금수 자리 (3-3 · 4-4 · 장목)</span>' : '';
+            actionBarEl.innerHTML = `${forbidNote}<button type="button" class="gm-btn gm-btn-ghost gm-btn-sm" id="gm-resign">기권</button>`;
             document.getElementById('gm-resign').addEventListener('click', () => { if (confirm('기권하면 패배로 기록됩니다. 기권할까요?')) send({ type: 'resign' }); });
         } else {
             const waiting = room.seats.length < 2;

@@ -34,12 +34,12 @@ class RulesTestCase(TestCase):
             self.assertEqual((out["winner"], out["reason"]), (0, "five"), (dx, dy))
             self.assertEqual(len(out["line"]), 5)
 
-    def test_four_does_not_win_and_six_or_more_does(self):
+    def test_four_does_not_win_and_free_style_six_wins(self):
         st = eng.new_game(0)
         for x in range(4):
             st["board"][7][x] = 1
-        self.assertIsNone(eng.place_stone(st, 0, 4 if False else 3, 8))     # 다른 줄에 둠
-        st = eng.new_game(0)
+        self.assertIsNone(eng.place_stone(st, 0, 3, 8))                      # 4목은 승리가 아님
+        st = eng.new_game(0, renju=False)                                    # 렌주룰 이전 판(자유룰)
         for x in (0, 1, 2, 4, 5):
             st["board"][7][x] = 1
         out = eng.place_stone(st, 0, 3, 7)                                   # 6목 완성 (자유룰)
@@ -65,12 +65,103 @@ class RulesTestCase(TestCase):
         self.assertEqual((out["winner"], out["reason"]), (None, "draw"))
 
 
+def place_as_black(stones, x, y, white=()):
+    """흑(side 0)이 (x, y)에 두는 것을 시험한다. 이미 놓인 흑 돌 stones, 백 돌 white."""
+    st = eng.new_game(0)
+    for sx, sy in stones:
+        st["board"][sy][sx] = 1
+    for wx, wy in white:
+        st["board"][wy][wx] = 2
+    return st, lambda: eng.place_stone(st, 0, x, y)
+
+
+class RenjuTestCase(TestCase):
+    def test_black_double_three_is_forbidden_but_white_may_play_it(self):
+        stones = [(5, 7), (6, 7), (7, 5), (7, 6)]                          # (7, 7)에서 열린 3이 둘
+        st, play = place_as_black(stones, 7, 7)
+        with self.assertRaisesMessage(ValueError, "3-3"):
+            play()
+        self.assertEqual(st["board"][7][7], 0)                              # 금수는 판에 남지 않는다
+        white = eng.new_game(1)                                             # side 0 = 백
+        for sx, sy in stones:
+            white["board"][sy][sx] = 2
+        white["turn"] = 0
+        self.assertIsNone(eng.place_stone(white, 0, 7, 7))                  # 백은 3-3이어도 둘 수 있다
+
+    def test_black_double_four_and_overline_are_forbidden(self):
+        _, play = place_as_black([(4, 7), (5, 7), (6, 7), (7, 4), (7, 5), (7, 6)], 7, 7)
+        with self.assertRaisesMessage(ValueError, "4-4"):
+            play()
+        _, play = place_as_black([(2, 7), (3, 7), (4, 7), (6, 7), (7, 7)], 5, 7)
+        with self.assertRaisesMessage(ValueError, "장목"):
+            play()
+
+    def test_exact_five_wins_even_if_it_would_otherwise_be_forbidden(self):
+        # (7, 7): 가로로 정확히 5목 완성 + 세로 열린 3이 둘 → 5목 우선이라 승리
+        _, play = place_as_black([(3, 7), (4, 7), (5, 7), (6, 7), (7, 5), (7, 6), (8, 8), (9, 9)], 7, 7)
+        out = play()
+        self.assertEqual((out["winner"], out["reason"]), (0, "five"))
+
+    def test_four_three_is_allowed_and_single_three_too(self):
+        _, play = place_as_black([(4, 7), (5, 7), (6, 7), (7, 5), (7, 6)], 7, 7)   # 4-3
+        self.assertIsNone(play())
+        _, play = place_as_black([(5, 7), (6, 7)], 7, 7)                            # 3 하나
+        self.assertIsNone(play())
+
+    def test_blocked_three_is_not_an_open_three(self):
+        # 가로 3은 백이 한쪽을 막고 있어 열린 3이 아니므로 세로 열린 3과 겹쳐도 3-3이 아니다
+        _, play = place_as_black([(5, 7), (6, 7), (7, 5), (7, 6)], 7, 7, white=[(4, 7), (3, 7)])
+        self.assertIsNone(play())
+
+    def test_white_six_wins_black_needs_exact_five(self):
+        white = eng.new_game(1)                                             # side 0 = 백
+        for x in (0, 1, 2, 4, 5):
+            white["board"][7][x] = 2
+        white["turn"] = 0
+        out = eng.place_stone(white, 0, 3, 7)
+        self.assertEqual((out["winner"], len(out["line"])), (0, 6))         # 백의 장목은 승리
+
+    def test_game_started_before_renju_stays_free_style(self):
+        st = eng.new_game(0)
+        st.pop("renju")                                                     # 렌주룰 도입 전에 시작된 판
+        for x in (0, 1, 2, 4, 5):
+            st["board"][7][x] = 1
+        self.assertEqual(eng.place_stone(st, 0, 3, 7)["reason"], "five")
+
+    def test_state_lists_forbidden_cells_only_for_black_on_turn(self):
+        a = User.objects.create_user(username="rja", password="x")
+        b = User.objects.create_user(username="rjb", password="x")
+        ok, room_id = eng.create_room(a)
+        eng.join_room(b, room_id)
+        GomokuRoom.objects.filter(pk=room_id).update(next_game_at=timezone.now() - timedelta(seconds=1))
+        eng.process_due_deadlines()
+        room = GomokuRoom.objects.get(pk=room_id)
+        seats = {s.seat: s.user for s in room.seats.select_related("user")}
+        black, white = seats[room.state["black"]], seats[1 - room.state["black"]]
+        for x, y in [(5, 7), (6, 7), (7, 5), (7, 6)]:
+            room.state["board"][y][x] = 1
+        room.save()
+        self.assertIn([7, 7, "double_three"], eng.get_state_for(black)["room"]["game"]["forbidden"])
+        self.assertEqual(eng.get_state_for(white)["room"]["game"]["forbidden"], [])   # 백에게는 보내지 않는다
+        self.assertTrue(eng.get_state_for(black)["room"]["game"]["renju"])
+        ok, msg = eng.place(black, 7, 7)
+        self.assertFalse(ok)
+        self.assertIn("금수", msg)
+
+
 class AiTestCase(TestCase):
     def test_ai_completes_its_own_four_and_blocks_opponent_four(self):
         own = board_with([(x, 7, 2) for x in range(3, 7)] + [(3, 9, 1), (4, 9, 1)])
         self.assertIn(gomoku_ai.choose_move(own, 2, random.Random(1)), [(2, 7), (7, 7)])
         block = board_with([(x, 7, 1) for x in range(3, 7)] + [(10, 10, 2)])
         self.assertIn(gomoku_ai.choose_move(block, 2, random.Random(1)), [(2, 7), (7, 7)])
+
+    def test_ai_never_plays_a_forbidden_point_as_black_and_ignores_them_as_white(self):
+        board = board_with([(5, 7, 1), (6, 7, 1), (7, 5, 1), (7, 6, 1)])
+        free_pick = gomoku_ai.choose_move(board, 1, random.Random(1), renju=False)
+        self.assertEqual(free_pick, (7, 7))                                  # 자유룰이면 가장 좋은 자리
+        for seed in range(5):
+            self.assertNotEqual(gomoku_ai.choose_move(board, 1, random.Random(seed), renju=True), (7, 7))
 
     def test_ai_opens_at_center_and_handles_full_board(self):
         self.assertEqual(gomoku_ai.choose_move(eng.new_board(), 1), (7, 7))
