@@ -1040,7 +1040,7 @@ async function debugSpin(grade) {
     const badge  = document.getElementById('slot-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('slot-side-col'), fab: document.getElementById('slot-toggle-chat-fab'), chatPane: document.getElementById('slot-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl  = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=slot_machine`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket   = null;
     let heartbeatTimer = null;

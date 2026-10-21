@@ -24,6 +24,8 @@
 .fr-name { flex: 1; min-width: 0; font-weight: 600; font-size: 12px; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fr-row--me .fr-name { color: #047857; }
 .fr-star { color: #f59e0b; font-size: 10px; margin-left: 3px; }
+.fr-act { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #eef2ff; color: #4338ca; font-size: 10px; font-weight: 800; vertical-align: 1px; }
+.fr-act--lobby { background: #f1f5f9; color: #64748b; }
 .fr-btn { flex-shrink: 0; border: 1px solid #c7d2fe; background: #eef2ff; color: #4338ca; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 999px; cursor: pointer; white-space: nowrap; font-family: inherit; }
 .fr-btn:hover { background: #e0e7ff; }
 .fr-btn:disabled { opacity: .5; cursor: default; }
@@ -104,10 +106,12 @@
         const cls = ['fr-row', isMe ? 'fr-row--me' : '', opts.offline ? 'fr-row--off' : ''].join(' ');
         const star = rel === 'friend' ? '<i class="fa-solid fa-star fr-star" title="친구"></i>' : '';
         const me = isMe ? ' <span class="text-[10px] text-emerald-500">(나)</span>' : '';
+        // 친구에게만 서버가 보내 주는 활동: 플레이 중인 게임, 아무것도 안 하면 '로비'
+        const act = u.activity ? `<span class="fr-act${u.activity === '로비' ? ' fr-act--lobby' : ''}">${esc(u.activity)}</span>` : '';
         return `<div class="${cls}">
             ${opts.noDot ? '' : '<span class="fr-dot"></span>'}
             ${avatar(u)}
-            <span class="fr-name"><span${cardAttrs(u)}>${esc(u.display_name)}</span>${u.is_graduate ? GRADUATE : ''}${star}${me}</span>
+            <span class="fr-name"><span${cardAttrs(u)}>${esc(u.display_name)}</span>${u.is_graduate ? GRADUATE : ''}${star}${me}${act}</span>
             ${isMe ? '' : actionsFor(u, rel)}
         </div>`;
     }

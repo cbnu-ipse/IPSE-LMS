@@ -960,7 +960,7 @@ function toggleYcChat() {
     const badge = document.getElementById('yc-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('yc-side-col'), fab: document.getElementById('yc-toggle-chat-fab'), chatPane: document.getElementById('yc-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=yacht`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
     let heartbeatTimer = null;

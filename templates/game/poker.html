@@ -2196,7 +2196,7 @@ function togglePkChat() {
     const badge = document.getElementById('pk-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('pk-side-col'), fab: document.getElementById('pk-toggle-chat-fab'), chatPane: document.getElementById('pk-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=poker`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
     let heartbeatTimer = null;

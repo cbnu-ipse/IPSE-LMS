@@ -377,6 +377,7 @@ class LobbyPresenceTestCase(TestCase):
 
     def tearDown(self):
         game_consumers._online_users.clear()
+        game_consumers._activity_lock = None
 
     async def _connect(self, user, presence=True):
         comm = WebsocketCommunicator(
@@ -420,6 +421,86 @@ class LobbyPresenceTestCase(TestCase):
         self.assertEqual(msg["created_at"], timezone.localtime(saved.created_at).strftime("%H:%M"))
         self.assertNotEqual(timezone.localtime(saved.created_at).utcoffset(), timedelta(0))  # 서버 시간대가 KST
         await comm.disconnect()
+
+
+class LobbyFriendActivityTestCase(TestCase):
+    """접속자 목록에서 친구가 무엇을 하는 중인지 보인다 (친구에게만). 안 하면 '로비'."""
+
+    databases = {"default", "beta_judge"}
+
+    def tearDown(self):
+        game_consumers._online_users.clear()
+        game_consumers._activity_lock = None
+
+    async def _connect(self, user, game="lobby", presence=True):
+        comm = WebsocketCommunicator(game_consumers.LobbyChatConsumer.as_asgi(),
+                                     f"/ws/lobby/chat/?{'presence=1&' if presence else ''}game={game}")
+        comm.scope["user"] = user
+        connected, _ = await comm.connect()
+        self.assertTrue(connected)
+        return comm
+
+    async def _latest(self, comm):
+        """지금까지 도착한 접속자 목록 중 마지막 것."""
+        last = None
+        while not await comm.receive_nothing(timeout=0.2):
+            msg = await comm.receive_json_from()
+            if msg.get("type") == "presence":
+                last = msg
+        return last
+
+    async def _setup(self):
+        from accounts.models import Friendship
+        make = database_sync_to_async(User.objects.create_user)
+        self.a, self.b, self.c = await make(username="fa", password="x"), await make(username="fb", password="x"), \
+            await make(username="fc", password="x")
+        await database_sync_to_async(Friendship.objects.create)(from_user=self.a, to_user=self.b, status="accepted")
+
+    async def test_friend_sees_arcade_activity_and_stranger_does_not(self):
+        await self._setup()
+        watcher = await self._connect(self.a)
+        stranger = await self._connect(self.c)
+        b_tab = await self._connect(self.b, game="slot_machine", presence=False)   # 참조를 잡아 둬야 연결이 유지된다
+        a_view = await self._latest(watcher)
+        by_id = {u["user_id"]: u for u in a_view["users"]}
+        self.assertEqual(by_id[self.b.id]["activity"], "학점 캡슐 슬롯머신")      # 친구: 플레이 중인 게임
+        c_view = await self._latest(stranger)
+        self.assertNotIn("activity", {u["user_id"]: u for u in c_view["users"]}[self.b.id])   # 친구 아님: 안 보임
+        await b_tab.disconnect()
+        await watcher.disconnect()
+        await stranger.disconnect()
+
+    async def test_room_game_counts_only_when_seated_otherwise_lobby(self):
+        await self._setup()
+        await database_sync_to_async(PokerChipWallet.objects.create)(user=self.b, chips=10000)
+        watcher = await self._connect(self.a)
+        b_tab = await self._connect(self.b, game="poker", presence=False)       # 포커 화면만 연 상태 = 로비
+        view = await self._latest(watcher)
+        self.assertEqual({u["user_id"]: u for u in view["users"]}[self.b.id]["activity"], "로비")
+
+        ok, _ = await database_sync_to_async(poker_engine.create_table)(self.b, "intermediate")
+        self.assertTrue(ok)
+        await game_consumers._refresh_activity(force=True)
+        view = await self._latest(watcher)
+        self.assertEqual({u["user_id"]: u for u in view["users"]}[self.b.id]["activity"], "포커")
+
+        await database_sync_to_async(poker_engine.stand_up)(self.b)      # 일어나면 다시 로비
+        await game_consumers._refresh_activity(force=True)
+        view = await self._latest(watcher)
+        self.assertEqual({u["user_id"]: u for u in view["users"]}[self.b.id]["activity"], "로비")
+        await b_tab.disconnect()
+        await watcher.disconnect()
+
+    def test_seated_games_label_blackjack_and_unknown_page_is_lobby(self):
+        from .models import PokerTable
+        user = User.objects.create_user(username="bj", password="x")
+        table = PokerTable.create_with_seats("intermediate", capacity=2, game_type="blackjack")
+        seat = table.seats.first()
+        seat.user = user
+        seat.save()
+        self.assertEqual(game_consumers._seated_games([user.id]), {user.id: "블랙잭"})
+        self.assertEqual(game_consumers._page_slug(b"presence=1&game=nope"), "lobby")
+        self.assertEqual(game_consumers._page_slug(b"presence=1&game=yacht"), "yacht")
 
 
 class PokerDisconnectGraceTestCase(TestCase):

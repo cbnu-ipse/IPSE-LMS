@@ -717,7 +717,7 @@ function toggleMmChat() {
     const badge = document.getElementById('mm-chat-status');
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     ChatUnread.setup({ panel: document.getElementById('mm-side-col'), fab: document.getElementById('mm-toggle-chat-fab'), chatPane: document.getElementById('mm-tab-chat'), myUsername: '{{ request.user.username|escapejs }}' });
-    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1`;
+    const wsUrl   = `${wsProto}://${location.host}/ws/lobby/chat/?presence=1&game=memory_match`;
     const HEARTBEAT_INTERVAL_MS = 25000;
     let socket = null;
     let heartbeatTimer = null;
