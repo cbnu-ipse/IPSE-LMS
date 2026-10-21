@@ -6,6 +6,8 @@
 """
 import random
 
+from . import gomoku_rules
+
 SIZE = 15
 DIRS = ((1, 0), (0, 1), (1, 1), (1, -1))
 
@@ -54,8 +56,9 @@ def _candidates(board, reach=2):
     return cells
 
 
-def choose_move(board, color, rng=None):
-    """(x, y). 보드가 비어 있으면 중앙, 꽉 찼으면 None."""
+def choose_move(board, color, rng=None, renju=False):
+    """(x, y). 보드가 비어 있으면 중앙, 꽉 찼으면 None.
+    renju=True면 흑일 때 금수(3-3·4-4·장목) 자리는 두지 않고, 백일 때는 흑이 둘 수 없는 자리를 막지 않는다."""
     rng = rng or random.Random()
     cells = _candidates(board)
     if not cells:
@@ -65,11 +68,20 @@ def choose_move(board, color, rng=None):
     other = 2 if color == 1 else 1
     best, best_score = [], -1
     for x, y in cells:
-        score = _cell_score(board, x, y, color) * 1.0 + _cell_score(board, x, y, other) * 0.9
+        if renju and color == 1 and gomoku_rules.forbidden_reason(board, x, y):
+            continue                                       # 흑이 금수 자리에 둘 수는 없다
+        other_score = _cell_score(board, x, y, other)
+        if renju and other == 1 and other_score and gomoku_rules.forbidden_reason(board, x, y):
+            other_score = 0                                # 상대(흑)도 못 두는 자리라 막을 필요가 없다
+        score = _cell_score(board, x, y, color) * 1.0 + other_score * 0.9
         # 중앙에 가까울수록 아주 조금 유리 (같은 점수일 때 가장자리로 흩어지지 않게)
         score += (SIZE - abs(x - SIZE // 2) - abs(y - SIZE // 2)) * 0.01
         if score > best_score + 1e-9:
             best, best_score = [(x, y)], score
         elif abs(score - best_score) <= 1e-9:
             best.append((x, y))
+    if not best:   # 후보가 모두 금수 (거의 없음): 아무 빈 칸이나
+        free = [(x, y) for y in range(SIZE) for x in range(SIZE) if board[y][x] == 0
+                and not (renju and color == 1 and gomoku_rules.forbidden_reason(board, x, y))]
+        return rng.choice(free) if free else None
     return rng.choice(best)
