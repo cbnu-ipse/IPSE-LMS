@@ -4,6 +4,7 @@ from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
     HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog, HouseBank, YachtRoom, YachtSeat, YachtGameLog,
+    GomokuRoom, GomokuSeat, GomokuMatch,
 )
 
 
@@ -163,3 +164,14 @@ class TrickOrTreatLogAdmin(admin.ModelAdmin):
 @admin.register(TrickOrTreatRun)
 class TrickOrTreatRunAdmin(admin.ModelAdmin):
     list_display = ("user", "best", "created_at")
+
+
+@admin.register(GomokuMatch)
+class GomokuMatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "black", "white", "winner", "reason", "moves", "ranked", "vs_bot", "ended_at")
+    list_filter = ("ranked", "vs_bot", "reason")
+    search_fields = ("black__username", "white__username")
+
+
+admin.site.register(GomokuRoom)
+admin.site.register(GomokuSeat)

@@ -9,7 +9,7 @@ from django.db import transaction
 from .models import (
     SlotPlayLog, LobbyChatMessage, AppleGameScore, GameSeason, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
-    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank,
+    PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank, GomokuMatch,
 )
 from . import gostop_engine, poker_engine
 from accounts.models import User
@@ -74,6 +74,39 @@ def _assign_ranks(rows, key):
             row["rank"] = i + 1
         else:
             row["rank"] = rows[i - 1]["rank"]
+    return rows
+
+
+def get_gomoku_ranking(top_n=10, season=None):
+    """오목 승 수 랭킹. 사람끼리 둔 정상 대국(ranked)의 승리만 센다. season 지정 시 해당 시즌 기간만 집계.
+    같은 승 수면 승률이 높은 쪽이 앞선다."""
+    from django.db.models import Count, Q
+
+    base = GomokuMatch.objects.filter(ranked=True)
+    if season is not None:
+        base = base.filter(ended_at__date__gte=season.start_date, ended_at__date__lte=season.end_date)
+    wins = {r["winner"]: r["n"] for r in base.filter(winner__isnull=False).values("winner").annotate(n=Count("id"))}
+    games = {}
+    for black, white in base.values_list("black_id", "white_id"):
+        for uid in (black, white):
+            if uid:
+                games[uid] = games.get(uid, 0) + 1
+    users = User.objects.filter(pk__in=list(wins)).select_related("student")
+    rows = []
+    for u in users:
+        n_games = games.get(u.pk, wins[u.pk])
+        rows.append({"user": u, "score": wins[u.pk], "games": n_games,
+                     "losses": max(0, n_games - wins[u.pk]), "win_rate": round(wins[u.pk] * 100 / n_games)})
+    rows.sort(key=lambda r: (-r["score"], -r["win_rate"], r["user"].pk))
+    result = rows if top_n is None else rows[:top_n]
+    return _assign_ranks_by(result, ("score", "win_rate"))
+
+
+def _assign_ranks_by(rows, keys):
+    """여러 값이 모두 같을 때만 공동 순위."""
+    for i, row in enumerate(rows):
+        same = i > 0 and all(row[k] == rows[i - 1][k] for k in keys)
+        row["rank"] = rows[i - 1]["rank"] if same else i + 1
     return rows
 
 
@@ -391,6 +424,12 @@ def gostop_view(request):
 
 
 @login_required
+def gomoku_view(request):
+    latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
+    return render(request, "game/gomoku.html", {"title": "오목", "chat_messages": list(latest)[::-1]})
+
+
+@login_required
 def yacht_view(request):
     latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
     return render(request, "game/yacht.html", {"title": "요트 다이스", "chat_messages": list(latest)[::-1]})
@@ -402,7 +441,7 @@ def game_ranking_view(request):
     board = request.GET.get("board", "slot_game").strip()
     season_number = request.GET.get("season", "").strip()
 
-    if board not in {"slot_game", "apple_game", "memory_match", "number_speed", "pattern_recall"}:
+    if board not in {"slot_game", "apple_game", "memory_match", "number_speed", "pattern_recall", "gomoku"}:
         board = "slot_game"
 
     BOARD_LABELS = {
@@ -411,6 +450,7 @@ def game_ranking_view(request):
         "memory_match": "카드 매칭 랭킹",
         "number_speed": "넘버 스피드 랭킹",
         "pattern_recall": "패턴 리콜 랭킹",
+        "gomoku": "오목 승 수 랭킹",
     }
     board_label = BOARD_LABELS[board]
 
@@ -442,6 +482,8 @@ def game_ranking_view(request):
             ranking_rows = get_number_speed_ranking(top_n=None, season=selected_season)
         elif board == "pattern_recall":
             ranking_rows = get_pattern_recall_ranking(top_n=None, season=selected_season)
+        elif board == "gomoku":
+            ranking_rows = get_gomoku_ranking(top_n=None, season=selected_season)
         else:
             ranking_rows = get_apple_ranking(top_n=None, season=selected_season)
         all_seasons = list(GameSeason.objects.order_by("-number"))
@@ -831,7 +873,7 @@ GAME_INVITE_COOLDOWN_SECONDS = 30  # 같은 친구에게 연달아 초대 알림
 
 def _my_game_spot(user, game):
     """초대할 위치 (이름, 이동 경로). 그 게임에 앉아 있지 않으면 None."""
-    from .models import GostopSeat, PokerSeat, YachtSeat
+    from .models import GomokuSeat, GostopSeat, PokerSeat, YachtSeat
     if game == "gostop":
         seat = GostopSeat.objects.filter(user=user).select_related("room").first()
         if seat:
@@ -841,6 +883,10 @@ def _my_game_spot(user, game):
         seat = YachtSeat.objects.filter(user=user).first()
         if seat:
             return f"요트 다이스 {seat.room_id}번 방", f"/game/yacht/?room={seat.room_id}"
+    elif game == "gomoku":
+        seat = GomokuSeat.objects.filter(user=user).first()
+        if seat:
+            return f"오목 {seat.room_id}번 방", f"/game/gomoku/?room={seat.room_id}"
     elif game == "poker":
         if PokerSeat.objects.filter(user=user).exists():
             return "포커 테이블", "/game/poker/"

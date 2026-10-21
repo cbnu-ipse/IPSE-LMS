@@ -32,6 +32,10 @@
                        class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'pattern_recall' %}bg-teal-50 text-teal-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                         <i class="fa-solid fa-brain text-xs w-4 text-center text-teal-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">패턴 리콜 랭킹</span>
                     </a>
+                    <a href="?board=gomoku"
+                       class="flex items-center gap-2 px-3 py-2 rounded-md font-semibold transition {% if board == 'gomoku' %}bg-slate-100 text-slate-800{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                        <i class="fa-solid fa-chess-board text-xs w-4 text-center text-slate-500 shrink-0"></i><span class="flex-1 min-w-0 truncate">오목 승 수 랭킹</span>
+                    </a>
                 </nav>
             </div>
         </aside>
@@ -97,10 +101,17 @@
                     <!-- 시즌 선택 + 보상 안내 -->
                     <div class="flex items-center gap-3 flex-wrap">
                         <!-- 시즌 보상 안내 뱃지 -->
+                        {% if board == 'gomoku' %}
+                        <div class="flex items-center gap-1.5 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-semibold">
+                            <i class="fa-solid fa-chess-board text-slate-400 text-xs"></i>
+                            사람끼리 둔 대국의 승리만 집계 (AI 대국·9수 미만 판 제외)
+                        </div>
+                        {% else %}
                         <div class="flex items-center gap-1.5 text-[12px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5 font-semibold">
                             <i class="fa-solid fa-leaf text-amber-500 text-xs"></i>
                             시즌 보상: 1위 {{ season_rank_rewards.1 }} · 2위 {{ season_rank_rewards.2 }} · 3위 {{ season_rank_rewards.3 }} 낙엽
                         </div>
+                        {% endif %}
 
                         <!-- 시즌 선택 드롭다운 -->
                         {% if all_seasons|length > 1 %}
@@ -175,6 +186,10 @@
                                 <th class="px-6 py-4 text-center">최고 등급</th>
                                 {% elif board == 'apple_game' or board == 'memory_match' or board == 'number_speed' or board == 'pattern_recall' %}
                                 <th class="px-6 py-4 text-center">최고 점수</th>
+                                {% elif board == 'gomoku' %}
+                                <th class="px-6 py-4 text-center">승</th>
+                                <th class="px-6 py-4 text-center">전적</th>
+                                <th class="px-6 py-4 text-center">승률</th>
                                 {% endif %}
                             </tr>
                         </thead>
@@ -213,6 +228,10 @@
                                 <td class="px-6 py-4 text-center font-bold text-sky-600">{{ row.score }}점</td>
                                 {% elif board == 'pattern_recall' %}
                                 <td class="px-6 py-4 text-center font-bold text-teal-600">{{ row.score }}점</td>
+                                {% elif board == 'gomoku' %}
+                                <td class="px-6 py-4 text-center font-bold text-slate-800">{{ row.score }}승</td>
+                                <td class="px-6 py-4 text-center text-slate-500">{{ row.score }}승 {{ row.losses }}패</td>
+                                <td class="px-6 py-4 text-center text-slate-500">{{ row.win_rate }}%</td>
                                 {% endif %}
                             </tr>
                             {% endif %}
