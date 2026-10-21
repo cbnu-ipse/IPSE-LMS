@@ -5,7 +5,8 @@ from accounts.models import User
 def free_bot():
     """지금 어느 게임에도 앉지 않은 AI 계정 (없으면 만든다). 트랜잭션 안에서 호출."""
     bot = (User.objects.filter(is_bot=True, gostop_seat__isnull=True, poker_seats__isnull=True,
-                               yacht_seat__isnull=True, gomoku_seat__isnull=True)
+                               yacht_seat__isnull=True, gomoku_seat__isnull=True,
+                               janggi_seat__isnull=True)
            .order_by("id").first())
     if bot:
         return bot

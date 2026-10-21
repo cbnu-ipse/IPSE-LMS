@@ -23,6 +23,7 @@ urlpatterns = [
     path("gostop/", views.gostop_view, name="gostop"),
     path("yacht/", views.yacht_view, name="yacht"),
     path("gomoku/", views.gomoku_view, name="gomoku"),
+    path("janggi/", views.janggi_view, name="janggi"),
     path("invite/", views.game_invite, name="game_invite"),
     path("trick-or-treat/", views.trick_or_treat_view, name="trick_or_treat"),
     path("trick-or-treat/start/", views.trick_or_treat_start, name="trick_or_treat_start"),
