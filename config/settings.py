@@ -268,11 +268,17 @@ MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.5")
 ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.5")
 # 공급자: 키가 있는 곳만 쓴다. Gemini·Claude는 OpenAI SDK와 호환되는 주소로 부르므로 새 패키지가 필요 없다.
 # 작업에 지정된 공급자의 키가 없으면 OpenAI(MYPAGE_CHAT_MODEL)로 대신 부른다 — 키를 넣기 전까지는 예전과 똑같이 동작.
-GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
-ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
+# 테스트는 로컬 .env의 키와 무관하게 늘 같은 경로(OpenAI 대체)를 타도록 Gemini·Claude 키를 비운다
+_TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+GEMINI_API_KEY = "" if _TESTING else config("GEMINI_API_KEY", default="")
+ANTHROPIC_API_KEY = "" if _TESTING else config("ANTHROPIC_API_KEY", default="")
 AI_PROVIDERS = {
     "openai": {"key": OPENAI_API_KEY, "base_url": None},
-    "gemini": {"key": GEMINI_API_KEY, "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"},
+    # GEMINI_BACKEND=vertex(기본): Google Cloud Agent Platform 네이티브 API (Cloud 무료 체험 크레딧 사용 가능, core/vertex.py),
+    # studio: AI Studio의 OpenAI 호환 주소 (Gemini API 선불 크레딧 필요). 키 종류에 맞춰 고른다.
+    "gemini": ({"key": GEMINI_API_KEY, "base_url": None, "native": "vertex"}
+               if config("GEMINI_BACKEND", default="vertex").strip().lower() != "studio" else
+               {"key": GEMINI_API_KEY, "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"}),
     "anthropic": {"key": ANTHROPIC_API_KEY, "base_url": "https://api.anthropic.com/v1/"},
 }
 # 작업별 (공급자, 모델). 환경변수로 하나씩 바꿀 수 있다: AI_PROVIDER_<작업>, AI_MODEL_<작업>

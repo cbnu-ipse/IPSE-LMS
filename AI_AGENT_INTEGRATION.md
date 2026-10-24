@@ -159,3 +159,7 @@ LangChain/RAG/LangGraph/Guardrail/Agent
   무시하므로 `complete_json`이 코드 펜스·앞뒤 설명이 붙어도 읽는 `parse_json`으로 보완한다.
 - 모델 비교는 `python manage.py eval_ai_models` (사례: `core/eval/cases.json`). 서비스 함수를 후보 모델로 바꿔 그대로 돌리고
   사용량은 DB에 남기지 않는다.
+- Gemini는 `GEMINI_BACKEND`로 경로를 고른다. 기본 `vertex`는 Google Cloud Agent Platform(예전 Vertex AI)의 네이티브 REST를
+  `core/vertex.py` 어댑터로 부르고(API 키를 `x-goog-api-key` 헤더로 전달, Cloud 무료 체험 크레딧 사용 가능), OpenAI 응답 모양으로
+  바꿔 돌려준다 — 도구 호출(함수 호출)의 thought signature도 보관해 다시 보낸다. `studio`는 AI Studio의 OpenAI 호환 주소다
+  (Gemini API 선불 크레딧 필요). Vertex의 OpenAI 호환 주소는 API 키를 받지 않고 OAuth 토큰만 받아서 쓰지 않는다.

@@ -79,6 +79,15 @@ def _client(provider="openai"):
     return OpenAI(api_key=cfg["key"], base_url=cfg.get("base_url"))
 
 
+def _vertex_generate(model, messages, limit, json_mode, tools):
+    from . import vertex
+
+    if getattr(settings, "AI_BLOCK_NETWORK", False):
+        raise AIUnavailable("테스트 중에는 실제 AI API를 부르지 않습니다.")
+    return vertex.generate(settings.AI_PROVIDERS["gemini"]["key"], model, messages, max_tokens=limit,
+                           json_mode=json_mode, tools=tools)
+
+
 # 평가 스크립트(eval_ai_models)가 작업의 공급자·모델을 잠깐 바꿔 실제 함수를 그대로 돌릴 때 쓴다.
 # 덮어쓴 동안에는 사용량(AIUsage)을 DB에 남기지 않고 _EVAL_USAGE에만 모은다.
 _OVERRIDES = {}
@@ -169,8 +178,13 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
     if json_mode and provider != "anthropic":   # Claude 호환 주소는 response_format을 무시한다 → 프롬프트와 파서로 처리
         params["response_format"] = {"type": "json_object"}
     started = time.monotonic()
-    response = _client().chat.completions.create(**params) if provider == "openai" \
-        else _client(provider).chat.completions.create(**params)
+    native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
+    if native == "vertex":
+        response = _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
+    elif provider == "openai":
+        response = _client().chat.completions.create(**params)
+    else:
+        response = _client(provider).chat.completions.create(**params)
     if _OVERRIDES.get(task):
         _EVAL_USAGE.append({"task": task, "model": model, "latency": time.monotonic() - started,
                             "prompt": getattr(getattr(response, "usage", None), "prompt_tokens", 0) or 0,
