@@ -140,6 +140,23 @@ class ProviderRoutingTestCase(TestCase):
                                AI_MODELS={"classify": "g-lite"}, MYPAGE_CHAT_MODEL="gpt-default"):
             self.assertEqual(ai.route("classify"), ("openai", "gpt-default"))
 
+    def test_blank_model_uses_providers_own_default_never_another_providers_model(self):
+        with override_settings(AI_PROVIDERS=self.PROVIDERS, MYPAGE_CHAT_MODEL="gpt-default",
+                               AI_TASK_PROVIDERS={"classify": "gemini", "course_chapter": "anthropic", "grading": "openai"},
+                               AI_MODELS={"classify": "", "course_chapter": "", "grading": ""},
+                               AI_TASK_DEFAULTS={"classify": ("gemini", "gemini-lite"), "course_chapter": ("anthropic", "claude-x"),
+                                                 "grading": ("openai", "gpt-default")}):
+            self.assertEqual(ai.route("classify"), ("gemini", "gemini-lite"))         # gpt 이름이 Gemini로 가면 404
+            self.assertEqual(ai.route("course_chapter"), ("anthropic", "claude-x"))
+            self.assertEqual(ai.route("grading"), ("openai", "gpt-default"))
+
+    def test_settings_treat_blank_env_values_as_unset(self):
+        from config import settings as cfg
+        with patch.object(cfg, "config", side_effect=lambda name, default="": "   "):
+            self.assertEqual(cfg._env_or_default("AI_MODEL_CLASSIFY", "gemini-lite"), "gemini-lite")
+        with patch.object(cfg, "config", side_effect=lambda name, default="": "my-model"):
+            self.assertEqual(cfg._env_or_default("AI_MODEL_CLASSIFY", "gemini-lite"), "my-model")
+
     def test_non_openai_uses_max_tokens_and_claude_skips_json_mode(self):
         calls = {}
 

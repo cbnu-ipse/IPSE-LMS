@@ -7,11 +7,11 @@ generate_chapter, 주제 분류 프롬프트)를 후보 (공급자:모델)로 �
 사용 예 (.env에 각 공급자 키가 있어야 한다):
   python manage.py eval_ai_models --dry-run
   python manage.py eval_ai_models \\
-      --candidates gemini:gemini-2.5-flash-lite,gemini:gemini-2.5-flash,openai:gpt-5.5,anthropic:claude-haiku-5-5 \\
+      --candidates gemini:gemini-3.1-flash-lite,openai:gpt-5.5,anthropic:claude-haiku-5-5 \\
       --tasks classify,grading --prices core/eval/prices.json --out /tmp/eval.json
 
   --cases   자기 사례 파일 (core/eval/cases.json과 같은 형식, 실제 업로드 자료·채점 사례를 넣을수록 믿을 만하다)
-  --prices  {"gemini:gemini-2.5-flash": {"in": 0.30, "out": 2.50}} 처럼 100만 토큰당 가격(달러). 공식 가격표를 보고 직접 적는다
+  --prices  {"gemini:gemini-3.1-flash-lite": {"in": 0.0, "out": 0.0}} 처럼 100만 토큰당 가격(달러). 공식 가격표를 보고 직접 적는다
   --repeat  같은 사례를 여러 번 돌려 흔들림까지 본다 (기본 1)
 챗봇(도구 호출)은 자동 평가 대상이 아니다 — 후보 모델로 직접 대화해 보는 것을 권한다.
 """
@@ -113,7 +113,7 @@ class Command(BaseCommand):
     help = "후보 AI 모델들을 같은 사례로 비교 평가한다 (실제 API 호출, 비용 발생)"
 
     def add_arguments(self, parser):
-        parser.add_argument("--candidates", default="", help="공급자:모델 쉼표 목록 (예: gemini:gemini-2.5-flash,openai:gpt-5.5)")
+        parser.add_argument("--candidates", default="", help="공급자:모델 쉼표 목록 (예: gemini:gemini-3.1-flash-lite,openai:gpt-5.5)")
         parser.add_argument("--tasks", default=",".join(ALL_TASKS))
         parser.add_argument("--cases", default=str(DEFAULT_CASES))
         parser.add_argument("--prices", default="")

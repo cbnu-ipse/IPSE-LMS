@@ -61,7 +61,11 @@ def route(task):
     if provider != "openai" and not (settings.AI_PROVIDERS.get(provider) or {}).get("key"):
         logger.warning("AI provider %s has no API key; task %s falls back to OpenAI", provider, task)
         return "openai", settings.MYPAGE_CHAT_MODEL
-    return provider, settings.AI_MODELS.get(task) or settings.MYPAGE_CHAT_MODEL
+    model = settings.AI_MODELS.get(task)
+    if not model:   # 비어 있으면 그 공급자의 기본 모델 (다른 공급자 모델 이름을 보내면 404가 난다)
+        default_provider, default_model = settings.AI_TASK_DEFAULTS.get(task, ("openai", settings.MYPAGE_CHAT_MODEL))
+        model = default_model if default_provider == provider else settings.MYPAGE_CHAT_MODEL
+    return provider, model
 
 
 def _client(provider="openai"):
