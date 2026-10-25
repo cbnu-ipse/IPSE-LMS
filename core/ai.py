@@ -4,7 +4,7 @@ AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 AI를 직�
 - 작업(task)마다 공급자(OpenAI·Gemini·Claude)와 모델을 따로 고른다 (settings.AI_TASK_PROVIDERS·AI_MODELS,
   환경변수 AI_PROVIDER_<작업>·AI_MODEL_<작업>). 지정한 공급자의 키가 없으면 OpenAI로 대신 부른다.
 - 사용은 크레딧으로 낸다 (settings.AI_CREDIT_COSTS, User.credits). 호출 전에 차감하고 호출이 실패하면 돌려준다.
-  강의자·운영진·관리자와 시스템 작업(user=None)은 크레딧 없이 쓴다.
+  강의자와 시스템 작업(user=None)만 크레딧 없이 쓴다.
 - 호출마다 토큰 사용량을 AIUsage에 남긴다.
 - 출력 길이 상한(max_completion_tokens)을 작업마다 둔다.
 
@@ -113,10 +113,8 @@ def override_route(provider, model, tasks=None):
 
 
 def _is_exempt(user):
-    return user is None or bool(
-        getattr(user, "is_superuser", False) or getattr(user, "is_staff", False)
-        or getattr(user, "is_lecturer", False)
-    )
+    """크레딧을 받지 않는 호출: 강의자와 시스템 작업(user=None)만. 관리자·운영진 계정도 강의자가 아니면 크레딧을 낸다."""
+    return user is None or bool(getattr(user, "is_lecturer", False))
 
 
 def _kst_day_start(now=None):

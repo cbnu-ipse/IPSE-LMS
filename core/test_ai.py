@@ -72,6 +72,16 @@ class CoreAITestCase(TestCase):
         self.assertEqual(self.lecturer.credits, 0)
         self.assertTrue(credits.verify_ledger(self.student))
 
+    def test_only_lecturers_are_exempt_staff_and_superusers_pay(self):
+        staff = User.objects.create_user(username="st", password="pw", is_staff=True)
+        admin = User.objects.create_superuser(username="adm", password="pw", email="a@a.com")
+        with patch.object(ai, "_client", return_value=_Client()):
+            for user in (staff, admin):
+                with self.assertRaises(ai.AIQuotaExceeded):                           # 크레딧 0이면 막힌다
+                    ai.complete("chat", [], user=user)
+            ai.complete("chat", [], user=self.lecturer)                                # 강의자는 통과
+            ai.complete("chat", [], user=None)                                         # 시스템 작업도 통과
+
     def test_failed_call_refunds_credits(self):
         from accounts import credits
         credits.grant(self.student, 5, "test")
@@ -230,3 +240,9 @@ class EvalCommandTestCase(TestCase):
         self.assertEqual(client.calls[0]["model"], "gpt-test")      # 후보 모델로 실제 호출됨
         self.assertEqual(AIUsage.objects.count(), 0)                # 평가는 사용량을 DB에 남기지 않는다
         self.assertEqual(ai._OVERRIDES, {})                         # 끝나면 원래 설정으로 복구
+
+
+class ErrorPageTests(TestCase):
+    def test_404_page_renders(self):
+        from django.template.loader import render_to_string
+        self.assertIn("404", render_to_string("404.html"))

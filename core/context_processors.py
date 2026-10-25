@@ -24,13 +24,11 @@ def vapid_settings(request):
 
 
 def ai_cost(request):
-    """버튼에 보일 AI 크레딧 비용 {작업: 비용}. 크레딧 없이 쓰는 사용자(강의자·운영진·관리자)와 비로그인은 빈 값."""
+    """버튼에 보일 AI 크레딧 비용 {작업: 비용}. 로그인한 모두에게 보인다 (강의자는 실제로는 크레딧을 내지 않는다)."""
     from django.conf import settings
 
-    from .ai import _is_exempt
-
     user = getattr(request, 'user', None)
-    if not user or not user.is_authenticated or _is_exempt(user):
+    if not user or not user.is_authenticated:
         return {'ai_cost': {}}
     return {'ai_cost': {task: cost for task, cost in settings.AI_CREDIT_COSTS.items() if cost}}
 

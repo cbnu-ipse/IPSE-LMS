@@ -629,8 +629,8 @@ class CreditDisplayTests(TestCase):
         self.assertContains(response, 'title="AI 크레딧 3 (조각당)"')       # 업로드 버튼 비용
         self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
 
-    def test_exempt_user_sees_no_cost_badges(self):
+    def test_lecturer_also_sees_cost_badges(self):
         lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
         response = self.client.get("/mypage/")
-        self.assertNotContains(response, "(조각당)")
+        self.assertContains(response, 'title="AI 크레딧 3 (조각당)"')
