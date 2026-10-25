@@ -5,6 +5,7 @@ import threading
 from django.db import connection
 
 from assistant.guardrails import detect_prompt_injection
+from core.concurrency import background_slot
 
 from .ai import extract_text, generate_summary
 from .models import PersonalDocument, ProcessingStatus
@@ -46,7 +47,8 @@ def regenerate_in_background(document_ids, reextract=True):
     def run():
         try:
             for pk in ids:
-                regenerate_document(pk, reextract=reextract)
+                with background_slot():
+                    regenerate_document(pk, reextract=reextract)
         finally:
             connection.close()
 
