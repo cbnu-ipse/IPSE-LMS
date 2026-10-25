@@ -18,7 +18,7 @@ from assistant.guardrails import detect_prompt_injection
 from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
 
 from .ai import (
-    SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
     pdf_page_texts, summary_chunk_count,
 )
 from .forms import PersonalDocumentUploadForm, PersonalFolderForm
@@ -179,13 +179,16 @@ def document_list(request, folder_id=None):
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
         doc_count=Count("documents", filter=Q(documents__is_deleted=False))
     )
-    documents = PersonalDocument.objects.filter(user=request.user, folder=folder, is_deleted=False)
+    documents = list(PersonalDocument.objects.filter(user=request.user, folder=folder, is_deleted=False))
+    for doc in documents:   # 요약을 (다시) 시작하는 버튼에 보일 정확한 비용: 본문을 읽었으면 조각 수 × 조각당 비용
+        doc.resummary_cost = _summary_cost(doc)
     return render(request, "mypage/list.html", {
         "documents": documents,
         "folders": folders,
         "current_folder": folder,
         "form": form,
         "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
+        "summary_max_chunks": SUMMARY_MAX_CHUNKS,
         "subject_choices": subject_choices(),
         "professor_choices": professor_choices(),
         "folder_form": PersonalFolderForm(),
@@ -286,6 +289,7 @@ def document_preview(request, pk):
         "question_types": GeneratedQuestion.QuestionType.choices,
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
+        "resummary_cost": _summary_cost(document),
         "credit_info": _credit_context(request.user),
         "initial_state": _document_state(document),
     })
@@ -474,6 +478,12 @@ def document_resummarize(request, pk):
         threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
         messages.success(request, "요약을 다시 만들고 있습니다.")
     return back
+
+
+def _summary_cost(document):
+    """이 자료를 요약할 때 드는 크레딧: 읽어 둔 본문이 있으면 조각 수 × 조각당 비용, 아직 없으면 최소(1조각) 비용."""
+    chunks = summary_chunk_count(document.extracted_text) if document.extracted_text.strip() else 1
+    return max(chunks, 1) * cost_for("summary")
 
 
 def _credit_context(user):
