@@ -30,10 +30,21 @@ class PersonalDocumentUploadForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "자료명 (비워두면 파일명 사용)"}),
     )
+    # 자료 정보는 올릴 때 모두 입력한다 — 올린 뒤에는 고칠 수 없다 (분류·강의·출제 스타일이 이 정보로 정해지므로)
+    document_type = forms.ChoiceField(
+        choices=PersonalDocument.DocumentType.choices, initial=PersonalDocument.DocumentType.LECTURE, label="자료 구분",
+        widget=forms.Select(attrs={"class": INPUT_CLASS}))
+    course_name = forms.CharField(
+        max_length=50, label="과목 이름",
+        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "과목 이름 (예: 운영체제)"}))
+    professor = forms.CharField(
+        max_length=50, label="교수 이름",
+        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "교수 이름 (예: 김철수)"}))
+
     class Meta:
         model = PersonalDocument
-        # 과목·자료 구분은 묻지 않는다 — 업로드 후 AI가 주제와 강의 자료 여부를 정한다 (course/topics.py)
-        fields = ["title", "file"]
+        # 수업 자료는 강의 생성에, 족보는 출제 스타일 학습에 쓰인다. 구분·과목·교수는 필수 (course/topics.py, mypage/exam.py)
+        fields = ["title", "file", "document_type", "course_name", "professor"]
         widgets = {
             "file": forms.FileInput(attrs={"accept": ",".join(ALLOWED_EXTENSIONS), "class": FILE_INPUT_CLASS}),
         }
@@ -60,3 +71,4 @@ class PersonalFolderForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "새 폴더 이름"}),
         }
+

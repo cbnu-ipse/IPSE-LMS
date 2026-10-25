@@ -37,6 +37,8 @@ MAX_OUTPUT_TOKENS = {
     "course_readiness": 300,
     "course_outline": 1500,
     "course_chapter": 9000,
+    "exam_style": 1800,
+    "mock_exam": 6000,
 }
 
 
@@ -149,14 +151,24 @@ def _short_message(cost, have):
             "프로필에서 보상 코드를 등록하면 크레딧을 얻을 수 있습니다.")
 
 
-def check_quota(user, task, units=1):
-    """크레딧이 모자라면 AIQuotaExceeded. 백그라운드 작업은 시작하기 전에 뷰에서 먼저 확인한다 (차감은 호출할 때)."""
-    cost = cost_for(task) * units
-    if _is_exempt(user) or not cost:
+def require_credits(user, amount):
+    """amount 크레딧을 낼 수 있어야 한다. 모자라면 AIQuotaExceeded (크레딧 없이 쓰는 사용자는 통과)."""
+    if _is_exempt(user) or not amount:
         return
     have = _balance(user)
-    if have < cost:
-        raise AIQuotaExceeded(_short_message(cost, have))
+    if have < amount:
+        raise AIQuotaExceeded(_short_message(amount, have))
+
+
+def check_quota(user, task, units=1):
+    """크레딧이 모자라면 AIQuotaExceeded. 백그라운드 작업은 시작하기 전에 뷰에서 먼저 확인한다 (차감은 호출할 때)."""
+    require_credits(user, cost_for(task) * units)
+
+
+def ocr_cost(size_bytes):
+    """이미지 글자 읽기 비용: 파일 크기 1MB(올림)당 AI_COST_OCR_PER_MB."""
+    rate = cost_for("ocr")
+    return rate * max(1, -(-int(size_bytes) // 1_000_000)) if rate else 0
 
 
 def affordable_units(user, task):
@@ -174,9 +186,9 @@ def credit_info(user, task="summary"):
     return {"balance": _balance(user), "cost": cost_for(task)}
 
 
-def _charge(user, task):
-    """호출 전에 크레딧을 차감하고 낸 양을 돌려준다 (0이면 낸 게 없음)."""
-    cost = cost_for(task)
+def _charge(user, task, cost=None):
+    """호출 전에 크레딧을 차감하고 낸 양을 돌려준다 (0이면 낸 게 없음). cost를 주면 작업 기본 비용 대신 그 값을 낸다."""
+    cost = cost_for(task) if cost is None else cost
     if _is_exempt(user) or not cost:
         return 0
     from accounts.credits import InsufficientCredits, spend
@@ -219,9 +231,10 @@ def _record(user, task, model, response, counts_as_request):
 
 
 def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_mode=False,
-         max_tokens=None, **kwargs):
+         max_tokens=None, cost=None, **kwargs):
     """chat.completions 호출 한 번. OpenAI 응답 객체를 그대로 돌려준다 (도구 호출이 필요한 챗봇용).
     counts_as_request=False는 크레딧을 받지 않는 호출 (같은 요청 안의 도구 호출 반복, 분류 같은 내부 작업).
+    cost를 주면 작업 기본 비용 대신 그 크레딧을 받는다 (이미지 글자 읽기는 크기로 정한다).
     크레딧은 호출 전에 차감하고, 호출이 실패하면 돌려준다 (check는 예전 호출부와의 호환용으로만 남겼다)."""
     provider, model = route(task)
     limit = max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000)
@@ -232,7 +245,7 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
         params["response_format"] = {"type": "json_object"}
     started = time.monotonic()
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
-    charged = _charge(user, task) if counts_as_request else 0
+    charged = _charge(user, task, cost) if counts_as_request else 0
     try:
         if native == "vertex":
             response = _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))

@@ -13,6 +13,7 @@ from .models import CourseCategory, Course, UserCourseProgress, Upload, UploadVi
 from .forms import LecturerCourseForm, LessonForm
 from accounts.decorators import lecturer_required
 from core.models import ActivityLog
+from mypage.exam import style_for_topic
 from ranking.utils import sync_user_profile_metrics
 import os
 import textwrap
@@ -198,6 +199,7 @@ def course_detail(request, slug):
         'completed_lesson_ids': completed_lesson_ids,
         'next_lesson': next_lesson,
         'is_course_manager': manager,
+        'exam_style': style_for_topic(course.code),
     })
 
 

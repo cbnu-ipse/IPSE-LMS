@@ -343,6 +343,18 @@
         </div>
 
         <aside class="w-full lg:w-80 space-y-6">
+            <div class="bg-white rounded-2xl border border-sky-200 p-6 shadow-sm">
+                <h3 class="text-sm font-bold text-slate-800 mb-1"><i class="fa-solid fa-file-pen text-sky-500 mr-1.5"></i>모의 출제</h3>
+                {% if exam_style %}
+                <p class="text-xs text-slate-500 mb-4"><b>{{ exam_style.label }}</b> 족보 {{ exam_style.doc_count }}개에서 배운 출제 스타일로 모의고사를 만들어 드려요.</p>
+                {% else %}
+                <p class="text-xs text-slate-500 mb-4">이 강의의 수업 자료로 모의고사를 만들어 드려요. 내 자료에서 같은 교수님의 <b>족보</b>를 올리면 그 교수님 출제 스타일로 만들어집니다.</p>
+                {% endif %}
+                <form method="post" action="{% url 'mypage:mock_exam_create' course.slug %}">
+                    {% csrf_token %}
+                    <button type="submit" class="w-full bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition">모의 출제 받기{% include 'includes/credit_cost.html' with cost=ai_cost.mock_exam %}</button>
+                </form>
+            </div>
             <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center">
                 <div class="text-5xl font-semibold text-[#3F3F3F] mb-2">{{ progress.progress_percentage }}%</div>
                 <p class="text-sm font-semibold text-slate-500 mb-6">진행률</p>
