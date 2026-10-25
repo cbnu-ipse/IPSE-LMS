@@ -282,18 +282,18 @@ AI_PROVIDERS = {
     "anthropic": {"key": ANTHROPIC_API_KEY, "base_url": "https://api.anthropic.com/v1/"},
 }
 # 작업별 (공급자, 모델). 환경변수로 하나씩 바꿀 수 있다: AI_PROVIDER_<작업>, AI_MODEL_<작업>
-#   기본은 모두 Gemini (gemini-3.1-flash-lite). 작업별로 환경변수로 openai·anthropic으로 바꿀 수 있다
+#   기본은 모두 Gemini (gemini-3.5-flash-lite). 작업별로 환경변수로 openai·anthropic으로 바꿀 수 있다
 _AI_TASK_DEFAULTS = {
-    "chat": ("gemini", "gemini-3.1-flash-lite"),                 # 챗봇 답변 (도구 호출)
-    "chat_compact": ("gemini", "gemini-3.1-flash-lite"),         # 긴 대화 압축
-    "summary": ("gemini", "gemini-3.1-flash-lite"),              # 자료 요약
-    "ocr": ("gemini", "gemini-3.1-flash-lite"),  # 이미지 자료 글자 읽기
-    "question": ("gemini", "gemini-3.1-flash-lite"),  # 복습 문제 생성
-    "grading": ("gemini", "gemini-3.1-flash-lite"),  # 단답·서술형 채점
-    "classify": ("gemini", "gemini-3.1-flash-lite"),        # 자료 주제 분류
-    "course_readiness": ("gemini", "gemini-3.1-flash-lite"),  # (더 이상 쓰지 않음)
-    "course_outline": ("gemini", "gemini-3.1-flash-lite"),  # 강의 목차
-    "course_chapter": ("gemini", "gemini-3.1-flash-lite"),  # 강의 챕터 본문
+    "chat": ("gemini", "gemini-3.5-flash-lite"),                 # 챗봇 답변 (도구 호출)
+    "chat_compact": ("gemini", "gemini-3.5-flash-lite"),         # 긴 대화 압축
+    "summary": ("gemini", "gemini-3.5-flash-lite"),              # 자료 요약
+    "ocr": ("gemini", "gemini-3.5-flash-lite"),  # 이미지 자료 글자 읽기
+    "question": ("gemini", "gemini-3.5-flash-lite"),  # 복습 문제 생성
+    "grading": ("gemini", "gemini-3.5-flash-lite"),  # 단답·서술형 채점
+    "classify": ("gemini", "gemini-3.5-flash-lite"),        # 자료 주제 분류
+    "course_readiness": ("gemini", "gemini-3.5-flash-lite"),  # (더 이상 쓰지 않음)
+    "course_outline": ("gemini", "gemini-3.5-flash-lite"),  # 강의 목차
+    "course_chapter": ("gemini", "gemini-3.5-flash-lite"),  # 강의 챕터 본문
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 
