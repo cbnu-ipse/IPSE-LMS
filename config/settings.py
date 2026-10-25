@@ -308,7 +308,7 @@ def _env_or_default(name, default):
 
 AI_TASK_PROVIDERS = {t: _env_or_default(f"AI_PROVIDER_{t.upper()}", d[0]) for t, d in _AI_TASK_DEFAULTS.items()}
 AI_MODELS = {t: _env_or_default(f"AI_MODEL_{t.upper()}", d[1]) for t, d in _AI_TASK_DEFAULTS.items()}
-# AI를 한 번 쓸 때 드는 크레딧(User.credits, accounts/credits.py). 강의자·운영진·관리자는 크레딧 없이 쓴다.
+# AI를 한 번 쓸 때 드는 크레딧(User.credits, accounts/credits.py). 강의자만 크레딧 없이 쓴다.
 # 요약은 조각(AI_LIMIT_SUMMARY_CHUNK_CHARS 글자)마다 받는다. 0이면 무료. 환경변수 AI_COST_<작업>으로 바꾼다
 AI_CREDIT_COSTS = {
     "chat": config("AI_COST_CHAT", default=1, cast=int),
