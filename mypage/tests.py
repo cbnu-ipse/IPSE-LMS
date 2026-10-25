@@ -626,11 +626,33 @@ class CreditDisplayTests(TestCase):
         response = self.client.get("/mypage/")
         self.assertContains(response, 'title="AI 크레딧')
         self.assertContains(response, "<span>42</span>")
-        self.assertContains(response, 'title="AI 크레딧 3 (조각당)"')       # 업로드 버튼 비용
+        self.assertContains(response, 'title="AI 크레딧 3~30 (자료 길이에 따라)"')   # 업로드 버튼: 1조각~최대 10조각
         self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
 
     def test_lecturer_also_sees_cost_badges(self):
         lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
         response = self.client.get("/mypage/")
-        self.assertContains(response, 'title="AI 크레딧 3 (조각당)"')
+        self.assertContains(response, 'title="AI 크레딧 3~30 (자료 길이에 따라)"')
+
+
+@override_settings(AI_CREDIT_COSTS={"summary": 3})
+class SummaryCostBadgeTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="badge", password="pw")
+        self.client.force_login(self.user)
+
+    def long_text(self, pieces):
+        return "\n\n".join("가" * 11000 for _ in range(pieces))
+
+    def test_retry_buttons_show_the_exact_cost_from_the_chunk_count(self):
+        doc = PersonalDocument.objects.create(user=self.user, title="긴 자료", extracted_text=self.long_text(4),
+                                              summary="", summary_status=ProcessingStatus.PENDING)
+        self.assertContains(self.client.get("/mypage/"), 'title="AI 크레딧 12"')       # 4조각 × 3
+        self.assertContains(self.client.get(f"/mypage/{doc.pk}/"), 'title="AI 크레딧 12"')
+        PersonalDocument.objects.filter(pk=doc.pk).update(extracted_text="")
+        self.assertContains(self.client.get("/mypage/"), 'title="AI 크레딧 3"')        # 본문을 아직 못 읽었으면 최소(1조각)
+
+    def test_upload_confirm_dialog_explains_the_range(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn("최대 10조각(최대 30크레딧)", html)

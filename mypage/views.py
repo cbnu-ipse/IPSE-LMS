@@ -1,4 +1,5 @@
 import hashlib
+import io
 import logging
 import os
 import threading
@@ -6,6 +7,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponseForbidden, JsonResponse
@@ -18,10 +20,10 @@ from assistant.guardrails import detect_prompt_injection
 from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
 
 from .ai import (
-    SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
     pdf_page_texts, summary_chunk_count,
 )
-from .forms import PersonalDocumentUploadForm, PersonalFolderForm
+from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .ontology import professor_choices, resolve_professor, resolve_subject, subject_choices
 
@@ -149,8 +151,11 @@ def document_list(request, folder_id=None):
             document.content_hash = content_hash
             apply_info()
             document.save()
-            with document.file.open("rb") as fh:
-                extracted_text = extract_text(fh, document.file.name, user=request.user)
+            # 파일을 고를 때 이미 글자를 읽어 둔 게 있으면 다시 읽지 않는다 (upload_estimate, 이미지는 OCR이라 제외)
+            extracted_text = None if is_image else cache.get(_extract_cache_key(request.user, content_hash))
+            if extracted_text is None:
+                with document.file.open("rb") as fh:
+                    extracted_text = extract_text(fh, document.file.name, user=request.user)
             if detect_prompt_injection(extracted_text):
                 document.summary_status = ProcessingStatus.FAILED
                 document.save(update_fields=["summary_status"])
@@ -179,17 +184,70 @@ def document_list(request, folder_id=None):
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
         doc_count=Count("documents", filter=Q(documents__is_deleted=False))
     )
-    documents = PersonalDocument.objects.filter(user=request.user, folder=folder, is_deleted=False)
+    documents = list(PersonalDocument.objects.filter(user=request.user, folder=folder, is_deleted=False))
+    for doc in documents:   # 요약을 (다시) 시작하는 버튼에 보일 정확한 비용: 본문을 읽었으면 조각 수 × 조각당 비용
+        doc.resummary_cost = _summary_cost(doc)
     return render(request, "mypage/list.html", {
         "documents": documents,
         "folders": folders,
         "current_folder": folder,
         "form": form,
         "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
+        "summary_max_chunks": SUMMARY_MAX_CHUNKS,
+        "max_upload_bytes": MAX_UPLOAD_SIZE,
         "subject_choices": subject_choices(),
         "professor_choices": professor_choices(),
         "folder_form": PersonalFolderForm(),
     })
+
+
+UPLOAD_ESTIMATE_PER_MINUTE = 20
+EXTRACT_CACHE_TTL = 900
+
+
+def _extract_cache_key(user, content_hash):
+    return f"upload-extract:{user.pk}:{content_hash}"
+
+
+@login_required
+@require_POST
+def upload_estimate(request):
+    """파일을 고르는 순간 부르는 비용 계산: 글자를 읽어(AI 없음) 요약 조각 수와 필요한 크레딧을 알려 준다.
+    읽은 글자는 잠시 캐시해 두었다가 실제 업로드에서 다시 읽지 않는다. 이미지는 글자 읽기(크기당) + 요약 최소~최대 범위."""
+    upload = request.FILES.get("file")
+    if upload is None:
+        return JsonResponse({"ok": False, "error": "파일을 선택해주세요."}, status=400)
+    if upload.size > MAX_UPLOAD_SIZE:
+        return JsonResponse({"ok": False, "error": f"파일은 {MAX_UPLOAD_SIZE // (1024 * 1024)}MB를 넘을 수 없습니다 "
+                                                    f"(선택한 파일 {upload.size / (1024 * 1024):.1f}MB)."}, status=413)
+    name = upload.name.lower()
+    if not name.endswith(ALLOWED_EXTENSIONS):
+        return JsonResponse({"ok": False, "error": "지원하지 않는 파일 형식입니다."}, status=400)
+    bucket = f"upload-estimate:{request.user.pk}"
+    cache.add(bucket, 0, 60)
+    if cache.incr(bucket) > UPLOAD_ESTIMATE_PER_MINUTE:
+        return JsonResponse({"ok": False, "error": "잠시 후 다시 시도해주세요."}, status=429)
+    data = upload.read()
+    unit = cost_for("summary")
+    info = {"ok": True, "unit_cost": unit, "max_chunks": SUMMARY_MAX_CHUNKS}
+    if name.endswith((".jpg", ".jpeg", ".png")):
+        ocr = ocr_cost(len(data))
+        info.update(kind="image", ocr_cost=ocr, min_cost=ocr + unit, max_cost=ocr + unit * SUMMARY_MAX_CHUNKS)
+        need = ocr + unit
+    else:
+        content_hash = hashlib.sha256(data).hexdigest()
+        key = _extract_cache_key(request.user, content_hash)
+        text = cache.get(key)
+        if text is None:
+            text = extract_text(io.BytesIO(data), upload.name, user=request.user)
+            cache.set(key, text, EXTRACT_CACHE_TTL)
+        chunks = summary_chunk_count(text)
+        info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit, empty=not text.strip())
+        need = chunks * unit
+    balance = credit_info(request.user, "summary")
+    info["balance"] = balance["balance"] if balance else None       # 크레딧이 필요 없는 사용자는 None
+    info["enough"] = True if balance is None else balance["balance"] >= need
+    return JsonResponse(info)
 
 
 @login_required
@@ -286,6 +344,7 @@ def document_preview(request, pk):
         "question_types": GeneratedQuestion.QuestionType.choices,
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
+        "resummary_cost": _summary_cost(document),
         "credit_info": _credit_context(request.user),
         "initial_state": _document_state(document),
     })
@@ -474,6 +533,12 @@ def document_resummarize(request, pk):
         threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
         messages.success(request, "요약을 다시 만들고 있습니다.")
     return back
+
+
+def _summary_cost(document):
+    """이 자료를 요약할 때 드는 크레딧: 읽어 둔 본문이 있으면 조각 수 × 조각당 비용, 아직 없으면 최소(1조각) 비용."""
+    chunks = summary_chunk_count(document.extracted_text) if document.extracted_text.strip() else 1
+    return max(chunks, 1) * cost_for("summary")
 
 
 def _credit_context(user):

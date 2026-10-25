@@ -103,7 +103,7 @@
                         <p class="text-sm text-slate-500 font-medium">요약 생성이 오래 걸리고 있습니다.</p>
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
                             {% csrf_token %}
-                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
+                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기{% include 'includes/credit_cost.html' with cost=resummary_cost %}</button>
                         </form>
                     {% elif document.summary %}
                         <textarea id="document-summary-raw" style="display:none;">{{ document.summary }}</textarea>
@@ -116,7 +116,7 @@
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="shrink-0 mt-3 text-center" onsubmit="return confirm('자료 전체를 다시 요약합니다. 기존 요약은 새 요약으로 바뀝니다.');">
                             {% csrf_token %}
-                            <button type="submit" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700"><i class="fa-solid fa-rotate-right mr-1"></i>자료 전체로 요약 다시 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
+                            <button type="submit" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700"><i class="fa-solid fa-rotate-right mr-1"></i>자료 전체로 요약 다시 만들기{% include 'includes/credit_cost.html' with cost=resummary_cost %}</button>
                         </form>
                         {% endif %}
                     {% else %}
@@ -124,7 +124,7 @@
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
                             {% csrf_token %}
-                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
+                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기{% include 'includes/credit_cost.html' with cost=resummary_cost %}</button>
                         </form>
                         {% endif %}
                     {% endif %}

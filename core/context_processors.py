@@ -30,7 +30,11 @@ def ai_cost(request):
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated:
         return {'ai_cost': {}}
-    return {'ai_cost': {task: cost for task, cost in settings.AI_CREDIT_COSTS.items() if cost}}
+    costs = {task: cost for task, cost in settings.AI_CREDIT_COSTS.items() if cost}
+    if costs.get('summary'):   # 자료 하나는 길이에 따라 여러 조각이 되므로 최대 비용도 보여 준다 (업로드 버튼)
+        from mypage.ai import SUMMARY_MAX_CHUNKS
+        costs['summary_max'] = costs['summary'] * SUMMARY_MAX_CHUNKS
+    return {'ai_cost': costs}
 
 
 _JUDGE_PATH_PREFIXES = ('/course/', '/quiz/', '/contest/', '/problems/', '/compiler/', '/mypage/')
