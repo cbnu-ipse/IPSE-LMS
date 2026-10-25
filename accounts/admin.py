@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from .models import (
-    User, Student, LMSToken, LeafTransaction, LeafCode, LeafCodeUsage, Notification, Friendship, GraduationRequest,
+    User, Student, LMSToken, LeafTransaction, CurrencyGrant, LeafCode, LeafCodeUsage, Notification, Friendship, GraduationRequest,
     TreatTransaction, CreditTransaction,
 )
 
@@ -187,6 +187,20 @@ class CreditTransactionAdmin(DeletedWithUserOnlyMixin, admin.ModelAdmin):
     search_fields = ("user__username", "description")
     readonly_fields = ("user", "amount", "balance_after", "transaction_type", "description", "created_at",
                        "previous_hash", "hash")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CurrencyGrant)
+class CurrencyGrantAdmin(admin.ModelAdmin):
+    """지급 기록은 홈페이지 지급 화면으로만 만들고 여기서는 보기만 한다."""
+    list_display = ("created_at", "granted_by", "recipient", "currency", "amount", "reason", "seen_at")
+    list_filter = ("currency", "created_at")
+    search_fields = ("granted_by__username", "recipient__username", "reason")
 
     def has_add_permission(self, request):
         return False

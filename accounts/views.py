@@ -1319,3 +1319,47 @@ def debug_reset_today(request):
         'deleted_attendance': deleted_attendance,
         'deleted_guestbook': deleted_guestbook,
     })
+
+
+# ─── 재화 지급 (권한자) ─────────────────────────────────────────────────────────
+
+@login_required
+def grant_user_search_api(request):
+    from . import grants
+
+    if not grants.can_grant(request.user):
+        return JsonResponse({"status": "error", "message": "권한이 없습니다."}, status=403)
+    users = grants.search_recipients(request.GET.get("q"))
+    return JsonResponse({"users": [{"id": u.pk, "username": u.username, "name": u.get_full_name,
+                                    "display": u.display_name} for u in users]})
+
+
+@login_required
+@require_POST
+def grant_currency_api(request):
+    from . import grants
+
+    try:
+        data = json.loads(request.body or "{}")
+    except ValueError:
+        return JsonResponse({"status": "error", "message": "잘못된 요청입니다."}, status=400)
+    if not grants.can_grant(request.user):
+        return JsonResponse({"status": "error", "message": "재화를 지급할 권한이 없습니다."}, status=403)
+    recipient = User.objects.filter(pk=data.get("user_id") if str(data.get("user_id", "")).isdigit() else None).first()
+    if recipient is None:
+        return JsonResponse({"status": "error", "message": "지급할 회원을 선택해주세요."}, status=400)
+    try:
+        grant = grants.grant_currency(request.user, recipient, data.get("currency"), data.get("amount"), data.get("reason"))
+    except grants.GrantError as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=400)
+    return JsonResponse({"status": "success", "message":
+                         f"{recipient.display_name}님에게 {grant.get_currency_display()} {grant.amount}개를 지급했습니다."})
+
+
+@login_required
+@require_POST
+def grant_seen_api(request):
+    from . import grants
+
+    grants.mark_seen(request.user)
+    return JsonResponse({"status": "success"})
