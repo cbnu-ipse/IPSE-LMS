@@ -95,16 +95,20 @@ def _previous(subject_code):
     return ((latest.content or {}).get("chapters", []) if latest else []), reuse
 
 
-def build_draft(subject_code):
+def build_draft(subject_code, force=False):
     """이 주제의 강의 자료로 AI 초안을 만든다. 만들었으면 CourseDraft, 아니면 None.
     만들지 말지(자료가 충분한지)는 부르는 쪽(course/topics.py)이 AI 판단으로 정한다.
-    같은 입력으로 이미 만들었거나 만드는 중이면 AI를 부르지 않고 None."""
+    같은 입력으로 이미 만들었거나 만드는 중이면 AI를 부르지 않고 None.
+    force=True(운영진 재생성)면 같은 입력의 완료된 초안이 있어도, 챕터 재사용 없이 처음부터 다시 만든다."""
     if not subject_code:
         return None
     docs = eligible_docs(subject_code)
     if not docs:
         return None
     source_hash = _sha("draft", course_ai.FORMAT_VERSION, _doc_fingerprint(docs))
+    if force:  # 같은 입력의 완료된 초안은 입력 해시를 비워 새로 만들 수 있게 한다 (만드는 중인 것은 그대로 둔다)
+        CourseDraft.objects.filter(subject_code=subject_code, source_hash=source_hash).exclude(
+            status=CourseDraft.Status.GENERATING).update(source_hash="")
     try:
         with transaction.atomic():
             draft = CourseDraft.objects.create(
@@ -116,6 +120,8 @@ def build_draft(subject_code):
 
     try:
         previous, reuse = _previous(subject_code)
+        if force:
+            reuse = {}
         by_id = {d["id"]: d for d in docs}
         outline = course_ai.generate_outline(subject_code, docs, previous=previous or None)
         chapters = []

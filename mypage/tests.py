@@ -586,3 +586,41 @@ class SummaryChunkLimitTests(TestCase):
                                               summary_status=ProcessingStatus.DONE)
         response = self.client.get(f"/mypage/{doc.pk}/")
         self.assertContains(response, "3/15조각")
+
+
+class RegenerateDocumentTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="regen", password="pw")
+        self.doc = PersonalDocument.objects.create(
+            user=self.user, title="t", extracted_text="옛 본문", summary="옛 요약",
+            summary_status=ProcessingStatus.DONE, file=SimpleUploadedFile("a.txt", "새 본문".encode()))
+
+    def test_regenerates_summary_and_forces_course_draft(self):
+        from .regenerate import regenerate_document
+        with patch("mypage.regenerate.generate_summary", return_value="새 요약") as summ, \
+                patch("course.topics.after_summary") as after:
+            self.assertTrue(regenerate_document(self.doc.pk))
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.summary, "새 요약")
+        self.assertEqual(self.doc.summary_status, ProcessingStatus.DONE)
+        self.assertIn("새 본문", self.doc.extracted_text)
+        self.assertIsNone(summ.call_args.kwargs["user"])                 # 사용자 하루 한도에 넣지 않는다
+        after.assert_called_once_with(self.doc.pk, force=True)
+
+    def test_failure_marks_document_failed(self):
+        from .regenerate import regenerate_document
+        with patch("mypage.regenerate.generate_summary", side_effect=RuntimeError("boom")):
+            self.assertFalse(regenerate_document(self.doc.pk, reextract=False))
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.summary_status, ProcessingStatus.FAILED)
+
+    def test_admin_action_starts_regeneration(self):
+        admin_user = get_user_model().objects.create_superuser(username="adm", password="pw", email="a@a.com")
+        self.client.force_login(admin_user)
+        with patch("mypage.regenerate.threading.Thread") as thread:
+            response = self.client.post("/admin/mypage/personaldocument/", {
+                "action": "regenerate", "_selected_action": [self.doc.pk]}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        thread.assert_called_once()
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.summary_status, ProcessingStatus.PROCESSING)

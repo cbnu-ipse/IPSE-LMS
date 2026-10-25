@@ -40,13 +40,13 @@ def _topics_listing():
     return "\n".join(f"- {t.name}" + (f": {t.description}" if t.description else "") for t in topics) or "(없음)"
 
 
-def classify_document(document):
+def classify_document(document, force=False):
     """자료가 속한 주제들을 정해 저장하고 이름 목록을 돌려준다 (대표 주제 = 첫 번째, subject_code에도 남김).
-    같은 파일이 이미 분류돼 있으면 AI를 부르지 않고 그 결과를 쓴다."""
+    같은 파일이 이미 분류돼 있으면 AI를 부르지 않고 그 결과를 쓴다 (force=True면 다시 분류)."""
     from mypage.models import PersonalDocument, Subject
 
     same = (PersonalDocument.objects.filter(content_hash=document.content_hash).exclude(pk=document.pk)
-            .filter(topics__isnull=False).first()) if document.content_hash else None
+            .filter(topics__isnull=False).first()) if document.content_hash and not force else None
     if same:
         subjects = list(same.topics.all())
     else:
@@ -80,7 +80,7 @@ def classify_document(document):
     return names
 
 
-def after_summary(document_id):
+def after_summary(document_id, force=False):
     """요약이 끝난 자료 하나를 분류하고, 필요하면 강의 초안까지 진행한다 (백그라운드 스레드에서 호출)."""
     from mypage.models import PersonalDocument
 
@@ -89,5 +89,6 @@ def after_summary(document_id):
     document = PersonalDocument.objects.select_related("user").get(pk=document_id)
     if not document.summary.strip():
         return None
-    drafts = [build_draft(name) for name in classify_document(document)]  # 주제마다 강의 초안 생성/갱신
+    extra = {"force": True} if force else {}
+    drafts = [build_draft(name, **extra) for name in classify_document(document, force=force)]  # 주제마다 강의 초안 생성/갱신
     return next((d for d in drafts if d), None)  # 같은 자료로 이미 만든 초안이 있으면 AI를 부르지 않는다
