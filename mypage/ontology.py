@@ -17,7 +17,7 @@ from django.db import transaction
 
 from core import ai as core_ai
 
-from .models import (Concept, DocumentConcept, ExamQuestion, PersonalDocument, Professor, Subject, SubjectAlias)
+from .models import (Concept, DocumentConcept, ExamQuestion, ExamStyle, PersonalDocument, Professor, Subject, SubjectAlias)
 from .naming import name_key, professor_key, same_name
 
 logger = logging.getLogger(__name__)
@@ -349,3 +349,160 @@ def add_concept(subject, name, description=""):
     if concept is None:
         raise ValueError("개념을 더 만들 수 없습니다.")
     return concept
+
+
+# ── 시각화 (강의자 화면: judge > 강의 생성 > 개념 지도) ───────────────────────────
+
+CONCEPTS_PER_SUBJECT = 30        # 관계도에 과목마다 보여 줄 개념 수 (자주 나오고 많이 다룬 순)
+MAX_EDGES = 160
+
+
+def _prof_label(name):
+    return f"{name} 교수님" if name else ""
+
+
+def graph_data(subject_name="", per_subject=CONCEPTS_PER_SUBJECT):
+    """관계도 데이터: 교수(보라) — 과목(초록) — 개념(파랑, 크기는 족보 출제 횟수), 개념끼리는 같은 요약 부분·같은 문제에 함께
+    나온 횟수로 잇는다. 노드를 누르면 보여 줄 상세 정보(자료·요약 부분·족보 문제)도 노드 데이터에 담는다."""
+    from collections import defaultdict
+    from django.db.models import Count
+
+    subjects = Subject.objects.all()
+    if subject_name:
+        subjects = subjects.filter(name=subject_name)
+    subjects = [s for s in subjects.order_by("name") if s.concepts.exists() or s.documents.exists()]   # 빈 과목은 그리지 않는다
+    subject_ids = [s.pk for s in subjects]
+    nodes, edges = [], []
+
+    # 개념: 과목마다 자주 출제된 순으로 상위 N개
+    concepts = list(Concept.objects.filter(subject_id__in=subject_ids)
+                    .annotate(doc_count=Count("document_concepts", distinct=True), q_count=Count("exam_questions", distinct=True)))
+    by_subject = defaultdict(list)
+    for c in concepts:
+        by_subject[c.subject_id].append(c)
+    kept = {}
+    for sid, rows in by_subject.items():
+        for c in sorted(rows, key=lambda c: (-(c.q_count * 3 + c.doc_count), c.order))[:per_subject]:
+            kept[c.pk] = c
+
+    # 개념별 상세: 다루는 수업 자료·요약 부분, 출제된 족보 문제
+    docs_by_concept = defaultdict(list)
+    sections_by_concept = defaultdict(list)
+    cooc = defaultdict(int)
+    name_to_id = {(c.subject_id, c.name): c.pk for c in kept.values()}
+    for dc in (DocumentConcept.objects.filter(concept_id__in=kept).select_related("document")):
+        doc = dc.document
+        if not doc.is_deleted and len(docs_by_concept[dc.concept_id]) < 10:
+            docs_by_concept[dc.concept_id].append(doc.title)
+    for doc in PersonalDocument.objects.filter(topics__in=subjects, document_type=PersonalDocument.DocumentType.LECTURE).distinct():
+        sid = _document_subject(doc).pk if _document_subject(doc) else None
+        for tag in doc.concept_tags or []:
+            ids = [name_to_id.get((sid, n)) for n in tag.get("concepts", [])]
+            ids = [i for i in ids if i]
+            for i in ids:
+                if len(sections_by_concept[i]) < 8:
+                    sections_by_concept[i].append(f"{doc.title} › {tag.get('section', '')}")
+            for a in ids:
+                for b in ids:
+                    if a < b:
+                        cooc[(a, b)] += 1
+    questions_by_concept = defaultdict(list)
+    prof_by_concept = defaultdict(lambda: defaultdict(int))
+    qtype_labels = dict(ExamQuestion.QType.choices)
+    for q in (ExamQuestion.objects.filter(concepts__in=kept).distinct().select_related("document").prefetch_related("concepts")):
+        ids = [c.pk for c in q.concepts.all() if c.pk in kept]
+        for i in ids:
+            if len(questions_by_concept[i]) < 10:
+                questions_by_concept[i].append({"type": qtype_labels.get(q.qtype, q.qtype), "points": q.points, "text": q.text,
+                                                "doc": q.document.title})
+            if q.document.professor:
+                prof_by_concept[i][professor_key(q.document.professor)] += 1
+        for a in ids:
+            for b in ids:
+                if a < b:
+                    cooc[(a, b)] += 1
+    prof_names = {p.key: p.name for p in Professor.objects.all()}
+
+    # 교수: 그 과목에 자료(수업 자료·족보)를 올린 교수님
+    prof_subjects = defaultdict(set)
+    prof_stats = {}
+    for doc in PersonalDocument.objects.filter(topics__in=subjects).exclude(professor="").distinct().prefetch_related("topics"):
+        key = professor_key(doc.professor)
+        for t in doc.topics.all():
+            if t.pk in subject_ids:
+                prof_subjects[key].add(t.pk)
+    for key in prof_subjects:
+        s = exam_stats(prof_names.get(key, key), "")
+        prof_stats[key] = s
+
+    for s in subjects:
+        s_concepts = [c for c in kept.values() if c.subject_id == s.pk]
+        lecture_titles = list(PersonalDocument.objects.filter(topics=s, document_type=PersonalDocument.DocumentType.LECTURE,
+                                                              is_deleted=False).values_list("title", flat=True)[:15])
+        exam_titles = list(PersonalDocument.objects.filter(topics=s, document_type=PersonalDocument.DocumentType.EXAM,
+                                                           is_deleted=False).values_list("title", flat=True)[:15])
+        nodes.append({"data": {
+            "id": f"s{s.pk}", "label": s.name, "kind": "subject", "size": 54,
+            "detail": {"title": s.name, "kind": "과목", "concept_count": len(by_subject.get(s.pk, [])),
+                       "lectures": lecture_titles, "exams": exam_titles, "description": s.description,
+                       "edit_url": f"/course/studio/concepts/?subject={s.name}"}}})
+    for key, subject_set in prof_subjects.items():
+        stat = prof_stats.get(key) or {}
+        name = prof_names.get(key, key)
+        labels = dict(ExamQuestion.QType.choices)
+        mix = [{"type": labels.get(t, t), "count": n} for t, n in sorted((stat.get("type_counts") or {}).items(), key=lambda kv: -kv[1])]
+        style = ExamStyle.objects.filter(key=f"p:{key}").first()
+        nodes.append({"data": {
+            "id": f"p{key}", "label": _prof_label(name), "kind": "professor", "size": 44,
+            "detail": {"title": _prof_label(name), "kind": "교수", "total": stat.get("total", 0), "mix": mix,
+                       "guidelines": style.guidelines if style else "",
+                       "subjects": [s.name for s in subjects if s.pk in subject_set]}}})
+        for sid in subject_set:
+            edges.append({"data": {"id": f"ps{key}-{sid}", "source": f"p{key}", "target": f"s{sid}", "kind": "teaches"}})
+    for c in kept.values():
+        profs = sorted(prof_by_concept[c.pk].items(), key=lambda kv: -kv[1])[:5]
+        nodes.append({"data": {
+            "id": f"c{c.pk}", "label": c.name, "kind": "concept", "questions": c.q_count, "docs": c.doc_count,
+            "size": 20 + min(c.q_count, 12) * 4,
+            "detail": {"title": c.name, "kind": "개념", "subject": c.subject.name, "description": c.description,
+                       "question_count": c.q_count, "doc_count": c.doc_count,
+                       "lectures": docs_by_concept.get(c.pk, []), "sections": sections_by_concept.get(c.pk, []),
+                       "questions": questions_by_concept.get(c.pk, []),
+                       "professors": [{"name": _prof_label(prof_names.get(k, k)), "count": n} for k, n in profs]}}})
+        edges.append({"data": {"id": f"sc{c.pk}", "source": f"s{c.subject_id}", "target": f"c{c.pk}", "kind": "has"}})
+    for (a, b), weight in sorted(cooc.items(), key=lambda kv: -kv[1])[:MAX_EDGES]:
+        edges.append({"data": {"id": f"cc{a}-{b}", "source": f"c{a}", "target": f"c{b}", "kind": "related", "weight": weight}})
+    meta = {"subjects": len(subjects), "concepts": len(kept), "professors": len(prof_subjects),
+            "questions": ExamQuestion.objects.filter(concepts__in=kept).distinct().count(),
+            "hidden_concepts": max(0, len(concepts) - len(kept))}
+    return {"nodes": nodes, "edges": edges, "meta": meta}
+
+
+def overview(subject_name=""):
+    """서버에서 바로 그리는 구조 보기: 과목 → 개념별 출제 횟수·수업 자료 수 막대. 교수·유형 통계도 함께."""
+    from django.db.models import Count
+
+    subjects = Subject.objects.all()
+    if subject_name:
+        subjects = subjects.filter(name=subject_name)
+    out = []
+    labels = dict(ExamQuestion.QType.choices)
+    for s in subjects.order_by("name"):
+        rows = list(s.concepts.annotate(doc_count=Count("document_concepts", distinct=True),
+                                        q_count=Count("exam_questions", distinct=True)).order_by("-q_count", "-doc_count", "order"))
+        if not rows and not s.documents.exists():
+            continue
+        top = max([r.q_count for r in rows] + [1])
+        stats = exam_stats("", s.name)
+        out.append({
+            "name": s.name,
+            "professors": sorted({p for p in PersonalDocument.objects.filter(topics=s).exclude(professor="")
+                                  .values_list("professor", flat=True)}),
+            "lecture_docs": PersonalDocument.objects.filter(topics=s, document_type=PersonalDocument.DocumentType.LECTURE).count(),
+            "exam_docs": PersonalDocument.objects.filter(topics=s, document_type=PersonalDocument.DocumentType.EXAM).count(),
+            "question_total": stats["total"],
+            "types": [(labels.get(t, t), n) for t, n in sorted(stats["type_counts"].items(), key=lambda kv: -kv[1])],
+            "concepts": [{"name": r.name, "docs": r.doc_count, "questions": r.q_count,
+                          "bar": round(r.q_count / top * 100) if r.q_count else 0} for r in rows],
+        })
+    return out

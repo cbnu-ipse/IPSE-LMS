@@ -130,3 +130,18 @@ class RoutingTestCase(TestCase):
         providers = {**self.PROVIDERS, "gemini": {"key": "g", "base_url": "https://g.example/v1/"}}
         with override_settings(AI_PROVIDERS=providers):
             self.assertIsNone(providers["gemini"].get("native"))
+
+
+class VertexImageTests(TestCase):
+    def test_image_parts_become_inline_data(self):
+        messages = [{"role": "user", "content": [
+            {"type": "text", "text": "글자를 옮겨 적어라"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,QUJDRA=="}}]}]
+        _, contents = vertex.to_contents(messages)
+        self.assertEqual(contents[0]["parts"], [{"text": "글자를 옮겨 적어라"},
+                                                {"inlineData": {"mimeType": "image/jpeg", "data": "QUJDRA=="}}])
+
+    def test_plain_text_and_unknown_parts(self):
+        self.assertEqual(vertex.to_parts("안녕"), [{"text": "안녕"}])
+        self.assertEqual(vertex.to_parts(None), [{"text": ""}])
+        self.assertEqual(vertex.to_parts([{"type": "image_url", "image_url": {"url": "http://x/y.png"}}]), [{"text": ""}])

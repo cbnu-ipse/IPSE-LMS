@@ -195,18 +195,50 @@ def _extract_hwp(f):
     return raw.decode("utf-16-le", errors="ignore")
 
 
+IMAGE_MAX_SIDE = 2400
+
+
+def prepare_image(raw, name=""):
+    """글자를 읽기 전에 사진을 정리한다: 휴대폰 사진의 회전(EXIF)을 바로잡고, 너무 큰 사진은 줄이고(요청 크기·토큰 절약),
+    투명 배경은 흰색으로 채워 JPEG로 만든다. 읽지 못하면 원본 그대로. (바이트, 확장자) 반환."""
+    mime = "jpeg" if name.lower().endswith((".jpg", ".jpeg")) else "png"
+    try:
+        from PIL import Image, ImageOps
+
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGBA")
+            background = Image.new("RGB", image.size, "white")
+            background.paste(image, mask=image.split()[-1])
+            image = background
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
+        image.thumbnail((IMAGE_MAX_SIDE, IMAGE_MAX_SIDE))
+        out = io.BytesIO()
+        image.save(out, "JPEG", quality=88)
+        return out.getvalue(), "jpeg"
+    except Exception:
+        return raw, mime
+
+
+OCR_PROMPT = (
+    "이 이미지에 있는 글자를 빠짐없이 마크다운으로 그대로 옮겨 적어라. 시험지·문제지라면 문제 번호, 보기(①②③ 등), 배점, "
+    "빈칸, 표를 원래대로 유지하고 정답은 지어내지 마라. 읽을 수 없는 부분은 [판독 불가]로 표시한다. 설명은 붙이지 마라."
+)
+
+
 def _extract_image(raw, name, user=None):
     import base64
 
-    b64 = base64.b64encode(raw).decode()
-    mime = "jpeg" if name.endswith((".jpg", ".jpeg")) else "png"
+    prepared, mime = prepare_image(raw, name)
+    b64 = base64.b64encode(prepared).decode()
     return core_ai.complete("ocr", [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "이 이미지에 있는 글자와 핵심 내용을 마크다운으로 그대로 옮겨 적어라. 설명은 붙이지 마라."},
+            {"type": "text", "text": OCR_PROMPT},
             {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{b64}"}},
         ],
-    }], user=user, cost=core_ai.ocr_cost(len(raw)))      # 이미지는 크기로 크레딧을 받는다
+    }], user=user, cost=core_ai.ocr_cost(len(raw)))      # 이미지는 (원본) 크기로 크레딧을 받는다
 
 
 SUMMARY_INSTRUCTIONS = (

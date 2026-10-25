@@ -292,3 +292,23 @@ def studio_concepts_action(request):
     except ValueError as exc:
         messages.error(request, str(exc))
     return back
+
+
+@_studio_only
+def studio_ontology(request):
+    """개념 지도: 교수 — 과목 — 개념이 어떻게 이어지는지 한눈에(구조 보기) 보고, 관계도에서 노드를 눌러 상세를 본다."""
+    from mypage.models import Subject
+    from mypage.ontology import overview
+
+    name = request.GET.get("subject", "")
+    return render(request, "course/studio_ontology.html", {
+        "subject_name": name, "subjects": Subject.objects.order_by("name"), "overview": overview(name),
+        "tab": "graph" if request.GET.get("tab") == "graph" else "list",
+    })
+
+
+@_studio_only
+def studio_ontology_data(request):
+    from mypage.ontology import graph_data
+
+    return JsonResponse(graph_data(request.GET.get("subject", "")))

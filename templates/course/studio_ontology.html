@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block title %}개념 지도 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-6xl mx-auto px-4 md:px-6 py-10">
+    <a href="{% url 'course_studio' %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 강의 생성</a>
+    <div class="flex flex-wrap items-center gap-3 mt-2 mb-1">
+        <h1 class="text-2xl font-extrabold text-slate-800">개념 지도</h1>
+        <form method="get" class="flex gap-2">
+            <input type="hidden" name="tab" value="{{ tab }}">
+            <select name="subject" onchange="this.form.submit()" class="px-3 py-1.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600">
+                <option value="">모든 과목</option>
+                {% for s in subjects %}<option value="{{ s.name }}" {% if s.name == subject_name %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+            </select>
+        </form>
+        {% if subject_name %}<a href="{% url 'course_studio_concepts' %}?subject={{ subject_name|urlencode }}" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-50 hover:bg-violet-100 text-violet-700">개념 편집</a>{% endif %}
+    </div>
+    <p class="text-sm text-slate-500 mb-4">교수님·과목·개념이 수업 자료와 족보 문제로 어떻게 이어지는지 보여 줍니다. 개념이 클수록 족보에서 자주 나온 것입니다.</p>
+
+    <div class="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit text-sm font-bold">
+        <button type="button" data-tab="list" class="px-4 py-1.5 rounded-lg">구조 보기</button>
+        <button type="button" data-tab="graph" class="px-4 py-1.5 rounded-lg">관계도</button>
+    </div>
+
+    <!-- 구조 보기: 서버에서 바로 그린다 (스크립트가 없어도 보인다) -->
+    <div id="tab-list" class="space-y-5">
+        {% for s in overview %}
+        <div class="bg-white border border-slate-200 rounded-2xl p-5">
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+                <h2 class="text-lg font-bold text-slate-800">{{ s.name }}</h2>
+                {% for p in s.professors %}<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-violet-50 text-violet-700">{{ p }} 교수님</span>{% endfor %}
+                <span class="text-[11px] text-slate-400">수업 자료 {{ s.lecture_docs }} · 족보 {{ s.exam_docs }} · 족보 문제 {{ s.question_total }}</span>
+            </div>
+            {% if s.types %}
+            <p class="text-xs text-slate-500 mb-3">출제 유형: {% for label, n in s.types %}<span class="inline-block mr-2"><b class="text-slate-700">{{ label }}</b> {{ n }}</span>{% endfor %}</p>
+            {% endif %}
+            <div class="space-y-1.5">
+                {% for c in s.concepts %}
+                <div class="flex items-center gap-3 text-sm">
+                    <span class="w-40 shrink-0 truncate font-semibold text-slate-700" title="{{ c.name }}">{{ c.name }}</span>
+                    <div class="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width: {{ c.bar }}%; background:#38bdf8"></div></div>
+                    <span class="w-40 shrink-0 text-[11px] text-slate-400">족보 {{ c.questions }}회 · 수업 자료 {{ c.docs }}개</span>
+                </div>
+                {% empty %}
+                <p class="text-xs text-slate-400">아직 개념이 없습니다. 수업 자료가 요약되면 AI가 개념을 붙입니다.</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-sm text-slate-400">아직 보여 줄 과목이 없습니다.</p>
+        {% endfor %}
+    </div>
+
+    <!-- 관계도: 노드를 누르면 상세 -->
+    <div id="tab-graph" class="hidden">
+        <div class="flex flex-wrap items-center gap-3 mb-3 text-xs">
+            <input id="g-search" type="search" placeholder="개념·과목·교수 찾기" class="px-3 py-1.5 rounded-xl border border-slate-200 text-sm w-48">
+            <label class="flex items-center gap-1 text-slate-600 font-bold"><input id="g-related" type="checkbox" checked>개념끼리 연결선</label>
+            <span class="flex items-center gap-1 text-slate-500"><i class="inline-block w-3 h-3 rounded" style="background:#8b5cf6"></i>교수</span>
+            <span class="flex items-center gap-1 text-slate-500"><i class="inline-block w-3 h-3 rounded" style="background:#10b981"></i>과목</span>
+            <span class="flex items-center gap-1 text-slate-500"><i class="inline-block w-3 h-3 rounded-full" style="background:#38bdf8"></i>개념 (클수록 족보에서 자주 출제)</span>
+            <span id="g-meta" class="text-slate-400"></span>
+        </div>
+        <div class="grid lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl relative">
+                <div id="cy" style="height: 560px"></div>
+                <p id="g-status" class="absolute inset-0 flex items-center justify-center text-sm text-slate-400 pointer-events-none">불러오는 중…</p>
+            </div>
+            <aside id="g-detail" class="bg-white border border-slate-200 rounded-2xl p-5 text-sm text-slate-600 max-h-[560px] overflow-y-auto">
+                <p class="text-slate-400">노드를 누르면 상세가 여기에 나옵니다.</p>
+            </aside>
+        </div>
+    </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script>
+(function () {
+    const tabs = { list: document.getElementById('tab-list'), graph: document.getElementById('tab-graph') };
+    let current = '{{ tab }}', graphStarted = false;
+    function show(tab) {
+        current = tab;
+        Object.keys(tabs).forEach((k) => tabs[k].classList.toggle('hidden', k !== tab));
+        document.querySelectorAll('[data-tab]').forEach((b) => {
+            const on = b.dataset.tab === tab;
+            b.className = 'px-4 py-1.5 rounded-lg ' + (on ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700');
+        });
+        const url = new URL(location.href); url.searchParams.set('tab', tab); history.replaceState(null, '', url);
+        if (tab === 'graph' && !graphStarted) { graphStarted = true; startGraph(); }
+    }
+    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
+
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    function list(title, items, render) {
+        if (!items || !items.length) return null;
+        const box = el('div', 'mt-3');
+        box.appendChild(el('p', 'text-[11px] font-bold text-slate-400 mb-1', title));
+        items.forEach((it) => box.appendChild(render(it)));
+        return box;
+    }
+    function showDetail(d) {
+        const panel = document.getElementById('g-detail');
+        panel.innerHTML = '';
+        panel.appendChild(el('p', 'text-[11px] font-bold text-slate-400', d.kind));
+        panel.appendChild(el('h3', 'text-lg font-extrabold text-slate-800', d.title));
+        if (d.subject) panel.appendChild(el('p', 'text-xs text-emerald-600 font-bold', d.subject));
+        if (d.description) panel.appendChild(el('p', 'mt-1 text-xs text-slate-500', d.description));
+        const line = (t) => el('p', 'text-xs text-slate-600', t);
+        if (d.kind === '개념') {
+            panel.appendChild(line('족보 출제 ' + d.question_count + '회 · 수업 자료 ' + d.doc_count + '개'));
+            [list('출제한 교수님', d.professors, (p) => line(p.name + ' · ' + p.count + '회')),
+             list('족보 문제', d.questions, (q) => { const row = el('div', 'text-xs py-1 border-b border-slate-50');
+                 row.appendChild(el('span', 'font-bold text-sky-700', q.type + (q.points ? ' ' + q.points + '점' : '') + ' ')); row.appendChild(document.createTextNode(q.text)); return row; }),
+             list('다루는 수업 자료 부분', d.sections, (t) => line('· ' + t)),
+             list('수업 자료', d.lectures, (t) => line('· ' + t))].forEach((x) => x && panel.appendChild(x));
+        } else if (d.kind === '과목') {
+            panel.appendChild(line('개념 ' + d.concept_count + '개'));
+            [list('수업 자료', d.lectures, (t) => line('· ' + t)), list('족보', d.exams, (t) => line('· ' + t))].forEach((x) => x && panel.appendChild(x));
+            if (d.edit_url) { const a = el('a', 'inline-block mt-4 px-3 py-1.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-bold', '개념 편집하기'); a.href = d.edit_url; panel.appendChild(a); }
+        } else {
+            panel.appendChild(line(d.total ? '족보 문제 ' + d.total + '개 분석됨' : '분석된 족보 문제가 없습니다'));
+            [list('출제 유형', d.mix, (m) => line(m.type + ' ' + m.count + '개')), list('가르치는/출제한 과목', d.subjects, (t) => line('· ' + t))].forEach((x) => x && panel.appendChild(x));
+            if (d.guidelines) { panel.appendChild(el('p', 'mt-3 text-[11px] font-bold text-slate-400', '출제 스타일 (AI가 족보에서 뽑음)')); panel.appendChild(el('p', 'text-xs text-slate-600 whitespace-pre-line', d.guidelines)); }
+        }
+    }
+
+    async function startGraph() {
+        const status = document.getElementById('g-status');
+        if (typeof cytoscape === 'undefined') { status.textContent = '관계도 라이브러리를 불러오지 못했습니다. 구조 보기를 이용해주세요.'; return; }
+        let data;
+        try {
+            const res = await fetch("{% url 'course_studio_ontology_data' %}?subject={{ subject_name|urlencode }}", { credentials: 'same-origin' });
+            data = await res.json();
+        } catch (e) { status.textContent = '데이터를 불러오지 못했습니다.'; return; }
+        if (!data.nodes.length) { status.textContent = '보여 줄 데이터가 아직 없습니다.'; return; }
+        status.classList.add('hidden');
+        document.getElementById('g-meta').textContent = '과목 ' + data.meta.subjects + ' · 교수 ' + data.meta.professors + ' · 개념 ' + data.meta.concepts + (data.meta.hidden_concepts ? ' (+' + data.meta.hidden_concepts + '개 생략)' : '') + ' · 족보 문제 ' + data.meta.questions;
+        const cy = cytoscape({
+            container: document.getElementById('cy'), elements: { nodes: data.nodes, edges: data.edges },
+            style: [
+                { selector: 'node', style: { label: 'data(label)', 'font-size': 11, 'text-valign': 'center', 'text-wrap': 'wrap', 'text-max-width': 90, color: '#0f172a', width: 'data(size)', height: 'data(size)' } },
+                { selector: 'node[kind="subject"]', style: { shape: 'round-rectangle', 'background-color': '#10b981', color: '#fff', 'font-weight': 'bold', width: 90, height: 40, 'font-size': 12, 'text-outline-width': 0 } },
+                { selector: 'node[kind="professor"]', style: { shape: 'hexagon', 'background-color': '#8b5cf6', color: '#fff', width: 80, height: 46, 'font-size': 11 } },
+                { selector: 'node[kind="concept"]', style: { shape: 'ellipse', 'background-color': '#38bdf8', 'text-valign': 'bottom', 'text-margin-y': 4 } },
+                { selector: 'node[kind="concept"][questions = 0]', style: { 'background-color': '#bae6fd' } },
+                { selector: 'edge', style: { width: 1.5, 'line-color': '#cbd5e1', opacity: 0.8, 'curve-style': 'haystack' } },
+                { selector: 'edge[kind="teaches"]', style: { 'line-color': '#c4b5fd', width: 2.5 } },
+                { selector: 'edge[kind="related"]', style: { 'line-color': '#7dd3fc', width: 'mapData(weight, 1, 6, 1, 5)', opacity: 0.6, 'curve-style': 'bezier' } },
+                { selector: '.faded', style: { opacity: 0.12 } },
+                { selector: ':selected', style: { 'border-width': 3, 'border-color': '#f59e0b' } },
+            ],
+            layout: { name: 'cose', animate: false, nodeRepulsion: 9000, idealEdgeLength: 90, padding: 20 },
+            wheelSensitivity: 0.3, minZoom: 0.3, maxZoom: 1.8,
+        });
+        window.ontologyMap = cy;
+        cy.on('tap', 'node', (e) => {
+            const node = e.target;
+            showDetail(node.data('detail'));
+            cy.elements().addClass('faded');
+            node.closedNeighborhood().removeClass('faded');
+        });
+        cy.on('tap', (e) => { if (e.target === cy) cy.elements().removeClass('faded'); });
+        document.getElementById('g-related').addEventListener('change', (e) => {
+            cy.edges('[kind="related"]').style('display', e.target.checked ? 'element' : 'none');
+        });
+        document.getElementById('g-search').addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            cy.elements().removeClass('faded');
+            if (!q) return;
+            const hit = cy.nodes().filter((n) => n.data('label').toLowerCase().includes(q));
+            cy.elements().addClass('faded');
+            hit.closedNeighborhood().removeClass('faded');
+            if (hit.length) cy.animate({ fit: { eles: hit, padding: 80 }, duration: 250 });
+        });
+    }
+    show(current);
+})();
+</script>
+{% endblock %}

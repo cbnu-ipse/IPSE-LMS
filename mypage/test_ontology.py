@@ -449,3 +449,82 @@ class CoursePageAndBackfillTests(TestCase):
         self.assertEqual(legacy.course_name, "운영체제")                              # 옛 자료의 과목 이름도 채운다
         self.assertTrue(Professor.objects.filter(key="김").exists())
         self.assertIn("완료 1개, 건너뜀 1개", out.getvalue())
+
+
+class OntologyMapTests(TestCase):
+    def setUp(self):
+        self.lecturer = User.objects.create_user(username="map", password="pw", is_lecturer=True)
+        self.student = User.objects.create_user(username="mapstud", password="pw")
+        self.os = Subject.objects.get_or_create(name="운영체제")[0]
+        self.lecture = make_doc(self.lecturer, self.os, "OS 강의", LECTURE, "김철수")
+        self.paper = make_doc(self.lecturer, self.os, "OS 중간 족보", EXAM, "김철수")
+        Professor.objects.get_or_create(key="김철수", defaults={"name": "김철수"})
+        self.paging = ontology.resolve_concept(self.os, "페이징", "주소 변환")
+        self.sched = ontology.resolve_concept(self.os, "스케줄링")
+        DocumentConcept.objects.create(document=self.lecture, concept=self.paging)
+        DocumentConcept.objects.create(document=self.lecture, concept=self.sched)
+        PersonalDocument.objects.filter(pk=self.lecture.pk).update(
+            concept_tags=[{"section": "페이징", "concepts": ["페이징", "스케줄링"]}])
+        for i in range(3):
+            ExamQuestion.objects.create(document=self.paper, number=i, text=f"페이징 문제 {i}", qtype="essay", points=10).concepts.add(self.paging)
+        self.client.force_login(self.lecturer)
+
+    def test_graph_data_links_professor_subject_and_concepts_with_details(self):
+        data = ontology.graph_data("운영체제")
+        nodes = {n["data"]["id"]: n["data"] for n in data["nodes"]}
+        kinds = sorted({n["kind"] for n in nodes.values()})
+        self.assertEqual(kinds, ["concept", "professor", "subject"])
+        paging = nodes[f"c{self.paging.pk}"]
+        self.assertEqual((paging["questions"], paging["docs"]), (3, 1))
+        self.assertGreater(paging["size"], nodes[f"c{self.sched.pk}"]["size"])             # 자주 출제된 개념이 더 크다
+        detail = paging["detail"]
+        self.assertEqual(detail["professors"], [{"name": "김철수 교수님", "count": 3}])
+        self.assertEqual(detail["questions"][0]["type"], "서술형")
+        self.assertIn("OS 강의 › 페이징", detail["sections"])
+        self.assertEqual(detail["lectures"], ["OS 강의"])
+        pairs = {(e["data"]["source"], e["data"]["target"], e["data"]["kind"]) for e in data["edges"]}
+        self.assertIn((f"s{self.os.pk}", f"c{self.paging.pk}", "has"), pairs)
+        self.assertIn(("p김철수", f"s{self.os.pk}", "teaches"), pairs)
+        related = [e["data"] for e in data["edges"] if e["data"]["kind"] == "related"]
+        self.assertEqual(len(related), 1)                                                   # 페이징—스케줄링은 같은 요약 부분에 함께 나왔다
+        self.assertEqual(data["meta"]["questions"], 3)
+        prof = nodes["p김철수"]["detail"]
+        self.assertEqual(prof["total"], 3)
+        self.assertEqual(prof["subjects"], ["운영체제"])
+
+    def test_graph_caps_concepts_per_subject(self):
+        for i in range(8):
+            ontology.resolve_concept(self.os, f"개념{i}")
+        data = ontology.graph_data("운영체제", per_subject=4)
+        self.assertEqual(data["meta"]["concepts"], 4)
+        self.assertEqual(data["meta"]["hidden_concepts"], 6)
+        kept = {n["data"]["label"] for n in data["nodes"] if n["data"]["kind"] == "concept"}
+        self.assertIn("페이징", kept)                                                        # 출제된 개념이 우선
+
+    def test_overview_bars(self):
+        row = next(r for r in ontology.overview() if r["name"] == "운영체제")
+        self.assertEqual((row["lecture_docs"], row["exam_docs"], row["question_total"]), (1, 1, 3))
+        self.assertEqual(row["concepts"][0]["name"], "페이징")
+        self.assertEqual(row["concepts"][0]["bar"], 100)
+        self.assertEqual(row["concepts"][1]["bar"], 0)
+        self.assertEqual(row["types"], [("서술형", 3)])
+        self.assertEqual(row["professors"], ["김철수"])
+
+    def test_pages_are_lecturer_only_and_render(self):
+        page = self.client.get("/course/studio/ontology/?subject=운영체제")
+        self.assertContains(page, "개념 지도")
+        self.assertContains(page, "페이징")
+        self.assertContains(page, "족보 3회")
+        self.assertContains(page, "cytoscape")
+        data = self.client.get("/course/studio/ontology/data/", {"subject": "운영체제"}).json()
+        self.assertTrue(data["nodes"])
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get("/course/studio/ontology/").status_code, 403)
+        self.assertEqual(self.client.get("/course/studio/ontology/data/").status_code, 403)
+
+    def test_backfill_rebuild_flag_builds_drafts(self):
+        PersonalDocument.objects.filter(pk=self.lecture.pk).update(concept_tags=[])
+        with patch("core.ai.complete_json", return_value={"sections": [{"i": 0, "concepts": ["페이징"]}]}), \
+                patch("course.studio.build_draft") as build:
+            call_command("backfill_ontology", "--rebuild", stdout=StringIO())
+        build.assert_called_once_with("운영체제")

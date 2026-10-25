@@ -9,6 +9,7 @@ AI Studio의 OpenAI 호환 주소는 Gemini API 선불 크레딧이 있어야 �
 Gemini 3의 함수 호출은 'thought signature'를 다음 요청에 그대로 돌려줘야 하므로 도구 호출마다 보관해 두었다가 되돌려 보낸다.
 """
 import json
+import re
 import urllib.error
 import urllib.request
 from types import SimpleNamespace
@@ -29,6 +30,23 @@ def _tool_name_by_id(messages):
         for call in m.get("tool_calls") or []:
             names[call["id"]] = call["function"]["name"]
     return names
+
+
+def to_parts(content):
+    """OpenAI 메시지 content(문자열 또는 [{type: text|image_url}] 목록) → Gemini parts. 이미지는 data URI를 inlineData로 옮긴다."""
+    if content is None or isinstance(content, str):
+        return [{"text": str(content or "")}]
+    parts = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text":
+            parts.append({"text": str(item.get("text") or "")})
+        elif item.get("type") == "image_url":
+            match = re.match(r"data:([\w/+.-]+);base64,(.*)$", str((item.get("image_url") or {}).get("url") or ""), re.S)
+            if match:
+                parts.append({"inlineData": {"mimeType": match.group(1), "data": match.group(2)}})
+    return parts or [{"text": ""}]
 
 
 def to_contents(messages):
@@ -70,7 +88,7 @@ def to_contents(messages):
             if parts:
                 contents.append({"role": "model", "parts": parts})
         else:
-            contents.append({"role": "user", "parts": [{"text": str(m.get("content") or "")}]})
+            contents.append({"role": "user", "parts": to_parts(m.get("content"))})
     flush()
     system = {"parts": system_parts} if system_parts else None
     return system, contents
