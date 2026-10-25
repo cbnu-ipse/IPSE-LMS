@@ -21,9 +21,15 @@
     .ms-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 12px; }
     .ms-grid.src-closed { grid-template-columns: minmax(0, 1fr); }
     .ms-grid.src-closed .ms-src { display: none; }
-    .ms-src { background: #fff; border: 1px solid #f1f5f9; border-radius: 16px; padding: 6px; min-height: 0; display: flex; }
-    .ms-src > iframe, .ms-src > pre { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
-    .ms-src > pre { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; }
+    .ms-src { position: relative; background: #fff; border: 1px solid #f1f5f9; border-radius: 16px; padding: 6px; min-height: 0; display: flex; }
+    .ms-src > iframe, .ms-src > pre, .ms-src > .ms-text { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
+    .ms-src > pre, .ms-src > .ms-text { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; position: relative; }
+    /* 요약과 연결된 원문 위치 표시 */
+    .ms-unit { padding: 4px 10px; margin: 0 -10px; border-left: 3px solid transparent; border-radius: 6px; transition: background .25s, border-color .25s; }
+    .ms-unit.ms-hl { background: #fef9c3; border-left-color: #eab308; }
+    .ms-sync { position: absolute; right: 18px; bottom: 14px; z-index: 5; font-size: 11px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+        background: rgba(5, 150, 105, .92); color: #fff; border: 0; cursor: pointer; box-shadow: 0 2px 8px rgba(15, 23, 42, .18); }
+    .ms-sync.off { background: rgba(100, 116, 139, .88); }
     /* 요약: 읽기 좋은 폭의 칼럼을 가운데에 두고, 글씨에 위계(제목 > 부제목 > 본문 > 강조)를 준다 */
     .ms-sum-center { font-size: 1.05rem; line-height: 1.9; color: #334155; }
     .ms-sum-center > * { max-width: 40rem; margin-left: auto; margin-right: auto; }
@@ -349,7 +355,9 @@
                 btn.className = i === index ? TAB_ACTIVE : TAB_INACTIVE;
             });
             renderNav();
+            window.dispatchEvent(new CustomEvent('ms:summary-page', { detail: { index: index } }));   // 원문이 따라가게 (source-sync.js)
         }
+        window.msSummary = { pages: pages, getIndex: function () { return currentIndex; }, show: showPage };
 
         function renderNav() {
             summaryNav.innerHTML = '';
@@ -384,6 +392,8 @@
         showPage(0);
     })();
 </script>
+{% if source_pages %}{{ source_pages|json_script:"ms-pdf-pages" }}{% endif %}
+<script src="{% static 'js/source-sync.js' %}?v={{ static_version }}"></script>
 {% endif %}
 </body>
 </html>
