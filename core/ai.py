@@ -146,6 +146,18 @@ def check_quota(user, task):
         raise AIQuotaExceeded("오늘 AI 사용량 한도를 모두 썼습니다. 내일 다시 이용해주세요.")
 
 
+def summary_chunk_allowance(user):
+    """오늘 요약 조각 한도 (limit, used, remaining). 한도가 없는 사용자(강의자·운영진)는 None.
+    조각 수는 오늘 요약 호출 횟수와 같다 (자료 하나가 조각 여러 개를 쓴다)."""
+    from .models import AIUsage
+
+    limit = settings.AI_LIMIT_SUMMARY_CHUNKS
+    if _is_exempt(user) or not limit:
+        return None
+    used = AIUsage.objects.filter(user=user, task="summary", created_at__gte=_kst_day_start()).count()
+    return limit, used, max(0, limit - used)
+
+
 def _record(user, task, model, response, counts_as_request):
     from .models import AIUsage
 

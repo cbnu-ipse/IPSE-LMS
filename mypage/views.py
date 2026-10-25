@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from assistant.guardrails import detect_prompt_injection
 
-from core.ai import AIQuotaExceeded, check_quota
+from core.ai import AIQuotaExceeded, check_quota, summary_chunk_allowance
 
 from .ai import (
     SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
@@ -251,6 +251,7 @@ def document_preview(request, pk):
         "question_types": GeneratedQuestion.QuestionType.choices,
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
+        "chunk_allowance": _chunk_allowance_context(request.user),
         "initial_state": _document_state(document),
     })
 
@@ -427,6 +428,14 @@ def document_resummarize(request, pk):
         threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
         messages.success(request, "요약을 다시 만들고 있습니다.")
     return back
+
+
+def _chunk_allowance_context(user):
+    allowance = summary_chunk_allowance(user)
+    if not allowance:
+        return None
+    limit, used, remaining = allowance
+    return {"limit": limit, "used": min(used, limit), "remaining": remaining, "chars": SUMMARY_CHUNK_CHARS}
 
 
 def _document_state(document):

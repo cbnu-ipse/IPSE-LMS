@@ -241,6 +241,12 @@ def generate_summary(extracted_text, user=None):
     chunks = split_for_summary(extracted_text)
     if len(chunks) > SUMMARY_MAX_CHUNKS:
         chunks = chunks[:SUMMARY_MAX_CHUNKS]
+    allowance = core_ai.summary_chunk_allowance(user)
+    if allowance:
+        limit, _used, remaining = allowance
+        if remaining <= 0:
+            raise core_ai.AIQuotaExceeded(f"오늘 요약할 수 있는 분량({limit}조각)을 모두 썼습니다. 내일 다시 이용해주세요.")
+        chunks = chunks[:remaining]   # 남은 만큼만 요약한다 (나머지는 잘린다)
     parts = []
     for i, chunk in enumerate(chunks):
         system = SUMMARY_INSTRUCTIONS
