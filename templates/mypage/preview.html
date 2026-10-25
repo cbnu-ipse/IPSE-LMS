@@ -56,7 +56,7 @@
     <div class="ms-head">
         <a href="{% if document.folder %}{% url 'mypage:document_list' folder_id=document.folder.pk %}{% else %}{% url 'mypage:document_list' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600 shrink-0">&larr; 내 자료</a>
         <h1>{{ document.title }}</h1>
-        <a href="{% url 'mypage:document_edit' document.pk %}" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700 shrink-0" title="자료 정보 수정"><i class="fa-solid fa-sliders mr-1"></i>{{ document.get_document_type_display }}{% if document.course_name %} · {{ document.course_name }}{% endif %}{% if document.professor %} · {{ document.professor }}{% endif %}</a>
+        <span class="text-[11px] font-bold text-slate-400 shrink-0"><i class="fa-solid fa-tag mr-1"></i>{{ document.get_document_type_display }}{% if document.course_name %} · {{ document.course_name }}{% endif %}{% if document.professor %} · {{ document.professor }}{% endif %}</span>
         <button type="button" id="ms-toggle" class="ms-toggle" aria-expanded="true"><i class="fa-regular fa-file-pdf mr-1"></i><span>원문 닫기</span></button>
     </div>
 

@@ -40,14 +40,15 @@ STYLE_SYSTEM = (
 MOCK_SYSTEM = (
     "대학 시험 출제 위원입니다. 주어진 수업 자료 요약을 범위로 모의고사를 냅니다.\n"
     f"- 문항은 {MOCK_QUESTIONS}개. 자료에 있는 내용만 묻습니다.\n"
-    "- 유형은 ox, mc(객관식), short(단답)만 씁니다. 출제 스타일에 서술형·계산형이 있으면 핵심 키워드를 묻는 단답으로 바꿉니다.\n"
+    "- 유형은 ox, mc(객관식), short(단답), essay(서술형)를 씁니다. 계산형·코드형도 풀이나 설명을 쓰게 하는 essay로 냅니다.\n"
     "- 출제 스타일이 주어지면 유형 비율·문제 문장·보기 구성·난이도를 그에 맞춥니다. 예시 족보의 문제는 베끼지 말고 방식만 따릅니다. "
-    "스타일이 없으면 OX 2, 객관식 5, 단답 3개 정도로 섞습니다.\n"
+    "스타일이 없으면 OX 2, 객관식 4, 단답 2, 서술형 2개 정도로 섞습니다.\n"
     "- 정답이 한쪽으로 쏠리지 않게 합니다 (OX는 O/X를 섞고, 객관식 정답 번호도 골고루).\n"
     "- 형식:\n"
     '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
     '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 2, "explanation": "..."} (answer는 0부터)\n'
     '  단답: {"type": "short", "q": "...", "answers": ["정답", "다른 표현"], "explanation": "..."}\n'
+    '  서술형: {"type": "essay", "q": "...", "answer": "채점 기준이 되는 모범답안(핵심 요소 포함, 3~6문장)", "explanation": "..."}\n'
     'JSON으로만 답하세요: {"title": "...", "questions": [...]}'
 )
 
@@ -163,6 +164,24 @@ def refresh_for(professors=(), subjects=()):
             refresh_style(subject=subject)
 
 
+def _normalize_mock_question(q):
+    """ox/mc/short는 강의 문제와 같은 규칙, essay는 모범답안이 있어야 한다."""
+    from course import ai as course_ai
+
+    if isinstance(q, dict) and q.get("type") == "essay":
+        text, answer = str(q.get("q") or "").strip()[:500], str(q.get("answer") or "").strip()[:1500]
+        if not text or not answer:
+            return None
+        return {"type": "essay", "q": text, "answer": answer, "explanation": str(q.get("explanation") or "").strip()[:400]}
+    return course_ai.normalize_question(q)
+
+
+def essay_count(exam, raw_answers=None):
+    """서술형 문항 수 (raw_answers를 주면 답을 쓴 문항만) — 채점 크레딧을 미리 확인할 때 쓴다."""
+    return sum(1 for i, q in enumerate(exam.questions)
+               if q["type"] == "essay" and (raw_answers is None or (raw_answers.get(str(i)) or "").strip()))
+
+
 def generate_mock_exam(user, course):
     """강의 하나의 모의 출제를 만든다 (크레딧을 받고, 쓸 만한 문제가 모자라면 돌려준다). MockExam을 돌려준다."""
     from course import ai as course_ai
@@ -188,7 +207,7 @@ def generate_mock_exam(user, course):
         {"role": "system", "content": MOCK_SYSTEM},
         {"role": "user", "content": request},
     ], user=user)
-    questions = [q for q in map(course_ai.normalize_question, (data.get("questions") or [])[:MOCK_QUESTIONS * 2]) if q]
+    questions = [q for q in map(_normalize_mock_question, (data.get("questions") or [])[:MOCK_QUESTIONS * 2]) if q]
     questions = questions[:MOCK_QUESTIONS]
     if len(questions) < MIN_VALID_QUESTIONS:
         core_ai.refund(user, "mock_exam", core_ai.cost_for("mock_exam"))
@@ -200,22 +219,42 @@ def generate_mock_exam(user, course):
 
 
 def grade_mock_exam(exam, raw_answers):
-    """제출한 답({인덱스: 문자열})을 서버에서 채점해 저장한다. 문항별 정오 리스트를 돌려준다."""
+    """제출한 답({인덱스: 문자열})을 채점해 저장한다. ox/mc/short는 서버가, 서술형은 AI가 채점한다 (답을 쓴 서술형마다
+    채점 크레딧. 채점이 실패하면 오답 처리하고 크레딧은 돌려준다). 문항별 정오 리스트를 돌려준다."""
     from course.studio import grade_question
-
-    answers, results = [], []
-    for i, q in enumerate(exam.questions):
-        raw = raw_answers.get(str(i), "")
-        if q["type"] == "ox":
-            value = {"O": True, "X": False}.get(raw.strip().upper())
-        elif q["type"] == "mc":
-            value = int(raw) if raw.strip().isdigit() else None
-        else:
-            value = raw.strip()
-        answers.append(value)
-        results.append(bool(value is not None and grade_question(q, value)))
     from django.utils import timezone
 
-    exam.answers, exam.results, exam.submitted_at = answers, results, timezone.now()
-    exam.save(update_fields=["answers", "results", "submitted_at"])
+    from .ai import grade_answer
+
+    answers, results, feedback = [], [], []
+    for i, q in enumerate(exam.questions):
+        raw = raw_answers.get(str(i), "")
+        note = ""
+        if q["type"] == "essay":
+            value = raw.strip()
+            ok = False
+            if not value:
+                note = "답을 쓰지 않았습니다."
+            else:
+                try:
+                    graded = grade_answer(q["q"], q["answer"], value, user=exam.user, question_type="essay")
+                    ok, note = graded["is_correct"], graded["feedback"]
+                except core_ai.AIQuotaExceeded:
+                    note = "크레딧이 부족해 채점하지 못했습니다."
+                except Exception:
+                    logger.exception("모의 출제 %s 서술형 채점 실패", exam.pk)
+                    note = "채점하지 못했습니다. 크레딧은 돌려드렸습니다."
+        else:
+            if q["type"] == "ox":
+                value = {"O": True, "X": False}.get(raw.strip().upper())
+            elif q["type"] == "mc":
+                value = int(raw) if raw.strip().isdigit() else None
+            else:
+                value = raw.strip()
+            ok = bool(value is not None and grade_question(q, value))
+        answers.append(value)
+        results.append(ok)
+        feedback.append(note)
+    exam.answers, exam.results, exam.feedback, exam.submitted_at = answers, results, feedback, timezone.now()
+    exam.save(update_fields=["answers", "results", "feedback", "submitted_at"])
     return results

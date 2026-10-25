@@ -147,6 +147,7 @@ class MockExam(models.Model):
     questions = models.JSONField(default=list)
     answers = models.JSONField(default=list, blank=True, verbose_name="제출한 답")
     results = models.JSONField(default=list, blank=True, verbose_name="문항별 정오")
+    feedback = models.JSONField(default=list, blank=True, verbose_name="문항별 채점 피드백 (서술형)")
     created_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
 

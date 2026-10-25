@@ -25,33 +25,25 @@ FILE_INPUT_CLASS = (
 )
 
 
-def _info_fields():
-    """업로드·수정 폼이 함께 쓰는 자료 정보 필드. 과목·교수 이름은 선택이고, 비우면 AI가 자료에서 찾는다."""
-    return {
-        "document_type": forms.ChoiceField(
-            choices=PersonalDocument.DocumentType.choices, initial=PersonalDocument.DocumentType.LECTURE, required=False,
-            label="자료 구분", widget=forms.Select(attrs={"class": INPUT_CLASS})),
-        "course_name": forms.CharField(
-            required=False, max_length=50, label="과목 이름",
-            widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "과목 이름 (선택, 비우면 AI가 찾음)"})),
-        "professor": forms.CharField(
-            required=False, max_length=50, label="교수 이름",
-            widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "교수 이름 (선택)"})),
-    }
-
-
 class PersonalDocumentUploadForm(forms.ModelForm):
     title = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "자료명 (비워두면 파일명 사용)"}),
     )
-    document_type = _info_fields()["document_type"]
-    course_name = _info_fields()["course_name"]
-    professor = _info_fields()["professor"]
+    # 자료 정보는 올릴 때 모두 입력한다 — 올린 뒤에는 고칠 수 없다 (분류·강의·출제 스타일이 이 정보로 정해지므로)
+    document_type = forms.ChoiceField(
+        choices=PersonalDocument.DocumentType.choices, initial=PersonalDocument.DocumentType.LECTURE, label="자료 구분",
+        widget=forms.Select(attrs={"class": INPUT_CLASS}))
+    course_name = forms.CharField(
+        max_length=50, label="과목 이름",
+        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "과목 이름 (예: 운영체제)"}))
+    professor = forms.CharField(
+        max_length=50, label="교수 이름",
+        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "교수 이름 (예: 김철수)"}))
 
     class Meta:
         model = PersonalDocument
-        # 수업 자료는 강의 생성에, 족보는 출제 스타일 학습에 쓰인다. 과목·교수는 선택 (course/topics.py, mypage/exam.py)
+        # 수업 자료는 강의 생성에, 족보는 출제 스타일 학습에 쓰인다. 구분·과목·교수는 필수 (course/topics.py, mypage/exam.py)
         fields = ["title", "file", "document_type", "course_name", "professor"]
         widgets = {
             "file": forms.FileInput(attrs={"accept": ",".join(ALLOWED_EXTENSIONS), "class": FILE_INPUT_CLASS}),
@@ -60,9 +52,6 @@ class PersonalDocumentUploadForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
-
-    def clean_document_type(self):
-        return self.cleaned_data.get("document_type") or PersonalDocument.DocumentType.LECTURE
 
     def clean_file(self):
         f = self.cleaned_data.get("file")
@@ -83,17 +72,3 @@ class PersonalFolderForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "새 폴더 이름"}),
         }
 
-
-class PersonalDocumentInfoForm(forms.ModelForm):
-    """올린 자료의 이름·구분·과목·교수 수정."""
-    title = forms.CharField(max_length=200, label="자료명", widget=forms.TextInput(attrs={"class": INPUT_CLASS}))
-    document_type = _info_fields()["document_type"]
-    course_name = _info_fields()["course_name"]
-    professor = _info_fields()["professor"]
-
-    def clean_document_type(self):
-        return self.cleaned_data.get("document_type") or self.instance.document_type
-
-    class Meta:
-        model = PersonalDocument
-        fields = ["title", "document_type", "course_name", "professor"]

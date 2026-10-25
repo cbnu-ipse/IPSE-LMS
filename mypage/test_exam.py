@@ -185,34 +185,26 @@ class UploadAndEditTests(TestCase):
         with override_settings(AI_CREDIT_COSTS={"ocr": 0}):
             self.assertEqual(core_ai.ocr_cost(5_000_000), 0)
 
-    def test_edit_changes_info_and_reprocesses_only_when_it_matters(self):
-        doc = make_doc(self.user, "옛 제목")
-        with patch("mypage.views.threading.Thread") as thread:
-            self.client.post(f"/mypage/{doc.pk}/edit/", {"title": "새 제목", "document_type": "lecture",
-                                                         "course_name": "", "professor": ""})
-            thread.assert_not_called()                                        # 제목만 바뀌면 다시 처리하지 않는다
-            res = self.client.post(f"/mypage/{doc.pk}/edit/", {"title": "새 제목", "document_type": "exam",
-                                                               "course_name": "알고리즘", "professor": "최교수"})
-            thread.assert_called_once()
-        doc.refresh_from_db()
-        self.assertEqual((doc.title, doc.document_type, doc.course_name, doc.professor), ("새 제목", "exam", "알고리즘", "최교수"))
-        self.assertEqual(res.status_code, 302)
+    def test_info_fields_are_required_and_cannot_be_edited_after_upload(self):
+        for missing in ("document_type", "course_name", "professor"):
+            data = {"title": "", "file": SimpleUploadedFile("note.txt", b"x" * 100), "document_type": "lecture",
+                    "course_name": "운영체제", "professor": "김교수"}
+            data.pop(missing)
+            res = self.client.post("/mypage/", data, follow=True)
+            self.assertContains(res, "모두 입력해주세요")
+        self.assertFalse(PersonalDocument.objects.exists())
+        doc = make_doc(self.user)
+        from django.urls import Resolver404, resolve
+        with self.assertRaises(Resolver404):                                          # 올린 뒤 수정 화면은 없다
+            resolve(f"/mypage/{doc.pk}/edit/")
 
-    def test_edit_is_owner_only(self):
-        other = User.objects.create_user(username="other", password="pw")
-        doc = make_doc(other)
-        self.assertEqual(self.client.get(f"/mypage/{doc.pk}/edit/").status_code, 403)
-        self.assertEqual(self.client.post(f"/mypage/{doc.pk}/edit/", {"title": "x"}).status_code, 403)
-
-    def test_reprocess_updates_old_and_new_state(self):
-        from .reprocess import reprocess_after_edit
-        doc = make_doc(self.user, document_type=EXAM, professor="최교수", topics_=["알고리즘"])
-        old = {"document_type": "lecture", "professor": "김교수", "course_name": "", "topics": ["운영체제"]}
-        with patch("course.topics.after_summary") as after, patch("course.studio.build_draft") as build, \
-                patch("mypage.reprocess.refresh_for") as refresh:
-            reprocess_after_edit(doc.pk, old)
-        after.assert_called_once_with(doc.pk)
-        build.assert_called_once_with("운영체제")                              # 옛 과목의 강의도 다시 맞춘다
+    def test_upload_form_has_required_fields_and_confirm_dialog(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn('name="document_type"', html)                         # 항상 하나가 선택돼 있는 목록
+        for name in ("course_name", "professor"):
+            self.assertRegex(html, rf'name="{name}"[^>]*required')
+        self.assertIn('id="upload-confirm"', html)                          # 올리기 전 한 번 더 확인
+        self.assertIn("올린 뒤에는", html)
 
 
 @override_settings(AI_CREDIT_COSTS={"mock_exam": 5})
@@ -285,6 +277,64 @@ class MockExamTests(TestCase):
         self.client.post(mock.get_absolute_url(), {})                             # 다시 제출해도 점수가 바뀌지 않는다
         mock.refresh_from_db()
         self.assertEqual(sum(mock.results), 9)
+
+    ESSAY_QUESTIONS = {"title": "t", "questions": (
+        [{"type": "mc", "q": f"MC {i}", "options": ["a", "b", "c", "d"], "answer": 1, "explanation": "e"} for i in range(4)]
+        + [{"type": "essay", "q": f"ES {i}", "answer": "프로세스는 실행 중인 프로그램이다", "explanation": ""} for i in range(2)]
+        + [{"type": "essay", "q": "답 없음", "answer": ""}])}
+
+    def make_exam(self):
+        from . import exam as exam_module
+        questions = [q for q in map(exam_module._normalize_mock_question, self.ESSAY_QUESTIONS["questions"]) if q]
+        return MockExam.objects.create(user=self.user, course_code="운영체제", questions=questions)
+
+    def test_essay_without_model_answer_is_dropped_but_valid_essay_is_kept(self):
+        mock = self.make_exam()
+        self.assertEqual([q["type"] for q in mock.questions].count("essay"), 2)
+
+    @override_settings(AI_CREDIT_COSTS={"mock_exam": 5, "grading": 2})
+    def test_essay_is_graded_by_ai_and_costs_grading_credits_per_answered_essay(self):
+        credits.grant(self.user, 10, "test")
+        mock = self.make_exam()
+        page = self.client.get(mock.get_absolute_url())
+        self.assertContains(page, "서술형 2문항")
+        self.assertContains(page, 'title="AI 크레딧 4"')                          # 제출 버튼에 최대 비용(2문항 × 2)
+        answers = {f"a_{i}": ("1" if q["type"] == "mc" else "") for i, q in enumerate(mock.questions)}
+        answers["a_4"] = "프로세스는 실행 중인 프로그램"                             # 서술형 2개 중 하나만 답한다
+        with patch("mypage.ai.grade_answer", return_value={"is_correct": True, "feedback": "핵심을 짚었어요"}) as grade:
+            res = self.client.post(mock.get_absolute_url(), answers, follow=True)
+        grade.assert_called_once()                                                  # 빈 답은 AI를 부르지 않는다
+        mock.refresh_from_db()
+        self.assertEqual(mock.feedback[4], "핵심을 짚었어요")
+        self.assertEqual(mock.feedback[5], "답을 쓰지 않았습니다.")
+        self.assertContains(res, "모범답안")
+        self.assertContains(res, "핵심을 짚었어요")
+
+    @override_settings(AI_CREDIT_COSTS={"mock_exam": 5, "grading": 2})
+    def test_essay_grading_blocked_without_credits_and_answers_are_kept(self):
+        mock = self.make_exam()
+        answers = {f"a_{i}": "" for i in range(len(mock.questions))}
+        answers["a_4"] = "내가 쓴 긴 답안"
+        with patch("mypage.ai.grade_answer") as grade:
+            res = self.client.post(mock.get_absolute_url(), answers)
+        grade.assert_not_called()
+        self.assertContains(res, "서술형 채점에 크레딧이 필요합니다")
+        self.assertContains(res, "내가 쓴 긴 답안")                                  # 다시 쓰지 않아도 되게 답을 돌려준다
+        mock.refresh_from_db()
+        self.assertIsNone(mock.submitted_at)
+
+    @override_settings(AI_CREDIT_COSTS={"mock_exam": 5, "grading": 2})
+    def test_grading_failure_marks_wrong_and_keeps_going(self):
+        credits.grant(self.user, 10, "test")
+        mock = self.make_exam()
+        answers = {f"a_{i}": "" for i in range(len(mock.questions))}
+        answers["a_4"] = "답"
+        with patch("mypage.ai.grade_answer", side_effect=RuntimeError("api down")):
+            self.client.post(mock.get_absolute_url(), answers)
+        mock.refresh_from_db()
+        self.assertIsNotNone(mock.submitted_at)
+        self.assertFalse(mock.results[4])
+        self.assertIn("채점하지 못했습니다", mock.feedback[4])
 
     def test_others_cannot_open_my_exam(self):
         mock = MockExam.objects.create(user=self.user, course_code="운영체제", questions=[])

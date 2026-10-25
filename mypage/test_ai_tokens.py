@@ -71,7 +71,7 @@ class TokenSavingTestCase(TestCase):
     def upload(self, content=b"hello world " * 20, name="note.txt"):
         with patch("mypage.views.threading.Thread") as thread:
             res = self.client.post("/mypage/", {"title": "", "file": SimpleUploadedFile(name, content),
-                                                "subject_code": "", "document_type": "lecture"})
+                                                "subject_code": "", "document_type": "lecture", "course_name": "과목", "professor": "교수"})
         return res, thread
 
     def test_same_file_reuses_summary_without_ai(self):

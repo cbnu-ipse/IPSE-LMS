@@ -21,7 +21,7 @@ from .ai import (
     SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
     summary_chunk_count,
 )
-from .forms import PersonalDocumentInfoForm, PersonalDocumentUploadForm, PersonalFolderForm
+from .forms import PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,10 @@ def document_list(request, folder_id=None):
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
             messages.success(request, "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다.")
             return redirect(request.path)
-        messages.error(request, "업로드에 실패했습니다. 파일 형식과 크기를 확인해주세요.")
+        if {"document_type", "course_name", "professor"} & set(form.errors):
+            messages.error(request, "자료 구분, 과목 이름, 교수 이름을 모두 입력해주세요. 올린 뒤에는 고칠 수 없습니다.")
+        else:
+            messages.error(request, "업로드에 실패했습니다. 파일 형식과 크기를 확인해주세요.")
     else:
         form = PersonalDocumentUploadForm(user=request.user)
 
@@ -166,6 +169,7 @@ def document_list(request, folder_id=None):
         "folders": folders,
         "current_folder": folder,
         "form": form,
+        "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
         "folder_form": PersonalFolderForm(),
     })
 
@@ -226,27 +230,6 @@ def document_rename(request, pk):
         document.save(update_fields=["title"])
         messages.success(request, "자료 이름을 바꿨습니다.")
     return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
-
-
-@login_required
-def document_edit(request, pk):
-    """올린 자료의 이름·구분(수업 자료/족보)·과목·교수 이름을 고친다. 구분·과목·교수가 바뀌면 분류와 강의가 새 정보로 다시 맞춰진다."""
-    from .reprocess import changed, reprocess_after_edit, snapshot
-
-    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
-    if document.user != request.user:
-        return HttpResponseForbidden("본인의 자료만 고칠 수 있습니다.")
-    old = snapshot(document)
-    form = PersonalDocumentInfoForm(request.POST or None, instance=document)
-    if request.method == "POST" and form.is_valid():
-        document = form.save()
-        if changed(document, old):
-            threading.Thread(target=reprocess_after_edit, args=(document.pk, old), daemon=True).start()
-            messages.success(request, "자료 정보를 고쳤습니다. 분류와 강의에 반영하고 있습니다.")
-        else:
-            messages.success(request, "자료 정보를 고쳤습니다.")
-        return redirect(document.get_absolute_url())
-    return render(request, "mypage/document_edit.html", {"document": document, "form": form})
 
 
 @login_required
@@ -524,17 +507,24 @@ def mock_exam_create(request, slug):
 
 @login_required
 def mock_exam(request, pk):
-    from .exam import grade_mock_exam
+    from .exam import essay_count, grade_mock_exam
 
     exam = get_object_or_404(MockExam, pk=pk)
     if exam.user != request.user:
         return HttpResponseForbidden("본인의 모의 출제만 볼 수 있습니다.")
+    posted = {}
     if request.method == "POST" and exam.submitted_at is None:
-        grade_mock_exam(exam, {k[2:]: v for k, v in request.POST.items() if k.startswith("a_")})
-        return redirect(exam.get_absolute_url())
+        posted = {k[2:]: v for k, v in request.POST.items() if k.startswith("a_")}
+        try:    # 서술형은 AI가 채점하므로 답을 쓴 서술형 수만큼 채점 크레딧이 필요하다 (모자라면 채점하지 않고 답을 그대로 보여 준다)
+            require_credits(request.user, essay_count(exam, posted) * cost_for("grading"))
+        except AIQuotaExceeded as exc:
+            messages.error(request, f"서술형 채점에 크레딧이 필요합니다. {exc}")
+        else:
+            grade_mock_exam(exam, posted)
+            return redirect(exam.get_absolute_url())
     rows = []
     for i, q in enumerate(exam.questions):
-        row = {"index": i, "q": q}
+        row = {"index": i, "q": q, "value": posted.get(str(i), "")}
         if exam.submitted_at:
             row.update(answer=exam.answers[i] if i < len(exam.answers) else None,
                        correct=exam.results[i] if i < len(exam.results) else False)
@@ -545,9 +535,18 @@ def mock_exam(request, pk):
                 row["correct_text"] = f"{q['answer'] + 1}. {q['options'][q['answer']]}"
                 a = row["answer"]
                 row["answer_text"] = f"{a + 1}. {q['options'][a]}" if isinstance(a, int) and 0 <= a < len(q["options"]) else "무응답"
+            elif q["type"] == "essay":
+                row["correct_text"] = q["answer"]
+                row["answer_text"] = row["answer"] or "무응답"
+                row["note"] = exam.feedback[i] if i < len(exam.feedback) else ""
             else:
                 row["correct_text"] = " / ".join(q["answers"])
                 row["answer_text"] = row["answer"] or "무응답"
         rows.append(row)
     score = sum(exam.results) if exam.submitted_at else None
-    return render(request, "mypage/mock_exam.html", {"exam": exam, "rows": rows, "score": score, "total": len(exam.questions)})
+    essays = essay_count(exam)
+    grading = credit_info(request.user, "grading")
+    return render(request, "mypage/mock_exam.html", {
+        "exam": exam, "rows": rows, "score": score, "total": len(exam.questions),
+        "essays": essays, "essay_cost": essays * grading["cost"] if grading else 0,
+    })
