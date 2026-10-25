@@ -19,7 +19,7 @@ from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cos
 
 from .ai import (
     SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
-    summary_chunk_count,
+    pdf_page_texts, summary_chunk_count,
 )
 from .forms import PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
@@ -239,6 +239,7 @@ def document_preview(request, pk):
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
 
     is_pdf = document.file.name.lower().endswith(".pdf")
+    source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
     active_panel = request.GET.get("panel", "summary")
     if active_panel not in ("summary", "quiz"):
         active_panel = "summary"
@@ -258,6 +259,7 @@ def document_preview(request, pk):
     return render(request, "mypage/preview.html", {
         "document": document,
         "is_pdf": is_pdf,
+        "source_pages": source_pages,
         "active_panel": active_panel,
         "current_questions": current_questions,
         "current_question": current_questions[q_index] if current_questions else None,

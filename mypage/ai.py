@@ -109,6 +109,29 @@ def _extract_pdf(f):
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+PDF_PAGE_CHARS = 2500       # 요약과 위치를 맞출 때 쓰는 페이지당 글자 수 (화면으로 보내는 양을 줄인다)
+PDF_MAX_PAGES = 400
+
+
+def pdf_page_texts(document):
+    """PDF 원문의 페이지별 글 (요약 조각이 원문 몇 쪽인지 맞추는 데 쓴다). 읽지 못하면 빈 목록. 문서당 하루 캐시."""
+    from django.core.cache import cache
+
+    key = f"pdfpages:{document.pk}:{document.content_hash or document.uploaded_at.timestamp()}"
+    pages = cache.get(key)
+    if pages is None:
+        try:
+            from pypdf import PdfReader
+
+            with document.file.open("rb") as fh:
+                reader = PdfReader(fh)
+                pages = [(page.extract_text() or "")[:PDF_PAGE_CHARS] for page in reader.pages[:PDF_MAX_PAGES]]
+        except Exception:
+            pages = []
+        cache.set(key, pages, 86400)
+    return pages
+
+
 def _extract_docx(f):
     import docx
 
