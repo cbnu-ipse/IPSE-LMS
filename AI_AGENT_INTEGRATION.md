@@ -152,7 +152,7 @@ LangChain/RAG/LangGraph/Guardrail/Agent
 ## 공급자·모델 라우팅 (core/ai.py)
 
 - 작업마다 (공급자, 모델)을 따로 정한다: `settings.AI_TASK_PROVIDERS`·`AI_MODELS` (환경변수 `AI_PROVIDER_<작업>`·`AI_MODEL_<작업>`).
-  기본 배정은 주제 분류·챗봇·요약 = Gemini, 문제 생성·채점 = OpenAI, 강의 목차·챕터 = Claude.
+  기본 배정은 모든 작업 = Gemini(gemini-3.5-flash-lite).
 - Gemini·Claude는 OpenAI SDK와 호환되는 주소(`base_url`)로 부르므로 새 패키지가 필요 없다. 지정한 공급자의 키가 없으면
   OpenAI 기본 모델로 대신 부른다(`route()`).
 - 공급자 차이: OpenAI는 `max_completion_tokens`, 호환 주소는 `max_tokens`. Claude 호환 주소는 `response_format`(JSON 모드)을
