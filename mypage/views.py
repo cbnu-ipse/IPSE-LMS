@@ -18,7 +18,7 @@ from assistant.guardrails import detect_prompt_injection
 from core.ai import AIQuotaExceeded, check_quota
 
 from .ai import (
-    clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
 )
 from .forms import PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, ProcessingStatus
@@ -380,12 +380,13 @@ def learning_overview(request):
 
 
 def _can_resummarize(document):
-    """요약이 실패했거나(또는 비어 있거나) 오래 '생성 중'에 멈춰 있으면 다시 만들 수 있다."""
+    """요약이 실패했거나(또는 비어 있거나) 오래 '생성 중'에 멈춰 있으면 다시 만들 수 있다.
+    본문이 긴 자료는 요약이 있어도 다시 만들 수 있다 — 예전 요약은 앞 12,000자만 반영했을 수 있어서다."""
     if document.summary_status == ProcessingStatus.FAILED:
         return True
     if document.summary_status == ProcessingStatus.PROCESSING:
         return document.pk not in _summarizing and document.uploaded_at < timezone.now() - STALE_AFTER
-    return not document.summary.strip()
+    return not document.summary.strip() or len(document.extracted_text) > SUMMARY_CHUNK_CHARS
 
 
 @login_required

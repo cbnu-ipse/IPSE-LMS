@@ -17,7 +17,9 @@ from collections import Counter
 from core import ai as core_ai
 
 MARKITDOWN_EXTENSIONS = (".pdf", ".docx", ".pptx")
-SUMMARY_INPUT_CHARS = 12000   # 요약에 넣는 본문 길이 상한
+SUMMARY_CHUNK_CHARS = 12000   # 요약 한 번에 넣는 본문 길이 (이보다 긴 자료는 조각으로 나눠 모두 요약한다)
+SUMMARY_MAX_CHUNKS = 10       # 한 자료에서 요약하는 조각 수 상한 (= 약 12만 자)
+SUMMARY_INPUT_CHARS = SUMMARY_CHUNK_CHARS   # 예전 이름 (이 길이를 넘는 자료는 앞부분만 요약되던 시절의 기준)
 QUESTION_INPUT_CHARS = 8000   # 문제 생성에 넣는 본문 길이 상한
 
 
@@ -203,14 +205,56 @@ SUMMARY_INSTRUCTIONS = (
 )
 
 
+def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
+    """본문을 chunk_chars 안팎의 조각으로 나눈다. 빈 줄(문단·슬라이드 경계)에서 자르고, 한 문단이 너무 길면 줄 단위로,
+    그래도 길면 글자 수로 자른다. 내용은 하나도 버리지 않는다."""
+    blocks = []
+    for para in re.split(r"\n\s*\n", text.strip()):
+        while len(para) > chunk_chars:
+            cut = para.rfind("\n", 0, chunk_chars)
+            cut = cut if cut > chunk_chars // 2 else chunk_chars
+            blocks.append(para[:cut])
+            para = para[cut:].lstrip("\n")
+        if para.strip():
+            blocks.append(para)
+    chunks, current = [], ""
+    for block in blocks:
+        if current and len(current) + len(block) + 2 > chunk_chars:
+            chunks.append(current)
+            current = block
+        else:
+            current = f"{current}\n\n{block}" if current else block
+    if current:
+        chunks.append(current)
+    if len(chunks) > 1 and len(chunks[-1]) < chunk_chars // 6:   # 아주 짧은 꼬리는 따로 부르지 않고 앞 조각에 붙인다
+        tail = chunks.pop()
+        chunks[-1] = f"{chunks[-1]}\n\n{tail}"
+    return chunks
+
+
 def generate_summary(extracted_text, user=None):
-    """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열."""
+    """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열.
+    긴 자료는 조각으로 나눠 조각마다 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다).
+    횟수 제한에는 자료 하나가 요청 1회로만 센다 (나머지 조각은 토큰만 기록)."""
     if not extracted_text.strip():
         return ""
-    return core_ai.complete("summary", [
-        {"role": "system", "content": SUMMARY_INSTRUCTIONS},
-        {"role": "user", "content": core_ai.untrusted("자료", extracted_text[:SUMMARY_INPUT_CHARS])},
-    ], user=user)
+    chunks = split_for_summary(extracted_text)
+    if len(chunks) > SUMMARY_MAX_CHUNKS:
+        chunks = chunks[:SUMMARY_MAX_CHUNKS]
+    parts = []
+    for i, chunk in enumerate(chunks):
+        system = SUMMARY_INSTRUCTIONS
+        extra = {}
+        if len(chunks) > 1:
+            system += (f"\n\n이 자료는 길어서 {len(chunks)}조각으로 나눈 {i + 1}번째 조각입니다. 이 조각에 있는 내용만 빠짐없이 요약하고, "
+                       "전체 요약인 것처럼 서두나 맺음말을 쓰지 마세요.")
+        if i:
+            extra = {"counts_as_request": False, "check": False}
+        parts.append(core_ai.complete("summary", [
+            {"role": "system", "content": system},
+            {"role": "user", "content": core_ai.untrusted("자료", chunk)},
+        ], user=user, **extra))
+    return "\n\n".join(p for p in parts if p.strip())
 
 
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}

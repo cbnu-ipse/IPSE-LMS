@@ -103,6 +103,12 @@
                         <div id="document-summary-tabs" class="shrink-0 flex gap-1 mb-4"></div>
                         <div id="document-summary-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
                         <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
+                        {% if can_resummarize %}
+                        <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="shrink-0 mt-3 text-center" onsubmit="return confirm('자료 전체를 다시 요약합니다. 기존 요약은 새 요약으로 바뀝니다.');">
+                            {% csrf_token %}
+                            <button type="submit" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700"><i class="fa-solid fa-rotate-right mr-1"></i>자료 전체로 요약 다시 만들기</button>
+                        </form>
+                        {% endif %}
                     {% else %}
                         <p class="text-sm text-slate-500 font-medium">요약을 생성하지 못했습니다.</p>
                         {% if can_resummarize %}
