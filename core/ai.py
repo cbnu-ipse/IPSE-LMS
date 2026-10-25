@@ -30,7 +30,7 @@ MAX_OUTPUT_TOKENS = {
     "chat": 1200,
     "chat_compact": 400,
     "summary": 3000,
-    "ocr": 3000,
+    "ocr": 8000,
     "question": 500,
     "grading": 300,
     "classify": 300,
