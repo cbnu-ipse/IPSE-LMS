@@ -29,7 +29,8 @@ CLASSIFY_SYSTEM = (
     "- 기존 주제와 맞으면 그 이름을 글자 그대로 쓰고, 맞는 게 없을 때만 새 주제 이름을 짓습니다. "
     "기존 주제와 새 주제를 함께 써도 됩니다 (예: 기존 '데이터베이스'에 더해 새 주제 '트랜잭션 심화').\n"
     "- 새 이름은 과목 단위로 넓게(예: '데이터베이스', '운영체제'), 20자 이내. description은 새 주제일 때만 그 범위를 한 문장으로.\n"
-    'JSON으로만 답하세요: {"topics": [{"name": "...", "description": "..."}]}'
+    "- professor: 자료에 교수·강사 이름이 분명히 적혀 있을 때만 그 이름(직함 제외). 없거나 확실하지 않으면 빈 문자열(추측 금지).\n"
+    'JSON으로만 답하세요: {"topics": [{"name": "...", "description": "..."}], "professor": ""}'
 )
 
 
@@ -40,48 +41,68 @@ def _topics_listing():
     return "\n".join(f"- {t.name}" + (f": {t.description}" if t.description else "") for t in topics) or "(없음)"
 
 
+def _subject_named(name, description=""):
+    from mypage.models import Subject
+
+    subject, created = Subject.objects.get_or_create(name=name)
+    if created and description:
+        subject.description = description[:300]
+        subject.save(update_fields=["description"])
+    return subject
+
+
 def classify_document(document, force=False):
     """자료가 속한 주제들을 정해 저장하고 이름 목록을 돌려준다 (대표 주제 = 첫 번째, subject_code에도 남김).
-    같은 파일이 이미 분류돼 있으면 AI를 부르지 않고 그 결과를 쓴다 (force=True면 다시 분류)."""
-    from mypage.models import PersonalDocument, Subject
+    - 사용자가 과목 이름을 적었으면 그 이름이 주제다 (AI가 이름을 짓지 않으므로 강의 이름도 이 이름을 따른다).
+    - 교수 이름이 비어 있으면 AI가 자료에서 찾아 채운다 (없으면 빈 채로 둔다).
+    - 같은 파일이 이미 분류돼 있으면 AI를 부르지 않고 그 결과를 쓴다 (force=True면 다시 분류)."""
+    from mypage.models import PersonalDocument
 
+    typed = " ".join((document.course_name or "").split())[:50]
     same = (PersonalDocument.objects.filter(content_hash=document.content_hash).exclude(pk=document.pk)
-            .filter(topics__isnull=False).first()) if document.content_hash and not force else None
-    if same:
-        subjects = list(same.topics.all())
-    else:
+            .filter(topics__isnull=False).first()) if document.content_hash and not force and not typed else None
+    subjects = [_subject_named(typed)] if typed else (list(same.topics.all()) if same else None)
+    found_professor = ""
+    if same and not document.professor.strip():
+        found_professor = same.professor
+    need_professor = not same and not document.professor.strip()     # 같은 파일을 이미 분류했으면 AI를 다시 부르지 않는다
+    if subjects is None or need_professor:
         data = core_ai.complete_json("classify", [
             {"role": "system", "content": CLASSIFY_SYSTEM},
             {"role": "user", "content": "기존 주제:\n" + _topics_listing() + "\n\n"
-                                        + core_ai.untrusted("자료", f"제목: {document.title}\n{document.summary[:HEAD_CHARS]}")},
+                                        + core_ai.untrusted("자료", f"제목: {document.title}\n본문 앞부분: "
+                                                            f"{(document.extracted_text or '')[:500]}\n"
+                                                            f"{document.summary[:HEAD_CHARS]}")},
         ], user=document.user, counts_as_request=False)
-        entries = data.get("topics")
-        if not isinstance(entries, list):  # 예전 형식({"topic": ...})도 받아 준다
-            entries = [{"name": data.get("topic"), "description": data.get("description")}]
-        subjects = []
-        for entry in entries:
-            if len(subjects) >= MAX_TOPICS_PER_DOC:
-                break
-            entry = entry if isinstance(entry, dict) else {"name": entry}
-            name = str(entry.get("name") or "").strip()[:50]
-            if not name or any(s.name == name for s in subjects):
-                continue
-            subject, created = Subject.objects.get_or_create(name=name)
-            description = str(entry.get("description") or "").strip()[:300]
-            if created and description:
-                subject.description = description
-                subject.save(update_fields=["description"])
-            subjects.append(subject)
+        found_professor = found_professor or " ".join(str(data.get("professor") or "").split())[:50]
+        if subjects is None:
+            entries = data.get("topics")
+            if not isinstance(entries, list):  # 예전 형식({"topic": ...})도 받아 준다
+                entries = [{"name": data.get("topic"), "description": data.get("description")}]
+            subjects = []
+            for entry in entries:
+                if len(subjects) >= MAX_TOPICS_PER_DOC:
+                    break
+                entry = entry if isinstance(entry, dict) else {"name": entry}
+                name = str(entry.get("name") or "").strip()[:50]
+                if not name or any(s.name == name for s in subjects):
+                    continue
+                subjects.append(_subject_named(name, str(entry.get("description") or "").strip()))
     names = [s.name for s in subjects]
     document.topics.set(subjects)
-    PersonalDocument.objects.filter(pk=document.pk).update(subject_code=names[0] if names else "",
-                                                           is_course_material=True)
-    document.subject_code, document.is_course_material = (names[0] if names else ""), True
+    updates = {"subject_code": names[0] if names else "", "is_course_material": True}
+    if found_professor and not document.professor.strip():
+        updates["professor"] = found_professor
+    PersonalDocument.objects.filter(pk=document.pk).update(**updates)
+    for field, value in updates.items():
+        setattr(document, field, value)
     return names
 
 
 def after_summary(document_id, force=False):
-    """요약이 끝난 자료 하나를 분류하고, 필요하면 강의 초안까지 진행한다 (백그라운드 스레드에서 호출)."""
+    """요약이 끝난 자료 하나를 분류하고, 수업 자료면 강의 초안까지, 족보면 출제 스타일을 새로 뽑아 관련 강의 초안에 반영한다
+    (백그라운드 스레드에서 호출)."""
+    from mypage.exam import professor_key, professor_topics, refresh_for
     from mypage.models import PersonalDocument
 
     from .studio import build_draft
@@ -89,6 +110,14 @@ def after_summary(document_id, force=False):
     document = PersonalDocument.objects.select_related("user").get(pk=document_id)
     if not document.summary.strip():
         return None
+    names = classify_document(document, force=force)
     extra = {"force": True} if force else {}
-    drafts = [build_draft(name, **extra) for name in classify_document(document, force=force)]  # 주제마다 강의 초안 생성/갱신
+    if document.document_type == PersonalDocument.DocumentType.EXAM:
+        has_professor = bool(professor_key(document.professor))
+        refresh_for(professors=[document.professor], subjects=[] if has_professor else names)
+        # 새 출제 스타일은 그 교수님의 모든 강의(과목이 달라도)의 확인 문제에 반영된다
+        topics = set(names) | (professor_topics(document.professor) if has_professor else set())
+        drafts = [build_draft(name, **extra) for name in sorted(topics)]
+    else:
+        drafts = [build_draft(name, **extra) for name in names]  # 주제마다 강의 초안 생성/갱신
     return next((d for d in drafts if d), None)  # 같은 자료로 이미 만든 초안이 있으면 AI를 부르지 않는다

@@ -15,13 +15,14 @@ from django.views.decorators.http import require_POST
 
 from assistant.guardrails import detect_prompt_injection
 
-from core.ai import AIQuotaExceeded, check_quota, credit_info
+from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
 
 from .ai import (
     SUMMARY_CHUNK_CHARS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    summary_chunk_count,
 )
-from .forms import PersonalDocumentUploadForm, PersonalFolderForm
-from .models import GeneratedQuestion, PersonalDocument, PersonalFolder, ProcessingStatus
+from .forms import PersonalDocumentInfoForm, PersonalDocumentUploadForm, PersonalFolderForm
+from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def _generate_summary_bg(document_id):
     _summarizing.add(document_id)
     try:
         document = PersonalDocument.objects.select_related("user").get(pk=document_id)
-        summary = generate_summary(document.extracted_text, user=document.user)
+        summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type)
         PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
     except Exception:
         logger.exception("문서 %s 자동 요약 생성 실패", document_id)
@@ -68,14 +69,14 @@ def _classify_and_build(document_id):
         logger.exception("문서 %s 주제 분류·강의 초안 처리 실패", document_id)
 
 
-def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None, index=0):
+def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None, index=0, style=""):
     try:
         q = generate_one_question(extracted_text, question_type, existing_questions=existing_texts, user=user,
-                                  index=index)
+                                  index=index, style=style)
         if is_duplicate_question(q.get("question", ""), existing_texts):
             # 이미 있는 문제와 같으면 문서의 다른 구간으로 한 번만 더 시도하고, 그래도 같으면 실패 처리한다
             q = generate_one_question(extracted_text, question_type, existing_questions=existing_texts, user=user,
-                                      index=index + 1)
+                                      index=index + 1, style=style)
             if is_duplicate_question(q.get("question", ""), existing_texts):
                 raise ValueError("이미 만든 문제와 같은 문제가 만들어져 건너뜁니다.")
         # OX 해설은 만들 때 같이 받아 feedback에 넣어 둔다 (답을 낸 뒤에만 화면에 보이고, 다시 부르지 않음)
@@ -111,7 +112,8 @@ def document_list(request, folder_id=None):
             content_hash = hashlib.sha256(upload.read()).hexdigest()
             upload.seek(0)
             # 같은 파일이 이미 요약돼 있으면 AI를 부르지 않고 그 결과를 쓴다 (토큰 절약)
-            same = (PersonalDocument.objects.filter(content_hash=content_hash, summary_status=ProcessingStatus.DONE)
+            same = (PersonalDocument.objects.filter(content_hash=content_hash, summary_status=ProcessingStatus.DONE,
+                                                    document_type=document.document_type)
                     .exclude(summary="").first())
             if same:
                 document.content_hash = content_hash
@@ -122,8 +124,10 @@ def document_list(request, folder_id=None):
                 threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 요약을 바로 불러왔습니다.")
                 return redirect(request.path)
+            is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))
             try:
-                check_quota(request.user, "summary")
+                # 이미지는 글자 읽기(크기당) + 요약 최소 1조각, 그 밖에는 요약 최소 1조각의 크레딧이 있어야 시작한다
+                require_credits(request.user, (ocr_cost(upload.size) if is_image else 0) + cost_for("summary"))
             except AIQuotaExceeded as exc:
                 messages.error(request, f"자료를 올리지 못했습니다. {exc}")
                 return redirect(request.path)
@@ -137,6 +141,13 @@ def document_list(request, folder_id=None):
                 messages.error(request, "업로드한 자료에서 프롬프트 인젝션으로 의심되는 내용이 발견되어 처리를 중단했습니다.")
                 return redirect(request.path)
             document.extracted_text = extracted_text
+            try:    # 본문을 읽은 뒤 전체 조각 수로 필요한 크레딧을 미리 확인한다 (AI를 부르지 않고 글자 수로 센다)
+                require_credits(request.user, summary_chunk_count(extracted_text) * cost_for("summary"))
+            except AIQuotaExceeded as exc:
+                document.summary_status = ProcessingStatus.PENDING
+                document.save(update_fields=["extracted_text", "summary_status"])
+                messages.warning(request, f"자료를 올렸지만 요약은 시작하지 않았습니다. {exc} 충전한 뒤 '요약 시작'을 눌러주세요.")
+                return redirect(request.path)
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
@@ -215,6 +226,27 @@ def document_rename(request, pk):
         document.save(update_fields=["title"])
         messages.success(request, "자료 이름을 바꿨습니다.")
     return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+
+
+@login_required
+def document_edit(request, pk):
+    """올린 자료의 이름·구분(수업 자료/족보)·과목·교수 이름을 고친다. 구분·과목·교수가 바뀌면 분류와 강의가 새 정보로 다시 맞춰진다."""
+    from .reprocess import changed, reprocess_after_edit, snapshot
+
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 고칠 수 있습니다.")
+    old = snapshot(document)
+    form = PersonalDocumentInfoForm(request.POST or None, instance=document)
+    if request.method == "POST" and form.is_valid():
+        document = form.save()
+        if changed(document, old):
+            threading.Thread(target=reprocess_after_edit, args=(document.pk, old), daemon=True).start()
+            messages.success(request, "자료 정보를 고쳤습니다. 분류와 강의에 반영하고 있습니다.")
+        else:
+            messages.success(request, "자료 정보를 고쳤습니다.")
+        return redirect(document.get_absolute_url())
+    return render(request, "mypage/document_edit.html", {"document": document, "form": form})
 
 
 @login_required
@@ -299,9 +331,14 @@ def generate_question_view(request, pk):
             question_type=question_type,
             status=ProcessingStatus.PROCESSING,
         )
+    from .exam import style_for, topic_professor
+
+    subject = document.subject_code
+    style = style_for(document.professor or topic_professor(subject), subject)    # 교수님 족보에서 배운 출제 스타일
     threading.Thread(
         target=_generate_question_bg,
         args=(question.pk, document.extracted_text, question_type, existing_texts, request.user, existing_count),
+        kwargs={"style": style.guidelines if style else ""},
         daemon=True,
     ).start()
 
@@ -420,6 +457,11 @@ def document_resummarize(request, pk):
         if detect_prompt_injection(text):
             messages.error(request, "자료에서 프롬프트 인젝션으로 의심되는 내용이 발견되어 처리를 중단했습니다.")
             return back
+    try:    # 전체 조각 수로 필요한 크레딧을 미리 확인한다 (모자라면 시작하지 않는다)
+        require_credits(request.user, summary_chunk_count(text) * cost_for("summary"))
+    except AIQuotaExceeded as exc:
+        messages.error(request, str(exc))
+        return back
     # 조건 확인과 상태 변경을 한 번에 해 두 번 눌러도 요약이 한 번만 시작되게 한다
     updated = PersonalDocument.objects.filter(pk=document.pk, summary_status=document.summary_status).update(
         extracted_text=text, summary_status=ProcessingStatus.PROCESSING)
@@ -451,3 +493,61 @@ def document_status(request, pk):
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
     return JsonResponse(_document_state(document))
+
+
+# ── 모의 출제 ────────────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def mock_exam_create(request, slug):
+    """강의의 수업 자료 + 교수님 출제 스타일로 모의 출제를 만든다 (크레딧을 받고, 만들지 못하면 돌려준다)."""
+    from course.models import Course
+
+    from .exam import generate_mock_exam
+
+    course = get_object_or_404(Course, slug=slug)
+    try:
+        check_quota(request.user, "mock_exam")
+        exam = generate_mock_exam(request.user, course)
+    except AIQuotaExceeded as exc:
+        messages.error(request, str(exc))
+        return redirect("course_detail", slug=slug)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("course_detail", slug=slug)
+    except Exception:
+        logger.exception("모의 출제 생성 실패: %s", slug)
+        messages.error(request, "모의 출제를 만들지 못했습니다. 잠시 후 다시 시도해주세요.")
+        return redirect("course_detail", slug=slug)
+    return redirect(exam.get_absolute_url())
+
+
+@login_required
+def mock_exam(request, pk):
+    from .exam import grade_mock_exam
+
+    exam = get_object_or_404(MockExam, pk=pk)
+    if exam.user != request.user:
+        return HttpResponseForbidden("본인의 모의 출제만 볼 수 있습니다.")
+    if request.method == "POST" and exam.submitted_at is None:
+        grade_mock_exam(exam, {k[2:]: v for k, v in request.POST.items() if k.startswith("a_")})
+        return redirect(exam.get_absolute_url())
+    rows = []
+    for i, q in enumerate(exam.questions):
+        row = {"index": i, "q": q}
+        if exam.submitted_at:
+            row.update(answer=exam.answers[i] if i < len(exam.answers) else None,
+                       correct=exam.results[i] if i < len(exam.results) else False)
+            if q["type"] == "ox":
+                row["correct_text"] = "O" if q["answer"] else "X"
+                row["answer_text"] = {True: "O", False: "X"}.get(row["answer"], "무응답")
+            elif q["type"] == "mc":
+                row["correct_text"] = f"{q['answer'] + 1}. {q['options'][q['answer']]}"
+                a = row["answer"]
+                row["answer_text"] = f"{a + 1}. {q['options'][a]}" if isinstance(a, int) and 0 <= a < len(q["options"]) else "무응답"
+            else:
+                row["correct_text"] = " / ".join(q["answers"])
+                row["answer_text"] = row["answer"] or "무응답"
+        rows.append(row)
+    score = sum(exam.results) if exam.submitted_at else None
+    return render(request, "mypage/mock_exam.html", {"exam": exam, "rows": rows, "score": score, "total": len(exam.questions)})

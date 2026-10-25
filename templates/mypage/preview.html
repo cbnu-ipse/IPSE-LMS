@@ -56,6 +56,7 @@
     <div class="ms-head">
         <a href="{% if document.folder %}{% url 'mypage:document_list' folder_id=document.folder.pk %}{% else %}{% url 'mypage:document_list' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600 shrink-0">&larr; 내 자료</a>
         <h1>{{ document.title }}</h1>
+        <a href="{% url 'mypage:document_edit' document.pk %}" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700 shrink-0" title="자료 정보 수정"><i class="fa-solid fa-sliders mr-1"></i>{{ document.get_document_type_display }}{% if document.course_name %} · {{ document.course_name }}{% endif %}{% if document.professor %} · {{ document.professor }}{% endif %}</a>
         <button type="button" id="ms-toggle" class="ms-toggle" aria-expanded="true"><i class="fa-regular fa-file-pdf mr-1"></i><span>원문 닫기</span></button>
     </div>
 
@@ -113,7 +114,7 @@
                         </form>
                         {% endif %}
                     {% else %}
-                        <p class="text-sm text-slate-500 font-medium">요약을 생성하지 못했습니다.</p>
+                        <p class="text-sm text-slate-500 font-medium">{% if document.summary_status == 'pending' %}크레딧이 부족해 요약을 아직 시작하지 않았습니다. 충전한 뒤 시작해주세요.{% else %}요약을 생성하지 못했습니다.{% endif %}</p>
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
                             {% csrf_token %}

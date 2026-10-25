@@ -148,11 +148,13 @@ class SummaryMarkdownRenderTests(TestCase):
 
 
 class UploadFormTests(TestCase):
-    def test_upload_form_does_not_ask_subject_or_type(self):
+    def test_upload_form_asks_type_course_and_professor_but_not_subject_code(self):
         user = User.objects.create_user(username="upload_form", password="pw")
         self.client.force_login(user)
         html = self.client.get(reverse("mypage:document_list")).content.decode()
-        for name in ("subject_code", "custom_subject_code", "document_type"):
+        for name in ("document_type", "course_name", "professor"):
+            self.assertIn(f'name="{name}"', html)
+        for name in ("subject_code", "custom_subject_code"):
             self.assertNotIn(f'name="{name}"', html)
 
 

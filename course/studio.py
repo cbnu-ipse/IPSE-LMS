@@ -60,7 +60,8 @@ def eligible_docs(subject_code):
     from mypage.models import PersonalDocument, ProcessingStatus
 
     rows = (PersonalDocument.objects
-            .filter(topics__name=subject_code, summary_status=ProcessingStatus.DONE, is_course_material=True)
+            .filter(topics__name=subject_code, summary_status=ProcessingStatus.DONE, is_course_material=True,
+                    document_type=PersonalDocument.DocumentType.LECTURE)    # 족보는 강의 본문이 아니라 출제 스타일에 쓴다
             .exclude(summary="").order_by("id").values("id", "title", "summary"))
     return list(rows)
 
@@ -105,7 +106,12 @@ def build_draft(subject_code, force=False):
     docs = eligible_docs(subject_code)
     if not docs:
         return None
-    source_hash = _sha("draft", course_ai.FORMAT_VERSION, _doc_fingerprint(docs))
+    from mypage.exam import style_for_topic
+
+    style = style_for_topic(subject_code)       # 교수님 족보에서 배운 출제 스타일 (없으면 None)
+    style_parts = [style.source_hash] if style else []     # 스타일이 바뀌면 초안·챕터도 새로 만든다 (없을 때는 해시가 그대로)
+    style_text = style.guidelines if style else ""
+    source_hash = _sha("draft", course_ai.FORMAT_VERSION, _doc_fingerprint(docs), *style_parts)
     if force:  # 같은 입력의 완료된 초안은 입력 해시를 비워 새로 만들 수 있게 한다 (만드는 중인 것은 그대로 둔다)
         CourseDraft.objects.filter(subject_code=subject_code, source_hash=source_hash).exclude(
             status=CourseDraft.Status.GENERATING).update(source_hash="")
@@ -127,9 +133,11 @@ def build_draft(subject_code, force=False):
         chapters = []
         for chapter in outline["chapters"]:
             chapter_docs = [by_id[i] for i in chapter["doc_ids"] if i in by_id]
-            digest = _sha("chapter", course_ai.FORMAT_VERSION, chapter["title"], _doc_fingerprint(chapter_docs))
+            digest = _sha("chapter", course_ai.FORMAT_VERSION, chapter["title"], _doc_fingerprint(chapter_docs),
+                          *style_parts)
             reused = digest in reuse
-            sets = reuse[digest] if reused else course_ai.generate_chapter(subject_code, chapter, chapter_docs)
+            extra = {"style": style_text} if style_text else {}
+            sets = reuse[digest] if reused else course_ai.generate_chapter(subject_code, chapter, chapter_docs, **extra)
             if sets:
                 chapters.append({**chapter, "source_hash": digest, "reused": reused, "sets": sets})
         if not chapters:
@@ -162,7 +170,8 @@ def topic_overview():
     from mypage.models import PersonalDocument, ProcessingStatus
 
     rows = {r["topics__name"]: r for r in
-            PersonalDocument.objects.filter(is_deleted=False, is_course_material=True, topics__isnull=False)
+            PersonalDocument.objects.filter(is_deleted=False, is_course_material=True, topics__isnull=False,
+                                            document_type=PersonalDocument.DocumentType.LECTURE)
             .values("topics__name").annotate(doc_count=Count("id"), last_upload=Max("uploaded_at"))}
     drafts = {}
     for d in CourseDraft.objects.exclude(status=CourseDraft.Status.SUPERSEDED).order_by("created_at"):

@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}모의 출제 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto px-4 py-10">
+    <h1 class="text-2xl font-bold text-slate-800">{{ exam.title }}</h1>
+    <p class="text-xs text-slate-400 mt-1 mb-6">
+        {% if exam.style_label %}<i class="fa-solid fa-wand-magic-sparkles text-sky-500 mr-1"></i>{{ exam.style_label }} 출제 스타일 ·{% endif %}
+        {{ rows|length }}문항{% if score is not None %} · <b class="text-slate-700">{{ score }} / {{ total }}점</b>{% endif %}
+    </p>
+
+    <form method="post" class="space-y-4">
+        {% csrf_token %}
+        {% for row in rows %}
+        <div class="bg-white rounded-2xl border {% if score is not None %}{% if row.correct %}border-emerald-200{% else %}border-rose-200{% endif %}{% else %}border-slate-200{% endif %} p-5 shadow-sm">
+            <p class="text-sm font-bold text-slate-800 mb-3">{{ forloop.counter }}. {{ row.q.q }}</p>
+            {% if score is None %}
+                {% if row.q.type == 'ox' %}
+                <div class="flex gap-4 text-sm">
+                    <label class="flex items-center gap-1.5"><input type="radio" name="a_{{ row.index }}" value="O"> O</label>
+                    <label class="flex items-center gap-1.5"><input type="radio" name="a_{{ row.index }}" value="X"> X</label>
+                </div>
+                {% elif row.q.type == 'mc' %}
+                <div class="space-y-1.5 text-sm">
+                    {% for option in row.q.options %}
+                    <label class="flex items-start gap-2"><input type="radio" name="a_{{ row.index }}" value="{{ forloop.counter0 }}" class="mt-1"> <span>{{ forloop.counter }}. {{ option }}</span></label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <input type="text" name="a_{{ row.index }}" autocomplete="off" placeholder="답을 입력하세요" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
+                {% endif %}
+            {% else %}
+                {% if row.q.type == 'mc' %}
+                <ul class="text-sm text-slate-600 mb-3 space-y-0.5">{% for option in row.q.options %}<li>{{ forloop.counter }}. {{ option }}</li>{% endfor %}</ul>
+                {% endif %}
+                <p class="text-sm {% if row.correct %}text-emerald-700{% else %}text-rose-600{% endif %} font-bold">
+                    {% if row.correct %}정답{% else %}오답{% endif %} · 내 답: {{ row.answer_text }}
+                </p>
+                {% if not row.correct %}<p class="text-sm text-slate-700">정답: <b>{{ row.correct_text }}</b></p>{% endif %}
+                {% if row.q.explanation %}<p class="text-xs text-slate-500 mt-2">{{ row.q.explanation }}</p>{% endif %}
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% if score is None %}
+        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-3 rounded-xl transition">제출하고 채점하기</button>
+        {% endif %}
+    </form>
+    <a href="{% url 'mypage:learning' %}" class="inline-block mt-6 text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 학습으로 돌아가기</a>
+</section>
+{% endblock %}

@@ -77,13 +77,15 @@ def generate_outline(subject, docs, previous=None):
     return normalize_outline(data, {d["id"] for d in docs})
 
 
-def generate_chapter(subject, chapter, docs):
+def generate_chapter(subject, chapter, docs, style=""):
     """한 챕터의 학습 세트들을 만든다. docs: 이 챕터의 근거 자료 [{"id", "title", "summary"}]."""
     material = "\n\n".join(f"## {d['title']}\n{d['summary']}" for d in docs)[:CHAPTER_INPUT_CHARS]
+    style_note = (f"\n확인 문제 출제 스타일 (교수님 족보에서 배운 것 — 확인 문제의 문장·유형·난이도를 이에 맞추세요):\n{style}\n"
+                  if style else "")
     data = core_ai.complete_json("course_chapter", [
         {"role": "system", "content": CHAPTER_SYSTEM},
         {"role": "user", "content": f"과목: {subject}\n챕터: {chapter['title']}\n챕터 개요: {chapter.get('summary', '')}\n"
-                                    + core_ai.untrusted("자료", material)},
+                                    + style_note + core_ai.untrusted("자료", material)},
     ])
     return shuffle_choices(normalize_sets(data.get("sets")))
 

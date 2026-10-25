@@ -183,7 +183,7 @@ def _extract_image(raw, name, user=None):
             {"type": "text", "text": "이 이미지에 있는 글자와 핵심 내용을 마크다운으로 그대로 옮겨 적어라. 설명은 붙이지 마라."},
             {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{b64}"}},
         ],
-    }], user=user, counts_as_request=False)
+    }], user=user, cost=core_ai.ocr_cost(len(raw)))      # 이미지는 크기로 크레딧을 받는다
 
 
 SUMMARY_INSTRUCTIONS = (
@@ -205,6 +205,23 @@ SUMMARY_INSTRUCTIONS = (
     "- 자료에 있는 정의·예시·수치는 빠뜨리지 말되 같은 말을 되풀이하지 않습니다.\n"
     "- 자료에 없는 내용은 덧붙이지 않습니다. 요약문만 출력합니다."
 )
+
+
+# 족보(기출·모의고사)는 내용을 외우는 용도가 아니라 '무엇이 어떤 모양으로 나오는지' 보는 자료다
+EXAM_SUMMARY_INSTRUCTIONS = (
+    "학생이 올린 족보(기출문제·모의고사)를 요약합니다. 마크다운으로 구조화하세요.\n"
+    "- `## 출제 범위`: 어떤 단원·개념이 몇 문항쯤 나왔는지 짧은 목록으로.\n"
+    "- `## 문제 유형`: OX·객관식·단답·서술·계산·코드 등 어떤 유형이 어떤 비중으로 나왔는지, 문제 문장의 특징(예: 보기를 고르는 방식, 길이, 난이도).\n"
+    "- `## 자주 나오는 포인트`: 반복해서 묻는 개념이나 함정.\n"
+    "문제와 정답을 그대로 옮기지 말고 위 세 가지를 짧게 정리하며, 자료에 없는 내용은 덧붙이지 않습니다. 요약문만 출력합니다."
+)
+
+
+def summary_chunk_count(text):
+    """이 본문을 요약하면 몇 조각이 되는지 (AI를 부르지 않고 글자 수로 센다). 크레딧 사전 확인에 쓴다."""
+    if not text.strip():
+        return 0
+    return min(len(split_for_summary(text)), SUMMARY_MAX_CHUNKS)
 
 
 def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
@@ -234,7 +251,7 @@ def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
     return chunks
 
 
-def generate_summary(extracted_text, user=None):
+def generate_summary(extracted_text, user=None, kind="lecture"):
     """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열.
     긴 자료는 조각으로 나눠 조각마다 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다).
     크레딧은 조각마다 받는다 (모자라면 낼 수 있는 조각까지만 요약)."""
@@ -251,15 +268,15 @@ def generate_summary(extracted_text, user=None):
     parts = []
     for i, chunk in enumerate(chunks):
         try:
-            parts.append(_summarize_chunk(chunk, i, len(chunks), user))
+            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind))
         except Exception:
             core_ai.refund(user, "summary", core_ai.cost_for("summary") * i)   # 앞 조각에 낸 크레딧도 돌려준다
             raise
     return "\n\n".join(p for p in parts if p.strip())
 
 
-def _summarize_chunk(chunk, i, total, user):
-    system = SUMMARY_INSTRUCTIONS
+def _summarize_chunk(chunk, i, total, user, kind="lecture"):
+    system = EXAM_SUMMARY_INSTRUCTIONS if kind == "exam" else SUMMARY_INSTRUCTIONS
     if total > 1:
         system += (f"\n\n이 자료는 길어서 {total}조각으로 나눈 {i + 1}번째 조각입니다. 이 조각에 있는 내용만 빠짐없이 요약하고, "
                    "전체 요약인 것처럼 서두나 맺음말을 쓰지 마세요.")
@@ -272,7 +289,7 @@ def _summarize_chunk(chunk, i, total, user):
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}
 
 
-def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0, rng=None):
+def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0, rng=None, style=""):
     """문서 본문을 근거로 지정된 유형(ox/short/essay)의 문제를 1개 만든다.
     반환: {"question", "answer", "explanation"} — explanation은 OX 해설(틀렸을 때 보여줌, 다시 부르지 않음).
     문서 본문을 시스템 메시지에 고정해 같은 문서로 여러 문제를 만들 때 프롬프트 캐시가 적용되게 한다."""
@@ -282,8 +299,9 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         "- OX 문제의 answer는 O 또는 X, explanation은 정답 근거를 한두 문장으로.\n"
         "- 단답형은 하나의 답(단어나 짧은 구)만 묻습니다. '~를 여섯 개 쓰시오'처럼 여러 개를 나열하게 하는 문제는 만들지 마세요. "
         "같은 답을 가리키는 다른 표현만 ' | '로 구분해 answer에 씁니다 (예: 'JOIN | 조인'). 서술형은 모범답안.\n"
-        "- 문제 문장에 'OX로 답하시오', '단답으로 쓰시오' 같은 답변 방식 안내는 붙이지 마세요 (화면에 입력 방법이 있습니다).\n\n"
-        + core_ai.untrusted("자료", question_window(extracted_text, index))
+        "- 문제 문장에 'OX로 답하시오', '단답으로 쓰시오' 같은 답변 방식 안내는 붙이지 마세요 (화면에 입력 방법이 있습니다).\n"
+        + (f"- 교수님 족보에서 배운 출제 스타일이 있습니다. 문제 문장·난이도·묻는 방식을 이에 맞추되, 족보의 문제를 그대로 베끼지 마세요:\n{style}\n" if style else "")
+        + "\n" + core_ai.untrusted("자료", question_window(extracted_text, index))
     )
     request = f"{QUESTION_TYPE_LABELS[question_type]} 문제 1개를 만들어주세요."
     if existing_questions:
