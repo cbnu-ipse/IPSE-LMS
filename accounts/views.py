@@ -14,6 +14,7 @@ from django.contrib.auth.views import PasswordResetView
 from django.contrib.admin.views.decorators import staff_member_required
 from django.urls import reverse, reverse_lazy
 from django.core.mail import BadHeaderError
+from . import credits
 from .models import Student, User, LMSToken, LeafCode, LeafCodeUsage
 from core.models import Schedule
 from .forms import (
@@ -147,18 +148,22 @@ def redeem_code_api(request):
                 
             # 3. 사용 이력 등록 및 낙엽 지급
             LeafCodeUsage.objects.create(user=request.user, leaf_code=leaf_code)
-            request.user.adjust_leaves(
-                amount=leaf_code.amount,
-                transaction_type="code_redemption",
-                description=f"보상 코드 등록: {leaf_code.code}"
-            )
+            if leaf_code.reward_type == LeafCode.RewardType.CREDIT:
+                credits.grant(request.user, leaf_code.amount, "code_redemption", f"보상 코드 등록: {leaf_code.code}")
+            else:
+                request.user.adjust_leaves(
+                    amount=leaf_code.amount,
+                    transaction_type="code_redemption",
+                    description=f"보상 코드 등록: {leaf_code.code}"
+                )
             
-        # 갱신된 사용자의 보유 낙엽량 반환
+        # 갱신된 사용자의 보유 재화량 반환
         request.user.refresh_from_db()
         return JsonResponse({
             "status": "success", 
-            "message": f"성공적으로 {leaf_code.amount}개의 낙엽이 지급되었습니다.",
-            "leaves": request.user.leaves
+            "message": f"성공적으로 {leaf_code.amount}개의 {leaf_code.get_reward_type_display()}이(가) 지급되었습니다.",
+            "leaves": request.user.leaves,
+            "credits": request.user.credits,
         })
         
     except Exception as e:

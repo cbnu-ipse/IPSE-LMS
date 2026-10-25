@@ -103,8 +103,8 @@
                         <div id="document-summary-tabs" class="shrink-0 flex gap-1 mb-4"></div>
                         <div id="document-summary-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
                         <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
-                        {% if chunk_allowance %}
-                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">오늘 요약 분량 {{ chunk_allowance.used }}/{{ chunk_allowance.limit }}조각 사용 (1조각 = 최대 {{ chunk_allowance.chars }}자)</p>
+                        {% if credit_info %}
+                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">보유 크레딧 {{ credit_info.balance }} · 요약 1조각(최대 {{ credit_info.chars }}자)당 {{ credit_info.cost }}크레딧</p>
                         {% endif %}
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="shrink-0 mt-3 text-center" onsubmit="return confirm('자료 전체를 다시 요약합니다. 기존 요약은 새 요약으로 바뀝니다.');">

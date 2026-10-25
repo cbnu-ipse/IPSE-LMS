@@ -3,8 +3,8 @@ AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 AI를 직�
 
 - 작업(task)마다 공급자(OpenAI·Gemini·Claude)와 모델을 따로 고른다 (settings.AI_TASK_PROVIDERS·AI_MODELS,
   환경변수 AI_PROVIDER_<작업>·AI_MODEL_<작업>). 지정한 공급자의 키가 없으면 OpenAI로 대신 부른다.
-- 사용자별 하루 사용량 제한 (settings.AI_DAILY_LIMITS / AI_DAILY_TOKEN_LIMIT). 강의자·운영진·관리자와
-  시스템 작업(user=None)은 제한하지 않는다.
+- 사용은 크레딧으로 낸다 (settings.AI_CREDIT_COSTS, User.credits). 호출 전에 차감하고 호출이 실패하면 돌려준다.
+  강의자·운영진·관리자와 시스템 작업(user=None)은 크레딧 없이 쓴다.
 - 호출마다 토큰 사용량을 AIUsage에 남긴다.
 - 출력 길이 상한(max_completion_tokens)을 작업마다 둔다.
 
@@ -41,7 +41,7 @@ MAX_OUTPUT_TOKENS = {
 
 
 class AIQuotaExceeded(Exception):
-    """오늘 사용량 한도를 넘었다. 메시지는 사용자에게 그대로 보여줘도 된다."""
+    """크레딧이 부족하다. 메시지는 사용자에게 그대로 보여줘도 된다."""
 
 
 class AIUnavailable(Exception):
@@ -134,28 +134,70 @@ def usage_today(user):
     return counts, (totals["p"] or 0) + (totals["c"] or 0)
 
 
-def check_quota(user, task):
-    """오늘 한도를 넘었으면 AIQuotaExceeded. 백그라운드 작업은 시작하기 전에 뷰에서 먼저 확인한다."""
-    if _is_exempt(user):
+def cost_for(task):
+    return settings.AI_CREDIT_COSTS.get(task, 0)
+
+
+def _balance(user):
+    from accounts.models import User
+
+    return User.objects.values_list("credits", flat=True).get(pk=user.pk)
+
+
+def _short_message(cost, have):
+    return (f"크레딧이 부족합니다 (필요 {cost}, 보유 {have}). "
+            "프로필에서 보상 코드를 등록하면 크레딧을 얻을 수 있습니다.")
+
+
+def check_quota(user, task, units=1):
+    """크레딧이 모자라면 AIQuotaExceeded. 백그라운드 작업은 시작하기 전에 뷰에서 먼저 확인한다 (차감은 호출할 때)."""
+    cost = cost_for(task) * units
+    if _is_exempt(user) or not cost:
         return
-    counts, tokens = usage_today(user)
-    limit = settings.AI_DAILY_LIMITS.get(task)
-    if limit is not None and counts.get(task, 0) >= limit:
-        raise AIQuotaExceeded(f"오늘 사용할 수 있는 횟수({limit}회)를 모두 썼습니다. 내일 다시 이용해주세요.")
-    if settings.AI_DAILY_TOKEN_LIMIT and tokens >= settings.AI_DAILY_TOKEN_LIMIT:
-        raise AIQuotaExceeded("오늘 AI 사용량 한도를 모두 썼습니다. 내일 다시 이용해주세요.")
+    have = _balance(user)
+    if have < cost:
+        raise AIQuotaExceeded(_short_message(cost, have))
 
 
-def summary_chunk_allowance(user):
-    """오늘 요약 조각 한도 (limit, used, remaining). 한도가 없는 사용자(강의자·운영진)는 None.
-    조각 수는 오늘 요약 호출 횟수와 같다 (자료 하나가 조각 여러 개를 쓴다)."""
-    from .models import AIUsage
-
-    limit = settings.AI_LIMIT_SUMMARY_CHUNKS
-    if _is_exempt(user) or not limit:
+def affordable_units(user, task):
+    """남은 크레딧으로 이 작업을 몇 번 더 할 수 있는지. 제한이 없으면 None."""
+    cost = cost_for(task)
+    if _is_exempt(user) or not cost:
         return None
-    used = AIUsage.objects.filter(user=user, task="summary", created_at__gte=_kst_day_start()).count()
-    return limit, used, max(0, limit - used)
+    return _balance(user) // cost
+
+
+def credit_info(user, task="summary"):
+    """화면에 보일 크레딧 정보 {balance, cost}. 크레딧 없이 쓰는 사용자는 None."""
+    if _is_exempt(user) or not cost_for(task):
+        return None
+    return {"balance": _balance(user), "cost": cost_for(task)}
+
+
+def _charge(user, task):
+    """호출 전에 크레딧을 차감하고 낸 양을 돌려준다 (0이면 낸 게 없음)."""
+    cost = cost_for(task)
+    if _is_exempt(user) or not cost:
+        return 0
+    from accounts.credits import InsufficientCredits, spend
+
+    try:
+        spend(user, cost, "ai_usage", f"AI {task}")
+    except InsufficientCredits:
+        raise AIQuotaExceeded(_short_message(cost, _balance(user)))
+    return cost
+
+
+def refund(user, task, cost):
+    """호출이 실패했을 때 낸 크레딧을 돌려준다."""
+    if not cost or _is_exempt(user):
+        return
+    from accounts.credits import grant
+
+    try:
+        grant(user, cost, "ai_refund", f"AI {task} 실패 환불")
+    except Exception:
+        logger.exception("AI credit refund failed: task=%s", task)
 
 
 def _record(user, task, model, response, counts_as_request):
@@ -179,9 +221,8 @@ def _record(user, task, model, response, counts_as_request):
 def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_mode=False,
          max_tokens=None, **kwargs):
     """chat.completions 호출 한 번. OpenAI 응답 객체를 그대로 돌려준다 (도구 호출이 필요한 챗봇용).
-    check=False는 이미 같은 요청 안에서 한도를 확인했을 때(도구 호출 반복 등) 쓴다."""
-    if check and counts_as_request:
-        check_quota(user, task)
+    counts_as_request=False는 크레딧을 받지 않는 호출 (같은 요청 안의 도구 호출 반복, 분류 같은 내부 작업).
+    크레딧은 호출 전에 차감하고, 호출이 실패하면 돌려준다 (check는 예전 호출부와의 호환용으로만 남겼다)."""
     provider, model = route(task)
     limit = max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000)
     # OpenAI의 새 모델은 max_completion_tokens, 호환 주소(Gemini·Claude)는 max_tokens를 쓴다
@@ -191,12 +232,17 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
         params["response_format"] = {"type": "json_object"}
     started = time.monotonic()
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
-    if native == "vertex":
-        response = _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
-    elif provider == "openai":
-        response = _client().chat.completions.create(**params)
-    else:
-        response = _client(provider).chat.completions.create(**params)
+    charged = _charge(user, task) if counts_as_request else 0
+    try:
+        if native == "vertex":
+            response = _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
+        elif provider == "openai":
+            response = _client().chat.completions.create(**params)
+        else:
+            response = _client(provider).chat.completions.create(**params)
+    except Exception:
+        refund(user, task, charged)
+        raise
     if _OVERRIDES.get(task):
         _EVAL_USAGE.append({"task": task, "model": model, "latency": time.monotonic() - started,
                             "prompt": getattr(getattr(response, "usage", None), "prompt_tokens", 0) or 0,

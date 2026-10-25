@@ -305,16 +305,17 @@ def _env_or_default(name, default):
 
 AI_TASK_PROVIDERS = {t: _env_or_default(f"AI_PROVIDER_{t.upper()}", d[0]) for t, d in _AI_TASK_DEFAULTS.items()}
 AI_MODELS = {t: _env_or_default(f"AI_MODEL_{t.upper()}", d[1]) for t, d in _AI_TASK_DEFAULTS.items()}
-# 하루(KST) 사용자당 요청 수 상한 — 강의자·운영진·관리자는 제한 없음. 0이면 그 작업은 막는다
-AI_DAILY_LIMITS = {
-    "chat": config("AI_LIMIT_CHAT", default=20, cast=int),
-    "summary": config("AI_LIMIT_SUMMARY", default=5, cast=int),
-    "question": config("AI_LIMIT_QUESTION", default=10, cast=int),
-    "grading": config("AI_LIMIT_GRADING", default=10, cast=int),
+# AI를 한 번 쓸 때 드는 크레딧(User.credits, accounts/credits.py). 강의자·운영진·관리자는 크레딧 없이 쓴다.
+# 요약은 조각(AI_LIMIT_SUMMARY_CHUNK_CHARS 글자)마다 받는다. 0이면 무료. 환경변수 AI_COST_<작업>으로 바꾼다
+AI_CREDIT_COSTS = {
+    "chat": config("AI_COST_CHAT", default=1, cast=int),
+    "summary": config("AI_COST_SUMMARY", default=3, cast=int),
+    "question": config("AI_COST_QUESTION", default=2, cast=int),
+    "grading": config("AI_COST_GRADING", default=1, cast=int),
 }
-AI_LIMIT_SUMMARY_CHUNKS = config("AI_LIMIT_SUMMARY_CHUNKS", default=15, cast=int)  # 하루 사용자당 요약 조각 수 (요약 5회 × 평균 3조각)
+if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
+    AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}
 AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=12000, cast=int)  # 요약 1조각의 최대 글자 수
-AI_DAILY_TOKEN_LIMIT = config("AI_DAILY_TOKEN_LIMIT", default=80000, cast=int)  # 하루 사용자당 토큰 합계 상한
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
 SERVER_EMAIL = EMAIL_FROM_ADDRESS

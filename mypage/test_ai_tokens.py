@@ -62,7 +62,7 @@ class ExtractionTestCase(TestCase):
         llm.assert_not_called()
 
 
-@override_settings(AI_DAILY_LIMITS={"summary": 1, "question": 1, "grading": 5})
+@override_settings(AI_CREDIT_COSTS={"summary": 3, "question": 2, "grading": 1})
 class TokenSavingTestCase(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="u1", password="pw")
@@ -75,6 +75,8 @@ class TokenSavingTestCase(TestCase):
         return res, thread
 
     def test_same_file_reuses_summary_without_ai(self):
+        from accounts import credits
+        credits.grant(self.user, 3, "test")
         res, thread = self.upload()
         doc = PersonalDocument.objects.get()
         self.assertEqual(len(doc.content_hash), 64)
@@ -88,8 +90,7 @@ class TokenSavingTestCase(TestCase):
         self.assertNotEqual(thread.call_args.kwargs.get("target").__name__, "_generate_summary_bg")
 
     def test_upload_blocked_when_summary_quota_used(self):
-        AIUsage.objects.create(user=self.user, task="summary", model="m")
-        res, thread = self.upload(b"another file content " * 10)
+        res, thread = self.upload(b"another file content " * 10)       # 크레딧 0
         thread.assert_not_called()
         self.assertFalse(PersonalDocument.objects.exists())
 
@@ -109,8 +110,7 @@ class TokenSavingTestCase(TestCase):
 
     def test_question_generation_blocked_by_quota(self):
         doc = PersonalDocument.objects.create(user=self.user, title="d", file="d.txt", extracted_text="본문")
-        AIUsage.objects.create(user=self.user, task="question", model="m")
-        with patch("mypage.views.threading.Thread") as thread:
+        with patch("mypage.views.threading.Thread") as thread:                 # 크레딧 0
             self.client.post(f"/mypage/{doc.pk}/generate/", {"question_type": "ox"})
         thread.assert_not_called()
         self.assertFalse(GeneratedQuestion.objects.exists())
