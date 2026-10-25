@@ -475,3 +475,69 @@ class OxAnswerBalanceTests(TestCase):
             generate_one_question("본문", "short")
             self.assertEqual(len(calls), 1)
             self.assertNotIn("정답은 O", calls[0])
+
+
+class WholeDocumentSummaryTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="longdoc", password="pw")
+        self.client.force_login(self.user)
+
+    def long_text(self, pages=60):
+        return "\n\n".join(f"## 슬라이드 {i}\n" + (f"내용 {i} " * 120) for i in range(1, pages + 1))
+
+    def test_split_keeps_every_character_of_content_and_respects_size(self):
+        from .ai import SUMMARY_CHUNK_CHARS, split_for_summary
+        text = self.long_text()
+        chunks = split_for_summary(text)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(c) <= SUMMARY_CHUNK_CHARS * 1.2 for c in chunks))     # 짧은 꼬리를 합쳐도 약간만 넘는다
+        joined = "\n\n".join(chunks)
+        for i in (1, 30, 60):                                         # 앞·중간·끝 슬라이드가 모두 들어 있다
+            self.assertIn(f"## 슬라이드 {i}\n", joined)
+        giant_paragraph = "가" * (SUMMARY_CHUNK_CHARS * 2 + 50)        # 문단 하나가 아주 길어도 버리지 않는다
+        self.assertEqual("".join(split_for_summary(giant_paragraph)).replace("\n", ""), giant_paragraph)
+
+    def test_every_part_of_a_long_document_reaches_the_model_and_counts_as_one_request(self):
+        from .ai import generate_summary
+        calls = []
+
+        def fake_complete(task, messages, **kwargs):
+            calls.append((messages, kwargs))
+            return f"## 요약 {len(calls)}\n- 내용"
+
+        with patch("core.ai.complete", side_effect=fake_complete):
+            summary = generate_summary(self.long_text(), user=self.user)
+        sent = "\n".join(m[1]["content"] for m, _ in calls)
+        self.assertIn("슬라이드 60", sent)                             # 마지막 슬라이드까지 전달
+        self.assertEqual(summary.count("## 요약"), len(calls))        # 조각 요약을 이어 붙인다
+        self.assertNotIn("counts_as_request", calls[0][1])             # 첫 조각만 요청 1회로 센다
+        self.assertTrue(all(k.get("counts_as_request") is False and k.get("check") is False for _, k in calls[1:]))
+        self.assertIn("1번째 조각", calls[0][0][0]["content"])
+
+    def test_tiny_tail_is_merged_into_previous_chunk(self):
+        from .ai import SUMMARY_CHUNK_CHARS, split_for_summary
+        text = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "꼬리" * 100          # 꽉 찬 조각 + 200자짜리 꼬리
+        chunks = split_for_summary(text)
+        self.assertEqual(len(chunks), 1)
+        self.assertTrue(chunks[0].endswith("꼬리"))
+        big_tail = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "나" * 5000       # 꼬리가 충분히 길면 따로 둔다
+        self.assertEqual(len(split_for_summary(big_tail)), 2)
+
+    def test_short_document_is_still_one_plain_call(self):
+        from .ai import SUMMARY_INSTRUCTIONS, generate_summary
+        with patch("core.ai.complete", return_value="요약") as complete:
+            self.assertEqual(generate_summary("짧은 본문입니다.", user=self.user), "요약")
+        self.assertEqual(complete.call_count, 1)
+        self.assertEqual(complete.call_args.args[1][0]["content"], SUMMARY_INSTRUCTIONS)   # 조각 안내 없음
+
+    def test_long_documents_with_a_summary_can_be_regenerated_but_short_ones_cannot(self):
+        long_doc = PersonalDocument.objects.create(user=self.user, title="long", file="l.txt", summary="## 옛 요약",
+                                                   summary_status=ProcessingStatus.DONE, extracted_text="가" * 13000)
+        short_doc = PersonalDocument.objects.create(user=self.user, title="short", file="s.txt", summary="요약",
+                                                    summary_status=ProcessingStatus.DONE, extracted_text="짧음")
+        self.assertContains(self.client.get(f"/mypage/{long_doc.pk}/"), "자료 전체로 요약 다시 만들기")
+        self.assertNotContains(self.client.get(f"/mypage/{short_doc.pk}/"), "자료 전체로 요약 다시 만들기")
+        with patch("mypage.views.threading.Thread") as thread:
+            self.client.post(f"/mypage/{long_doc.pk}/resummarize/")
+            self.client.post(f"/mypage/{short_doc.pk}/resummarize/")
+        self.assertEqual(thread.call_count, 1)                         # 긴 자료만 다시 시작
