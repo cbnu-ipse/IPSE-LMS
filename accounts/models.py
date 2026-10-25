@@ -398,6 +398,7 @@ class Notification(models.Model):
         ('game_invite', '게임 초대'),
         ('graduation_request', '졸업생 전환 신청'),
         ('graduation_result', '졸업생 전환 결과'),
+        ('currency_grant', '재화 지급'),
     ]
 
     recipient = models.ForeignKey(
@@ -626,3 +627,30 @@ def get_max_attendance_streak(user):
         prev_date = d
     return max_streak
 
+
+class CurrencyGrant(models.Model):
+    """운영진이 홈페이지에서 회원에게 재화(낙엽·크레딧)를 지급한 기록. 지급받은 사람이 접속하면 한 번 안내 창으로 보여 준다
+    (seen_at). 지급 권한은 Django 권한 accounts.grant_currency(관리자 화면에서 부여) 또는 관리자 계정이다."""
+    class Currency(models.TextChoices):
+        LEAF = "leaf", "낙엽"
+        CREDIT = "credit", "크레딧"
+
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="currency_grants_received",
+                                  verbose_name="받은 사람")
+    granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                   related_name="currency_grants_given", verbose_name="지급한 사람")
+    currency = models.CharField(max_length=10, choices=Currency.choices, verbose_name="재화")
+    amount = models.PositiveIntegerField(verbose_name="수량")
+    reason = models.CharField(max_length=100, blank=True, verbose_name="사유")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="지급 일시")
+    seen_at = models.DateTimeField(null=True, blank=True, verbose_name="받은 사람이 확인한 시각")
+
+    class Meta:
+        ordering = ["-id"]
+        permissions = [("grant_currency", "재화(낙엽·크레딧)를 지급할 수 있음")]
+        indexes = [models.Index(fields=["recipient", "seen_at"], name="grant_recipient_seen")]
+        verbose_name = "재화 지급"
+        verbose_name_plural = "재화 지급 내역"
+
+    def __str__(self):
+        return f"{self.granted_by} → {self.recipient}: {self.get_currency_display()} {self.amount}"
