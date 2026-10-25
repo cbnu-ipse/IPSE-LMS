@@ -3,7 +3,9 @@
 
 - 낙엽·사탕과 별개의 재화다. 잔액은 User.credits, 모든 변동은 CreditTransaction 원장에 남는다.
 - 잔액 변경과 원장 기록은 한 트랜잭션에서 유저 행을 잠근 채 처리해, 동시에 써도 잔액이 어긋나지 않는다.
-- 획득 경로(문제 풀이 보상 등)는 아직 없다. 경로가 생기면 그쪽에서 grant()를, 사용처에서 spend()를 부르면 된다.
+- 획득: 보상 코드(LeafCode, reward_type="credit") 등록 시 grant(). 다른 획득 경로(문제 풀이 보상, 출석 등)가 생기면
+  그쪽에서 transaction_type만 달리해 grant()를 부르면 된다.
+- 사용: AI 호출(core/ai.py)이 spend()로 낸다 (transaction_type="ai_usage", 실패 시 "ai_refund"로 환불).
 """
 from django.db import transaction
 

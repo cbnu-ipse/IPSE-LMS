@@ -121,8 +121,8 @@ class LeafTransactionAdmin(DeletedWithUserOnlyMixin, admin.ModelAdmin):
 
 @admin.register(LeafCode)
 class LeafCodeAdmin(admin.ModelAdmin):
-    list_display = ('code', 'amount', 'is_active', 'created_at')
-    list_filter = ('is_active', 'created_at')
+    list_display = ('code', 'reward_type', 'amount', 'is_active', 'created_at')
+    list_filter = ('reward_type', 'is_active', 'created_at')
     search_fields = ('code',)
 
 

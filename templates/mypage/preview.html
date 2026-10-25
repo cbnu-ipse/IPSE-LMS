@@ -96,20 +96,20 @@
                         <p class="text-sm text-slate-500 font-medium">요약 생성이 오래 걸리고 있습니다.</p>
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
                             {% csrf_token %}
-                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기</button>
+                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
                         </form>
                     {% elif document.summary %}
                         <textarea id="document-summary-raw" style="display:none;">{{ document.summary }}</textarea>
                         <div id="document-summary-tabs" class="shrink-0 flex gap-1 mb-4"></div>
                         <div id="document-summary-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
                         <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
-                        {% if chunk_allowance %}
-                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">오늘 요약 분량 {{ chunk_allowance.used }}/{{ chunk_allowance.limit }}조각 사용 (1조각 = 최대 {{ chunk_allowance.chars }}자)</p>
+                        {% if credit_info %}
+                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">보유 크레딧 {{ credit_info.balance }} · 요약 1조각(최대 {{ credit_info.chars }}자)당 {{ credit_info.cost }}크레딧</p>
                         {% endif %}
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="shrink-0 mt-3 text-center" onsubmit="return confirm('자료 전체를 다시 요약합니다. 기존 요약은 새 요약으로 바뀝니다.');">
                             {% csrf_token %}
-                            <button type="submit" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700"><i class="fa-solid fa-rotate-right mr-1"></i>자료 전체로 요약 다시 만들기</button>
+                            <button type="submit" class="text-[11px] font-bold text-slate-400 hover:text-emerald-700"><i class="fa-solid fa-rotate-right mr-1"></i>자료 전체로 요약 다시 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
                         </form>
                         {% endif %}
                     {% else %}
@@ -117,7 +117,7 @@
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
                             {% csrf_token %}
-                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기</button>
+                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fa-solid fa-rotate-right mr-1.5"></i>요약 다시 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
                         </form>
                         {% endif %}
                     {% endif %}
@@ -152,13 +152,13 @@
                                         <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
                                             <textarea name="user_answer" required rows="8" placeholder="답을 자유롭게 서술하세요 (Ctrl/⌘ + Enter로 제출)" class="ms-essay w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"></textarea>
-                                            <div class="flex justify-end mt-2"><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2 rounded-lg transition">제출</button></div>
+                                            <div class="flex justify-end mt-2"><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2 rounded-lg transition">제출{% include 'includes/credit_cost.html' with cost=ai_cost.grading %}</button></div>
                                         </form>
                                     {% else %}
                                         <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer flex gap-2 mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
                                             <input type="text" name="user_answer" required placeholder="답을 입력하세요" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
-                                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 rounded-lg transition">제출</button>
+                                            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 rounded-lg transition">제출{% include 'includes/credit_cost.html' with cost=ai_cost.grading %}</button>
                                         </form>
                                     {% endif %}
                                 {% else %}
@@ -198,7 +198,7 @@
                                     <option value="{{ type_value }}">{{ type_label }}</option>
                                 {% endfor %}
                             </select>
-                            <button type="submit" {% if has_pending_question %}disabled{% endif %} class="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">{% if has_pending_question %}생성 중...{% else %}새 문제 생성{% endif %}</button>
+                            <button type="submit" {% if has_pending_question %}disabled{% endif %} class="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">{% if has_pending_question %}생성 중...{% else %}새 문제 생성{% include 'includes/credit_cost.html' with cost=ai_cost.question %}{% endif %}</button>
                         </form>
                     {% else %}
                         <p class="shrink-0 text-xs font-bold text-slate-400 text-center py-2 mt-4">최대 {{ max_questions }}개까지 생성했습니다.</p>

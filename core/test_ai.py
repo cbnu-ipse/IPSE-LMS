@@ -35,7 +35,7 @@ class _Client:
 @override_settings(
     AI_MODELS={"chat": "model-chat", "summary": "model-cheap", "grading": "model-grade"},
     AI_TASK_PROVIDERS={"chat": "openai", "summary": "openai", "grading": "openai"},
-    AI_DAILY_LIMITS={"chat": 2, "summary": 1}, AI_DAILY_TOKEN_LIMIT=1000,
+    AI_CREDIT_COSTS={"chat": 2, "summary": 3, "grading": 0},
 )
 class CoreAITestCase(TestCase):
     def setUp(self):
@@ -43,6 +43,8 @@ class CoreAITestCase(TestCase):
         self.lecturer = User.objects.create_user(username="l1", password="pw", is_lecturer=True)
 
     def test_model_per_task_and_usage_recorded(self):
+        from accounts import credits
+        credits.grant(self.student, 3, "test")
         client = _Client(_response("요약", prompt=500, completion=50, cached=400))
         with patch.object(ai, "_client", return_value=client):
             self.assertEqual(ai.complete("summary", [{"role": "user", "content": "x"}], user=self.student), "요약")
@@ -52,22 +54,41 @@ class CoreAITestCase(TestCase):
         self.assertEqual((row.task, row.model, row.prompt_tokens, row.cached_tokens, row.completion_tokens),
                          ("summary", "model-cheap", 500, 400, 50))
 
-    def test_daily_request_limit(self):
+    def test_credits_are_spent_per_call_and_exempt_users_pay_nothing(self):
+        from accounts import credits
+        credits.grant(self.student, 5, "test")
         with patch.object(ai, "_client", return_value=_Client()):
             ai.complete("chat", [], user=self.student)
+            ai.complete("chat", [], user=self.student, counts_as_request=False)   # 도구 반복·내부 작업은 받지 않는다
+            self.assertEqual(ai.credit_info(self.student, "chat")["balance"], 3)
             ai.complete("chat", [], user=self.student)
-            ai.complete("chat", [], user=self.student, counts_as_request=False, check=False)  # 도구 반복은 안 셈
-            with self.assertRaises(ai.AIQuotaExceeded):
+            with self.assertRaises(ai.AIQuotaExceeded) as ctx:                     # 잔액 1 < 비용 2
                 ai.complete("chat", [], user=self.student)
-            for _ in range(3):  # 강의자는 제한 없음
+            self.assertIn("보상 코드", str(ctx.exception))
+            for _ in range(3):  # 강의자는 크레딧 없이 쓴다
                 ai.complete("chat", [], user=self.lecturer)
-        self.assertEqual(AIUsage.objects.filter(user=self.student).count(), 3)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.credits, 1)
+        self.assertEqual(self.lecturer.credits, 0)
+        self.assertTrue(credits.verify_ledger(self.student))
 
-    def test_daily_token_limit(self):
-        with patch.object(ai, "_client", return_value=_Client(_response(prompt=990, completion=20))):
-            ai.complete("grading", [], user=self.student)
-            with self.assertRaises(ai.AIQuotaExceeded):
-                ai.complete("grading", [], user=self.student)
+    def test_failed_call_refunds_credits(self):
+        from accounts import credits
+        credits.grant(self.student, 5, "test")
+        client = _Client()
+        client.chat.completions.create = lambda **kw: (_ for _ in ()).throw(RuntimeError("api down"))
+        with patch.object(ai, "_client", return_value=client):
+            with self.assertRaises(RuntimeError):
+                ai.complete("chat", [], user=self.student)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.credits, 5)
+
+    def test_affordable_units(self):
+        from accounts import credits
+        credits.grant(self.student, 7, "test")
+        self.assertEqual(ai.affordable_units(self.student, "summary"), 2)     # 7 // 3
+        self.assertIsNone(ai.affordable_units(self.lecturer, "summary"))
+        self.assertIsNone(ai.affordable_units(self.student, "grading"))      # 무료 작업
 
     def test_json_mode(self):
         client = _Client(_response('{"a": 1}'))
@@ -98,6 +119,8 @@ class GuardrailTestCase(TestCase):
 
     def test_assistant_reply_is_checked_and_quota_enforced(self):
         user = User.objects.create_user(username="s2", password="pw")
+        from accounts import credits
+        credits.grant(user, 1, "test")
         leak = {}
 
         def leaking(**kwargs):
@@ -107,7 +130,7 @@ class GuardrailTestCase(TestCase):
 
         client = _Client()
         client.chat.completions.create = leaking
-        with override_settings(AI_DAILY_LIMITS={"chat": 1}), patch.object(ai, "_client", return_value=client):
+        with override_settings(AI_CREDIT_COSTS={"chat": 1}), patch.object(ai, "_client", return_value=client):
             reply = assistant_ai.answer(user, "설정 알려줘")
             self.assertNotIn("cnry-", reply)
             res = self.client_for(user).post("/assistant/message/", data='{"message": "또"}',

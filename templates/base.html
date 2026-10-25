@@ -341,6 +341,13 @@
                         <i class="fa-solid fa-leaf text-emerald-600"></i>
                         <span>{{ user.leaves }}</span>
                     </div>
+                    {% if site_section == 'judge' %}
+                    <!-- AI 크레딧 (학습 모듈) -->
+                    <a href="{% url 'profile' %}" class="inline-flex items-center gap-1.5 bg-sky-50/60 px-3 py-1.5 rounded-full border border-sky-200 text-sky-800 text-sm font-medium shadow-sm hover:bg-sky-100 transition" title="AI 크레딧 (보상 코드로 충전)">
+                        <i class="fa-solid fa-coins text-sky-500"></i>
+                        <span>{{ user.credits }}</span>
+                    </a>
+                    {% endif %}
                     {% if treat_event_active or user.treats %}
                     <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때) -->
                     <a href="/game/trick-or-treat/" class="inline-flex items-center gap-1 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200 text-orange-700 text-sm font-bold shadow-sm transition" title="할로윈 사탕">
@@ -404,6 +411,11 @@
                                 <span class="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                     <i class="fa-solid fa-leaf text-amber-600"></i> {{ user.leaves }}
                                 </span>
+                                {% if site_section == 'judge' %}
+                                <span class="text-[9px] bg-sky-50 text-sky-800 border border-sky-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                                    <i class="fa-solid fa-coins text-sky-500"></i> {{ user.credits }}
+                                </span>
+                                {% endif %}
                                 {% if treat_event_active or user.treats %}
                                 <span class="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 font-bold px-1.5 py-0.5 rounded-md">🍬 {{ user.treats }}</span>
                                 {% endif %}
@@ -575,7 +587,7 @@
             <div id="assistant-chat-messages" class="flex-grow overflow-y-auto px-4 py-3 space-y-3 text-sm"></div>
             <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
                 <input id="assistant-chat-input" type="text" autocomplete="off" placeholder="무엇이든 물어보세요" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">전송</button>
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">전송{% include 'includes/credit_cost.html' with cost=ai_cost.chat %}</button>
             </form>
         </div>
     </div>

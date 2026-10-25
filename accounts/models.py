@@ -348,8 +348,14 @@ class LeafTransaction(models.Model):
 
 
 class LeafCode(models.Model):
+    """보상 코드. reward_type에 따라 낙엽 또는 AI 크레딧을 지급한다 (새 재화가 생기면 종류만 늘리면 된다)."""
+    class RewardType(models.TextChoices):
+        LEAF = "leaf", "낙엽"
+        CREDIT = "credit", "크레딧"
+
     code = models.CharField(max_length=50, unique=True, verbose_name="보상 코드")
-    amount = models.PositiveIntegerField(verbose_name="지급 낙엽 수량")
+    reward_type = models.CharField(max_length=10, choices=RewardType.choices, default=RewardType.LEAF, verbose_name="지급 재화")
+    amount = models.PositiveIntegerField(verbose_name="지급 수량")
     is_active = models.BooleanField(default=True, verbose_name="활성화 여부")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성 일시")
 
@@ -358,7 +364,7 @@ class LeafCode(models.Model):
         verbose_name_plural = "보상 코드 목록"
 
     def __str__(self):
-        return f"{self.code} ({self.amount}개)"
+        return f"{self.code} ({self.get_reward_type_display()} {self.amount}개)"
 
 
 class LeafCodeUsage(models.Model):

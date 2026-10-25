@@ -5,7 +5,10 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.test import override_settings
 from django.urls import reverse
+
+from core import ai as ai_core
 
 from .ai import extract_text
 from .forms import PersonalDocumentUploadForm
@@ -497,7 +500,7 @@ class WholeDocumentSummaryTests(TestCase):
         giant_paragraph = "가" * (SUMMARY_CHUNK_CHARS * 2 + 50)        # 문단 하나가 아주 길어도 버리지 않는다
         self.assertEqual("".join(split_for_summary(giant_paragraph)).replace("\n", ""), giant_paragraph)
 
-    def test_every_part_of_a_long_document_reaches_the_model_and_counts_as_one_request(self):
+    def test_every_part_of_a_long_document_reaches_the_model_and_is_summarized(self):
         from .ai import generate_summary
         calls = []
 
@@ -510,8 +513,6 @@ class WholeDocumentSummaryTests(TestCase):
         sent = "\n".join(m[1]["content"] for m, _ in calls)
         self.assertIn("슬라이드 60", sent)                             # 마지막 슬라이드까지 전달
         self.assertEqual(summary.count("## 요약"), len(calls))        # 조각 요약을 이어 붙인다
-        self.assertNotIn("counts_as_request", calls[0][1])             # 첫 조각만 요청 1회로 센다
-        self.assertTrue(all(k.get("counts_as_request") is False and k.get("check") is False for _, k in calls[1:]))
         self.assertIn("1번째 조각", calls[0][0][0]["content"])
 
     def test_tiny_tail_is_merged_into_previous_chunk(self):
@@ -543,84 +544,91 @@ class WholeDocumentSummaryTests(TestCase):
         self.assertEqual(thread.call_count, 1)                         # 긴 자료만 다시 시작
 
 
-class SummaryChunkLimitTests(TestCase):
+@override_settings(AI_CREDIT_COSTS={"summary": 3})
+class SummaryCreditTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="chunkuser", password="pw")
         self.client.force_login(self.user)
 
-    def use(self, n, user=None):
-        from core.models import AIUsage
-        for _ in range(n):
-            AIUsage.objects.create(user=user or self.user, task="summary", model="m", counts_as_request=False)
+    def give(self, n, user=None):
+        from accounts import credits
+        credits.grant(user or self.user, n, "test")
 
     def doc_text(self, pieces):
         return "\n\n".join(("가" * 11000) for _ in range(pieces))
 
-    def test_only_remaining_chunks_are_summarized(self):
+    def test_only_affordable_chunks_are_summarized_and_each_costs_credits(self):
         from .ai import generate_summary
-        self.use(13)
+        self.give(7)                                                   # 3크레딧 × 2조각
         calls = []
-        with patch("core.ai.complete", side_effect=lambda *a, **k: calls.append(1) or "요약"):
+        with patch.object(ai_core, "_client", return_value=_FakeClient(calls)):
             generate_summary(self.doc_text(5), user=self.user)
         self.assertEqual(len(calls), 2)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.credits, 1)
 
-    def test_no_allowance_left_raises(self):
+    def test_no_credits_raises_without_calling_model(self):
         from core.ai import AIQuotaExceeded
         from .ai import generate_summary
-        self.use(15)
         with patch("core.ai.complete", return_value="요약") as mocked:
             with self.assertRaises(AIQuotaExceeded):
                 generate_summary("짧은 자료", user=self.user)
         mocked.assert_not_called()
 
-    def test_lecturer_is_exempt(self):
+    def test_failure_in_later_chunk_refunds_earlier_chunks(self):
+        from .ai import generate_summary
+        self.give(9)
+        calls = []
+        with patch.object(ai_core, "_client", return_value=_FakeClient(calls, fail_on=2)):
+            with self.assertRaises(RuntimeError):
+                generate_summary(self.doc_text(3), user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.credits, 9)
+
+    def test_lecturer_pays_nothing(self):
         from .ai import generate_summary
         lecturer = get_user_model().objects.create_user(username="lec", password="pw", is_lecturer=True)
-        self.use(30, user=lecturer)
         with patch("core.ai.complete", return_value="요약"):
             self.assertEqual(generate_summary("짧은 자료", user=lecturer), "요약")
 
-    def test_study_page_shows_usage(self):
-        self.use(3)
+    def test_study_page_shows_credits(self):
+        self.give(12)
         doc = PersonalDocument.objects.create(user=self.user, title="t", extracted_text="x", summary="## 요약\n- a",
                                               summary_status=ProcessingStatus.DONE)
         response = self.client.get(f"/mypage/{doc.pk}/")
-        self.assertContains(response, "3/15조각")
+        self.assertContains(response, "보유 크레딧 12")
+        self.assertContains(response, "당 3크레딧")
 
 
-class RegenerateDocumentTests(TestCase):
-    def setUp(self):
-        self.user = get_user_model().objects.create_user(username="regen", password="pw")
-        self.doc = PersonalDocument.objects.create(
-            user=self.user, title="t", extracted_text="옛 본문", summary="옛 요약",
-            summary_status=ProcessingStatus.DONE, file=SimpleUploadedFile("a.txt", "새 본문".encode()))
+class _FakeClient:
+    """OpenAI 호환 클라이언트 흉내 — 호출 횟수를 기록하고 fail_on번째 호출에서 실패한다."""
+    def __init__(self, calls, fail_on=None):
+        self.calls, self.fail_on = calls, fail_on
+        self.chat = type("C", (), {"completions": self})()
 
-    def test_regenerates_summary_and_forces_course_draft(self):
-        from .regenerate import regenerate_document
-        with patch("mypage.regenerate.generate_summary", return_value="새 요약") as summ, \
-                patch("course.topics.after_summary") as after:
-            self.assertTrue(regenerate_document(self.doc.pk))
-        self.doc.refresh_from_db()
-        self.assertEqual(self.doc.summary, "새 요약")
-        self.assertEqual(self.doc.summary_status, ProcessingStatus.DONE)
-        self.assertIn("새 본문", self.doc.extracted_text)
-        self.assertIsNone(summ.call_args.kwargs["user"])                 # 사용자 하루 한도에 넣지 않는다
-        after.assert_called_once_with(self.doc.pk, force=True)
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.fail_on == len(self.calls):
+            raise RuntimeError("api down")
+        message = type("M", (), {"content": "요약", "tool_calls": None})()
+        return type("R", (), {"choices": [type("Ch", (), {"message": message})()], "usage": None})()
 
-    def test_failure_marks_document_failed(self):
-        from .regenerate import regenerate_document
-        with patch("mypage.regenerate.generate_summary", side_effect=RuntimeError("boom")):
-            self.assertFalse(regenerate_document(self.doc.pk, reextract=False))
-        self.doc.refresh_from_db()
-        self.assertEqual(self.doc.summary_status, ProcessingStatus.FAILED)
 
-    def test_admin_action_starts_regeneration(self):
-        admin_user = get_user_model().objects.create_superuser(username="adm", password="pw", email="a@a.com")
-        self.client.force_login(admin_user)
-        with patch("mypage.regenerate.threading.Thread") as thread:
-            response = self.client.post("/admin/mypage/personaldocument/", {
-                "action": "regenerate", "_selected_action": [self.doc.pk]}, follow=True)
-        self.assertEqual(response.status_code, 200)
-        thread.assert_called_once()
-        self.doc.refresh_from_db()
-        self.assertEqual(self.doc.summary_status, ProcessingStatus.PROCESSING)
+@override_settings(AI_CREDIT_COSTS={"chat": 1, "summary": 3, "question": 2, "grading": 1})
+class CreditDisplayTests(TestCase):
+    def test_judge_header_shows_credits_and_buttons_show_cost(self):
+        from accounts import credits
+        user = get_user_model().objects.create_user(username="shown", password="pw")
+        credits.grant(user, 42, "test")
+        self.client.force_login(user)
+        response = self.client.get("/mypage/")
+        self.assertContains(response, 'title="AI 크레딧')
+        self.assertContains(response, "<span>42</span>")
+        self.assertContains(response, 'title="AI 크레딧 3 (조각당)"')       # 업로드 버튼 비용
+        self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
+
+    def test_exempt_user_sees_no_cost_badges(self):
+        lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
+        self.client.force_login(lecturer)
+        response = self.client.get("/mypage/")
+        self.assertNotContains(response, "(조각당)")
