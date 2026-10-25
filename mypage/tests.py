@@ -612,3 +612,23 @@ class _FakeClient:
             raise RuntimeError("api down")
         message = type("M", (), {"content": "요약", "tool_calls": None})()
         return type("R", (), {"choices": [type("Ch", (), {"message": message})()], "usage": None})()
+
+
+@override_settings(AI_CREDIT_COSTS={"chat": 1, "summary": 3, "question": 2, "grading": 1})
+class CreditDisplayTests(TestCase):
+    def test_judge_header_shows_credits_and_buttons_show_cost(self):
+        from accounts import credits
+        user = get_user_model().objects.create_user(username="shown", password="pw")
+        credits.grant(user, 42, "test")
+        self.client.force_login(user)
+        response = self.client.get("/mypage/")
+        self.assertContains(response, 'title="AI 크레딧')
+        self.assertContains(response, "<span>42</span>")
+        self.assertContains(response, 'title="AI 크레딧 3 (조각당)"')       # 업로드 버튼 비용
+        self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
+
+    def test_exempt_user_sees_no_cost_badges(self):
+        lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
+        self.client.force_login(lecturer)
+        response = self.client.get("/mypage/")
+        self.assertNotContains(response, "(조각당)")
