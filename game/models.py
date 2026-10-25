@@ -807,6 +807,75 @@ class GomokuMatch(models.Model):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 장기 — 2인 방, 칩 없이 승패만 기록한다. 판 진행 상태는 JanggiRoom.state JSON 하나에, 규칙은 game/janggi_rules.py,
+# 방 상태머신은 game/janggi_engine.py, AI는 game/janggi_ai.py. 승 수 랭킹은 JanggiMatch 중 사람끼리 둔 정상 대국(ranked)만 센다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class JanggiRoom(models.Model):
+    STATUS_CHOICES = [("waiting", "대기 중"), ("playing", "진행 중")]
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="waiting")
+    state = models.JSONField(default=dict, blank=True, verbose_name="판 진행 상태")
+    turn_deadline = models.DateTimeField(null=True, blank=True, verbose_name="현재 차례 제한시각")
+    next_game_at = models.DateTimeField(null=True, blank=True, verbose_name="다음 판 시작 예정시각")
+    last_result = models.JSONField(default=dict, blank=True, verbose_name="직전 판 결과 요약")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "장기 방"
+        verbose_name_plural = "장기 방 목록"
+
+    def __str__(self):
+        return f"장기 {self.pk}번 방"
+
+
+class JanggiSeat(models.Model):
+    """좌석 번호는 0, 1 (= 판 진행 상태의 seat 번호). 0번이 방장."""
+    room = models.ForeignKey(JanggiRoom, on_delete=models.CASCADE, related_name="seats")
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="janggi_seat", verbose_name="사용자"
+    )
+    seat = models.PositiveSmallIntegerField(verbose_name="좌석 번호")
+
+    class Meta:
+        ordering = ["room", "seat"]
+        unique_together = [("room", "seat")]
+        verbose_name = "장기 좌석"
+        verbose_name_plural = "장기 좌석 목록"
+
+    def __str__(self):
+        return f"{self.room_id}번 방 {self.seat}번 - {self.user}"
+
+
+class JanggiMatch(models.Model):
+    """끝난 한 판의 기록. 랭킹(승 수)은 ranked=True인 판의 winner로 센다."""
+    REASON_CHOICES = [("checkmate", "외통수"), ("stalemate", "수 없음"), ("resign", "기권"), ("timeout", "시간 초과"),
+                      ("leave", "퇴장"), ("draw", "무승부")]
+
+    cho = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                            related_name="janggi_cho_matches", verbose_name="초")
+    han = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                            related_name="janggi_han_matches", verbose_name="한")
+    winner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="janggi_wins", verbose_name="승자 (무승부면 비움)")
+    reason = models.CharField(max_length=10, choices=REASON_CHOICES, default="checkmate")
+    moves = models.PositiveSmallIntegerField(default=0, verbose_name="둔 수")
+    ranked = models.BooleanField(default=False, db_index=True, verbose_name="랭킹 반영")
+    vs_bot = models.BooleanField(default=False, verbose_name="AI와의 대국")
+    ended_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-ended_at"]
+        verbose_name = "장기 대국 기록"
+        verbose_name_plural = "장기 대국 기록 목록"
+
+    def __str__(self):
+        return f"#{self.pk} {self.get_reason_display()} ({self.moves}수)"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 트릭 오어 트릿: 사탕 골목 지도 (할로윈 이벤트, game/trick_or_treat.py) — 사탕(accounts/treats.py)을
 # 얻는 실력 게임. 지도에서 정해진 걸음 안에 사탕을 가장 많이 모으는 경로를 그린다.
 # ─────────────────────────────────────────────────────────────────────────────

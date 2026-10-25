@@ -4,7 +4,7 @@ from .models import (
     SlotPlayLog, AppleGameScore, GameSeason, SeasonRewardClaim, MemoryMatchScore, NumberSpeedScore, PatternRecallScore,
     PokerTable, PokerSeat, PokerHandLog, PokerChipWallet,
     HighLowSession, HighLowPlayLog, GostopRoom, GostopSeat, GostopGameLog, HouseBank, YachtRoom, YachtSeat, YachtGameLog,
-    GomokuRoom, GomokuSeat, GomokuMatch,
+    GomokuRoom, GomokuSeat, GomokuMatch, JanggiRoom, JanggiSeat, JanggiMatch,
 )
 
 
@@ -175,3 +175,14 @@ class GomokuMatchAdmin(admin.ModelAdmin):
 
 admin.site.register(GomokuRoom)
 admin.site.register(GomokuSeat)
+
+
+@admin.register(JanggiMatch)
+class JanggiMatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "cho", "han", "winner", "reason", "moves", "ranked", "vs_bot", "ended_at")
+    list_filter = ("ranked", "vs_bot", "reason")
+    search_fields = ("cho__username", "han__username")
+
+
+admin.site.register(JanggiRoom)
+admin.site.register(JanggiSeat)
