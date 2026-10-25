@@ -226,6 +226,34 @@ def studio_material_delete(request, pk):
     return redirect(nxt if nxt.startswith("/course/studio/materials/") else "course_studio_materials")
 
 
+MAX_BULK_DELETE = 200
+
+
+@require_POST
+@_studio_only
+def studio_materials_bulk_delete(request):
+    """체크한 자료들을 한 번에 DB에서 완전히 지운다 (파일 포함, 되돌릴 수 없다). 한 번에 최대 MAX_BULK_DELETE개."""
+    from mypage.models import PersonalDocument
+
+    ids = {int(i) for i in request.POST.getlist("ids") if i.isdigit()}
+    nxt = request.POST.get("next", "")
+    back = redirect(nxt if nxt.startswith("/course/studio/materials/") else "course_studio_materials")
+    if not ids:
+        messages.error(request, "삭제할 자료를 선택해주세요.")
+        return back
+    if len(ids) > MAX_BULK_DELETE:
+        messages.error(request, f"한 번에 {MAX_BULK_DELETE}개까지 삭제할 수 있습니다.")
+        return back
+    count = 0
+    for doc in PersonalDocument.objects.filter(pk__in=ids):
+        if doc.file:
+            doc.file.delete(save=False)
+        doc.delete()
+        count += 1
+    messages.success(request, f"자료 {count}개를 삭제했습니다.")
+    return back
+
+
 # ── 개념 구조 정리 (mypage/ontology.py) ─────────────────────────────────────
 
 @_studio_only

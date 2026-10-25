@@ -18,10 +18,20 @@
         <button class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold">검색</button>
     </form>
 
+    <!-- 일괄 삭제: 목록의 체크박스는 form 속성으로 이 폼에 묶인다 (자료마다 있는 개별 삭제 폼과 겹치지 않게) -->
+    <form id="bulk-form" method="post" action="{% url 'course_studio_materials_bulk_delete' %}" class="flex flex-wrap items-center gap-3 mb-3 px-1">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label class="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="bulk-all" class="w-4 h-4">이 페이지 전체 선택</label>
+        <span id="bulk-count" class="text-xs text-slate-400">선택 0개</span>
+        <button type="submit" id="bulk-delete" disabled class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-regular fa-trash-can mr-1"></i>선택 삭제</button>
+    </form>
+
     <div class="space-y-2">
         {% for doc in page %}
         <details class="bg-white border border-slate-200 rounded-2xl">
             <summary class="flex flex-wrap items-center gap-2 px-5 py-3 cursor-pointer list-none">
+                <input type="checkbox" form="bulk-form" name="ids" value="{{ doc.pk }}" class="bulk-item w-4 h-4 shrink-0" onclick="event.stopPropagation()" aria-label="{{ doc.title }} 선택">
                 <span class="font-bold text-slate-800 flex-1 min-w-0 truncate">{{ doc.title }}</span>
                 {% for topic in doc.topics.all %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">{{ topic.name }}</span>{% empty %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500">주제 없음</span>{% endfor %}
                 {% if not doc.is_course_material %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600">강의 제외</span>{% endif %}
@@ -61,6 +71,31 @@
 
 {% block extra_js %}
 <script>
+(function () {
+    const items = Array.from(document.querySelectorAll('.bulk-item')), all = document.getElementById('bulk-all');
+    const count = document.getElementById('bulk-count'), button = document.getElementById('bulk-delete');
+    let last = null;
+    function refresh() {
+        const n = items.filter((i) => i.checked).length;
+        count.textContent = '선택 ' + n + '개';
+        button.disabled = n === 0;
+        all.checked = n > 0 && n === items.length;
+        all.indeterminate = n > 0 && n < items.length;
+    }
+    all.addEventListener('change', () => { items.forEach((i) => { i.checked = all.checked; }); refresh(); });
+    items.forEach((box, idx) => box.addEventListener('click', (e) => {       // Shift+클릭으로 범위 선택
+        if (e.shiftKey && last !== null) {
+            const [a, b] = [Math.min(last, idx), Math.max(last, idx)];
+            for (let k = a; k <= b; k++) items[k].checked = box.checked;
+        }
+        last = idx; refresh();
+    }));
+    document.getElementById('bulk-form').addEventListener('submit', (e) => {
+        const n = items.filter((i) => i.checked).length;
+        if (!confirm('선택한 자료 ' + n + '개를 DB와 파일에서 완전히 삭제할까요? 되돌릴 수 없습니다.')) e.preventDefault();
+    });
+    refresh();
+})();
 document.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
     if (!d.open) return;
     const raw = d.querySelector('.ms-sum-raw'), box = d.querySelector('.ms-sum');
