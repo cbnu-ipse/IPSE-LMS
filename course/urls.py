@@ -6,6 +6,7 @@ urlpatterns = [
     # 강의 생성 탭 (강의자 전용) — '<slug>/'보다 먼저 와야 한다
     path('studio/', views_studio.studio_list, name='course_studio'),
     path('studio/materials/', views_studio.studio_materials, name='course_studio_materials'),
+    path('studio/materials/bulk-delete/', views_studio.studio_materials_bulk_delete, name='course_studio_materials_bulk_delete'),
     path('studio/materials/<int:pk>/delete/', views_studio.studio_material_delete, name='course_studio_material_delete'),
     path('studio/ontology/', views_studio.studio_ontology, name='course_studio_ontology'),
     path('studio/ontology/data/', views_studio.studio_ontology_data, name='course_studio_ontology_data'),
