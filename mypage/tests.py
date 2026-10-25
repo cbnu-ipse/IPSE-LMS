@@ -558,7 +558,7 @@ class SummaryChunkLimitTests(TestCase):
 
     def test_only_remaining_chunks_are_summarized(self):
         from .ai import generate_summary
-        self.use(48)
+        self.use(13)
         calls = []
         with patch("core.ai.complete", side_effect=lambda *a, **k: calls.append(1) or "요약"):
             generate_summary(self.doc_text(5), user=self.user)
@@ -567,7 +567,7 @@ class SummaryChunkLimitTests(TestCase):
     def test_no_allowance_left_raises(self):
         from core.ai import AIQuotaExceeded
         from .ai import generate_summary
-        self.use(50)
+        self.use(15)
         with patch("core.ai.complete", return_value="요약") as mocked:
             with self.assertRaises(AIQuotaExceeded):
                 generate_summary("짧은 자료", user=self.user)
@@ -576,7 +576,7 @@ class SummaryChunkLimitTests(TestCase):
     def test_lecturer_is_exempt(self):
         from .ai import generate_summary
         lecturer = get_user_model().objects.create_user(username="lec", password="pw", is_lecturer=True)
-        self.use(60, user=lecturer)
+        self.use(30, user=lecturer)
         with patch("core.ai.complete", return_value="요약"):
             self.assertEqual(generate_summary("짧은 자료", user=lecturer), "요약")
 
@@ -585,4 +585,4 @@ class SummaryChunkLimitTests(TestCase):
         doc = PersonalDocument.objects.create(user=self.user, title="t", extracted_text="x", summary="## 요약\n- a",
                                               summary_status=ProcessingStatus.DONE)
         response = self.client.get(f"/mypage/{doc.pk}/")
-        self.assertContains(response, "3/50조각")
+        self.assertContains(response, "3/15조각")

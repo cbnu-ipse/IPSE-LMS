@@ -14,10 +14,12 @@ import random
 import re
 from collections import Counter
 
+from django.conf import settings
+
 from core import ai as core_ai
 
 MARKITDOWN_EXTENSIONS = (".pdf", ".docx", ".pptx")
-SUMMARY_CHUNK_CHARS = 12000   # 요약 한 번에 넣는 본문 길이 (이보다 긴 자료는 조각으로 나눠 모두 요약한다)
+SUMMARY_CHUNK_CHARS = settings.AI_LIMIT_SUMMARY_CHUNK_CHARS   # 요약 한 번에 넣는 본문 길이 (이보다 긴 자료는 조각으로 나눠 모두 요약한다)
 SUMMARY_MAX_CHUNKS = 10       # 한 자료에서 요약하는 조각 수 상한 (= 약 12만 자)
 SUMMARY_INPUT_CHARS = SUMMARY_CHUNK_CHARS   # 예전 이름 (이 길이를 넘는 자료는 앞부분만 요약되던 시절의 기준)
 QUESTION_INPUT_CHARS = 8000   # 문제 생성에 넣는 본문 길이 상한

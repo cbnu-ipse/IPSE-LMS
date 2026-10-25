@@ -312,7 +312,8 @@ AI_DAILY_LIMITS = {
     "question": config("AI_LIMIT_QUESTION", default=10, cast=int),
     "grading": config("AI_LIMIT_GRADING", default=10, cast=int),
 }
-AI_LIMIT_SUMMARY_CHUNKS = config("AI_LIMIT_SUMMARY_CHUNKS", default=50, cast=int)  # 하루 사용자당 요약 조각(조각당 12,000자) 수
+AI_LIMIT_SUMMARY_CHUNKS = config("AI_LIMIT_SUMMARY_CHUNKS", default=15, cast=int)  # 하루 사용자당 요약 조각 수 (요약 5회 × 평균 3조각)
+AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=12000, cast=int)  # 요약 1조각의 최대 글자 수
 AI_DAILY_TOKEN_LIMIT = config("AI_DAILY_TOKEN_LIMIT", default=80000, cast=int)  # 하루 사용자당 토큰 합계 상한
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
