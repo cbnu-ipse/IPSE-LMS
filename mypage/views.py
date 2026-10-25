@@ -5,6 +5,7 @@ import os
 import threading
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -17,6 +18,7 @@ from django.views.decorators.http import require_POST
 
 from assistant.guardrails import detect_prompt_injection
 
+from core.concurrency import background_slot, extract_slot
 from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
 
 from .ai import (
@@ -39,9 +41,10 @@ _summarizing = set()  # 이 프로세스에서 요약을 만드는 중인 문서
 def _generate_summary_bg(document_id):
     _summarizing.add(document_id)
     try:
-        document = PersonalDocument.objects.select_related("user").get(pk=document_id)
-        summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type)
-        PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
+        with background_slot():      # 업로드가 몰려도 AI를 부르는 작업은 동시에 몇 개만 (core/concurrency.py)
+            document = PersonalDocument.objects.select_related("user").get(pk=document_id)
+            summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type)
+            PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
     except Exception:
         logger.exception("문서 %s 자동 요약 생성 실패", document_id)
         PersonalDocument.objects.filter(pk=document_id).update(summary_status=ProcessingStatus.FAILED)
@@ -49,13 +52,15 @@ def _generate_summary_bg(document_id):
         return
     finally:
         _summarizing.discard(document_id)
-    _classify_and_build(document_id)
+    with background_slot():          # 분류·개념 태그·강의 초안도 AI를 부르므로 같은 상한을 지킨다 (요약 자리는 먼저 놓는다)
+        _classify_and_build(document_id)
     connection.close()
 
 
 def _course_after_upload_bg(document_id):
     try:
-        _classify_and_build(document_id)
+        with background_slot():
+            _classify_and_build(document_id)
     finally:
         connection.close()
 
@@ -73,6 +78,14 @@ def _classify_and_build(document_id):
 
 
 def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None, index=0, style=""):
+    try:
+        with background_slot():
+            _make_question(question_id, extracted_text, question_type, existing_texts, user, index, style)
+    finally:
+        connection.close()
+
+
+def _make_question(question_id, extracted_text, question_type, existing_texts, user, index, style):
     try:
         q = generate_one_question(extracted_text, question_type, existing_questions=existing_texts, user=user,
                                   index=index, style=style)
@@ -141,6 +154,12 @@ def document_list(request, folder_id=None):
                 threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 요약을 바로 불러왔습니다.")
                 return redirect(request.path)
+            in_flight = PersonalDocument.objects.filter(user=request.user, summary_status=ProcessingStatus.PROCESSING,
+                                                        uploaded_at__gte=timezone.now() - STALE_AFTER).count()
+            if in_flight >= settings.MAX_PROCESSING_PER_USER:     # 한 사람이 처리 대기열을 독차지하지 못하게
+                messages.error(request, f"요약 중인 자료가 {in_flight}개 있습니다. 몇 개가 끝난 뒤에 올려주세요 "
+                                        f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
+                return redirect(request.path)
             is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))
             try:
                 # 이미지는 글자 읽기(크기당) + 요약 최소 1조각, 그 밖에는 요약 최소 1조각의 크레딧이 있어야 시작한다
@@ -154,8 +173,14 @@ def document_list(request, folder_id=None):
             # 파일을 고를 때 이미 글자를 읽어 둔 게 있으면 다시 읽지 않는다 (upload_estimate, 이미지는 OCR이라 제외)
             extracted_text = None if is_image else cache.get(_extract_cache_key(request.user, content_hash))
             if extracted_text is None:
-                with document.file.open("rb") as fh:
-                    extracted_text = extract_text(fh, document.file.name, user=request.user)
+                try:
+                    with extract_slot(), document.file.open("rb") as fh:     # 변환(CPU)은 동시에 몇 개만
+                        extracted_text = extract_text(fh, document.file.name, user=request.user)
+                except TimeoutError as exc:
+                    document.file.delete(save=False)
+                    document.delete()
+                    messages.error(request, str(exc))
+                    return redirect(request.path)
             if detect_prompt_injection(extracted_text):
                 document.summary_status = ProcessingStatus.FAILED
                 document.save(update_fields=["summary_status"])
@@ -239,7 +264,11 @@ def upload_estimate(request):
         key = _extract_cache_key(request.user, content_hash)
         text = cache.get(key)
         if text is None:
-            text = extract_text(io.BytesIO(data), upload.name, user=request.user)
+            try:
+                with extract_slot():
+                    text = extract_text(io.BytesIO(data), upload.name, user=request.user)
+            except TimeoutError as exc:
+                return JsonResponse({"ok": False, "error": str(exc)}, status=503)
             cache.set(key, text, EXTRACT_CACHE_TTL)
         chunks = summary_chunk_count(text)
         info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit, empty=not text.strip())

@@ -230,6 +230,30 @@ def _record(user, task, model, response, counts_as_request):
         logger.exception("AI usage record failed: task=%s", task)
 
 
+RETRY_DELAYS = (1.0, 3.0)    # 일시적 오류(요청 폭주 429·서버 오류 5xx·연결 끊김)는 이만큼 쉬었다가 최대 2번 다시 시도한다
+
+
+def _is_transient(exc):
+    status = getattr(exc, "status", None) or getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status in (408, 429, 500, 502, 503, 504)
+    return type(exc).__name__ in ("APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError")
+
+
+def _with_retry(call):
+    """업로드가 몰려 공급자가 잠깐 거절(429)하거나 연결이 끊겨도 사용자가 실패를 보지 않게 짧게 다시 시도한다.
+    크레딧은 이미 차감돼 있고 성공하면 그대로 쓰이므로 다시 차감하지 않는다. 일시적이지 않은 오류는 바로 올린다."""
+    for delay in RETRY_DELAYS:
+        try:
+            return call()
+        except Exception as exc:
+            if not _is_transient(exc):
+                raise
+            logger.warning("AI 호출 일시 오류(%s), %.0f초 뒤 다시 시도", exc, delay)
+            time.sleep(delay)
+    return call()
+
+
 def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_mode=False,
          max_tokens=None, cost=None, **kwargs):
     """chat.completions 호출 한 번. OpenAI 응답 객체를 그대로 돌려준다 (도구 호출이 필요한 챗봇용).
@@ -246,13 +270,16 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
     started = time.monotonic()
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
     charged = _charge(user, task, cost) if counts_as_request else 0
-    try:
+
+    def call():
         if native == "vertex":
-            response = _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
-        elif provider == "openai":
-            response = _client().chat.completions.create(**params)
-        else:
-            response = _client(provider).chat.completions.create(**params)
+            return _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
+        if provider == "openai":
+            return _client().chat.completions.create(**params)
+        return _client(provider).chat.completions.create(**params)
+
+    try:
+        response = _with_retry(call)
     except Exception:
         refund(user, task, charged)
         raise

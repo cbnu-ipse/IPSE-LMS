@@ -175,9 +175,12 @@ def studio_topic_build(request):
 
     name = request.POST.get("name", "")
 
+    from core.concurrency import background_slot
+
     def run():
         try:
-            studio.build_draft(name)
+            with background_slot():
+                studio.build_draft(name)
         finally:
             connection.close()
 

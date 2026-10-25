@@ -323,6 +323,10 @@ AI_CREDIT_COSTS = {
 }
 if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
     AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}
+# 동시에 몰리는 업로드 대비 상한 (core/concurrency.py): AI 백그라운드 작업 / 파일 글자 뽑기 / 한 사람이 동시에 처리 중일 수 있는 자료 수
+BACKGROUND_AI_CONCURRENCY = config("BACKGROUND_AI_CONCURRENCY", default=4, cast=int)
+EXTRACT_CONCURRENCY = config("EXTRACT_CONCURRENCY", default=2, cast=int)
+MAX_PROCESSING_PER_USER = config("MAX_PROCESSING_PER_USER", default=5, cast=int)
 # 한 번에 지급할 수 있는 재화 상한 (오입력 방지, 지급 권한자·관리자 모두 적용)
 CURRENCY_GRANT_MAX = {
     "leaf": config("CURRENCY_GRANT_MAX_LEAF", default=1000, cast=int),

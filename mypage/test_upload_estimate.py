@@ -81,3 +81,51 @@ class UploadEstimateTests(TestCase):
         self.assertIn(f"MAX_BYTES = {MAX_UPLOAD_SIZE}", html)
         self.assertIn('id="upload-submit"', html)
         self.assertIn('id="uc-estimate"', html)                      # 크레딧 비용이 0인 설정에서도 스크립트가 기대하는 요소가 있어야 한다
+
+
+@override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
+class UploadLoadControlTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="load", password="pw")
+        self.client.force_login(self.user)
+
+    def upload(self):
+        return self.client.post("/mypage/", {"title": "", "file": SimpleUploadedFile("n.txt", ("본문 " * 40).encode()),
+                                             "document_type": "lecture", "course_name": "운영체제", "professor": "김"}, follow=True)
+
+    def test_a_user_cannot_have_more_than_the_allowed_number_processing_at_once(self):
+        credits.grant(self.user, 100, "test")
+        for i in range(5):
+            PersonalDocument.objects.create(user=self.user, title=f"d{i}", extracted_text="x", summary_status="processing")
+        with patch("mypage.views.threading.Thread") as thread:
+            res = self.upload()
+        thread.assert_not_called()
+        self.assertContains(res, "요약 중인 자료가 5개")
+        self.assertEqual(PersonalDocument.objects.count(), 5)                 # 새 자료는 만들어지지 않았다
+
+    def test_old_stuck_processing_documents_do_not_count(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        credits.grant(self.user, 100, "test")
+        for i in range(5):
+            doc = PersonalDocument.objects.create(user=self.user, title=f"d{i}", extracted_text="x", summary_status="processing")
+            PersonalDocument.objects.filter(pk=doc.pk).update(uploaded_at=timezone.now() - timedelta(minutes=30))
+        with patch("mypage.views.threading.Thread"), patch("mypage.views.extract_text", return_value="본문 " * 50):
+            self.upload()
+        self.assertEqual(PersonalDocument.objects.count(), 6)
+
+    def test_busy_extraction_gives_a_clear_error_and_leaves_no_half_document(self):
+        credits.grant(self.user, 100, "test")
+        with patch("mypage.views.extract_slot", side_effect=TimeoutError("서버가 바빠 파일을 읽지 못했습니다. 잠시 후 다시 시도해주세요.")):
+            res = self.upload()
+        self.assertContains(res, "서버가 바빠")
+        self.assertFalse(PersonalDocument.objects.exists())
+        with patch("mypage.views.extract_slot", side_effect=TimeoutError("busy")):
+            self.assertEqual(self.client.post("/mypage/estimate/", {"file": SimpleUploadedFile("a.txt", b"x")}).status_code, 503)
+
+    def test_upload_page_shows_a_loading_overlay_while_uploading(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn('id="upload-loading"', html)
+        self.assertIn("파일을 올리고 글자를 읽고 있어요", html)
+        self.assertIn("showLoading(); form.submit()", html)
