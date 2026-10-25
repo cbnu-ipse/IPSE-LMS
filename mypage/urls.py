@@ -7,6 +7,7 @@ app_name = "mypage"
 urlpatterns = [
     path("", views.document_list, name="document_list"),
     path("learning/", views.learning_overview, name="learning"),
+    path("estimate/", views.upload_estimate, name="upload_estimate"),
     path("folder/create/", views.folder_create, name="folder_create"),
     path("folder/<int:pk>/rename/", views.folder_rename, name="folder_rename"),
     path("folder/<int:pk>/delete/", views.folder_delete, name="folder_delete"),

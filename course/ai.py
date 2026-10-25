@@ -21,7 +21,9 @@ MAX_CHAPTERS = 8
 MAX_SETS = 12
 MAX_CARDS = 3
 MAX_QUESTIONS = 3
-FORMAT_VERSION = 3          # 강의 형식(프롬프트)이 바뀌면 올린다 — 해시에 들어가 다음 생성 때 새 형식으로 다시 만든다
+MAX_QUIZ = 5               # 한 강(챕터) 끝의 확인 퀴즈 문제 수 상한
+QUIZ_TYPES = ("ox", "short")   # 강 퀴즈는 OX와 단답만
+FORMAT_VERSION = 4          # 강의 형식(프롬프트)이 바뀌면 올린다 — 해시에 들어가 다음 생성 때 새 형식으로 다시 만든다
 
 OUTLINE_SYSTEM = (
     "대학 동아리 학습 플랫폼의 강의 설계자입니다. 학생들이 올린 강의 자료 목록을 보고 강의 목차를 만듭니다.\n"
@@ -51,20 +53,19 @@ CHAPTER_SYSTEM = (
     "구성 (가장 중요: 스크롤을 거의 하지 않고, 한 걸음씩 차근차근 배우게 합니다):\n"
     f"- 챕터를 작은 학습 세트(sets)로 최대한 잘게 쪼갭니다. 세트 하나는 '한 가지 개념'만 다루고, 한 세트를 2~3분 안에 끝낼 수 있어야 합니다. "
     f"세트는 챕터당 3~{MAX_SETS}개. 앞 세트를 알아야 뒤 세트를 이해하도록 쉬운 것부터 순서대로 배열합니다.\n"
-    f"- 세트마다 개념 카드(cards) 1~{MAX_CARDS}장, 확인 문제(questions) 1~{MAX_QUESTIONS}개.\n"
+    f"- 세트마다 개념 카드(cards) 1~{MAX_CARDS}장만 둡니다. 세트마다 문제를 두지 않습니다 (문제가 너무 많아지면 학습 흐름이 끊깁니다).\n"
     "- 카드 하나는 휴대폰 화면 한 장에 들어가게: 본문 공백 포함 250자 안팎, 최대 6줄. 길어지면 카드나 세트를 나눕니다. "
     "한 카드에 한 가지 생각만 담고, 긴 설명 대신 한 줄 정의 + 짧은 예 하나로 끝냅니다.\n"
     "- 카드 body에 쓸 수 있는 서식: **굵게**, `코드`, '- ' 목록(하위 항목은 앞에 공백 2칸), "
     "'1. ' 번호 목록, '| a | b |' 표(행 사이에 빈 줄 없이), ``` 코드 블록. 그 밖의 HTML·이미지·링크는 쓰지 않습니다. 표는 작게(3열·4행 이내).\n"
-    "- 확인 문제는 카드 내용을 이해했는지 묻는 것. 유형:\n"
+    f"- 문제는 세트마다가 아니라 이 강(챕터) 전체를 마무리하는 퀴즈(quiz)로 한 번만 냅니다: 3~{MAX_QUIZ}개, 강의 핵심 개념을 골고루 묻고 "
+    "카드 내용을 이해했는지 확인하는 수준으로. 유형은 OX와 단답만 씁니다 (객관식 금지):\n"
     '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
-    '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 2, "explanation": "..."}'
-    " (answer는 정답 보기의 번호, 0부터)\n"
     '  단답: {"type": "short", "q": "...", "answers": ["정답", "다른 표현"], "explanation": "..."}\n'
-    "- 정답이 한쪽으로 쏠리면 안 됩니다: OX는 정답이 O인 문제와 X인 문제를 섞고(X 문제는 자료의 사실 하나를 그럴듯하게 바꿔 거짓 진술로), "
-    "객관식 정답 번호도 골고루 두세요 (첫 번째 보기에 몰지 마세요).\n"
+    "- 정답이 한쪽으로 쏠리면 안 됩니다: OX는 정답이 O인 문제와 X인 문제를 섞고(X 문제는 자료의 사실 하나를 그럴듯하게 바꿔 거짓 진술로) "
+    "퀴즈 안에서 O와 X가 고르게 나오게 하세요. 단답은 한 단어나 짧은 구로 답이 정해지는 것만 냅니다.\n"
     "- explanation은 한 문장.\n"
-    'JSON으로만 답하세요: {"sets": [{"title": "...", "cards": [{"title": "...", "body": "..."}], "questions": [...]}]}'
+    'JSON으로만 답하세요: {"sets": [{"title": "...", "cards": [{"title": "...", "body": "..."}]}], "quiz": [...]}'
 )
 
 
@@ -89,14 +90,38 @@ def generate_outline(subject, docs, previous=None, concepts=None):
 def generate_chapter(subject, chapter, docs, style=""):
     """한 챕터의 학습 세트들을 만든다. docs: 이 챕터의 근거 자료 [{"id", "title", "summary"}]."""
     material = "\n\n".join(f"## {d['title']}\n{d['summary']}" for d in docs)[:CHAPTER_INPUT_CHARS]
-    style_note = (f"\n확인 문제 출제 스타일 (교수님 족보에서 배운 것 — 확인 문제의 문장·유형·난이도를 이에 맞추세요):\n{style}\n"
+    style_note = (f"\n확인 문제 출제 스타일 (교수님 족보에서 배운 것 — 퀴즈 문장·난이도를 이에 맞추세요. 단, 퀴즈 유형은 OX·단답으로 고정):\n{style}\n"
                   if style else "")
     data = core_ai.complete_json("course_chapter", [
         {"role": "system", "content": CHAPTER_SYSTEM},
         {"role": "user", "content": f"과목: {subject}\n챕터: {chapter['title']}\n챕터 개요: {chapter.get('summary', '')}\n"
                                     + style_note + core_ai.untrusted("자료", material)},
     ])
-    return shuffle_choices(normalize_sets(data.get("sets")))
+    return attach_quiz(normalize_sets(data.get("sets")), data.get("quiz"), data.get("sets"))
+
+
+def normalize_quiz(raw):
+    """강 퀴즈 문제 정리: OX·단답만, 최대 MAX_QUIZ개."""
+    out = []
+    for q in raw or []:
+        question = normalize_question(q)
+        if question and question["type"] in QUIZ_TYPES:
+            out.append(question)
+    return out[:MAX_QUIZ]
+
+
+def attach_quiz(sets, quiz, raw_sets=None):
+    """문제는 세트마다 두지 않고 강의 마지막 세트에 모아 한 번만 낸다. 모델이 예전 방식(세트별 questions)으로 답하면
+    그 문제들 중 OX·단답만 모아 같은 방식으로 쓴다."""
+    questions = normalize_quiz(quiz)
+    if not questions:
+        legacy = [q for s in (raw_sets or []) if isinstance(s, dict) for q in (s.get("questions") or [])]
+        questions = normalize_quiz(legacy)
+    for s in sets:
+        s["questions"] = []
+    if sets and questions:
+        sets[-1]["questions"] = questions
+    return shuffle_choices(sets)
 
 
 def shuffle_choices(sets):

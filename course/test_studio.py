@@ -412,11 +412,30 @@ class ChoiceBalanceTestCase(TestCase):
         q = {"type": "mc", "q": "수정한 문제", "options": ["가", "나", "다"], "answer": 2, "explanation": ""}
         self.assertEqual(course_ai.normalize_question(q)["options"], ["가", "나", "다"])   # 고친 문제는 순서 유지
 
-    def test_generate_chapter_returns_shuffled_choices(self):
-        data = {"sets": [{"title": "세트", "cards": [{"title": "c", "body": "b"}],
-                          "questions": [{"type": "mc", "q": f"q{i}", "options": ["정답", "x", "y", "z"], "answer": 0,
-                                         "explanation": ""} for i in range(12)]}]}
-        with patch("core.ai.complete_json", return_value=data):
+    def test_generate_chapter_puts_one_ox_short_quiz_at_the_end_of_the_chapter(self):
+        data = {"sets": [{"title": "세트1", "cards": [{"title": "c", "body": "b"}],
+                          "questions": [{"type": "ox", "q": "세트 안 문제는 무시", "answer": True, "explanation": ""}]},
+                         {"title": "세트2", "cards": [{"title": "c", "body": "b"}]}],
+                "quiz": [{"type": "ox", "q": "O 문제", "answer": True, "explanation": "e"},
+                         {"type": "ox", "q": "X 문제", "answer": False, "explanation": "e"},
+                         {"type": "short", "q": "단답", "answers": ["답"], "explanation": "e"},
+                         {"type": "mc", "q": "객관식은 버린다", "options": ["a", "b"], "answer": 0, "explanation": "e"}]}
+        with patch("core.ai.complete_json", return_value=data) as ai:
             sets = course_ai.generate_chapter("과목", {"title": "챕터"}, [{"title": "d", "summary": "s"}])
-        answers = {q["answer"] for q in sets[0]["questions"]}
-        self.assertGreater(len(answers), 1)
+        self.assertEqual([len(s["questions"]) for s in sets], [0, 3])                  # 마지막 세트에만, 3문제
+        self.assertEqual([q["type"] for q in sets[-1]["questions"]], ["ox", "ox", "short"])
+        self.assertIn("객관식 금지", ai.call_args.args[1][0]["content"])
+
+    def test_quiz_is_capped_and_legacy_per_set_questions_are_collected(self):
+        many = [{"type": "ox", "q": f"q{i}", "answer": i % 2 == 0, "explanation": ""} for i in range(9)]
+        sets = course_ai.attach_quiz([{"title": "a", "cards": []}, {"title": "b", "cards": []}], many)
+        self.assertEqual(len(sets[-1]["questions"]), course_ai.MAX_QUIZ)
+        legacy_raw = [{"title": "a", "questions": [{"type": "mc", "q": "m", "options": ["x", "y"], "answer": 0},
+                                                   {"type": "short", "q": "s", "answers": ["x"]}]},
+                      {"title": "b", "questions": [{"type": "ox", "q": "o", "answer": True}]}]
+        sets = course_ai.attach_quiz([{"title": "a", "cards": []}, {"title": "b", "cards": []}], None, legacy_raw)
+        self.assertEqual([len(s["questions"]) for s in sets], [0, 2])                  # 예전 방식 응답도 OX·단답만 모아 마지막에
+        self.assertEqual(course_ai.attach_quiz([], many), [])
+
+    def test_format_version_bumped_so_chapters_regenerate_in_the_new_shape(self):
+        self.assertGreaterEqual(course_ai.FORMAT_VERSION, 4)
