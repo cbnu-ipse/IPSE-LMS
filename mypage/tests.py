@@ -541,3 +541,48 @@ class WholeDocumentSummaryTests(TestCase):
             self.client.post(f"/mypage/{long_doc.pk}/resummarize/")
             self.client.post(f"/mypage/{short_doc.pk}/resummarize/")
         self.assertEqual(thread.call_count, 1)                         # 긴 자료만 다시 시작
+
+
+class SummaryChunkLimitTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="chunkuser", password="pw")
+        self.client.force_login(self.user)
+
+    def use(self, n, user=None):
+        from core.models import AIUsage
+        for _ in range(n):
+            AIUsage.objects.create(user=user or self.user, task="summary", model="m", counts_as_request=False)
+
+    def doc_text(self, pieces):
+        return "\n\n".join(("가" * 11000) for _ in range(pieces))
+
+    def test_only_remaining_chunks_are_summarized(self):
+        from .ai import generate_summary
+        self.use(13)
+        calls = []
+        with patch("core.ai.complete", side_effect=lambda *a, **k: calls.append(1) or "요약"):
+            generate_summary(self.doc_text(5), user=self.user)
+        self.assertEqual(len(calls), 2)
+
+    def test_no_allowance_left_raises(self):
+        from core.ai import AIQuotaExceeded
+        from .ai import generate_summary
+        self.use(15)
+        with patch("core.ai.complete", return_value="요약") as mocked:
+            with self.assertRaises(AIQuotaExceeded):
+                generate_summary("짧은 자료", user=self.user)
+        mocked.assert_not_called()
+
+    def test_lecturer_is_exempt(self):
+        from .ai import generate_summary
+        lecturer = get_user_model().objects.create_user(username="lec", password="pw", is_lecturer=True)
+        self.use(30, user=lecturer)
+        with patch("core.ai.complete", return_value="요약"):
+            self.assertEqual(generate_summary("짧은 자료", user=lecturer), "요약")
+
+    def test_study_page_shows_usage(self):
+        self.use(3)
+        doc = PersonalDocument.objects.create(user=self.user, title="t", extracted_text="x", summary="## 요약\n- a",
+                                              summary_status=ProcessingStatus.DONE)
+        response = self.client.get(f"/mypage/{doc.pk}/")
+        self.assertContains(response, "3/15조각")
