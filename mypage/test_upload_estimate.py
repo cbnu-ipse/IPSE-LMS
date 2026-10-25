@@ -129,3 +129,38 @@ class UploadLoadControlTests(TestCase):
         self.assertIn('id="upload-loading"', html)
         self.assertIn("파일을 올리고 글자를 읽고 있어요", html)
         self.assertIn("showLoading(); form.submit()", html)
+
+
+@override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
+class SummaryCoverageNoticeTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="cover", password="pw")
+        self.client.force_login(self.user)
+        credits.grant(self.user, 100, "test")
+
+    def test_very_long_text_is_flagged_with_how_much_is_covered(self):
+        from mypage.ai import SUMMARY_MAX_CHUNKS
+        text = "\n\n".join("가" * 11000 for _ in range(40))                          # 40조각 분량, 요약은 앞 10조각까지
+        with patch("mypage.views.extract_text", return_value=text):
+            d = self.client.post("/mypage/estimate/", {"file": SimpleUploadedFile("book.pdf", b"%PDF")}).json()
+        self.assertEqual((d["chunks"], d["cost"], d["truncated"]), (SUMMARY_MAX_CHUNKS, 30, True))
+        self.assertEqual(d["chars"], len(text))
+        self.assertAlmostEqual(d["covered_chars"] / d["chars"], 0.25, delta=0.02)
+
+    def test_normal_text_is_not_flagged_and_upload_warns_only_when_truncated(self):
+        with patch("mypage.views.extract_text", return_value="본문 " * 200):
+            d = self.client.post("/mypage/estimate/", {"file": SimpleUploadedFile("a.txt", b"x")}).json()
+        self.assertFalse(d["truncated"])
+        long_text = "\n\n".join("가" * 11000 for _ in range(40))
+        data = {"title": "", "file": SimpleUploadedFile("book.txt", b"y" * 100), "document_type": "lecture", "course_name": "운영체제", "professor": "김"}
+        with patch("mypage.views.extract_text", return_value=long_text), patch("mypage.views.threading.Thread"):
+            res = self.client.post("/mypage/", data, follow=True)
+        self.assertContains(res, "앞 ")
+        self.assertContains(res, "만 요약됩니다")
+        self.assertContains(res, "장별로 나눠 올려주세요")
+
+    def test_page_script_shows_the_coverage_warning(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn("만 요약돼요", html)
+        self.assertIn("장별로 나눠 올리면", html)

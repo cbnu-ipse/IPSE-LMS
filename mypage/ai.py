@@ -279,6 +279,15 @@ def summary_chunk_count(text):
     return min(len(split_for_summary(text)), SUMMARY_MAX_CHUNKS)
 
 
+def summary_coverage(text):
+    """(요약할 조각 수, 요약에 들어가는 글자 수, 전체 글자 수). 자료 하나는 SUMMARY_MAX_CHUNKS조각까지만 요약하므로
+    아주 긴 자료(책 한 권 등)는 앞부분만 들어간다 — 사용자에게 얼마나 들어가는지 미리 알려 주는 데 쓴다."""
+    if not text.strip():
+        return 0, 0, 0
+    chunks = split_for_summary(text)[:SUMMARY_MAX_CHUNKS]
+    return len(chunks), sum(len(c) for c in chunks), len(text)
+
+
 def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
     """본문을 chunk_chars 안팎의 조각으로 나눈다. 빈 줄(문단·슬라이드 경계)에서 자르고, 한 문단이 너무 길면 줄 단위로,
     그래도 길면 글자 수로 자른다. 내용은 하나도 버리지 않는다."""

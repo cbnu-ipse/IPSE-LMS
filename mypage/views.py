@@ -23,7 +23,7 @@ from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cos
 
 from .ai import (
     SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
-    pdf_page_texts, summary_chunk_count,
+    pdf_page_texts, summary_chunk_count, summary_coverage,
 )
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
@@ -197,7 +197,11 @@ def document_list(request, folder_id=None):
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
+            _, covered, total = summary_coverage(extracted_text)
             messages.success(request, "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다.")
+            if covered < total * 0.98:
+                messages.warning(request, f"자료가 매우 길어(글자 {total:,}자) 앞 {covered:,}자(약 {round(covered / total * 100)}%)만 요약됩니다. "
+                                          "나머지까지 요약하려면 장별로 나눠 올려주세요.")
             return redirect(request.path)
         if {"document_type", "course_name", "professor"} & set(form.errors):
             messages.error(request, "자료 구분, 과목 이름, 교수 이름을 모두 입력해주세요. 올린 뒤에는 고칠 수 없습니다.")
@@ -270,8 +274,9 @@ def upload_estimate(request):
             except TimeoutError as exc:
                 return JsonResponse({"ok": False, "error": str(exc)}, status=503)
             cache.set(key, text, EXTRACT_CACHE_TTL)
-        chunks = summary_chunk_count(text)
-        info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit, empty=not text.strip())
+        chunks, covered, total = summary_coverage(text)
+        info.update(kind="text", chunks=chunks, chars=total, covered_chars=covered, truncated=covered < total * 0.98,
+                    cost=chunks * unit, empty=not text.strip())
         need = chunks * unit
     balance = credit_info(request.user, "summary")
     info["balance"] = balance["balance"] if balance else None       # 크레딧이 필요 없는 사용자는 None
