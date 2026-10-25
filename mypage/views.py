@@ -23,6 +23,7 @@ from .ai import (
 )
 from .forms import PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
+from .ontology import professor_choices, resolve_professor, resolve_subject, subject_choices
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,19 @@ def document_list(request, folder_id=None):
             document.folder = folder
             if not document.title:
                 document.title = os.path.splitext(document.file.name)[0]
+            typed_course = form.cleaned_data["course_name"]
+
+            def apply_info():
+                """과목·교수를 이미 있는 것에 묶는다 (표기만 다른 이름은 같은 과목·교수로). 저장 직전에만 불러 빈 과목이 남지 않게 한다."""
+                subject, how = resolve_subject(typed_course)
+                professor = resolve_professor(form.cleaned_data["professor"])
+                document.course_name = subject.name
+                document.professor = professor.name if professor else ""
+                if how != "new" and subject.name != " ".join(typed_course.split()):
+                    messages.info(request, f"「{typed_course}」은(는) 기존 과목 「{subject.name}」으로 묶었습니다.")
+                elif how == "new":
+                    messages.info(request, f"새 과목 「{subject.name}」을(를) 만들었습니다.")
+
             upload = request.FILES["file"]
             upload.seek(0)
             content_hash = hashlib.sha256(upload.read()).hexdigest()
@@ -120,6 +134,7 @@ def document_list(request, folder_id=None):
                 document.extracted_text = same.extracted_text
                 document.summary = same.summary
                 document.summary_status = ProcessingStatus.DONE
+                apply_info()
                 document.save()
                 threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 요약을 바로 불러왔습니다.")
@@ -132,6 +147,7 @@ def document_list(request, folder_id=None):
                 messages.error(request, f"자료를 올리지 못했습니다. {exc}")
                 return redirect(request.path)
             document.content_hash = content_hash
+            apply_info()
             document.save()
             with document.file.open("rb") as fh:
                 extracted_text = extract_text(fh, document.file.name, user=request.user)
@@ -170,6 +186,8 @@ def document_list(request, folder_id=None):
         "current_folder": folder,
         "form": form,
         "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
+        "subject_choices": subject_choices(),
+        "professor_choices": professor_choices(),
         "folder_form": PersonalFolderForm(),
     })
 
@@ -316,14 +334,15 @@ def generate_question_view(request, pk):
             question_type=question_type,
             status=ProcessingStatus.PROCESSING,
         )
-    from .exam import style_for, topic_professor
+    from .exam import style_for, style_prompt, topic_professor
 
     subject = document.subject_code
-    style = style_for(document.professor or topic_professor(subject), subject)    # 교수님 족보에서 배운 출제 스타일
+    professor = document.professor or topic_professor(subject)
+    style_text = style_prompt(style_for(professor, subject), professor, subject)    # 교수님 족보에서 배운 출제 스타일
     threading.Thread(
         target=_generate_question_bg,
         args=(question.pk, document.extracted_text, question_type, existing_texts, request.user, existing_count),
-        kwargs={"style": style.guidelines if style else ""},
+        kwargs={"style": style_text},
         daemon=True,
     ).start()
 

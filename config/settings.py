@@ -297,6 +297,8 @@ _AI_TASK_DEFAULTS = {
     "course_chapter": ("gemini", "gemini-3.5-flash-lite"),  # 강의 챕터 본문
     "exam_style": ("gemini", "gemini-3.5-flash-lite"),      # 족보에서 교수 출제 스타일 뽑기
     "mock_exam": ("gemini", "gemini-3.5-flash-lite"),       # 모의 출제
+    "concepts": ("gemini", "gemini-3.5-flash-lite"),        # 수업 자료 요약의 개념 태그
+    "exam_analysis": ("gemini", "gemini-3.5-flash-lite"),   # 족보를 문제 단위로 분석(유형·개념)
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 

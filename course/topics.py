@@ -42,10 +42,11 @@ def _topics_listing():
 
 
 def _subject_named(name, description=""):
-    from mypage.models import Subject
+    """이름 → 과목. 이미 있는 과목과 표기만 다르면 그 과목에 묶는다 (mypage/ontology.py)."""
+    from mypage.ontology import resolve_subject
 
-    subject, created = Subject.objects.get_or_create(name=name)
-    if created and description:
+    subject, how = resolve_subject(name)
+    if how == "new" and description:
         subject.description = description[:300]
         subject.save(update_fields=["description"])
     return subject
@@ -99,6 +100,20 @@ def classify_document(document, force=False):
     return names
 
 
+def _tag_ontology(document):
+    """수업 자료는 요약 부분마다 개념을, 족보는 문제마다 유형·개념을 붙인다 (mypage/ontology.py). 실패해도 나머지는 진행한다."""
+    from mypage import ontology
+    from mypage.models import PersonalDocument
+
+    try:
+        if document.document_type == PersonalDocument.DocumentType.EXAM:
+            ontology.analyze_exam(document)
+        else:
+            ontology.tag_document(document)
+    except Exception:
+        logger.exception("문서 %s 개념 태그 실패", document.pk)
+
+
 def after_summary(document_id, force=False):
     """요약이 끝난 자료 하나를 분류하고, 수업 자료면 강의 초안까지, 족보면 출제 스타일을 새로 뽑아 관련 강의 초안에 반영한다
     (백그라운드 스레드에서 호출)."""
@@ -111,6 +126,7 @@ def after_summary(document_id, force=False):
     if not document.summary.strip():
         return None
     names = classify_document(document, force=force)
+    _tag_ontology(document)
     extra = {"force": True} if force else {}
     if document.document_type == PersonalDocument.DocumentType.EXAM:
         has_professor = bool(professor_key(document.professor))

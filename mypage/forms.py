@@ -36,10 +36,12 @@ class PersonalDocumentUploadForm(forms.ModelForm):
         widget=forms.Select(attrs={"class": INPUT_CLASS}))
     course_name = forms.CharField(
         max_length=50, label="과목 이름",
-        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "과목 이름 (예: 운영체제)"}))
+        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "과목 이름 (기존 과목은 목록에서 고르기)", "list": "subject-options",
+                                   "autocomplete": "off"}))
     professor = forms.CharField(
         max_length=50, label="교수 이름",
-        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "교수 이름 (예: 김철수)"}))
+        widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "교수 이름 (기존 교수님은 목록에서 고르기)", "list": "professor-options",
+                                   "autocomplete": "off"}))
 
     class Meta:
         model = PersonalDocument

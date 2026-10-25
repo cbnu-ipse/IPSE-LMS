@@ -13,7 +13,8 @@ from .models import CourseCategory, Course, UserCourseProgress, Upload, UploadVi
 from .forms import LecturerCourseForm, LessonForm
 from accounts.decorators import lecturer_required
 from core.models import ActivityLog
-from mypage.exam import style_for_topic
+from mypage.exam import style_for_topic, topic_professor
+from mypage.ontology import exam_stats
 from ranking.utils import sync_user_profile_metrics
 import os
 import textwrap
@@ -200,6 +201,7 @@ def course_detail(request, slug):
         'next_lesson': next_lesson,
         'is_course_manager': manager,
         'exam_style': style_for_topic(course.code),
+        'exam_stats': exam_stats(topic_professor(course.code), course.code),
     })
 
 

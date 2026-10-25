@@ -32,6 +32,12 @@ OUTLINE_SYSTEM = (
     '"chapters": [{"title": "...", "summary": "...", "doc_ids": [1, 2]}]}'
 )
 
+OUTLINE_CONCEPTS_NOTE = (
+    "\n개념 목록이 주어지면 챕터를 개념 단위로 구성합니다: 챕터마다 함께 배우기 좋은 개념 2~6개를 묶어 concepts에 이름을 글자 그대로 적고 "
+    "(doc_ids는 생략해도 됩니다), 모든 개념을 빠짐없이 어느 한 챕터에 넣습니다. 서로 이어지는 개념은 가까운 챕터에 두고 쉬운 개념부터 배치합니다.\n"
+    '이때 챕터는 {"title": "...", "summary": "...", "concepts": ["개념", ...]} 형태입니다.'
+)
+
 CHAPTER_SYSTEM = (
     "대학 동아리 학습 플랫폼에서 이 과목을 재미있고 쉽게 가르치는 강사입니다. 목적은 올라온 자료를 다시 보여 주는 것이 아니라 "
     "학생이 이 챕터의 내용을 진짜로 이해하게 만드는 것입니다. 주어진 자료 요약은 무엇을 다룰지 알려 주는 참고 자료입니다.\n"
@@ -62,19 +68,22 @@ CHAPTER_SYSTEM = (
 )
 
 
-def generate_outline(subject, docs, previous=None):
-    """docs: [{"id", "title", "summary"}]. previous: 이전 목차(챕터 제목·doc_ids) — 있으면 되도록 유지하게 한다."""
+def generate_outline(subject, docs, previous=None, concepts=None):
+    """docs: [{"id", "title", "summary"}]. previous: 이전 목차(챕터 제목·doc_ids) — 있으면 되도록 유지하게 한다.
+    concepts: {개념 이름: [자료 id]} — 있으면 챕터를 개념 단위로 구성한다."""
     listing = "\n".join(f"[{d['id']}] {d['title']}\n{d['summary'][:OUTLINE_HEAD_CHARS]}" for d in docs)
     request = f"과목: {subject}\n"
+    if concepts:
+        request += "개념 목록 (개념: 다루는 자료 번호):\n" + "\n".join(f"- {n}: {ids}" for n, ids in concepts.items()) + "\n"
     if previous:
         request += ("이전 목차가 있습니다. 새 자료를 알맞은 챕터에 넣고, 꼭 필요할 때만 챕터를 추가·변경하세요. "
                     "바뀌지 않는 챕터는 제목을 그대로 두세요:\n"
                     + "\n".join(f"- {c['title']} (자료 {c.get('doc_ids', [])})" for c in previous) + "\n")
     data = core_ai.complete_json("course_outline", [
-        {"role": "system", "content": OUTLINE_SYSTEM},
+        {"role": "system", "content": OUTLINE_SYSTEM + (OUTLINE_CONCEPTS_NOTE if concepts else "")},
         {"role": "user", "content": request + core_ai.untrusted("자료목록", listing)},
     ])
-    return normalize_outline(data, {d["id"] for d in docs})
+    return normalize_outline(data, {d["id"] for d in docs}, concepts)
 
 
 def generate_chapter(subject, chapter, docs, style=""):
@@ -110,15 +119,34 @@ def _text(value, limit):
     return str(value or "").strip()[:limit]
 
 
-def normalize_outline(data, valid_doc_ids):
+def normalize_outline(data, valid_doc_ids, concepts=None):
+    """concepts({개념: [자료 id]})가 있으면 챕터의 개념을 검증하고 근거 자료를 그 개념을 다루는 자료로 정한다.
+    어느 챕터에도 안 들어간 개념은 마지막 챕터에 붙인다."""
     chapters = []
+    used = set()
     for c in (data.get("chapters") or [])[:MAX_CHAPTERS]:
         title = _text(c.get("title"), 120)
         if not title:
             continue
-        doc_ids = [d for d in (c.get("doc_ids") or []) if isinstance(d, int) and d in valid_doc_ids]
-        chapters.append({"title": title, "summary": _text(c.get("summary"), 300),
-                         "doc_ids": sorted(set(doc_ids)) or sorted(valid_doc_ids)})
+        names = []
+        if concepts:
+            names = [n for n in (c.get("concepts") or []) if isinstance(n, str) and n in concepts and n not in used][:12]
+            used.update(names)
+        if names:
+            doc_ids = sorted({i for n in names for i in concepts[n] if i in valid_doc_ids})
+        else:
+            doc_ids = [d for d in (c.get("doc_ids") or []) if isinstance(d, int) and d in valid_doc_ids]
+        chapter = {"title": title, "summary": _text(c.get("summary"), 300),
+                   "doc_ids": sorted(set(doc_ids)) or sorted(valid_doc_ids)}
+        if names:
+            chapter["concepts"] = names
+        chapters.append(chapter)
+    if concepts and chapters:
+        left = [n for n in concepts if n not in used]
+        if left:
+            last = chapters[-1]
+            last["concepts"] = last.get("concepts", []) + left
+            last["doc_ids"] = sorted(set(last["doc_ids"]) | {i for n in left for i in concepts[n] if i in valid_doc_ids})
     return {"title": _text(data.get("title"), 120), "description": _text(data.get("description"), 500),
             "chapters": chapters}
 
