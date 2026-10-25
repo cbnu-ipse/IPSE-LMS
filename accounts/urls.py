@@ -41,6 +41,9 @@ urlpatterns = [
     path('profile/update/api/', views.update_profile_api, name='update_profile_api'),
     path('profile/picture/update/', views.update_profile_picture, name='update_profile_picture'),
     path('profile/redeem-code/', views.redeem_code_api, name='redeem_code_api'),
+    path('grant/search/', views.grant_user_search_api, name='grant_user_search_api'),
+    path('grant/', views.grant_currency_api, name='grant_currency_api'),
+    path('grant/seen/', views.grant_seen_api, name='grant_seen_api'),
 
     # ─── Profile ───────────────────────────────────────────────────────────────
     path('profile/', views.profile, name='profile'),

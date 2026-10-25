@@ -158,6 +158,7 @@ TEMPLATES = [
                 "game.context_processors.pending_season_reward",
                 "game.context_processors.static_version",
                 "accounts.context_processors.treat_event",
+                "accounts.context_processors.currency_grants",
             ],
         },
     },
@@ -320,6 +321,11 @@ AI_CREDIT_COSTS = {
 }
 if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
     AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}
+# 한 번에 지급할 수 있는 재화 상한 (오입력 방지, 지급 권한자·관리자 모두 적용)
+CURRENCY_GRANT_MAX = {
+    "leaf": config("CURRENCY_GRANT_MAX_LEAF", default=1000, cast=int),
+    "credit": config("CURRENCY_GRANT_MAX_CREDIT", default=500, cast=int),
+}
 AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=12000, cast=int)  # 요약 1조각의 최대 글자 수
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"

@@ -341,6 +341,11 @@
                         <i class="fa-solid fa-leaf text-emerald-600"></i>
                         <span>{{ user.leaves }}</span>
                     </div>
+                    {% if can_grant_currency %}
+                    <button type="button" onclick="openGrantModal()" class="inline-flex items-center gap-1.5 bg-violet-50 px-3 py-1.5 rounded-full border border-violet-200 text-violet-700 text-xs font-bold shadow-sm hover:bg-violet-100 transition" title="낙엽·크레딧 지급">
+                        <i class="fa-solid fa-hand-holding-heart"></i>재화 지급
+                    </button>
+                    {% endif %}
                     {% if site_section == 'judge' %}
                     <!-- AI 크레딧 (학습 모듈) -->
                     <a href="{% url 'profile' %}" class="inline-flex items-center gap-1.5 bg-sky-50/60 px-3 py-1.5 rounded-full border border-sky-200 text-sky-800 text-sm font-medium shadow-sm hover:bg-sky-100 transition" title="AI 크레딧 (보상 코드로 충전)">
@@ -424,6 +429,9 @@
                     </a>
                     <button type="button" onclick="doLogout()" class="text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl border border-rose-100 transition">로그아웃</button>
                 </div>
+                {% if can_grant_currency %}
+                <button type="button" onclick="openGrantModal()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-100 transition"><i class="fa-solid fa-hand-holding-heart"></i>재화 지급</button>
+                {% endif %}
                 {% else %}
                 <!-- 로그인 유도 박스 -->
                 <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-center">
@@ -734,6 +742,141 @@
         });
     });
 })();
+</script>
+{% endif %}
+
+{% if can_grant_currency %}
+<!-- ─── 재화 지급 (권한자) ─── -->
+<div id="grant-modal" class="fixed inset-0 z-[9998] hidden items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-labelledby="grant-title">
+    <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+            <h3 id="grant-title" class="text-lg font-bold text-slate-800"><i class="fa-solid fa-hand-holding-heart text-violet-500 mr-1.5"></i>재화 지급</h3>
+            <button type="button" id="grant-close" class="text-slate-400 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="space-y-3">
+            <div class="relative">
+                <label for="grant-q" class="block text-xs font-bold text-slate-500 mb-1">받는 사람</label>
+                <input id="grant-q" type="text" autocomplete="off" placeholder="학번·이름·닉네임으로 검색" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-violet-500">
+                <div id="grant-picked" class="hidden mt-2 text-sm font-bold text-violet-700 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2"></div>
+                <ul id="grant-results" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto z-10"></ul>
+            </div>
+            <div>
+                <span class="block text-xs font-bold text-slate-500 mb-1">재화</span>
+                <div class="flex gap-2">
+                    <label class="flex-1 text-center cursor-pointer"><input type="radio" name="grant-currency" value="credit" class="peer sr-only" checked><span class="block px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-500 peer-checked:bg-sky-50 peer-checked:border-sky-300 peer-checked:text-sky-700"><i class="fa-solid fa-coins mr-1"></i>AI 크레딧</span></label>
+                    <label class="flex-1 text-center cursor-pointer"><input type="radio" name="grant-currency" value="leaf" class="peer sr-only"><span class="block px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-500 peer-checked:bg-amber-50 peer-checked:border-amber-300 peer-checked:text-amber-700"><i class="fa-solid fa-leaf mr-1"></i>낙엽</span></label>
+                </div>
+            </div>
+            <div>
+                <label for="grant-amount" class="block text-xs font-bold text-slate-500 mb-1">수량</label>
+                <input id="grant-amount" type="number" min="1" inputmode="numeric" placeholder="예: 50" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-violet-500">
+                <div class="flex gap-1.5 mt-1.5">
+                    <button type="button" data-grant-add="10" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-[11px] font-bold text-slate-500">+10</button>
+                    <button type="button" data-grant-add="50" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-[11px] font-bold text-slate-500">+50</button>
+                    <button type="button" data-grant-add="100" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-[11px] font-bold text-slate-500">+100</button>
+                </div>
+            </div>
+            <div>
+                <label for="grant-reason" class="block text-xs font-bold text-slate-500 mb-1">사유 (받는 사람에게 보여요, 선택)</label>
+                <input id="grant-reason" type="text" maxlength="100" placeholder="예: 스터디 우수 참여" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-violet-500">
+            </div>
+            <p id="grant-msg" class="hidden text-xs font-bold"></p>
+            <button type="button" id="grant-submit" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition disabled:opacity-50">지급하기</button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    const modal = document.getElementById('grant-modal');
+    const q = document.getElementById('grant-q'), results = document.getElementById('grant-results'), picked = document.getElementById('grant-picked');
+    const amount = document.getElementById('grant-amount'), reason = document.getElementById('grant-reason');
+    const msg = document.getElementById('grant-msg'), submit = document.getElementById('grant-submit');
+    let userId = null, timer = null;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const say = (text, ok) => { msg.textContent = text; msg.className = 'text-xs font-bold ' + (ok ? 'text-emerald-600' : 'text-rose-600'); };
+    window.openGrantModal = function () {
+        modal.classList.remove('hidden'); modal.classList.add('flex'); q.focus();
+    };
+    function close() { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    document.getElementById('grant-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    function pick(u) {
+        userId = u.id; picked.textContent = u.display + (u.name && u.name !== u.display ? ' · ' + u.name : '') + ' (' + u.username + ')';
+        picked.classList.remove('hidden'); results.classList.add('hidden'); q.value = '';
+        amount.focus();
+    }
+    q.addEventListener('input', () => {
+        clearTimeout(timer);
+        const value = q.value.trim();
+        if (!value) { results.classList.add('hidden'); return; }
+        timer = setTimeout(async () => {
+            try {
+                const res = await fetch("{% url 'grant_user_search_api' %}?q=" + encodeURIComponent(value), { credentials: 'same-origin' });
+                const data = await res.json();
+                results.innerHTML = '';
+                (data.users || []).forEach((u) => {
+                    const li = document.createElement('li');
+                    li.className = 'px-3 py-2 text-sm hover:bg-violet-50 cursor-pointer';
+                    li.innerHTML = '<b>' + esc(u.display) + '</b> <span class="text-slate-400 text-xs">' + esc(u.name) + ' · ' + esc(u.username) + '</span>';
+                    li.addEventListener('click', () => pick(u));
+                    results.appendChild(li);
+                });
+                if (!results.children.length) results.innerHTML = '<li class="px-3 py-2 text-xs text-slate-400">검색 결과가 없습니다</li>';
+                results.classList.remove('hidden');
+            } catch (e) {}
+        }, 250);
+    });
+    modal.querySelectorAll('[data-grant-add]').forEach((b) => b.addEventListener('click', () => {
+        amount.value = (parseInt(amount.value || '0', 10) || 0) + parseInt(b.dataset.grantAdd, 10);
+    }));
+    submit.addEventListener('click', async () => {
+        if (!userId) { say('받는 사람을 선택해주세요.', false); return; }
+        const currency = modal.querySelector('input[name=grant-currency]:checked').value;
+        const label = currency === 'credit' ? 'AI 크레딧' : '낙엽';
+        if (!confirm(picked.textContent + '님에게 ' + label + ' ' + amount.value + '개를 지급할까요?')) return;
+        submit.disabled = true;
+        try {
+            const res = await fetch("{% url 'grant_currency_api' %}", {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                body: JSON.stringify({ user_id: userId, currency: currency, amount: amount.value, reason: reason.value }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) { say(data.message, true); userId = null; picked.classList.add('hidden'); amount.value = ''; reason.value = ''; }
+            else say(data.message || '지급하지 못했습니다.', false);
+        } catch (e) { say('네트워크 오류로 지급하지 못했습니다.', false); }
+        submit.disabled = false;
+    });
+})();
+</script>
+{% endif %}
+
+{% if pending_currency_grants %}
+<!-- ─── 재화를 받았다는 안내 (접속했을 때 한 번) ─── -->
+<div id="grant-received" class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
+        <div class="text-5xl mb-3">🎁</div>
+        <h3 class="text-lg font-black text-slate-800 mb-4">재화가 도착했어요!</h3>
+        <ul class="space-y-2 mb-6">
+            {% for g in pending_currency_grants %}
+            <li class="rounded-2xl px-4 py-3 text-left {% if g.currency == 'credit' %}bg-sky-50 border border-sky-100{% else %}bg-amber-50 border border-amber-100{% endif %}">
+                <p class="text-base font-black {% if g.currency == 'credit' %}text-sky-700{% else %}text-amber-700{% endif %}">
+                    <i class="fa-solid {% if g.currency == 'credit' %}fa-coins{% else %}fa-leaf{% endif %} mr-1"></i>{{ g.get_currency_display }} +{{ g.amount }}
+                </p>
+                <p class="text-xs text-slate-500 mt-0.5">{% if g.granted_by %}{{ g.granted_by.display_name }}님이 지급{% endif %}{% if g.reason %} · {{ g.reason }}{% endif %}</p>
+            </li>
+            {% endfor %}
+        </ul>
+        <button type="button" id="grant-received-ok" class="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold transition">확인했어요</button>
+    </div>
+</div>
+<script>
+document.getElementById('grant-received-ok').addEventListener('click', function () {
+    this.disabled = true;
+    fetch("{% url 'grant_seen_api' %}", { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
+        .finally(function () { const m = document.getElementById('grant-received'); if (m) m.remove(); });
+});
 </script>
 {% endif %}
 
