@@ -22,6 +22,47 @@ class Subject(models.Model):
         return self.name
 
 
+class SubjectAlias(models.Model):
+    """과목의 다른 표기. 사람이 '운영 체제'라고 적어도 '운영체제'로 묶이도록 한 번 맞춘 표기를 기억한다."""
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="aliases")
+    name = models.CharField(max_length=50, verbose_name="표기")
+    key = models.CharField(max_length=60, unique=True, verbose_name="비교용 키")
+
+    def __str__(self):
+        return f"{self.name} → {self.subject}"
+
+
+class Professor(models.Model):
+    """교수님. 족보의 출제 스타일과 과목을 교수 단위로 묶는 기준 (이름 표기가 달라도 key가 같으면 같은 분)."""
+    name = models.CharField(max_length=50, verbose_name="이름")
+    key = models.CharField(max_length=60, unique=True, verbose_name="비교용 키")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Concept(models.Model):
+    """과목 안의 개념 (예: 운영체제 > 페이징). 수업 자료와 족보 문제가 개념으로 이어진다.
+    강의 챕터는 개념을 묶어 구성하고, 모의 출제는 족보에서 자주 나온 개념에 비중을 둔다."""
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="concepts")
+    name = models.CharField(max_length=80, verbose_name="개념")
+    key = models.CharField(max_length=90, verbose_name="비교용 키")
+    description = models.CharField(max_length=300, blank=True, verbose_name="설명")
+    order = models.PositiveIntegerField(default=0, verbose_name="순서")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [models.UniqueConstraint(fields=["subject", "key"], name="unique_concept_per_subject")]
+
+    def __str__(self):
+        return f"{self.subject} > {self.name}"
+
+
 class PersonalFolder(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_folders")
     name = models.CharField(max_length=100)
@@ -80,6 +121,10 @@ class PersonalDocument(models.Model):
     topics = models.ManyToManyField(Subject, blank=True, related_name="documents", verbose_name="소속 주제")
     # 강의 생성에 쓸 만한 학습 자료인지 (업로드 후 AI가 주제와 함께 판단). 예전 '자료 구분'을 대신한다
     is_course_material = models.BooleanField(default=True, verbose_name="강의 자료로 사용 (AI 판단)")
+    # 수업 자료 요약의 각 부분이 다루는 개념: [{"section": "요약 제목", "concepts": ["페이징", ...]}] (mypage/ontology.py)
+    concept_tags = models.JSONField(default=list, blank=True, verbose_name="요약 부분별 개념")
+    concepts = models.ManyToManyField("Concept", through="DocumentConcept", blank=True, related_name="documents",
+                                      verbose_name="다루는 개념")
     is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
@@ -161,3 +206,36 @@ class MockExam(models.Model):
 
     def get_absolute_url(self):
         return reverse("mypage:mock_exam", kwargs={"pk": self.pk})
+
+
+class DocumentConcept(models.Model):
+    document = models.ForeignKey(PersonalDocument, on_delete=models.CASCADE, related_name="document_concepts")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="document_concepts")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["document", "concept"], name="unique_document_concept")]
+
+
+class ExamQuestion(models.Model):
+    """족보에서 뽑아낸 문제 하나. 교수님이 어떤 유형으로 어떤 개념을 자주 내는지 세는 근거 (mypage/ontology.py)."""
+    class QType(models.TextChoices):
+        OX = "ox", "OX"
+        MC = "mc", "객관식"
+        SHORT = "short", "단답형"
+        ESSAY = "essay", "서술형"
+        CALC = "calc", "계산·풀이"
+        CODE = "code", "코드"
+        OTHER = "other", "기타"
+
+    document = models.ForeignKey(PersonalDocument, on_delete=models.CASCADE, related_name="exam_questions")
+    number = models.PositiveSmallIntegerField(default=0, verbose_name="번호")
+    text = models.TextField(verbose_name="문제 (요약)")
+    qtype = models.CharField(max_length=10, choices=QType.choices, default=QType.OTHER, verbose_name="유형")
+    points = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="배점")
+    concepts = models.ManyToManyField(Concept, blank=True, related_name="exam_questions", verbose_name="다루는 개념")
+
+    class Meta:
+        ordering = ["document_id", "number", "id"]
+
+    def __str__(self):
+        return f"[{self.get_qtype_display()}] {self.text[:30]}"

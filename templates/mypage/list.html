@@ -86,6 +86,8 @@
                         {{ form.course_name }}
                         {{ form.professor }}
                     </div>
+                    <datalist id="subject-options">{% for name in subject_choices %}<option value="{{ name }}">{% endfor %}</datalist>
+                    <datalist id="professor-options">{% for name in professor_choices %}<option value="{{ name }}">{% endfor %}</datalist>
                     <p class="text-[11px] text-slate-400"><b>수업 자료</b>는 강의를 만드는 데, <b>족보</b>(기출·모의고사)는 교수님 출제 스타일을 배워 문제를 만드는 데 쓰입니다. 구분·과목·교수 이름은 필수이며 <b>올린 뒤에는 고칠 수 없어요.</b></p>
                     <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition">업로드{% include 'includes/credit_cost.html' with cost=ai_cost.summary plus=1 %}</button>
                 </form>
@@ -154,8 +156,8 @@
             <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">자료명</dt><dd id="uc-title" class="font-semibold text-slate-800 break-all"></dd></div>
             <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">파일</dt><dd id="uc-file" class="text-slate-700 break-all"></dd></div>
             <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">구분</dt><dd id="uc-type" class="font-semibold text-slate-800"></dd></div>
-            <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">과목</dt><dd id="uc-course" class="font-semibold text-slate-800 break-all"></dd></div>
-            <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">교수</dt><dd id="uc-professor" class="font-semibold text-slate-800 break-all"></dd></div>
+            <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">과목</dt><dd class="min-w-0"><span id="uc-course" class="font-semibold text-slate-800 break-all"></span><div id="uc-course-note" class="text-[11px] mt-1"></div></dd></div>
+            <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">교수</dt><dd class="min-w-0"><span id="uc-professor" class="font-semibold text-slate-800 break-all"></span><div id="uc-professor-note" class="text-[11px] mt-1"></div></dd></div>
         </dl>
         {% if ai_cost.summary %}
         <p class="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-coins text-sky-500 mr-1"></i>요약 1조각(최대 {{ summary_chunk_chars }}자)당 {{ ai_cost.summary }}크레딧이 듭니다. 이미지는 글자 읽기에 파일 크기 1MB당 {{ ai_cost.ocr }}크레딧이 더 들어요.</p>
@@ -175,6 +177,44 @@
     const typeSelect = form.elements['document_type'];
     const show = () => { modal.classList.remove('hidden'); modal.classList.add('flex'); };
     const hide = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+    // 과목·교수: 이미 있는 이름이면 확인 표시, 비슷한 이름이 있으면 '혹시 이 과목인가요?', 아니면 새로 만들어진다고 알려 준다
+    const norm = (s) => s.toLowerCase().replace(/[\s·•\-_()\[\]{}<>.,:;/\\'"`~!?]+/g, '');
+    const normProf = (s) => s.replace(/\s+/g, '').replace(/(교수님|교수|님)$/, '').toLowerCase();
+    const options = (id) => Array.from(document.querySelectorAll('#' + id + ' option')).map((o) => o.value);
+    const bigrams = (s) => { const out = new Set(); for (let i = 0; i + 1 < s.length; i++) out.add(s.slice(i, i + 2)); return out; };
+    function sim(a, b) {
+        if (!a || !b) return 0;
+        if (a.length >= 2 && b.length >= 2 && (a.includes(b) || b.includes(a))) return 0.9;
+        const x = bigrams(a), y = bigrams(b);
+        let hit = 0; x.forEach((g) => { if (y.has(g)) hit++; });
+        return x.size + y.size ? (2 * hit) / (x.size + y.size) : 0;
+    }
+    function judge(field, listId, valueId, noteId, normFn, label) {
+        const value = val(field), note = document.getElementById(noteId);
+        document.getElementById(valueId).textContent = value;
+        const all = options(listId), n = normFn(value);
+        note.innerHTML = '';
+        if (all.some((o) => normFn(o) === n)) { note.className = 'text-[11px] mt-1 text-emerald-600 font-bold'; note.textContent = '✓ 기존 ' + label + '과 같아요'; return; }
+        const close = all.filter((o) => sim(n, normFn(o)) >= 0.55).slice(0, 3);
+        if (close.length) {
+            note.className = 'text-[11px] mt-1 text-amber-700';
+            note.append('혹시 이 ' + label + '인가요? ');
+            close.forEach((o) => {
+                const b = document.createElement('button');
+                b.type = 'button'; b.textContent = o; b.className = 'mr-1 px-2 py-0.5 rounded-lg bg-amber-100 hover:bg-amber-200 font-bold';
+                b.addEventListener('click', () => { form.elements[field].value = o; fill(); });
+                note.appendChild(b);
+            });
+            note.append(' 아니면 새 ' + label + '으로 등록돼요.');
+            return;
+        }
+        note.className = 'text-[11px] mt-1 text-slate-400';
+        note.textContent = all.length ? '새 ' + label + '으로 등록돼요' : '';
+    }
+    function fill() {
+        judge('course_name', 'subject-options', 'uc-course', 'uc-course-note', norm, '과목');
+        judge('professor', 'professor-options', 'uc-professor', 'uc-professor-note', normProf, '교수님');
+    }
     form.addEventListener('submit', (e) => {
         if (form.dataset.confirmed === '1') return;
         e.preventDefault();
@@ -182,8 +222,7 @@
         document.getElementById('uc-title').textContent = val('title') || (file ? file.name.replace(/\.[^.]+$/, '') : '');
         document.getElementById('uc-file').textContent = file ? `${file.name} (${(file.size / 1048576).toFixed(1)}MB)` : '';
         document.getElementById('uc-type').textContent = typeSelect.options[typeSelect.selectedIndex].text;
-        document.getElementById('uc-course').textContent = val('course_name');
-        document.getElementById('uc-professor').textContent = val('professor');
+        fill();
         show();
         document.getElementById('uc-ok').focus();
     });

@@ -350,6 +350,9 @@
                 {% else %}
                 <p class="text-xs text-slate-500 mb-4">이 강의의 수업 자료로 모의고사를 만들어 드려요. 내 자료에서 같은 교수님의 <b>족보</b>를 올리면 그 교수님 출제 스타일로 만들어집니다.</p>
                 {% endif %}
+                {% if exam_stats.concepts %}
+                <p class="text-xs text-slate-500 mb-4"><b class="text-slate-700">족보에서 자주 나온 개념</b><br>{% for name, n in exam_stats.concepts|slice:":5" %}<span class="inline-block mt-1 mr-1 px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 font-bold">{{ name }} {{ n }}</span>{% endfor %}</p>
+                {% endif %}
                 <form method="post" action="{% url 'mypage:mock_exam_create' course.slug %}">
                     {% csrf_token %}
                     <button type="submit" class="w-full bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition">모의 출제 받기{% include 'includes/credit_cost.html' with cost=ai_cost.mock_exam %}</button>

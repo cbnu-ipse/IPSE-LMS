@@ -16,7 +16,9 @@ from collections import Counter
 
 from core import ai as core_ai
 
-from .models import ExamStyle, MockExam, PersonalDocument
+from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument
+from .naming import professor_key  # noqa: F401 (다른 모듈이 mypage.exam에서 가져다 쓴다)
+from .ontology import exam_questions_for, exam_stats
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +53,6 @@ MOCK_SYSTEM = (
     '  서술형: {"type": "essay", "q": "...", "answer": "채점 기준이 되는 모범답안(핵심 요소 포함, 3~6문장)", "explanation": "..."}\n'
     'JSON으로만 답하세요: {"title": "...", "questions": [...]}'
 )
-
-
-def professor_key(name):
-    """'김 교수님', '김교수', '김' 처럼 달리 적어도 같은 교수님으로 묶는다."""
-    n = re.sub(r"\s+", "", name or "")
-    n = re.sub(r"(교수님|교수|님)$", "", n)
-    return n.lower()
 
 
 def style_key(professor="", subject=""):
@@ -139,6 +134,32 @@ def style_for_topic(subject):
     return style_for(topic_professor(subject), subject)
 
 
+def style_prompt(style, professor="", subject=""):
+    """프롬프트에 넣을 출제 지시문: AI가 족보에서 뽑은 스타일 + 문제 단위 분석에서 센 유형 비율·자주 나온 개념.
+    스타일도 분석도 없으면 빈 문자열."""
+    from .models import ExamQuestion
+    from .ontology import exam_stats
+
+    parts = [style.guidelines] if style and style.guidelines else []
+    stats = exam_stats(professor, subject)
+    if stats["total"]:
+        labels = dict(ExamQuestion.QType.choices)
+        mix = ", ".join(f"{labels.get(t, t)} {round(v * 100)}%"
+                        for t, v in sorted(stats["type_mix"].items(), key=lambda kv: -kv[1]))
+        parts.append(f"- 문항 유형 비율(족보 {stats['total']}문항을 센 결과): {mix}")
+    if stats["concepts"]:
+        parts.append("- 족보에서 자주 나온 개념(많이 나온 순): " + ", ".join(f"{n}({c}회)" for n, c in stats["concepts"][:8]))
+    return "\n".join(parts)
+
+
+def style_signature(style, professor="", subject=""):
+    """스타일이나 족보 분석이 바뀌었는지 알아보는 값 (강의 초안·챕터를 다시 만들지 판단)."""
+    from .ontology import exam_stats
+
+    stats = exam_stats(professor, subject)
+    return _sha([style.source_hash if style else "", stats["total"], sorted(stats["type_counts"].items()), stats["concepts"]])
+
+
 def professor_topics(professor):
     """이 교수님의 수업 자료가 속한 주제(과목) 이름들 — 스타일이 바뀌면 이 강의들의 확인 문제도 달라진다."""
     key = professor_key(professor)
@@ -182,6 +203,28 @@ def essay_count(exam, raw_answers=None):
                if q["type"] == "essay" and (raw_answers is None or (raw_answers.get(str(i)) or "").strip()))
 
 
+def type_plan(stats, total=MOCK_QUESTIONS):
+    """족보에서 센 유형 비율을 모의고사 문항 수로 옮긴다 (가장 큰 나머지 방식). 모의고사에 없는 유형(계산·코드)은 서술형, 기타는 단답.
+    족보 분석이 3문항 미만이면 빈 dict (AI가 알아서 섞는다)."""
+    if stats["total"] < 3:
+        return {}
+    shares = Counter()
+    for qtype, n in stats["type_counts"].items():
+        shares[{"calc": "essay", "code": "essay", "other": "short"}.get(qtype, qtype)] += n
+    exact = {t: total * n / sum(shares.values()) for t, n in shares.items()}
+    plan = {t: int(v) for t, v in exact.items()}
+    for t in sorted(exact, key=lambda k: exact[k] - plan[k], reverse=True)[: total - sum(plan.values())]:
+        plan[t] += 1
+    return plan
+
+
+def covered_concepts(doc_ids):
+    """수업 자료들이 다루는 개념 이름 (개념 태그가 있을 때)."""
+    names = (Concept.objects.filter(document_concepts__document_id__in=doc_ids).distinct().order_by("order", "id")
+             .values_list("name", flat=True))
+    return list(names)[:30]
+
+
 def generate_mock_exam(user, course):
     """강의 하나의 모의 출제를 만든다 (크레딧을 받고, 쓸 만한 문제가 모자라면 돌려준다). MockExam을 돌려준다."""
     from course import ai as course_ai
@@ -193,13 +236,28 @@ def generate_mock_exam(user, course):
         raise ValueError("이 강의에는 모의 출제에 쓸 수업 자료가 없습니다.")
     professor = topic_professor(subject)
     style = style_for(professor, subject)
+    stats = exam_stats(professor, subject)
     examples = ""
-    if style:
+    if stats["total"]:      # 족보를 문제 단위로 분석해 뒀으면 문제 요약을 예시로 쓴다 (원문을 통째로 넣는 것보다 짧고 정확하다)
+        labels = dict(ExamQuestion.QType.choices)
+        rows = exam_questions_for(professor, subject)[:12]
+        examples = "\n".join(f"- [{labels.get(q.qtype, q.qtype)}] {q.text}" for q in rows)
+    elif style:
         examples = "\n\n".join(d.extracted_text[:EXAMPLE_CHARS // 3] for d in exam_docs(professor, subject)[:3])[:EXAMPLE_CHARS]
     material = "\n\n".join(f"## {d['title']}\n{d['summary']}" for d in docs)[:MATERIAL_CHARS]
     request = f"과목: {course.title}\n"
     if style:
         request += f"출제 스타일({style.label}):\n{style.guidelines}\n"
+    plan = type_plan(stats)
+    if plan:
+        labels = {"ox": "OX", "mc": "객관식", "short": "단답", "essay": "서술형"}
+        request += "문항 구성(정확히 이대로): " + ", ".join(f"{labels[t]} {n}개" for t, n in plan.items() if n) + "\n"
+    if stats["concepts"]:
+        request += ("개념별 출제 비중(족보에서 자주 나온 순, 앞쪽 개념을 더 많이 묻고 수업 자료의 다른 개념도 1~2문항 섞기): "
+                    + ", ".join(f"{n}({c}회)" for n, c in stats["concepts"][:8]) + "\n")
+    covered = covered_concepts([d["id"] for d in docs])
+    if covered:
+        request += "수업 자료가 다루는 개념: " + ", ".join(covered) + "\n"
     request += "\n" + core_ai.untrusted("수업자료", material)
     if examples:
         request += "\n\n" + core_ai.untrusted("족보예시", examples)

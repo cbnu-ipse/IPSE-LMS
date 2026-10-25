@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}개념 구조 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 md:px-6 py-10">
+    {% include 'snippets/messages.html' %}
+    <a href="{% if subject %}{% url 'course_studio_concepts' %}{% else %}{% url 'course_studio' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; {% if subject %}과목 목록{% else %}강의 생성{% endif %}</a>
+
+    {% if not subject %}
+    <h1 class="text-2xl font-extrabold text-slate-800 mt-2 mb-1">개념 구조 · 족보 분석</h1>
+    <p class="text-sm text-slate-500 mb-5">과목마다 AI가 수업 자료에서 개념을 뽑고, 족보 문제에 유형·개념을 붙입니다. 강의 챕터는 이 개념을 묶어 만들고, 모의 출제는 교수님 족보에서 자주 나온 개념과 유형 비율을 따릅니다. 이름이 갈라진 개념은 합치거나 고쳐 주세요.</p>
+    <div class="grid sm:grid-cols-2 gap-3">
+        {% for s in subjects %}
+        <a href="?subject={{ s.name|urlencode }}" class="bg-white border border-slate-200 rounded-2xl px-5 py-4 hover:border-violet-300 transition">
+            <p class="font-bold text-slate-800">{{ s.name }}</p>
+            <p class="text-xs text-slate-400 mt-1">개념 {{ s.concept_count }}개 · 자료 {{ s.doc_count }}개</p>
+        </a>
+        {% empty %}
+        <p class="text-sm text-slate-400">아직 과목이 없습니다.</p>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="flex flex-wrap items-center gap-3 mt-2 mb-1">
+        <h1 class="text-2xl font-extrabold text-slate-800">{{ subject.name }}</h1>
+        {% if professor %}<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-violet-50 text-violet-700 border border-violet-100">{{ professor }} 교수님</span>{% endif %}
+        <a href="{% url 'course_studio_topic' %}?name={{ subject.name|urlencode }}" class="px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">자료·챕터 보기</a>
+    </div>
+    <p class="text-sm text-slate-500 mb-6">개념을 고치면 다음에 강의 초안을 만들 때부터 반영됩니다. 반영하려면 '자료·챕터 보기'에서 초안 만들기를 눌러주세요.</p>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-8">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-slate-800 mb-2">출제 유형 비율 {% if stats.total %}<span class="text-slate-400 font-normal">(족보 {{ stats.total }}문항)</span>{% endif %}</h2>
+            {% for label, n in type_rows %}<p class="text-sm text-slate-600">{{ label }} <b>{{ n }}</b></p>{% empty %}<p class="text-xs text-slate-400">분석된 족보 문제가 없습니다.</p>{% endfor %}
+        </div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-slate-800 mb-2">자주 나온 개념</h2>
+            {% for name, n in stats.concepts %}<p class="text-sm text-slate-600">{{ name }} <b>{{ n }}회</b></p>{% empty %}<p class="text-xs text-slate-400">아직 집계할 족보가 없습니다.</p>{% endfor %}
+        </div>
+    </div>
+
+    <h2 class="text-lg font-bold text-slate-800 mb-3">개념 {{ concepts|length }}개</h2>
+    <div class="space-y-2 mb-4">
+        {% for c in concepts %}
+        <div class="bg-white border border-slate-200 rounded-2xl px-5 py-3">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+                <span class="font-bold text-slate-800">{{ c.name }}</span>
+                <span class="text-[11px] text-slate-400">수업 자료 {{ c.doc_count }} · 족보 문제 {{ c.q_count }}</span>
+                {% if c.description %}<span class="text-[11px] text-slate-400 truncate">{{ c.description }}</span>{% endif %}
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+                <form method="post" action="{% url 'course_studio_concepts_action' %}" class="flex gap-1">{% csrf_token %}
+                    <input type="hidden" name="subject" value="{{ subject.name }}"><input type="hidden" name="concept" value="{{ c.pk }}"><input type="hidden" name="action" value="rename">
+                    <input name="name" value="{{ c.name }}" maxlength="80" class="px-2 py-1 rounded-lg border border-slate-200 text-xs w-40">
+                    <button class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-600">이름 바꾸기</button>
+                </form>
+                <form method="post" action="{% url 'course_studio_concepts_action' %}" class="flex gap-1">{% csrf_token %}
+                    <input type="hidden" name="subject" value="{{ subject.name }}"><input type="hidden" name="concept" value="{{ c.pk }}"><input type="hidden" name="action" value="merge">
+                    <select name="target" class="px-2 py-1 rounded-lg border border-slate-200 text-xs">
+                        {% for o in concepts %}{% if o.pk != c.pk %}<option value="{{ o.pk }}">{{ o.name }}</option>{% endif %}{% endfor %}
+                    </select>
+                    <button class="px-2.5 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 text-xs font-bold text-violet-700" onclick="return confirm('「{{ c.name|escapejs }}」을(를) 선택한 개념에 합칠까요? 자료·족보 문제의 연결이 옮겨집니다.');">다른 개념에 합치기</button>
+                </form>
+                <form method="post" action="{% url 'course_studio_concepts_action' %}">{% csrf_token %}
+                    <input type="hidden" name="subject" value="{{ subject.name }}"><input type="hidden" name="concept" value="{{ c.pk }}"><input type="hidden" name="action" value="delete">
+                    <button class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-xs font-bold text-rose-600" onclick="return confirm('「{{ c.name|escapejs }}」 개념을 지울까요?');">삭제</button>
+                </form>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-sm text-slate-400">아직 개념이 없습니다. 수업 자료가 요약되면 AI가 개념을 붙입니다.</p>
+        {% endfor %}
+    </div>
+    <form method="post" action="{% url 'course_studio_concepts_action' %}" class="flex gap-2 mb-10">{% csrf_token %}
+        <input type="hidden" name="subject" value="{{ subject.name }}"><input type="hidden" name="action" value="add">
+        <input name="name" maxlength="80" required placeholder="개념 직접 추가" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm">
+        <button class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold">추가</button>
+    </form>
+
+    <h2 class="text-lg font-bold text-slate-800 mb-3">족보 문제 {{ questions|length }}개</h2>
+    <div class="space-y-2">
+        {% for q in questions %}
+        <details class="bg-white border border-slate-200 rounded-2xl">
+            <summary class="flex flex-wrap items-center gap-2 px-5 py-3 cursor-pointer list-none">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">{{ q.get_qtype_display }}</span>
+                <span class="text-sm text-slate-700 flex-1 min-w-0 truncate">{{ q.number }}. {{ q.text }}</span>
+                {% for c in q.concepts.all %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700">{{ c.name }}</span>{% empty %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">개념 없음</span>{% endfor %}
+            </summary>
+            <form method="post" action="{% url 'course_studio_concepts_action' %}" class="px-5 pb-4 border-t border-slate-100 pt-3">{% csrf_token %}
+                <input type="hidden" name="subject" value="{{ subject.name }}"><input type="hidden" name="action" value="tag_question"><input type="hidden" name="question" value="{{ q.pk }}">
+                <p class="text-[11px] text-slate-400 mb-2">{{ q.document.title }}{% if q.points %} · {{ q.points }}점{% endif %}</p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1 mb-3">
+                    {% for c in concepts %}<label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" name="concepts" value="{{ c.pk }}" {% if c in q.concepts.all %}checked{% endif %}>{{ c.name }}</label>{% endfor %}
+                </div>
+                <button class="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold">개념 저장</button>
+            </form>
+        </details>
+        {% empty %}
+        <p class="text-sm text-slate-400">분석된 족보 문제가 없습니다. 이 과목의 족보를 올리면 AI가 문제를 나눠 유형·개념을 붙입니다.</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

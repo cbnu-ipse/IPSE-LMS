@@ -1,5 +1,5 @@
 """judge > 강의 생성 탭 (강의자 전용): AI 강의 초안 검토·미리보기·수정·승인. 로직은 course/studio.py."""
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -7,6 +7,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from . import studio
@@ -223,3 +224,71 @@ def studio_material_delete(request, pk):
     messages.success(request, f"'{title}' 자료를 삭제했습니다.")
     nxt = request.POST.get("next", "")
     return redirect(nxt if nxt.startswith("/course/studio/materials/") else "course_studio_materials")
+
+
+# ── 개념 구조 정리 (mypage/ontology.py) ─────────────────────────────────────
+
+@_studio_only
+def studio_concepts(request):
+    """과목의 개념 구조 — 개념별 수업 자료·족보 문제 수, 교수님 출제 통계, 족보 문제의 개념 태그. 고칠 수 있다."""
+    from django.db.models import Count
+
+    from mypage.exam import topic_professor
+    from mypage.models import ExamQuestion, Subject
+    from mypage.ontology import exam_stats
+
+    name = request.GET.get("subject", "")
+    if not name:
+        subjects = Subject.objects.annotate(concept_count=Count("concepts", distinct=True),
+                                            doc_count=Count("documents", distinct=True)).order_by("name")
+        return render(request, "course/studio_concepts.html", {"subjects": subjects})
+    subject = get_object_or_404(Subject, name=name)
+    concepts = list(subject.concepts.annotate(doc_count=Count("document_concepts", distinct=True),
+                                              q_count=Count("exam_questions", distinct=True)))
+    professor = topic_professor(name)
+    questions = (ExamQuestion.objects.filter(document__topics=subject).select_related("document")
+                 .prefetch_related("concepts").distinct().order_by("document_id", "number"))
+    labels = dict(ExamQuestion.QType.choices)
+    stats = exam_stats(professor, name)
+    return render(request, "course/studio_concepts.html", {
+        "subject": subject, "concepts": concepts, "professor": professor, "questions": questions,
+        "stats": stats, "type_rows": [(labels.get(t, t), n) for t, n in sorted(stats["type_counts"].items(), key=lambda kv: -kv[1])],
+    })
+
+
+@require_POST
+@_studio_only
+def studio_concepts_action(request):
+    from mypage import ontology
+    from mypage.models import Concept, ExamQuestion, Subject
+
+    subject = get_object_or_404(Subject, name=request.POST.get("subject", ""))
+    back = redirect(f"{reverse('course_studio_concepts')}?subject={quote(subject.name)}")
+    action = request.POST.get("action")
+    try:
+        concept = None
+        if request.POST.get("concept"):
+            concept = get_object_or_404(Concept, pk=_int(request, "concept"), subject=subject)
+        if action == "add":
+            ontology.add_concept(subject, request.POST.get("name", ""), request.POST.get("description", ""))
+            messages.success(request, "개념을 추가했습니다.")
+        elif action == "rename" and concept:
+            result = ontology.rename_concept(concept, request.POST.get("name", ""))
+            messages.success(request, f"개념 이름을 '{result.name}'(으)로 바꿨습니다.")
+        elif action == "merge" and concept:
+            target = get_object_or_404(Concept, pk=_int(request, "target"), subject=subject)
+            ontology.merge_concepts(concept, target)
+            messages.success(request, f"'{concept.name}'을(를) '{target.name}'에 합쳤습니다.")
+        elif action == "delete" and concept:
+            ontology.delete_concept(concept)
+            messages.success(request, "개념을 지웠습니다.")
+        elif action == "tag_question":
+            question = get_object_or_404(ExamQuestion, pk=_int(request, "question"), document__topics=subject)
+            ids = [int(i) for i in request.POST.getlist("concepts") if i.isdigit()]
+            question.concepts.set(Concept.objects.filter(subject=subject, pk__in=ids))
+            messages.success(request, "문제의 개념을 고쳤습니다.")
+        else:
+            raise Http404
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    return back

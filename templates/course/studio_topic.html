@@ -26,6 +26,7 @@
             <div class="flex flex-wrap items-center gap-2">
                 <span class="font-bold text-slate-800">{{ forloop.counter }}. {{ ch.title }}</span>
                 <span class="text-[11px] text-slate-400">학습 세트 {{ ch.set_count }}개</span>
+                {% for c in ch.concepts %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700">{{ c }}</span>{% endfor %}
                 {% if ch.reused %}<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500">이전 내용 재사용</span>{% endif %}
             </div>
             {% if ch.summary %}<p class="text-xs text-slate-500 mt-1">{{ ch.summary }}</p>{% endif %}

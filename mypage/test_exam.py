@@ -154,7 +154,7 @@ class UploadAndEditTests(TestCase):
     def test_upload_saves_type_course_and_professor(self):
         self.upload()
         doc = PersonalDocument.objects.get()
-        self.assertEqual((doc.document_type, doc.course_name, doc.professor), ("exam", "운영체제", "김교수"))
+        self.assertEqual((doc.document_type, doc.course_name, doc.professor), ("exam", "운영체제", "김"))   # 직함은 뗀다
 
     @override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
     def test_upload_without_enough_credits_for_whole_document_waits(self):

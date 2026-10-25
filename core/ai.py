@@ -39,6 +39,8 @@ MAX_OUTPUT_TOKENS = {
     "course_chapter": 9000,
     "exam_style": 1800,
     "mock_exam": 6000,
+    "concepts": 2500,
+    "exam_analysis": 6000,
 }
 
 
