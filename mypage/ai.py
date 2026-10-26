@@ -279,6 +279,19 @@ def summary_chunk_count(text):
     return min(len(split_for_summary(text)), SUMMARY_MAX_CHUNKS)
 
 
+SUMMARY_MAX_CHARS = SUMMARY_MAX_CHUNKS * SUMMARY_CHUNK_CHARS    # 자료 하나로 요약할 수 있는 글자 수 (약 12만 자)
+
+
+def summary_too_long(text):
+    """요약 조각 수가 한도를 넘는 자료인가. 이런 자료는 앞부분만 요약되므로 요약하지 않고 쪼개서 올리게 한다."""
+    return len(split_for_summary(text)) > SUMMARY_MAX_CHUNKS
+
+
+def too_long_message(total_chars):
+    return (f"글자가 {total_chars:,}자예요. 한 자료는 약 {SUMMARY_MAX_CHARS:,}자(요약 {SUMMARY_MAX_CHUNKS}조각)까지만 올릴 수 있어요. "
+            f"PDF를 장별로 쪼개서 {SUMMARY_MAX_CHARS:,}자 이하로 맞춰 올려주세요.")
+
+
 def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
     """본문을 chunk_chars 안팎의 조각으로 나눈다. 빈 줄(문단·슬라이드 경계)에서 자르고, 한 문단이 너무 길면 줄 단위로,
     그래도 길면 글자 수로 자른다. 내용은 하나도 버리지 않는다."""

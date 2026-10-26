@@ -129,3 +129,51 @@ class UploadLoadControlTests(TestCase):
         self.assertIn('id="upload-loading"', html)
         self.assertIn("파일을 올리고 글자를 읽고 있어요", html)
         self.assertIn("showLoading(); form.submit()", html)
+
+
+@override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
+class TooLongDocumentTests(TestCase):
+    """한 자료는 약 12만 자(요약 10조각)까지 — 넘으면 앞부분만 요약하지 않고 쪼개서 올리게 한다."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="long", password="pw")
+        self.client.force_login(self.user)
+        credits.grant(self.user, 100, "test")
+        self.too_long = "\n\n".join("가" * 11000 for _ in range(40))
+        self.fits = "\n\n".join("가" * 11000 for _ in range(10))
+
+    def estimate(self, text, content=b"%PDF"):
+        with patch("mypage.views.extract_text", return_value=text):
+            return self.client.post("/mypage/estimate/", {"file": SimpleUploadedFile("book.pdf", content)})
+
+    def test_estimate_refuses_too_long_text_and_tells_to_split(self):
+        res = self.estimate(self.too_long)
+        self.assertEqual(res.status_code, 422)
+        d = res.json()
+        self.assertTrue(d["too_long"])
+        self.assertIn("440,", d["error"])                                             # 실제 글자 수
+        self.assertIn("120,000자", d["error"])
+        self.assertIn("PDF를 장별로 쪼개서", d["error"])
+        self.assertEqual(self.estimate(self.fits, b"%PDF-other").status_code, 200)                  # 10조각까지는 그대로
+
+    def test_upload_of_too_long_text_is_rejected_without_leaving_a_document_or_charging(self):
+        data = {"title": "", "file": SimpleUploadedFile("book.pdf", b"x" * 100), "document_type": "lecture", "course_name": "운영체제", "professor": "김"}
+        with patch("mypage.views.extract_text", return_value=self.too_long), patch("mypage.views.threading.Thread") as thread:
+            res = self.client.post("/mypage/", data, follow=True)
+        self.assertContains(res, "장별로 쪼개서")
+        thread.assert_not_called()
+        self.assertFalse(PersonalDocument.objects.exists())
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.credits, 100)
+
+    def test_resummarize_of_an_old_too_long_document_is_refused(self):
+        doc = PersonalDocument.objects.create(user=self.user, title="옛 책", extracted_text=self.too_long, summary="", summary_status="failed")
+        with patch("mypage.views.threading.Thread") as thread:
+            res = self.client.post(f"/mypage/{doc.pk}/resummarize/", follow=True)
+        thread.assert_not_called()
+        self.assertContains(res, "장별로 쪼개서")
+
+    def test_page_script_shows_the_split_message_through_the_error_path(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertNotIn("만 요약돼요", html)                                          # 앞부분만 요약하는 경로는 없다

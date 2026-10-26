@@ -22,8 +22,8 @@ from core.concurrency import background_slot, extract_slot
 from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
 
 from .ai import (
-    SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
-    pdf_page_texts, summary_chunk_count,
+    SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
@@ -186,6 +186,11 @@ def document_list(request, folder_id=None):
                 document.save(update_fields=["summary_status"])
                 messages.error(request, "업로드한 자료에서 프롬프트 인젝션으로 의심되는 내용이 발견되어 처리를 중단했습니다.")
                 return redirect(request.path)
+            if summary_too_long(extracted_text):
+                document.file.delete(save=False)
+                document.delete()
+                messages.error(request, "자료를 올리지 못했습니다. " + too_long_message(len(extracted_text)))
+                return redirect(request.path)
             document.extracted_text = extracted_text
             try:    # 본문을 읽은 뒤 전체 조각 수로 필요한 크레딧을 미리 확인한다 (AI를 부르지 않고 글자 수로 센다)
                 require_credits(request.user, summary_chunk_count(extracted_text) * cost_for("summary"))
@@ -219,6 +224,7 @@ def document_list(request, folder_id=None):
         "form": form,
         "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
         "summary_max_chunks": SUMMARY_MAX_CHUNKS,
+        "summary_max_chars": f"{SUMMARY_MAX_CHARS:,}",
         "max_upload_bytes": MAX_UPLOAD_SIZE,
         "subject_choices": subject_choices(),
         "professor_choices": professor_choices(),
@@ -270,6 +276,8 @@ def upload_estimate(request):
             except TimeoutError as exc:
                 return JsonResponse({"ok": False, "error": str(exc)}, status=503)
             cache.set(key, text, EXTRACT_CACHE_TTL)
+        if summary_too_long(text):         # 앞부분만 요약되는 일이 없게, 요약하지 않고 쪼개서 올리게 한다
+            return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
         chunks = summary_chunk_count(text)
         info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit, empty=not text.strip())
         need = chunks * unit
@@ -549,6 +557,9 @@ def document_resummarize(request, pk):
         if detect_prompt_injection(text):
             messages.error(request, "자료에서 프롬프트 인젝션으로 의심되는 내용이 발견되어 처리를 중단했습니다.")
             return back
+    if summary_too_long(text):
+        messages.error(request, too_long_message(len(text)))
+        return back
     try:    # 전체 조각 수로 필요한 크레딧을 미리 확인한다 (모자라면 시작하지 않는다)
         require_credits(request.user, summary_chunk_count(text) * cost_for("summary"))
     except AIQuotaExceeded as exc:
