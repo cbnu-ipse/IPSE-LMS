@@ -3,10 +3,22 @@
 //         | 표 |, ``` 코드 블록
 //   인라인: **굵게**, *기울임*, `코드`, ==형광펜==, ~밑줄 강조~(물결 밑줄), ~~취소선~~
 // 스타일은 static/css/markdown-lite.css (md-* 클래스). 전체 CommonMark를 다루지는 않는다.
+// 수식: $...$ (인라인), $$...$$ (가운데 줄) 은 <span class="md-math" data-tex>로 남기고 static/js/math-render.js(KaTeX)가 그린다.
+// $5 와 $10 같은 금액은 수식으로 보지 않는다 (여는 $ 뒤·닫는 $ 앞이 공백이 아니고, 닫는 $ 뒤에 숫자가 없을 때만).
+const MD_MATH = /(```[\s\S]*?```|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g;
+const MD_BASE = (document.currentScript && document.currentScript.src || '').replace(/markdown-lite\.js.*$/, '');
+
 window.renderMarkdown = function (text) {
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let hasMath = false;
 
     const inline = (raw) => {
+        const maths = [];
+        raw = raw.replace(MD_MATH, (m, code, block, inl) => {
+            if (code) return m;                              // 코드 안의 $ 는 그대로
+            maths.push({ tex: (block || inl).trim(), display: !!block });
+            return '\uE000' + (maths.length - 1) + '\uE001';
+        });
         const codes = [];
         let s = esc(raw).replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return '\u0000' + (codes.length - 1) + '\u0000'; });
         s = s
@@ -16,7 +28,12 @@ window.renderMarkdown = function (text) {
             // ~물결~ 은 앞뒤가 글자·숫자가 아닐 때만 (1600~1750 같은 범위 표기는 건드리지 않는다)
             .replace(/(^|[\s(\[“"'])~([^~\s](?:[^~]*?[^~\s])?)~(?=$|[\s.,!?)\]”"':;])/g, '$1<span class="md-wavy">$2</span>')
             .replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, '$1<em>$2</em>');
-        return s.replace(/\u0000(\d+)\u0000/g, (m, i) => '<code class="md-code">' + codes[+i] + '</code>');
+        s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => '<code class="md-code">' + codes[+i] + '</code>');
+        return s.replace(/\uE000(\d+)\uE001/g, (m, i) => {
+            hasMath = true;
+            const x = maths[+i];
+            return '<span class="md-math" data-tex="' + esc(x.tex).replace(/"/g, '&quot;') + '"' + (x.display ? ' data-display="1"' : '') + '>' + esc(x.tex) + '</span>';
+        });
     };
 
     const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
@@ -97,7 +114,17 @@ window.renderMarkdown = function (text) {
         if (!para.length) { para.push(t); i++; }
         out.push('<p class="md-p">' + inline(para.join(' ')) + '</p>');
     }
-    return out.join('');
+    const html = out.join('');
+    if (hasMath) {   // 화면에 들어간 뒤 그린다 (호출한 쪽이 innerHTML로 넣는 시간을 준다)
+        setTimeout(() => {
+            if (window.renderMath) { window.renderMath(document); return; }
+            const el = document.createElement('script');
+            el.src = MD_BASE + 'math-render.js';
+            el.onload = () => window.renderMath && window.renderMath(document);
+            document.head.appendChild(el);
+        }, 30);
+    }
+    return html;
 };
 
 // 최상위 `## ` 헤딩 기준으로 마크다운을 청크 단위로 나눈다. 첫 `##` 이전 내용은 "개요" 청크로 묶는다.
