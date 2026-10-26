@@ -117,3 +117,49 @@ class PdfFollowImplementationTests(TestCase):
         self.assertIn("cloneNode(false)", js)
         self.assertIn("'#page=' + page", js)
         self.assertNotIn("contentWindow.location.replace", js)
+
+
+@unittest.skipUnless(shutil.which("node"), "node가 없으면 건너뜁니다")
+class MathRenderingTests(TestCase):
+    """요약의 $...$ 수식이 TeX 원문 그대로 깨져 보이던 문제 — 마크다운 렌더러가 수식 자리를 남기고 KaTeX가 그린다."""
+
+    SCRIPT = r"""
+global.window = {}; global.document = { currentScript: null, createElement: () => ({}), head: { appendChild() {} } };
+global.setTimeout = () => 0;
+require(process.argv[1]);
+const r = window.renderMarkdown;
+console.log(JSON.stringify({
+  inline: r('IQR: $Q_3 - Q_1$으로'), display: r('식 $$\\sum_{i=1}^{n} x_i$$ 끝'), money: r('가격 $5 에서 $10 사이'),
+  code: r('코드 `a=$x$` 그대로'), mixed: r('$a_1 * b_2$ 와 *기울임*'), html: r('$<script>alert(1)</script>$'),
+}));
+"""
+
+    def test_math_is_marked_for_katex_and_money_code_html_are_safe(self):
+        out = subprocess.run(["node", "-e", self.SCRIPT, os.path.join(str(settings.BASE_DIR), "static/js/markdown-lite.js")],
+                             capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        r = json.loads(out.stdout)
+        self.assertIn('class="md-math" data-tex="Q_3 - Q_1"', r["inline"])
+        self.assertIn('data-display="1"', r["display"])
+        self.assertNotIn("md-math", r["money"])                       # 금액은 수식이 아니다
+        self.assertNotIn("md-math", r["code"])                        # 코드 안의 $ 도 그대로
+        self.assertIn('data-tex="a_1 * b_2"', r["mixed"])             # 수식 안의 _ * 는 서식으로 바뀌지 않는다
+        self.assertIn("<em>기울임</em>", r["mixed"])
+        self.assertNotIn("<script>", r["html"])                       # 수식 안의 HTML은 이스케이프된다
+
+
+class CardMathMarkupTests(TestCase):
+    def test_course_cards_keep_math_for_katex_and_escape_everything(self):
+        from course import markup
+        html = markup.render("변동계수는 $s / \\bar{x}$ 이다. 가격 $5 와 $10. `코드 $x$`. $<b>x</b>$")
+        self.assertIn('<span class="md-math" data-tex="s / \\bar{x}">', html)
+        self.assertNotIn('md-math" data-tex="5', html)
+        self.assertIn("<code>코드 $x$</code>", html)
+        self.assertNotIn("<b>", html)
+
+    def test_player_page_loads_the_math_script(self):
+        from django.template.loader import render_to_string
+        source = render_to_string("course/set_player.html", {
+            "set_title": "t", "course_title": "c", "mode": "learn", "cards": [], "questions": [], "exit_url": "/", "progress": 0,
+            "position": "1/1", "next_url": "", "prev_url": ""})
+        self.assertIn("js/math-render.js", source)

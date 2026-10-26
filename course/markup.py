@@ -16,7 +16,20 @@ _NUMBER = re.compile(r"^\s*\d+[.)]\s+(.*)$")
 _TABLE_SEP = re.compile(r"^\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?$")
 
 
+# 수식 $...$ / $$...$$ 는 자리표시 span으로 남기고 학습 화면의 math-render.js(KaTeX)가 그린다. 금액($5, $10)은 수식으로 보지 않는다
+_MATH = re.compile(r"(```[\s\S]*?```|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)")
+
+
 def _inline(text):
+    maths = []
+
+    def take(m):
+        if m.group(1):
+            return m.group(0)
+        maths.append((m.group(2) or m.group(3)).strip())
+        return f"\ue000{len(maths) - 1}\ue001"
+
+    text = _MATH.sub(take, text)
     text = escape(text, quote=False)
     # 코드 안의 ** 는 굵게로 바꾸지 않도록 코드를 먼저 자리표시로 빼 둔다
     codes = []
@@ -27,7 +40,13 @@ def _inline(text):
 
     text = _CODE.sub(keep, text)
     text = _BOLD.sub(r"<strong>\1</strong>", text)
-    return re.sub(r"\x00(\d+)\x00", lambda m: f"<code>{codes[int(m.group(1))]}</code>", text)
+    text = re.sub(r"\x00(\d+)\x00", lambda m: f"<code>{codes[int(m.group(1))]}</code>", text)
+
+    def math(m):
+        tex = escape(maths[int(m.group(1))], quote=True)
+        return f'<span class="md-math" data-tex="{tex}">{tex}</span>'
+
+    return re.sub(r"\ue000(\d+)\ue001", math, text)
 
 
 def _cells(line):

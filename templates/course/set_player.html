@@ -114,6 +114,8 @@ button[disabled]{cursor:default}
 </div></nav>
 
 {{ questions|json_script:"questions-data" }}
+<script src="{% static 'js/math-render.js' %}"></script>
+<script>window.renderMath && window.renderMath(document);</script>
 <script>
 (function () {
   const QS = JSON.parse(document.getElementById('questions-data').textContent);

@@ -26,3 +26,8 @@ ol.md-list { list-style: decimal; }
 .md-table th { background: #f1f5f9; font-weight: 800; white-space: nowrap; }
 .md-table tr:nth-child(even) td { background: #f8fafc; }
 strong { font-weight: 800; }
+
+/* 수식 (KaTeX가 그리기 전·실패 시에는 TeX 원문이 그대로 보인다) */
+.md-math { font-family: ui-monospace, Menlo, monospace; font-size: .92em; color: #475569; }
+.md-math[data-display="1"] { display: block; text-align: center; margin: .6em 0; overflow-x: auto; }
+.md-math .katex { font-size: 1.05em; }
