@@ -26,7 +26,8 @@ def chat_message_view(request):
         return JsonResponse({"error": "메시지를 입력해주세요."}, status=400)
 
     try:
-        reply = answer(request.user, user_message, current_path=body.get("current_path", ""))
+        reply = answer(request.user, user_message, current_path=body.get("current_path", ""),
+                       page_context=body.get("page_context"))
     except AIQuotaExceeded as exc:
         return JsonResponse({"error": str(exc)}, status=429)
     except Exception:

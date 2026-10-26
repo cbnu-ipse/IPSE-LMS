@@ -147,4 +147,4 @@ class AssistantViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["reply"], "답변입니다.")
-        mocked_answer.assert_called_once_with(user, "안녕", current_path="/mypage/1/")
+        mocked_answer.assert_called_once_with(user, "안녕", current_path="/mypage/1/", page_context=None)

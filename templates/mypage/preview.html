@@ -48,6 +48,8 @@
     .ms-crumb { display: block; width: fit-content; margin: 0 auto .8em !important; padding: .1em .8em; border-radius: 999px; background: #ecfdf5; color: #047857; font-size: .72em; font-weight: 800; line-height: 1.8; }
     .ms-essay { min-height: 11rem; resize: vertical; line-height: 1.6; }
     .ms-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    /* AI 어시스턴트 버튼: 요약 넘김 버튼(오른쪽 아래)을 가리지 않게 위로 올린다 */
+    #assistant-fab-container { bottom: 84px !important; right: 16px !important; }
     @media (max-width: 1023px) {
         /* 좁은 화면: 원문과 학습 패널 중 하나만 보여 준다 */
         .ms-grid, .ms-grid.src-closed { grid-template-columns: minmax(0, 1fr); }
@@ -395,5 +397,37 @@
 {% if source_pages %}{{ source_pages|json_script:"ms-pdf-pages" }}{% endif %}
 <script src="{% static 'js/source-sync.js' %}?v={{ static_version }}"></script>
 {% endif %}
+<script>
+// AI 어시스턴트에게 '지금 보고 있는 내용'을 알려 준다: 요약 화면이면 지금 보는 요약 조각, 퀴즈 화면이면 지금 보는 문제 카드.
+// 드래그해서 고른 글이 있으면(최근 2분) 함께 보내서 "이 부분이 이해가 안 돼"에 그 부분을 중심으로 설명하게 한다.
+(function () {
+    const TITLE = "{{ document.title|escapejs }}";
+    let recent = null;
+    document.addEventListener('selectionchange', () => {
+        const sel = document.getSelection();
+        const text = sel ? sel.toString().trim() : '';
+        if (!text || !sel.anchorNode) return;
+        const el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+        if (el && el.closest('#document-summary-content, #ms-qcard, .ms-text, #ms-src pre')) recent = { text: text, at: Date.now() };
+    });
+    window.assistantContext = function () {
+        const quiz = new URLSearchParams(location.search).get('panel') === 'quiz';
+        let text = '';
+        if (quiz) {
+            const card = document.getElementById('ms-qcard');
+            text = card ? card.innerText : '';
+        } else if (window.msSummary) {
+            const p = window.msSummary.pages[window.msSummary.getIndex()];
+            text = (p.crumb ? p.crumb + '\n' : '') + p.body;      // body에 제목 줄이 이미 들어 있다
+        } else {
+            const raw = document.getElementById('document-summary-raw');
+            text = raw ? raw.value : '';
+        }
+        return { kind: quiz ? 'quiz' : 'summary', title: TITLE, text: text.slice(0, 3000),
+                 selection: recent && Date.now() - recent.at < 120000 ? recent.text : '' };
+    };
+})();
+</script>
+{% include 'assistant/fab.html' %}
 </body>
 </html>

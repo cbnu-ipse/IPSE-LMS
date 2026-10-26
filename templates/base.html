@@ -582,26 +582,7 @@
 
     {% if user.is_authenticated and site_section == 'judge' %}
     <!-- 🤖 AI 어시스턴트 FAB -->
-    <div id="assistant-fab-container" class="fixed bottom-6 right-6 z-50">
-        <button id="assistant-fab-btn" class="relative w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-105">
-            <i class="fa-solid fa-robot text-lg"></i>
-            <span id="assistant-fab-badge" class="hidden absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
-        </button>
-        <div id="assistant-chat-panel" class="hidden fixed inset-0 md:inset-auto md:bottom-6 md:right-6 md:w-[50vw] md:h-[50vh] bg-white md:rounded-2xl shadow-xl border-0 md:border border-slate-200 flex flex-col overflow-hidden z-[60]">
-            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-emerald-600 text-white">
-                <span class="font-bold text-sm">AI 어시스턴트</span>
-                <button id="assistant-chat-close" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div id="assistant-chat-messages" class="flex-grow overflow-y-auto px-4 py-3 space-y-3 text-sm"></div>
-            <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
-                <input id="assistant-chat-input" type="text" autocomplete="off" placeholder="무엇이든 물어보세요" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">전송{% include 'includes/credit_cost.html' with cost=ai_cost.chat %}</button>
-            </form>
-        </div>
-    </div>
-    <link rel="stylesheet" href="{% static 'css/markdown-lite.css' %}?v={{ static_version }}">
-    <script src="{% static 'js/markdown-lite.js' %}?v={{ static_version }}"></script>
-    <script src="{% static 'js/assistant-chat.js' %}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-csrf-token="{{ csrf_token }}"></script>
+    {% include 'assistant/fab.html' %}
     {% endif %}
     {% endif %}
 

@@ -96,6 +96,24 @@
 
     closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
 
+    // 학습 화면처럼 '지금 보고 있는 내용'을 알려 줄 수 있는 화면은 window.assistantContext()를 정의한다.
+    // 그러면 "이게 이해가 안 돼"처럼 화면 속 내용을 가리키는 질문에 그 내용을 바탕으로 더 쉽게 설명한다.
+    function getPageContext() {
+        try { return typeof window.assistantContext === 'function' ? window.assistantContext() : null; } catch (e) { return null; }
+    }
+    if (typeof window.assistantContext === 'function') {
+        const chips = document.createElement('div');
+        chips.className = 'px-3 pt-2 flex flex-wrap gap-1.5 border-t border-slate-100';
+        ['지금 보는 내용을 더 쉽게 설명해줘', '예시를 들어줘', '시험에는 어떻게 나올까?'].forEach((text) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.textContent = text;
+            b.className = 'text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition';
+            b.addEventListener('click', () => { input.value = text; form.requestSubmit(); });
+            chips.appendChild(b);
+        });
+        form.parentNode.insertBefore(chips, form);
+    }
+
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (isWaiting) return;
@@ -114,7 +132,7 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken,
             },
-            body: JSON.stringify({ message: message, current_path: window.location.pathname }),
+            body: JSON.stringify({ message: message, current_path: window.location.pathname, page_context: getPageContext() }),
         })
             .then((res) => res.json())
             .then((data) => {
