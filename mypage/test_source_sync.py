@@ -106,3 +106,14 @@ console.log(JSON.stringify({ units: m.map((x) => x && x.unit), back: [0, 1, 2].m
         self.assertEqual(result["units"][3], 2)                          # 못 찾은 조각은 앞 조각 위치를 따른다
         self.assertEqual(result["back"], [0, 1, 2])                      # 원문 위치 → 요약 조각
         self.assertEqual(result["blank"], [0, 1, 2, 3])                  # 글자가 없는 원문은 비례 짐작
+
+
+class PdfFollowImplementationTests(TestCase):
+    """크롬 PDF 뷰어는 열린 상태에서 #page=N만 바꾸면 페이지를 옮기지 않는다 — 새 iframe으로 갈아 끼우는 방식을 유지한다."""
+
+    def test_pdf_navigation_swaps_in_a_new_iframe_instead_of_changing_the_hash(self):
+        with open(os.path.join(str(settings.BASE_DIR), "static/js/source-sync.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("cloneNode(false)", js)
+        self.assertIn("'#page=' + page", js)
+        self.assertNotIn("contentWindow.location.replace", js)

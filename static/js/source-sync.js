@@ -100,7 +100,7 @@
     const pieceText = (page) => (page.title ? page.title + '\n' : '') + page.body;
     const pieces = summary.pages.map(pieceText);
 
-    const iframe = src.querySelector('iframe');
+    let iframe = src.querySelector('iframe');
     const pre = src.querySelector('pre');
     let units = [], mapping = [], setHighlight = () => {}, pdfBase = '';
     let container = null, lockUntil = 0, fromSource = false;
@@ -128,11 +128,33 @@
         if (!pages.length) return;
         units = pages;
         pdfBase = (iframe.getAttribute('src') || '').split('#')[0];
+        let shownPage = 1, pdfTimer = null;
+        // 크롬 PDF 뷰어는 이미 열린 상태에서 주소의 #page=N만 바꾸면(location.replace·src 모두) 페이지를 옮기지 않는다.
+        // 그래서 목표 페이지가 들어간 새 iframe을 만들어 갈아 끼운다 (새 뷰어는 #page=N으로 열린다). 갈아 끼우는 동안은 이전 화면을
+        // 남겨 깜빡임을 줄이고, 요약을 빠르게 넘길 때는 마지막 페이지로만 한 번 옮긴다.
+        function goToPdfPage(page) {
+            shownPage = page;
+            const old = iframe, next = old.cloneNode(false);
+            next.src = pdfBase + '#page=' + page;
+            next.style.cssText = 'position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);opacity:0';
+            let swapped = false;
+            const swap = () => {
+                if (swapped) return;
+                swapped = true;
+                old.remove();
+                next.style.cssText = '';
+                iframe = next;
+            };
+            next.addEventListener('load', () => setTimeout(swap, 250), { once: true });
+            setTimeout(swap, 3000);                // 로드 이벤트가 안 와도 결국 갈아 끼운다
+            old.after(next);
+        }
         setHighlight = (m) => {
-            const url = pdfBase + '#page=' + (m.unit + 1);
-            try { iframe.contentWindow.location.replace(url); }   // 뒤로가기 기록이 쌓이지 않게
-            catch (e) { iframe.src = url; }
-            renderPill('p.' + (m.unit + 1));
+            const page = m.unit + 1;
+            renderPill('p.' + page);
+            if (page === shownPage) return;        // 이미 그 페이지를 보고 있으면 다시 열지 않는다
+            clearTimeout(pdfTimer);
+            pdfTimer = setTimeout(() => goToPdfPage(page), 150);
         };
     } else if (pre) {                               // 텍스트 계열 원문: 문단 묶음으로 나눠 하이라이트하고 스크롤한다
         const paragraphs = pre.textContent.replace(/\r\n/g, '\n').split(/\n\s*\n/).filter((p) => p.trim());
