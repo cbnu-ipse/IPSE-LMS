@@ -213,3 +213,13 @@ class ConsumerTests(TransactionTestCase):
             comm = self._comm(who, doc)
             connected, _ = await comm.connect()
             self.assertFalse(connected)
+
+
+class StudyPageStreamingMarkupTests(TestCase):
+    def test_processing_page_has_chapter_bars_that_grow_with_headings(self):
+        user = User.objects.create_user(username="v", password="pw")
+        self.client.force_login(user)
+        doc = PersonalDocument.objects.create(user=user, title="t", file="a.pdf", summary_status=ProcessingStatus.PROCESSING)
+        html = self.client.get(f"/mypage/{doc.pk}/").content.decode()
+        for marker in ('id="stream-tabs"', 'id="stream-content"', 'id="stream-nav"', "splitMarkdownPages(text)", "작성 중"):
+            self.assertIn(marker, html)

@@ -101,7 +101,9 @@
                 <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-100 p-6 flex flex-col">
                     {% if document.summary_status == 'processing' and not can_resummarize %}
                         <p id="stream-status" class="shrink-0 text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>요약을 생성하고 있습니다...</p>
-                        <div id="stream-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 mt-3 text-sm text-slate-600 leading-relaxed space-y-2" hidden></div>
+                        <div id="stream-tabs" class="shrink-0 flex gap-1 mt-3 mb-4" hidden></div>
+                        <div id="stream-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2" hidden></div>
+                        <div id="stream-nav" class="shrink-0 flex gap-2 mt-4" hidden></div>
                     {% elif document.summary_status == 'processing' %}
                         <p class="text-sm text-slate-500 font-medium">요약 생성이 오래 걸리고 있습니다.</p>
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
@@ -306,18 +308,49 @@
     const streamBox = document.getElementById('stream-content');
     if (streamBox && initial.summary_status === 'processing') {
         const statusEl = document.getElementById('stream-status');
-        let text = '', seq = 0, ws = null, retries = 0, pending = false, pinned = true;
-        streamBox.addEventListener('scroll', () => { pinned = streamBox.scrollHeight - streamBox.scrollTop - streamBox.clientHeight < 60; });
+        const tabsEl = document.getElementById('stream-tabs'), navEl = document.getElementById('stream-nav');
+        let text = '', seq = 0, ws = null, retries = 0, pending = false;
+        let current = 0, follow = true, shown = null;      // follow: 가장 최근에 만들어지는 조각을 따라간다 (다른 조각을 누르면 멈춘다)
+        const TAB_ACTIVE = 'flex-1 h-1.5 rounded-full transition bg-emerald-600', TAB_INACTIVE = 'flex-1 h-1.5 rounded-full transition bg-slate-100 hover:bg-slate-200';
+        const TAB_LIVE = 'flex-1 h-1.5 rounded-full transition bg-emerald-300 animate-pulse';     // 아직 만들어지는 조각
+        const NAV_ON = 'flex-1 text-center text-xs font-bold py-2.5 rounded-lg transition bg-slate-50 text-slate-600 hover:bg-slate-100';
+        const NAV_OFF = 'flex-1 text-center text-xs font-bold py-2.5 rounded-lg transition bg-slate-50 text-slate-300 pointer-events-none';
+        const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        function go(index, user) { follow = user ? index >= pagesNow().length - 1 : follow; current = index; shown = null; schedule(); }
+        function pagesNow() { try { return window.splitMarkdownPages(text) || []; } catch (e) { return []; } }
         function paint() {
             pending = false;
-            if (!text.trim()) return;
-            streamBox.hidden = false;
-            try { streamBox.innerHTML = window.renderMarkdown(text); } catch (e) { streamBox.textContent = text; }
-            if (window.renderMath) { try { window.renderMath(streamBox); } catch (e) {} }
-            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-pen-nib fa-beat mr-1.5"></i>요약을 만드는 중… 만들어지는 대로 보여 드려요';
-            if (pinned) streamBox.scrollTop = streamBox.scrollHeight;
+            const pages = pagesNow();
+            if (!pages.length) return;
+            const last = pages.length - 1;
+            if (follow) current = last;
+            current = Math.min(current, last);
+            streamBox.hidden = tabsEl.hidden = navEl.hidden = false;
+            // 위의 막대: 새 소제목이 나올 때마다 하나씩 늘어난다
+            while (tabsEl.children.length < pages.length) {
+                const idx = tabsEl.children.length, b = document.createElement('button');
+                b.type = 'button'; b.addEventListener('click', () => go(idx, true)); tabsEl.appendChild(b);
+            }
+            Array.from(tabsEl.children).forEach((b, i) => { b.title = pages[i].title; b.className = i === current ? TAB_ACTIVE : (i === last ? TAB_LIVE : TAB_INACTIVE); });
+            const page = pages[current], key = current + '|' + page.body;
+            if (key !== shown) {                              // 바뀐 조각만 다시 그린다
+                shown = key;
+                const label = page.cont ? esc(page.title) + ' · 이어서' : (page.crumb ? esc(page.crumb) : '');
+                try { streamBox.innerHTML = (label ? '<div class="ms-crumb">' + label + '</div>' : '') + window.renderMarkdown(page.body); } catch (e) { streamBox.textContent = page.body; }
+                if (window.renderMath) { try { window.renderMath(streamBox); } catch (e) {} }
+            }
+            navEl.innerHTML = '';
+            const prev = document.createElement('button'), count = document.createElement('span'), next = document.createElement('button');
+            prev.type = next.type = 'button';
+            prev.innerHTML = '&larr; 이전'; prev.className = current === 0 ? NAV_OFF : NAV_ON; prev.addEventListener('click', () => go(current - 1, true));
+            count.className = 'shrink-0 self-center px-2 text-xs font-bold text-slate-400';
+            count.textContent = (current + 1) + ' / ' + pages.length + (current === last ? ' · 작성 중' : '');
+            next.innerHTML = '다음 &rarr;'; next.className = current >= last ? NAV_OFF : NAV_ON; next.addEventListener('click', () => go(current + 1, true));
+            navEl.append(prev, count, next);
+            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-pen-nib fa-beat mr-1.5"></i>요약을 만드는 중… 소제목이 나올 때마다 막대가 늘어나요' + (follow ? '' : ' · <button type="button" id="stream-follow" class="underline font-bold text-emerald-600">최신 조각으로</button>');
+            const f = document.getElementById('stream-follow'); if (f) f.addEventListener('click', () => go(last, true));
         }
-        const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(paint); } };
+        function schedule() { if (!pending) { pending = true; requestAnimationFrame(paint); } }
         function connect() {
             const proto = location.protocol === 'https:' ? 'wss' : 'ws';
             ws = new WebSocket(proto + '://' + location.host + '/ws/mypage/summary/{{ document.pk }}/');
