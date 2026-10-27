@@ -300,6 +300,7 @@ _AI_TASK_DEFAULTS = {
     "mock_exam": ("gemini", "gemini-3.5-flash-lite"),       # 모의 출제
     "concepts": ("gemini", "gemini-3.5-flash-lite"),        # 수업 자료 요약의 개념 태그
     "exam_analysis": ("gemini", "gemini-3.5-flash-lite"),   # 족보를 문제 단위로 분석(유형·개념)
+    "cram_note": ("gemini", "gemini-3.5-flash-lite"),       # 시험 5분 전 속성 노트 내용
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 
@@ -320,6 +321,7 @@ AI_CREDIT_COSTS = {
     "grading": config("AI_COST_GRADING", default=1, cast=int),
     "ocr": config("AI_COST_OCR_PER_MB", default=1, cast=int),      # 이미지 글자 읽기: 파일 크기 1MB(올림)당
     "mock_exam": config("AI_COST_MOCK_EXAM", default=5, cast=int),  # 모의 출제 1회
+    "cram_note": config("AI_COST_CRAM_NOTE", default=4, cast=int),  # 시험 5분 전 속성 노트 1장
 }
 if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
     AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}

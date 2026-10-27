@@ -25,6 +25,7 @@ from .ai import (
     SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
     pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
+from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .ontology import professor_choices, resolve_professor, resolve_subject, subject_choices
@@ -32,6 +33,7 @@ from .ontology import professor_choices, resolve_professor, resolve_subject, sub
 logger = logging.getLogger(__name__)
 
 MAX_QUESTIONS = 20
+NOTE_STALE_AFTER = timedelta(minutes=10)
 STALE_AFTER = timedelta(minutes=3)  # 이 시간이 지나도 '생성 중'이면 멈춘 것으로 보고 다시 시도할 수 있게 한다
 
 
@@ -211,6 +213,9 @@ def document_list(request, folder_id=None):
     else:
         form = PersonalDocumentUploadForm(user=request.user)
 
+    PersonalDocument.objects.filter(      # 서버가 다시 켜지는 등으로 멈춘 노트는 실패로 돌려 목록이 계속 새로고침되지 않게 한다
+        user=request.user, document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
+        uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(summary_status=ProcessingStatus.FAILED)
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
         doc_count=Count("documents", filter=Q(documents__is_deleted=False))
     )
@@ -225,6 +230,7 @@ def document_list(request, folder_id=None):
         "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
         "summary_max_chunks": SUMMARY_MAX_CHUNKS,
         "summary_max_chars": f"{SUMMARY_MAX_CHARS:,}",
+        "cram_max": CRAM_MAX_SOURCES,
         "max_upload_bytes": MAX_UPLOAD_SIZE,
         "subject_choices": subject_choices(),
         "professor_choices": professor_choices(),
@@ -350,6 +356,8 @@ def document_preview(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
+    if document.document_type == PersonalDocument.DocumentType.NOTE:
+        return render(request, "mypage/note.html", {"document": document})
 
     is_pdf = document.file.name.lower().endswith(".pdf")
     source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
@@ -520,6 +528,8 @@ def learning_overview(request):
 def _can_resummarize(document):
     """요약이 실패했거나(또는 비어 있거나) 오래 '생성 중'에 멈춰 있으면 다시 만들 수 있다.
     본문이 긴 자료는 요약이 있어도 다시 만들 수 있다 — 예전 요약은 앞 12,000자만 반영했을 수 있어서다."""
+    if document.document_type == PersonalDocument.DocumentType.NOTE:
+        return False        # 노트는 요약이 아니라 새로 만든다
     if document.summary_status == ProcessingStatus.FAILED:
         return True
     if document.summary_status == ProcessingStatus.PROCESSING:
@@ -602,6 +612,60 @@ def document_status(request, pk):
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
     return JsonResponse(_document_state(document))
+
+
+# ── 시험 5분 전 속성 노트 ────────────────────────────────────────────────────
+
+def _cram_note_bg(note_id, source_ids):
+    from .cram import build_note_document
+
+    try:
+        with background_slot():
+            build_note_document(note_id, source_ids)
+    finally:
+        connection.close()
+
+
+@login_required
+@require_POST
+def cram_note_create(request):
+    """고른 자료로 시험 5분 전 속성 노트를 만든다. 개인 탭에 '생성 중' 노트가 바로 생기고, 그림은 백그라운드에서 그린다."""
+    from .cram import note_title, usable
+
+    back = redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+    try:
+        ids = [int(v) for v in request.POST.getlist("ids")]
+    except ValueError:
+        ids = []
+    sources = [d for d in PersonalDocument.objects.filter(pk__in=ids, user=request.user, is_deleted=False).order_by("id") if usable(d)]
+    if not sources:
+        messages.error(request, "노트로 만들 자료를 하나 이상 골라주세요. (요약이 있는 자료만 고를 수 있습니다.)")
+        return back
+    if len(sources) > CRAM_MAX_SOURCES:
+        messages.error(request, f"한 번에 최대 {CRAM_MAX_SOURCES}개 자료까지 고를 수 있습니다.")
+        return back
+    in_flight = PersonalDocument.objects.filter(
+        user=request.user, summary_status=ProcessingStatus.PROCESSING, uploaded_at__gte=timezone.now() - STALE_AFTER).count()
+    if in_flight >= settings.MAX_PROCESSING_PER_USER:
+        messages.error(request, f"처리 중인 자료가 {in_flight}개 있습니다. 몇 개가 끝난 뒤에 만들어주세요 "
+                                f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
+        return back
+    try:
+        check_quota(request.user, "cram_note")
+    except AIQuotaExceeded as exc:
+        messages.error(request, str(exc))
+        return back
+    folder = PersonalFolder.objects.filter(pk=request.POST.get("folder") or None, user=request.user).first()
+    courses = list(dict.fromkeys(d.course_name for d in sources if d.course_name))
+    professors = list(dict.fromkeys(d.professor for d in sources if d.professor))
+    note = PersonalDocument.objects.create(
+        user=request.user, folder=folder, title=note_title(sources), file="",
+        document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
+        course_name=courses[0] if len(courses) == 1 else "", professor=professors[0] if len(professors) == 1 else "",
+        is_course_material=False)
+    threading.Thread(target=_cram_note_bg, args=(note.pk, [d.pk for d in sources]), daemon=True).start()
+    messages.success(request, "속성 노트를 손글씨로 쓰고 있습니다. 잠시 후 개인 탭에 나타납니다.")
+    return back
 
 
 # ── 모의 출제 ────────────────────────────────────────────────────────────────

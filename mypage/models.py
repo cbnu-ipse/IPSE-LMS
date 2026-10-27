@@ -86,6 +86,7 @@ class PersonalDocument(models.Model):
     class DocumentType(models.TextChoices):
         LECTURE = "lecture", "수업 자료"     # 강의를 만드는 데 쓴다
         EXAM = "exam", "족보"                # 기출·모의고사: 교수님 출제 스타일을 배워 문제 만들 때 쓴다
+        NOTE = "note", "속성 노트"            # 선택한 자료로 AI가 만든 시험 5분 전 노트(손글씨 이미지). 올리는 자료가 아니라 만들어지는 것
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_documents")
     folder = models.ForeignKey(PersonalFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="documents")
