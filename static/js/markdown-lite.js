@@ -4,7 +4,7 @@
 //   인라인: **굵게**, *기울임*, `코드`, ==형광펜==, ~밑줄 강조~(물결 밑줄), ~~취소선~~
 // 스타일은 static/css/markdown-lite.css (md-* 클래스). 전체 CommonMark를 다루지는 않는다.
 // 수식: $...$ (인라인), $$...$$ (가운데 줄) 은 <span class="md-math" data-tex>로 남기고 static/js/math-render.js(KaTeX)가 그린다.
-// $5 와 $10 같은 금액은 수식으로 보지 않는다 (여는 $ 뒤·닫는 $ 앞이 공백이 아니고, 닫는 $ 뒤에 숫자가 없을 때만).
+// 코드 표시(`...`)로 한 번 더 감싼 수식(`$x$`)도 수식으로 그린다 (모델이 이렇게 쓰는 일이 잦다). $5 와 $10 같은 금액은 수식으로 보지 않는다 (여는 $ 뒤·닫는 $ 앞이 공백이 아니고, 닫는 $ 뒤에 숫자가 없을 때만).
 const MD_MATH = /(```[\s\S]*?```|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g;
 const MD_BASE = (document.currentScript && document.currentScript.src || '').replace(/markdown-lite\.js.*$/, '');
 
@@ -15,7 +15,12 @@ window.renderMarkdown = function (text) {
     const inline = (raw) => {
         const maths = [];
         raw = raw.replace(MD_MATH, (m, code, block, inl) => {
-            if (code) return m;                              // 코드 안의 $ 는 그대로
+            if (code) {                                      // 코드 안의 $ 는 그대로. 다만 `$\vec{v}$`처럼 코드 표시 안에 수식만 든 것은 수식으로 그린다
+                const only = /^`\$(?!\s)([^$\n]+?)(?<!\s)\$`$/.exec(code);
+                if (!only) return m;
+                maths.push({ tex: only[1].trim(), display: false });
+                return '\uE000' + (maths.length - 1) + '\uE001';
+            }
             maths.push({ tex: (block || inl).trim(), display: !!block });
             return '\uE000' + (maths.length - 1) + '\uE001';
         });
