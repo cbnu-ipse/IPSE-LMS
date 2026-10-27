@@ -491,7 +491,7 @@ class WholeDocumentSummaryTests(TestCase):
         return "\n\n".join(f"## 슬라이드 {i}\n" + (f"내용 {i} " * 120) for i in range(1, pages + 1))
 
     def test_split_keeps_every_character_of_content_and_respects_size(self):
-        from .ai import SUMMARY_CHUNK_CHARS, split_for_summary
+        from .ai import SUMMARY_WINDOW_CHARS as SUMMARY_CHUNK_CHARS, split_for_summary
         text = self.long_text()
         chunks = split_for_summary(text)
         self.assertGreater(len(chunks), 1)
@@ -518,12 +518,12 @@ class WholeDocumentSummaryTests(TestCase):
         self.assertIn("1번째 조각", calls[0][0][0]["content"])
 
     def test_tiny_tail_is_merged_into_previous_chunk(self):
-        from .ai import SUMMARY_CHUNK_CHARS, split_for_summary
+        from .ai import SUMMARY_WINDOW_CHARS as SUMMARY_CHUNK_CHARS, split_for_summary
         text = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "꼬리" * 100          # 꽉 찬 조각 + 200자짜리 꼬리
         chunks = split_for_summary(text)
         self.assertEqual(len(chunks), 1)
         self.assertTrue(chunks[0].endswith("꼬리"))
-        big_tail = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "나" * 5000       # 꼬리가 충분히 길면 따로 둔다
+        big_tail = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "나" * 3000       # 꼬리가 충분히 길면 따로 둔다
         self.assertEqual(len(split_for_summary(big_tail)), 2)
 
     def test_short_document_is_still_one_plain_call(self):
@@ -557,17 +557,25 @@ class SummaryCreditTests(TestCase):
         credits.grant(user or self.user, n, "test")
 
     def doc_text(self, pieces):
-        return "\n\n".join(("가" * 11000) for _ in range(pieces))
+        return "\n\n".join(("가" * 3000) for _ in range(pieces))
 
     def test_only_affordable_chunks_are_summarized_and_each_costs_credits(self):
         from .ai import generate_summary
-        self.give(7)                                                   # 3크레딧 × 2조각
+        self.give(10)                                                  # 15,006자 = 2번 호출(3단위 + 1단위), 단위당 3크레딧
         calls = []
         with patch.object(ai_core, "_client", return_value=_FakeClient(calls)):
             generate_summary(self.doc_text(5), user=self.user)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 1)                                # 둘째 호출(3크레딧)은 낼 수 없어 첫 부분까지만
         self.user.refresh_from_db()
         self.assertEqual(self.user.credits, 1)
+
+    def test_charge_follows_characters_not_call_size(self):
+        from .ai import _window_charges, summary_chunk_count
+        windows = ["가" * 9004, "가" * 6002]
+        self.assertEqual(_window_charges(windows), [3, 1])
+        self.assertEqual(sum(_window_charges(windows)), summary_chunk_count(self.doc_text(5)))   # 15,006자 → 4단위
+        self.assertEqual(summary_chunk_count("가" * 4000), 1)
+        self.assertEqual(summary_chunk_count("가" * 4001), 2)
 
     def test_no_credits_raises_without_calling_model(self):
         from core.ai import AIQuotaExceeded
@@ -579,13 +587,13 @@ class SummaryCreditTests(TestCase):
 
     def test_failure_in_later_chunk_refunds_earlier_chunks(self):
         from .ai import generate_summary
-        self.give(9)
+        self.give(12)
         calls = []
         with patch.object(ai_core, "_client", return_value=_FakeClient(calls, fail_on=2)):
             with self.assertRaises(RuntimeError):
-                generate_summary(self.doc_text(3), user=self.user)
+                generate_summary(self.doc_text(5), user=self.user)
         self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 9)
+        self.assertEqual(self.user.credits, 12)
 
     def test_lecturer_pays_nothing(self):
         from .ai import generate_summary
@@ -626,14 +634,14 @@ class CreditDisplayTests(TestCase):
         response = self.client.get("/mypage/")
         self.assertContains(response, 'title="AI 크레딧')
         self.assertContains(response, "<span>42</span>")
-        self.assertContains(response, 'title="AI 크레딧 3~30 (자료 길이에 따라)"')   # 업로드 버튼: 1조각~최대 10조각
+        self.assertContains(response, 'title="AI 크레딧 3~90 (자료 길이에 따라)"')   # 업로드 버튼: 1조각~최대 30조각
         self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
 
     def test_lecturer_also_sees_cost_badges(self):
         lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
         response = self.client.get("/mypage/")
-        self.assertContains(response, 'title="AI 크레딧 3~30 (자료 길이에 따라)"')
+        self.assertContains(response, 'title="AI 크레딧 3~90 (자료 길이에 따라)"')
 
 
 @override_settings(AI_CREDIT_COSTS={"summary": 3})
@@ -643,7 +651,7 @@ class SummaryCostBadgeTests(TestCase):
         self.client.force_login(self.user)
 
     def long_text(self, pieces):
-        return "\n\n".join("가" * 11000 for _ in range(pieces))
+        return "\n\n".join("가" * 3000 for _ in range(pieces))
 
     def test_retry_buttons_show_the_exact_cost_from_the_chunk_count(self):
         doc = PersonalDocument.objects.create(user=self.user, title="긴 자료", extracted_text=self.long_text(4),
@@ -655,4 +663,4 @@ class SummaryCostBadgeTests(TestCase):
 
     def test_upload_confirm_dialog_explains_the_range(self):
         html = self.client.get("/mypage/").content.decode()
-        self.assertIn("최대 10조각(최대 30크레딧)", html)
+        self.assertIn("최대 30조각(최대 90크레딧)", html)

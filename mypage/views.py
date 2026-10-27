@@ -22,7 +22,7 @@ from core.concurrency import background_slot, extract_slot
 from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
 
 from .ai import (
-    SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    LEGACY_SUMMARY_CHARS, SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
     pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
@@ -565,7 +565,7 @@ def _can_resummarize(document):
         return True
     if document.summary_status == ProcessingStatus.PROCESSING:
         return document.pk not in _summarizing and document.uploaded_at < timezone.now() - STALE_AFTER
-    return not document.summary.strip() or len(document.extracted_text) > SUMMARY_CHUNK_CHARS
+    return not document.summary.strip() or len(document.extracted_text) > LEGACY_SUMMARY_CHARS
 
 
 @login_required

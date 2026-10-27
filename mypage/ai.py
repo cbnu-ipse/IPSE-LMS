@@ -19,9 +19,11 @@ from django.conf import settings
 from core import ai as core_ai
 
 MARKITDOWN_EXTENSIONS = (".pdf", ".docx", ".pptx")
-SUMMARY_CHUNK_CHARS = settings.AI_LIMIT_SUMMARY_CHUNK_CHARS   # 요약 한 번에 넣는 본문 길이 (이보다 긴 자료는 조각으로 나눠 모두 요약한다)
-SUMMARY_MAX_CHUNKS = 10       # 한 자료에서 요약하는 조각 수 상한 (= 약 12만 자)
-SUMMARY_INPUT_CHARS = SUMMARY_CHUNK_CHARS   # 예전 이름 (이 길이를 넘는 자료는 앞부분만 요약되던 시절의 기준)
+SUMMARY_CHUNK_CHARS = settings.AI_LIMIT_SUMMARY_CHUNK_CHARS   # 요약 크레딧 단위: 글자 수가 이만큼 늘 때마다 AI_COST_SUMMARY (4,000자당 1크레딧)
+SUMMARY_WINDOW_CHARS = settings.AI_LIMIT_SUMMARY_WINDOW_CHARS # 요약 AI를 한 번 부를 때 넣는 본문 길이 (이보다 긴 자료는 나눠 모두 요약한다). 비용 단위와 따로 둬서 문맥은 넓게, 비용은 세밀하게
+SUMMARY_MAX_CHUNKS = 30       # 한 자료에서 요약하는 크레딧 단위 수 상한 (4,000자씩 = 약 12만 자)
+LEGACY_SUMMARY_CHARS = 12000  # 예전에는 앞 12,000자만 요약했다: 이보다 긴 자료의 옛 요약은 뒷부분이 빠졌을 수 있다
+SUMMARY_INPUT_CHARS = SUMMARY_WINDOW_CHARS   # 예전 이름 (이 길이를 넘는 자료는 앞부분만 요약되던 시절의 기준)
 QUESTION_INPUT_CHARS = 8000   # 문제 생성에 넣는 본문 길이 상한
 
 
@@ -274,10 +276,21 @@ EXAM_SUMMARY_INSTRUCTIONS = (
 
 
 def summary_chunk_count(text):
-    """이 본문을 요약하면 몇 조각이 되는지 (AI를 부르지 않고 글자 수로 센다). 크레딧 사전 확인에 쓴다."""
+    """이 본문을 요약할 때 드는 크레딧 단위 수 (글자 수 / SUMMARY_CHUNK_CHARS 올림, AI를 부르지 않고 센다). 사전 확인·비용 표시에 쓴다."""
     if not text.strip():
         return 0
-    return min(len(split_for_summary(text)), SUMMARY_MAX_CHUNKS)
+    return max(1, min(-(-sum(len(c) for c in split_for_summary(text)) // SUMMARY_CHUNK_CHARS), SUMMARY_MAX_CHUNKS))
+
+
+def _window_charges(windows):
+    """윈도우(AI 한 번 호출)마다 받을 크레딧 단위. 누적 글자 수의 올림 차이로 나눠, 합이 summary_chunk_count와 같다."""
+    out, cum, prev = [], 0, 0
+    for w in windows:
+        cum += len(w)
+        units = -(-cum // SUMMARY_CHUNK_CHARS)
+        out.append(units - prev)
+        prev = units
+    return out
 
 
 SUMMARY_MAX_CHARS = SUMMARY_MAX_CHUNKS * SUMMARY_CHUNK_CHARS    # 자료 하나로 요약할 수 있는 글자 수 (약 12만 자)
@@ -285,7 +298,7 @@ SUMMARY_MAX_CHARS = SUMMARY_MAX_CHUNKS * SUMMARY_CHUNK_CHARS    # 자료 하나�
 
 def summary_too_long(text):
     """요약 조각 수가 한도를 넘는 자료인가. 이런 자료는 앞부분만 요약되므로 요약하지 않고 쪼개서 올리게 한다."""
-    return len(split_for_summary(text)) > SUMMARY_MAX_CHUNKS
+    return sum(len(c) for c in split_for_summary(text)) > SUMMARY_MAX_CHARS
 
 
 def too_long_message(total_chars):
@@ -293,7 +306,7 @@ def too_long_message(total_chars):
             f"PDF를 장별로 쪼개서 {SUMMARY_MAX_CHARS:,}자 이하로 맞춰 올려주세요.")
 
 
-def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
+def split_for_summary(text, chunk_chars=SUMMARY_WINDOW_CHARS):
     """본문을 chunk_chars 안팎의 조각으로 나눈다. 빈 줄(문단·슬라이드 경계)에서 자르고, 한 문단이 너무 길면 줄 단위로,
     그래도 길면 글자 수로 자른다. 내용은 하나도 버리지 않는다."""
     blocks = []
@@ -322,29 +335,31 @@ def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
 
 def generate_summary(extracted_text, user=None, kind="lecture"):
     """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열.
-    긴 자료는 조각으로 나눠 조각마다 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다).
-    크레딧은 조각마다 받는다 (모자라면 낼 수 있는 조각까지만 요약)."""
+    긴 자료는 12,000자 안팎으로 나눠 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다). 크레딧은 호출 크기와 상관없이 글자 수 4,000자당 1로 세밀하게 받는다.
+    모자라면 낼 수 있는 곳까지만 요약한다."""
     if not extracted_text.strip():
         return ""
     chunks = split_for_summary(extracted_text)
-    if len(chunks) > SUMMARY_MAX_CHUNKS:
-        chunks = chunks[:SUMMARY_MAX_CHUNKS]
-    affordable = core_ai.affordable_units(user, "summary")
-    if affordable is not None:
-        if affordable <= 0:
-            core_ai.check_quota(user, "summary")      # 크레딧이 부족하다는 안내와 함께 중단
-        chunks = chunks[:affordable]                  # 크레딧으로 낼 수 있는 조각까지만 요약한다
-    parts = []
-    for i, chunk in enumerate(chunks):
+    charges = _window_charges(chunks)
+    remaining = core_ai.affordable_units(user, "summary")      # 낼 수 있는 크레딧 단위 수 (제한 없으면 None)
+    if remaining is not None and charges[0] > remaining:
+        core_ai.require_credits(user, charges[0] * core_ai.cost_for("summary"))    # 첫 부분도 못 내면 부족하다는 안내와 함께 중단
+    parts, paid = [], 0
+    for i, (chunk, units) in enumerate(zip(chunks, charges)):
+        if remaining is not None:
+            if units > remaining:
+                break                                         # 크레딧으로 낼 수 있는 곳까지만 요약한다
+            remaining -= units
         try:
-            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind))
+            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind, cost=units * core_ai.cost_for("summary")))
         except Exception:
-            core_ai.refund(user, "summary", core_ai.cost_for("summary") * i)   # 앞 조각에 낸 크레딧도 돌려준다
+            core_ai.refund(user, "summary", paid * core_ai.cost_for("summary"))   # 앞 조각에 낸 크레딧도 돌려준다
             raise
+        paid += units
     return "\n\n".join(p for p in parts if p.strip())
 
 
-def _summarize_chunk(chunk, i, total, user, kind="lecture"):
+def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None):
     system = EXAM_SUMMARY_INSTRUCTIONS if kind == "exam" else SUMMARY_INSTRUCTIONS
     if total > 1:
         system += (f"\n\n이 자료는 길어서 {total}조각으로 나눈 {i + 1}번째 조각입니다. 이 조각에 있는 내용만 빠짐없이 요약하고, "
@@ -352,7 +367,7 @@ def _summarize_chunk(chunk, i, total, user, kind="lecture"):
     return core_ai.complete("summary", [
         {"role": "system", "content": system},
         {"role": "user", "content": core_ai.untrusted("자료", chunk)},
-    ], user=user)
+    ], user=user, cost=cost)
 
 
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}

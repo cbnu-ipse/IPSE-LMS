@@ -90,11 +90,8 @@ def note_cost(count):
 
 
 def parse_note_json(text):
-    """AI 답에서 JSON을 읽는다. 수식의 LaTeX 백슬래시(\\det, \\lambda, \\[ …)를 이스케이프 없이 써도 읽히게 고쳐서 읽는다.
-    (\\frac의 \\f, \\theta의 \\t처럼 우연히 올바른 JSON 이스케이프로 읽혀 글자가 망가지는 것도 막는다.)"""
-    fixed = re.sub(r"(?<!\\)\\(?=[A-Za-z]{2,})", r"\\\\", text or "")      # \frac, \beta, \times → 백슬래시를 문자 그대로
-    fixed = re.sub(r"(?<!\\)\\(?![\\\"/bfnrtu])", r"\\\\", fixed)         # \[ \( \{ \, 같은 나머지 잘못된 이스케이프
-    return core_ai.parse_json(fixed)
+    """AI 답에서 JSON을 읽는다 (수식의 LaTeX 백슬래시도 읽히게 고쳐서: core.ai.parse_json)."""
+    return core_ai.parse_json(text)
 
 
 class NoteError(Exception):

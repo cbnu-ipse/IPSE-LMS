@@ -316,7 +316,7 @@ AI_MODELS = {t: _env_or_default(f"AI_MODEL_{t.upper()}", d[1]) for t, d in _AI_T
 # 요약은 조각(AI_LIMIT_SUMMARY_CHUNK_CHARS 글자)마다 받는다. 0이면 무료. 환경변수 AI_COST_<작업>으로 바꾼다
 AI_CREDIT_COSTS = {
     "chat": config("AI_COST_CHAT", default=1, cast=int),
-    "summary": config("AI_COST_SUMMARY", default=3, cast=int),
+    "summary": config("AI_COST_SUMMARY", default=1, cast=int),
     "question": config("AI_COST_QUESTION", default=2, cast=int),
     "grading": config("AI_COST_GRADING", default=1, cast=int),
     "ocr": config("AI_COST_OCR_PER_MB", default=1, cast=int),      # 이미지 글자 읽기: 파일 크기 1MB(올림)당
@@ -334,7 +334,8 @@ CURRENCY_GRANT_MAX = {
     "leaf": config("CURRENCY_GRANT_MAX_LEAF", default=1000, cast=int),
     "credit": config("CURRENCY_GRANT_MAX_CREDIT", default=500, cast=int),
 }
-AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=12000, cast=int)  # 요약 1조각의 최대 글자 수
+AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=4000, cast=int)   # 요약 크레딧 단위: 이 글자 수마다 AI_COST_SUMMARY (작을수록 비용이 세밀하게 늘어난다)
+AI_LIMIT_SUMMARY_WINDOW_CHARS = config("AI_LIMIT_SUMMARY_WINDOW_CHARS", default=12000, cast=int)  # 요약을 한 번에 부르는 글자 수 (클수록 문맥이 이어지고 중복이 줄지만 덜 자세해진다)
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
 SERVER_EMAIL = EMAIL_FROM_ADDRESS
