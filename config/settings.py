@@ -334,7 +334,8 @@ CURRENCY_GRANT_MAX = {
     "leaf": config("CURRENCY_GRANT_MAX_LEAF", default=1000, cast=int),
     "credit": config("CURRENCY_GRANT_MAX_CREDIT", default=500, cast=int),
 }
-AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=4000, cast=int)   # 요약 1조각의 최대 글자 수 (조각마다 크레딧을 받으므로 작을수록 비용이 세밀하게 늘어난다)
+AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=4000, cast=int)   # 요약 크레딧 단위: 이 글자 수마다 AI_COST_SUMMARY (작을수록 비용이 세밀하게 늘어난다)
+AI_LIMIT_SUMMARY_WINDOW_CHARS = config("AI_LIMIT_SUMMARY_WINDOW_CHARS", default=12000, cast=int)  # 요약을 한 번에 부르는 글자 수 (클수록 문맥이 이어지고 중복이 줄지만 덜 자세해진다)
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
 SERVER_EMAIL = EMAIL_FROM_ADDRESS
