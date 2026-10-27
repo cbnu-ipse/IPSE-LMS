@@ -19,7 +19,8 @@ from django.views.decorators.http import require_POST
 from assistant.guardrails import detect_prompt_injection
 
 from core.concurrency import background_slot, extract_slot
-from core.ai import AIQuotaExceeded, check_quota, cost_for, credit_info, ocr_cost, require_credits
+from core import usage
+from core.ai import AIQuotaExceeded, check_quota, cost_for, ocr_cost, require_quota
 
 from .ai import (
     LEGACY_SUMMARY_CHARS, SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
@@ -171,8 +172,8 @@ def document_list(request, folder_id=None):
                 return redirect(request.path)
             is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))
             try:
-                # 이미지는 글자 읽기(크기당) + 요약 최소 1조각, 그 밖에는 요약 최소 1조각의 크레딧이 있어야 시작한다
-                require_credits(request.user, (ocr_cost(upload.size) if is_image else 0) + cost_for("summary"))
+                # 이미지는 글자 읽기(크기당) + 요약 최소 1조각, 그 밖에는 요약 최소 1조각을 할 한도가 남아 있어야 시작한다
+                require_quota(request.user, (ocr_cost(upload.size) if is_image else 0) + cost_for("summary"))
             except AIQuotaExceeded as exc:
                 messages.error(request, f"자료를 올리지 못했습니다. {exc}")
                 return redirect(request.path)
@@ -206,8 +207,8 @@ def document_list(request, folder_id=None):
                 messages.error(request, "자료를 올리지 못했습니다. " + too_long_message(len(extracted_text)))
                 return redirect(request.path)
             document.extracted_text = extracted_text
-            try:    # 본문을 읽은 뒤 전체 조각 수로 필요한 크레딧을 미리 확인한다 (AI를 부르지 않고 글자 수로 센다)
-                require_credits(request.user, summary_chunk_count(extracted_text) * cost_for("summary"))
+            try:    # 본문을 읽은 뒤 전체 조각 수로 필요한 사용량을 미리 확인한다 (AI를 부르지 않고 글자 수로 센다)
+                require_quota(request.user, summary_chunk_count(extracted_text) * cost_for("summary"))
             except AIQuotaExceeded as exc:
                 document.summary_status = ProcessingStatus.PENDING
                 document.save(update_fields=["extracted_text", "summary_status"])
@@ -229,7 +230,7 @@ def document_list(request, folder_id=None):
         user=request.user, document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
         uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(
         summary_status=ProcessingStatus.FAILED,
-        summary="노트를 만드는 도중 서버가 다시 시작되는 등으로 작업이 중단됐습니다. 다시 만들어주세요. 크레딧이 차감됐는데 돌아오지 않았다면 운영진에게 알려주세요.")
+        summary="노트를 만드는 도중 서버가 다시 시작되는 등으로 작업이 중단됐습니다. 다시 만들어주세요. ")
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
         doc_count=Count("documents", filter=Q(documents__is_deleted=False))
     )
@@ -264,7 +265,7 @@ def _extract_cache_key(user, content_hash):
 @login_required
 @require_POST
 def upload_estimate(request):
-    """파일을 고르는 순간 부르는 비용 계산: 글자를 읽어(AI 없음) 요약 조각 수와 필요한 크레딧을 알려 준다.
+    """파일을 고르는 순간 부르는 비용 계산: 글자를 읽어(AI 없음) 예상 사용량(이번 주 한도 대비 %)을 알려 준다.
     읽은 글자는 잠시 캐시해 두었다가 실제 업로드에서 다시 읽지 않는다. 이미지는 글자 읽기(크기당) + 요약 최소~최대 범위."""
     upload = request.FILES.get("file")
     if upload is None:
@@ -281,10 +282,10 @@ def upload_estimate(request):
         return JsonResponse({"ok": False, "error": "잠시 후 다시 시도해주세요."}, status=429)
     data = upload.read()
     unit = cost_for("summary")
-    info = {"ok": True, "unit_cost": unit, "max_chunks": SUMMARY_MAX_CHUNKS}
+    info = {"ok": True}
     if name.endswith((".jpg", ".jpeg", ".png")):
         ocr = ocr_cost(len(data))
-        info.update(kind="image", ocr_cost=ocr, min_cost=ocr + unit, max_cost=ocr + unit * SUMMARY_MAX_CHUNKS)
+        info.update(kind="image", min_label=usage.percent_label(ocr + unit), max_label=usage.percent_label(ocr + unit * SUMMARY_MAX_CHUNKS))
         need = ocr + unit
     else:
         content_hash = hashlib.sha256(data).hexdigest()
@@ -302,11 +303,11 @@ def upload_estimate(request):
         if summary_too_long(text):         # 앞부분만 요약되는 일이 없게, 요약하지 않고 쪼개서 올리게 한다
             return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
         chunks = summary_chunk_count(text)
-        info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit)
+        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit))
         need = chunks * unit
-    balance = credit_info(request.user, "summary")
-    info["balance"] = balance["balance"] if balance else None       # 크레딧이 필요 없는 사용자는 None
-    info["enough"] = True if balance is None else balance["balance"] >= need
+    current = usage.info(request.user)                              # 한도가 없는 사용자(강의자 등)는 None
+    info["used_label"] = current["label"] if current else None
+    info["enough"] = True if current is None else current["remaining"] >= need
     return JsonResponse(info)
 
 
@@ -428,7 +429,7 @@ def document_preview(request, pk):
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
         "resummary_cost": _summary_cost(document),
-        "credit_info": _credit_context(request.user),
+        "usage": _usage_context(request.user),
         "initial_state": _document_state(document),
     })
 
@@ -608,8 +609,8 @@ def document_resummarize(request, pk):
     if summary_too_long(text):
         messages.error(request, too_long_message(len(text)))
         return back
-    try:    # 전체 조각 수로 필요한 크레딧을 미리 확인한다 (모자라면 시작하지 않는다)
-        require_credits(request.user, summary_chunk_count(text) * cost_for("summary"))
+    try:    # 전체 조각 수로 필요한 사용량을 미리 확인한다 (모자라면 시작하지 않는다)
+        require_quota(request.user, summary_chunk_count(text) * cost_for("summary"))
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back
@@ -624,14 +625,13 @@ def document_resummarize(request, pk):
 
 
 def _summary_cost(document):
-    """이 자료를 요약할 때 드는 크레딧: 읽어 둔 본문이 있으면 조각 수 × 조각당 비용, 아직 없으면 최소(1조각) 비용."""
+    """이 자료를 요약할 때의 예상 사용량 점수: 읽어 둔 본문이 있으면 조각 수 × 조각당 비용, 아직 없으면 최소(1조각) 비용."""
     chunks = summary_chunk_count(document.extracted_text) if document.extracted_text.strip() else 1
     return max(chunks, 1) * cost_for("summary")
 
 
-def _credit_context(user):
-    info = credit_info(user, "summary")
-    return {**info, "chars": SUMMARY_CHUNK_CHARS} if info else None
+def _usage_context(user):
+    return usage.info(user)
 
 
 def _document_state(document):
@@ -689,7 +689,7 @@ def cram_note_create(request):
                                 f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
         return back
     try:
-        require_credits(request.user, note_cost(len(sources)))      # 고른 자료 수만큼
+        require_quota(request.user, note_cost(len(sources)))      # 고른 자료 수만큼
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back
@@ -711,7 +711,7 @@ def cram_note_create(request):
 @login_required
 @require_POST
 def mock_exam_create(request):
-    """고른 수업 자료들로 모의 출제를 만든다 (교수님 족보 스타일 적용, 크레딧을 받고 만들지 못하면 돌려준다)."""
+    """고른 수업 자료들로 모의 출제를 만든다 (교수님 족보 스타일 적용)."""
     from .cram import MAX_SOURCES
     from .exam import generate_mock_exam, usable_for_mock
 
@@ -754,10 +754,10 @@ def mock_exam(request, pk):
     posted = {}
     if request.method == "POST" and exam.submitted_at is None:
         posted = {k[2:]: v for k, v in request.POST.items() if k.startswith("a_")}
-        try:    # 서술형은 AI가 채점하므로 답을 쓴 서술형 수만큼 채점 크레딧이 필요하다 (모자라면 채점하지 않고 답을 그대로 보여 준다)
-            require_credits(request.user, essay_count(exam, posted) * cost_for("grading"))
+        try:    # 서술형은 AI가 채점하므로 답을 쓴 서술형 수만큼 채점 사용량이 필요하다 (모자라면 채점하지 않고 답을 그대로 보여 준다)
+            require_quota(request.user, essay_count(exam, posted) * cost_for("grading"))
         except AIQuotaExceeded as exc:
-            messages.error(request, f"서술형 채점에 크레딧이 필요합니다. {exc}")
+            messages.error(request, f"서술형 채점을 할 수 없습니다. {exc}")
         else:
             grade_mock_exam(exam, posted)
             return redirect(exam.get_absolute_url())
@@ -784,8 +784,7 @@ def mock_exam(request, pk):
         rows.append(row)
     score = sum(exam.results) if exam.submitted_at else None
     essays = essay_count(exam)
-    grading = credit_info(request.user, "grading")
     return render(request, "mypage/mock_exam.html", {
         "exam": exam, "rows": rows, "score": score, "total": len(exam.questions),
-        "essays": essays, "essay_cost": essays * grading["cost"] if grading else 0,
+        "essays": essays,
     })

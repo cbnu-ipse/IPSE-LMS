@@ -155,6 +155,7 @@ TEMPLATES = [
                 "core.context_processors.vapid_settings",
                 "core.context_processors.site_section",
                 "core.context_processors.ai_cost",
+                "core.context_processors.ai_usage",
                 "game.context_processors.pending_season_reward",
                 "game.context_processors.static_version",
                 "accounts.context_processors.treat_event",
@@ -337,6 +338,14 @@ CURRENCY_GRANT_MAX = {
 AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=4000, cast=int)   # 요약 크레딧 단위: 이 글자 수마다 AI_COST_SUMMARY (작을수록 비용이 세밀하게 늘어난다)
 AI_LIMIT_SUMMARY_WINDOW_CHARS = config("AI_LIMIT_SUMMARY_WINDOW_CHARS", default=12000, cast=int)  # 요약을 한 번에 부르는 글자 수 (클수록 문맥이 이어지고 중복이 줄지만 덜 자세해진다)
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
+# AI 주간 사용 한도 (core/usage.py): 매주 월요일 0시(KST)에 초기화. 사용량은 호출 토큰을 모델 단가로 환산한 점수(1점 = AI_POINT_USD달러)로 센다
+AI_WEEKLY_LIMIT_POINTS = config("AI_WEEKLY_LIMIT_POINTS", default=300, cast=int)
+AI_POINT_USD = config("AI_POINT_USD", default=0.00177, cast=float)
+AI_MODEL_PRICES = {                 # (입력, 출력, 캐시 입력) 100만 토큰당 달러
+    "gemini-3.6-flash": (1.50, 7.50, 0.15),
+    "gemini-3.5-flash-lite": (0.30, 2.50, 0.03),
+}
+AI_DEFAULT_PRICE = (1.50, 7.50, 0.15)
 AI_THINKING_ALLOWANCE = config("AI_THINKING_ALLOWANCE", default=2000, cast=int)   # Gemini가 '생각'에 쓸 토큰 여유 (출력 상한에 포함되므로 작업별 상한에 더한다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
 SERVER_EMAIL = EMAIL_FROM_ADDRESS

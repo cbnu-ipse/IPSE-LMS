@@ -123,7 +123,7 @@ def override_route(provider, model, tasks=None):
 
 
 def _is_exempt(user):
-    """크레딧을 받지 않는 호출: 강의자와 시스템 작업(user=None)만. 관리자·운영진 계정도 강의자가 아니면 크레딧을 낸다."""
+    """주간 한도가 없는 호출: 강의자와 시스템 작업(user=None)만. 관리자·운영진 계정도 강의자가 아니면 한도가 있다."""
     return user is None or bool(getattr(user, "is_lecturer", False))
 
 
@@ -148,76 +148,56 @@ def cost_for(task):
     return settings.AI_CREDIT_COSTS.get(task, 0)
 
 
-def _balance(user):
-    from accounts.models import User
-
-    return User.objects.values_list("credits", flat=True).get(pk=user.pk)
-
-
-def _short_message(cost, have):
-    return (f"크레딧이 부족합니다 (필요 {cost}, 보유 {have}). "
-            "프로필에서 보상 코드를 등록하면 크레딧을 얻을 수 있습니다.")
+def _limit_message(info):
+    reset = info["reset_at"]
+    return (f"이번 주 AI 사용 한도를 다 썼어요 (사용량 {info['label']}%). "
+            f"월요일 0시에 초기화돼요 (다음 초기화 {reset.month}월 {reset.day}일 0시).")
 
 
-def require_credits(user, amount):
-    """amount 크레딧을 낼 수 있어야 한다. 모자라면 AIQuotaExceeded (크레딧 없이 쓰는 사용자는 통과)."""
-    if _is_exempt(user) or not amount:
+def require_quota(user, points=0):
+    """이번 주 한도 안에서 쓸 수 있어야 한다 (이미 다 썼거나, 시작하려는 작업의 예상 점수가 남은 한도를 넘으면 AIQuotaExceeded).
+    강의자·시스템 작업은 통과. 점수는 core/usage.py 참고."""
+    if _is_exempt(user):
         return
-    have = _balance(user)
-    if have < amount:
-        raise AIQuotaExceeded(_short_message(amount, have))
+    from . import usage
+
+    info = usage.info(user)
+    if info["remaining"] <= 0 or (points and points > info["remaining"]):
+        raise AIQuotaExceeded(_limit_message(info))
 
 
 def check_quota(user, task, units=1):
-    """크레딧이 모자라면 AIQuotaExceeded. 백그라운드 작업은 시작하기 전에 뷰에서 먼저 확인한다 (차감은 호출할 때)."""
-    require_credits(user, cost_for(task) * units)
+    """작업을 시작해도 되는지 확인한다. 백그라운드 작업은 시작하기 전에 뷰에서 먼저 확인한다."""
+    require_quota(user, cost_for(task) * units)
 
 
 def ocr_cost(size_bytes):
-    """이미지 글자 읽기 비용: 파일 크기 1MB(올림)당 AI_COST_OCR_PER_MB."""
+    """이미지 글자 읽기 예상 점수: 파일 크기 1MB(올림)당 AI_COST_OCR_PER_MB."""
     rate = cost_for("ocr")
     return rate * max(1, -(-int(size_bytes) // 1_000_000)) if rate else 0
 
 
 def affordable_units(user, task):
-    """남은 크레딧으로 이 작업을 몇 번 더 할 수 있는지. 제한이 없으면 None."""
+    """남은 한도로 이 작업을 몇 번(단위) 더 할 수 있는지. 제한이 없으면 None."""
     cost = cost_for(task)
     if _is_exempt(user) or not cost:
         return None
-    return _balance(user) // cost
+    from . import usage
 
-
-def credit_info(user, task="summary"):
-    """화면에 보일 크레딧 정보 {balance, cost}. 크레딧 없이 쓰는 사용자는 None."""
-    if _is_exempt(user) or not cost_for(task):
-        return None
-    return {"balance": _balance(user), "cost": cost_for(task)}
+    return int(usage.info(user)["remaining"] // cost)
 
 
 def _charge(user, task, cost=None):
-    """호출 전에 크레딧을 차감하고 낸 양을 돌려준다 (0이면 낸 게 없음). cost를 주면 작업 기본 비용 대신 그 값을 낸다."""
-    cost = cost_for(task) if cost is None else cost
-    if _is_exempt(user) or not cost:
+    """호출 전에 한도를 확인한다 (크레딧은 더 이상 차감하지 않는다). 사용량은 호출이 끝난 뒤 토큰으로 기록된다. 항상 0을 돌려준다."""
+    if _is_exempt(user):
         return 0
-    from accounts.credits import InsufficientCredits, spend
-
-    try:
-        spend(user, cost, "ai_usage", f"AI {task}")
-    except InsufficientCredits:
-        raise AIQuotaExceeded(_short_message(cost, _balance(user)))
-    return cost
+    require_quota(user)
+    return 0
 
 
 def refund(user, task, cost):
-    """호출이 실패했을 때 낸 크레딧을 돌려준다."""
-    if not cost or _is_exempt(user):
-        return
-    from accounts.credits import grant
-
-    try:
-        grant(user, cost, "ai_refund", f"AI {task} 실패 환불")
-    except Exception:
-        logger.exception("AI credit refund failed: task=%s", task)
+    """예전 크레딧 환불 자리. 사용량은 실제로 쓴 토큰만 세므로 돌려줄 것이 없다."""
+    return None
 
 
 def _record(user, task, model, response, counts_as_request):

@@ -11,6 +11,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from accounts import credits
 from core import ai as core_ai
 from core import vertex
+from core.models import AIUsage
 
 from . import stream
 from .ai import generate_summary
@@ -67,22 +68,23 @@ class StreamCompleteTests(TestCase):
         self.user = User.objects.create_user(username="u", password="pw")
         credits.grant(self.user, 10, "test")
 
-    def test_streams_pieces_and_charges_once(self):
+    def test_streams_pieces_and_records_usage_once_without_spending_credits(self):
         pieces = []
         resp = _FakeResponse([sse("가"), sse("나", usage={"promptTokenCount": 5, "candidatesTokenCount": 2})])
         with patch("core.vertex.open_stream", return_value=resp):
             text = core_ai.stream_complete("summary", [{"role": "user", "content": "x"}], user=self.user, cost=3, on_delta=pieces.append)
         self.assertEqual((text, pieces), ("가나", ["가", "나"]))
         self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 7)
+        self.assertEqual(self.user.credits, 10)                                  # 크레딧은 그대로
+        row = AIUsage.objects.get(user=self.user)                                # 사용량(토큰)이 한 번 기록된다
+        self.assertEqual((row.prompt_tokens, row.completion_tokens), (5, 2))
 
-    def test_failure_midway_refunds_and_raises(self):
+    def test_failure_midway_records_no_usage_and_raises(self):
         resp = _FakeResponse([sse("가"), sse("나")], fail_after=1)
         with patch("core.vertex.open_stream", return_value=resp):
             with self.assertRaises(ConnectionResetError):
                 core_ai.stream_complete("summary", [{"role": "user", "content": "x"}], user=self.user, cost=3)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 10)
+        self.assertFalse(AIUsage.objects.filter(user=self.user).exists())
 
     def test_connection_open_errors_are_retried(self):
         resp = _FakeResponse([sse("ok")])

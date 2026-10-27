@@ -115,8 +115,8 @@
                         <div id="document-summary-tabs" class="shrink-0 flex gap-1 mb-4"></div>
                         <div id="document-summary-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
                         <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
-                        {% if credit_info %}
-                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">보유 크레딧 {{ credit_info.balance }} · 요약 1조각(최대 {{ credit_info.chars }}자)당 {{ credit_info.cost }}크레딧</p>
+                        {% if usage %}
+                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">이번 주 AI 사용량 {{ usage.label }}% · 월요일 0시에 초기화</p>
                         {% endif %}
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="shrink-0 mt-3 text-center" onsubmit="return confirm('자료 전체를 다시 요약합니다. 기존 요약은 새 요약으로 바뀝니다.');">
@@ -125,7 +125,7 @@
                         </form>
                         {% endif %}
                     {% else %}
-                        <p class="text-sm text-slate-500 font-medium">{% if document.summary_status == 'pending' %}크레딧이 부족해 요약을 아직 시작하지 않았습니다. 충전한 뒤 시작해주세요.{% else %}요약을 생성하지 못했습니다.{% endif %}</p>
+                        <p class="text-sm text-slate-500 font-medium">{% if document.summary_status == 'pending' %}이번 주 AI 사용 한도가 모자라 요약을 아직 시작하지 않았습니다. 월요일 0시에 초기화된 뒤 시작해주세요.{% else %}요약을 생성하지 못했습니다.{% endif %}</p>
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
                             {% csrf_token %}

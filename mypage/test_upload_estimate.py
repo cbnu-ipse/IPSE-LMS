@@ -7,13 +7,14 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 from accounts import credits
+from core.testing import use_up
 from mypage.forms import MAX_UPLOAD_SIZE
 from mypage.models import PersonalDocument
 
 User = get_user_model()
 
 
-@override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
+@override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1}, AI_WEEKLY_LIMIT_POINTS=100)
 class UploadEstimateTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -23,23 +24,28 @@ class UploadEstimateTests(TestCase):
     def estimate(self, name="a.txt", content=b"hello", **kw):
         return self.client.post("/mypage/estimate/", {"file": SimpleUploadedFile(name, content)}, **kw)
 
-    def test_text_file_gets_exact_cost_from_chunk_count_and_balance_check(self):
-        credits.grant(self.user, 10, "test")
-        text = "\n\n".join("가" * 3000 for _ in range(4))
+    def test_text_file_gets_expected_usage_as_percent_of_the_weekly_limit(self):
+        text = "\n\n".join("가" * 3000 for _ in range(4))                  # 12,006자 = 4단위 × 예상 3점 = 12점 = 한도 100의 12%
         with patch("mypage.views.extract_text", return_value=text):
             d = self.estimate().json()
-        self.assertEqual((d["kind"], d["chunks"], d["cost"], d["unit_cost"]), ("text", 4, 12, 3))
-        self.assertEqual((d["balance"], d["enough"]), (10, False))     # 12 필요, 10 보유
-        credits.grant(self.user, 5, "test")
+        self.assertEqual((d["kind"], d["chunks"], d["est_label"], d["used_label"], d["enough"]), ("text", 4, "12", "0", True))
+        use_up(self.user, 90)                                              # 남은 10 < 필요 12
         with patch("mypage.views.extract_text", return_value=text):
-            self.assertTrue(self.estimate().json()["enough"])
+            d = self.estimate().json()
+        self.assertEqual((d["used_label"], d["enough"]), ("90", False))
 
-    def test_image_estimate_is_ocr_by_size_plus_summary_range(self):
-        credits.grant(self.user, 100, "test")
+    def test_lecturers_have_no_limit_in_the_estimate(self):
+        lecturer = User.objects.create_user(username="lecest", password="pw", is_lecturer=True)
+        self.client.force_login(lecturer)
+        with patch("mypage.views.extract_text", return_value="가" * 3000):
+            d = self.estimate().json()
+        self.assertEqual((d["used_label"], d["enough"]), (None, True))
+
+    def test_image_estimate_is_a_percent_range_without_reading_the_file(self):
         with patch("mypage.views.extract_text") as extract:
             d = self.estimate("scan.png", b"x" * 2_500_000).json()
-        extract.assert_not_called()                                                     # 이미지는 OCR이라 계산 때는 읽지 않는다
-        self.assertEqual((d["kind"], d["ocr_cost"], d["min_cost"], d["max_cost"]), ("image", 3, 6, 93))
+        extract.assert_not_called()                                         # 이미지는 OCR이라 계산 때는 읽지 않는다
+        self.assertEqual((d["kind"], d["min_label"], d["max_label"]), ("image", "6.0", "93"))     # OCR 3 + 요약 3 ~ OCR 3 + 요약 30단위 × 3 = 93점
 
     def test_unreadable_text_is_refused_at_selection(self):
         with patch("mypage.views.extract_text", return_value=""):
