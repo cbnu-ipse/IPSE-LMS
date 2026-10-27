@@ -3,7 +3,7 @@
 손글씨 그림(A4 PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
 
 - 읽는 내용은 자료의 요약(없으면 본문 앞부분). 자료마다 같은 몫을 나눠 읽고, 전체는 SOURCE_CHARS 안으로 줄인다.
-- 크레딧은 고른 자료 1개당 AI_COST_CRAM_NOTE (note_cost). AI를 부르다 실패하면 core.ai가, 노트가 비었거나 그림이 실패하면 여기서 돌려준다.
+- 크레딧은 노트 한 번에 AI_COST_CRAM_NOTE 정액 (note_cost). AI를 부르다 실패하면 core.ai가, 노트가 비었거나 그림이 실패하면 여기서 돌려준다.
 - 노트가 실패하면 이유(NoteError)를 노트 자료의 summary에 담아 화면에 보여 준다 (새 컬럼 없이).
 - 노트 문서는 강의·모의 출제의 재료가 아니다 (eligible_docs는 수업 자료만, exam_docs는 족보만 읽는다).
 """
@@ -84,9 +84,9 @@ def note_title(documents):
     return f"{base} 속성 노트"[:200]
 
 
-def note_cost(count):
-    """노트 비용: 고른 자료 수 × 자료당 크레딧."""
-    return core_ai.cost_for("cram_note") * count
+def note_cost(count=1):
+    """노트 비용: 고른 자료 수와 상관없이 노트 한 번에 정액 (출력 비용이 자료 수와 무관해서). count는 예전 호출부와의 호환용."""
+    return core_ai.cost_for("cram_note")
 
 
 def parse_note_json(text):

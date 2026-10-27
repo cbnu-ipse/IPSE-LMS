@@ -81,26 +81,18 @@ class CourseUsesExamStyleTests(TestCase):
     def test_exam_docs_do_not_become_course_material(self):
         self.assertEqual([d["id"] for d in studio.eligible_docs("데이터베이스")], [self.lecture.pk])
 
-    def test_chapter_questions_get_the_style(self):
+    def test_course_generation_ignores_the_exam_style(self):
+        # 강의는 올라온 수업 자료만으로 만든다. 교수님 족보 스타일은 내 자료 문제 생성과 모의 출제에만 쓴다
         outline = {"title": "t", "description": "d", "chapters": [{"title": "c", "summary": "", "doc_ids": [self.lecture.pk]}]}
         sets = [{"title": "s", "cards": [{"title": "c", "body": "b"}], "questions": []}]
         with patch.object(course_ai, "generate_outline", return_value=outline), \
                 patch.object(course_ai, "generate_chapter", return_value=sets) as chapter:
             draft = studio.build_draft("데이터베이스")
-        self.assertIsNotNone(draft)
-        self.assertEqual(chapter.call_args.kwargs["style"], "- 객관식 위주")
-
-    def test_new_style_makes_a_new_draft_but_no_style_keeps_old_hash(self):
-        outline = {"title": "t", "description": "d", "chapters": [{"title": "c", "summary": "", "doc_ids": [self.lecture.pk]}]}
-        sets = [{"title": "s", "cards": [{"title": "c", "body": "b"}], "questions": []}]
-        with patch.object(course_ai, "generate_outline", return_value=outline), \
-                patch.object(course_ai, "generate_chapter", return_value=sets):
-            first = studio.build_draft("데이터베이스")
+            self.assertIsNotNone(draft)
+            self.assertEqual(chapter.call_args.kwargs.get("style", ""), "")
             self.assertIsNone(studio.build_draft("데이터베이스"))        # 같은 입력이면 다시 만들지 않는다
             ExamStyle.objects.update(source_hash="h2")
-            second = studio.build_draft("데이터베이스")                   # 스타일이 바뀌면 새로 만든다
-        self.assertIsNotNone(second)
-        self.assertNotEqual(first.source_hash, second.source_hash)
+            self.assertIsNone(studio.build_draft("데이터베이스"))        # 스타일이 바뀌어도 강의는 다시 만들지 않는다
 
     def test_exam_upload_refreshes_style_and_rebuilds_related_courses(self):
         self.exam.summary = "요약"
@@ -214,7 +206,7 @@ class MockExamTests(TestCase):
         self.client.force_login(self.user)
         category = CourseCategory.objects.create(title="AI 자동 생성")
         self.course = Course.objects.create(code="운영체제", title="운영체제", category=category, instructor=self.user)
-        make_doc(self.user, "OS 강의", LECTURE, "김교수", ["운영체제"], summary="프로세스는 실행 중인 프로그램이다")
+        self.doc = make_doc(self.user, "OS 강의", LECTURE, "김교수", ["운영체제"], summary="프로세스는 실행 중인 프로그램이다", course_name="운영체제")
         ExamStyle.objects.create(key="p:김", label="김교수 교수님", guidelines="- 객관식 위주", source_hash="h", doc_count=2)
 
     QUESTIONS = {"title": "OS 모의고사", "questions": (
@@ -225,7 +217,7 @@ class MockExamTests(TestCase):
     def test_create_charges_credits_and_uses_style(self):
         credits.grant(self.user, 7, "test")
         with patch("core.ai.complete_json", return_value=self.QUESTIONS) as ai:
-            res = self.client.post(f"/mypage/mock/{self.course.slug}/create/")
+            res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]})
         self.assertEqual(MockExam.objects.count(), 1)
         mock = MockExam.objects.get()
         self.assertEqual((mock.style_label, len(mock.questions)), ("김교수 교수님", 10))
@@ -235,7 +227,7 @@ class MockExamTests(TestCase):
 
     def test_create_without_credits_is_blocked(self):
         with patch("core.ai.complete_json") as ai:
-            res = self.client.post(f"/mypage/mock/{self.course.slug}/create/", follow=True)
+            res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
         ai.assert_not_called()
         self.assertFalse(MockExam.objects.exists())
         self.assertContains(res, "크레딧이 부족합니다")
@@ -248,7 +240,7 @@ class MockExamTests(TestCase):
         client = type("Cl", (), {})()
         client.chat = type("Ch", (), {"completions": type("Co", (), {"create": staticmethod(lambda **kw: response)})()})()
         with patch.object(core_ai, "_client", return_value=client):              # 실제 차감 경로를 지난다
-            res = self.client.post(f"/mypage/mock/{self.course.slug}/create/", follow=True)
+            res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
         self.assertFalse(MockExam.objects.exists())
         self.assertContains(res, "크레딧은 돌려드렸습니다")
         self.user.refresh_from_db()
@@ -258,7 +250,7 @@ class MockExamTests(TestCase):
     def test_take_and_grade_on_server(self):
         credits.grant(self.user, 5, "test")
         with patch("core.ai.complete_json", return_value=self.QUESTIONS):
-            self.client.post(f"/mypage/mock/{self.course.slug}/create/")
+            self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]})
         mock = MockExam.objects.get()
         page = self.client.get(mock.get_absolute_url())
         self.assertContains(page, "제출하고 채점하기")
@@ -342,11 +334,39 @@ class MockExamTests(TestCase):
         self.client.force_login(other)
         self.assertEqual(self.client.get(mock.get_absolute_url()).status_code, 403)
 
-    def test_course_page_offers_mock_exam_with_cost(self):
+    def test_course_page_no_longer_offers_mock_exam_or_style(self):
         response = self.client.get(f"/course/{self.course.slug}/")
-        self.assertContains(response, "모의 출제 받기")
-        self.assertContains(response, "김교수 교수님")
-        self.assertContains(response, 'title="AI 크레딧 5"')
+        self.assertNotContains(response, "모의 출제")
+        self.assertNotContains(response, "김교수 교수님")
+
+    def test_personal_tab_offers_mock_exam_with_cost_for_lecture_documents_only(self):
+        make_doc(self.user, "OS 족보", EXAM, "김교수", ["운영체제"], summary="족보 요약")
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn('id="mock-toggle"', html)
+        self.assertIn('<i class="fa-solid fa-coins" style="font-size:.85em"></i> 5', html)
+        self.assertEqual(html.count('data-doc-type="lecture"'), 1)
+        self.assertEqual(html.count('data-doc-type="exam"'), 1)             # 족보는 카드에 표시만 되고 모의 출제에서는 고를 수 없다 (화면에서 흐리게)
+
+    def test_exam_documents_and_other_users_documents_cannot_be_sources(self):
+        credits.grant(self.user, 10, "test")
+        exam_doc = make_doc(self.user, "족보", EXAM, "김교수", ["운영체제"], summary="족보 요약")
+        other = User.objects.create_user(username="o2", password="pw")
+        foreign = make_doc(other, "남의 자료", LECTURE, "김교수", ["운영체제"], summary="남의 요약")
+        with patch("core.ai.complete_json") as ai:
+            res = self.client.post("/mypage/mock/create/", {"ids": [exam_doc.pk, foreign.pk]}, follow=True)
+        ai.assert_not_called()
+        self.assertFalse(MockExam.objects.exists())
+        self.assertContains(res, "수업 자료를 하나 이상 골라주세요")
+
+    def test_style_comes_from_the_selected_documents_professor(self):
+        ExamStyle.objects.create(key="p:이", label="이교수 교수님", guidelines="- 서술형 위주", source_hash="h2", doc_count=1)
+        lee = make_doc(self.user, "이교수 자료", LECTURE, "이교수", ["운영체제"], summary="스케줄링", course_name="운영체제")
+        credits.grant(self.user, 10, "test")
+        with patch("core.ai.complete_json", return_value=self.QUESTIONS) as ai:
+            self.client.post("/mypage/mock/create/", {"ids": [lee.pk]})
+        self.assertEqual(MockExam.objects.get().style_label, "이교수 교수님")
+        self.assertIn("- 서술형 위주", ai.call_args.args[1][1]["content"])
+        self.assertNotIn("- 객관식 위주", ai.call_args.args[1][1]["content"])
 
 
 class ExamSummaryTests(TestCase):

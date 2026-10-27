@@ -152,7 +152,7 @@ class BuildNoteTests(TestCase):
         self.assertTrue(note.file.name.endswith(".png"))
         self.assertEqual(note.title, "운영체제 5분 노트")
         self.assertIn("프로세스 vs 스레드", note.summary)
-        self.assertEqual(ai.call_args.kwargs["cost"], cram.note_cost(2))
+        self.assertEqual(ai.call_args.kwargs["cost"], cram.note_cost(2))      # 정액
         request = ai.call_args[0][1][1]["content"]
         self.assertIn("요약 A", request)
         self.assertIn("요약 B", request)
@@ -241,14 +241,13 @@ class CreateViewTests(TestCase):
             self._post([doc.pk])
         self.assertFalse(PersonalDocument.objects.filter(document_type=NOTE).exists())
 
-    def test_cost_is_per_selected_document(self):
+    def test_cost_is_flat_per_note_not_per_document(self):
         a, b, c = (make_doc(self.user, n) for n in "abc")
-        credits.grant(self.user, 5, "admin_grant", "t")
+        credits.grant(self.user, 3, "test")
         with patch("core.ai._is_exempt", return_value=False):
-            self._post([a.pk, b.pk, c.pk])                      # 3개 x 2 = 6 > 5
-            self.assertFalse(PersonalDocument.objects.filter(document_type=NOTE).exists())
-            self._post([a.pk, b.pk])                            # 2개 x 2 = 4 <= 5
-        self.assertTrue(PersonalDocument.objects.filter(document_type=NOTE).exists())
+            self._post([a.pk, b.pk, c.pk])                      # 자료 3개여도 정액 2이므로 3으로 충분
+        self.assertEqual(PersonalDocument.objects.filter(document_type=NOTE).count(), 1)
+        self.assertEqual(cram.note_cost(1), cram.note_cost(8))
 
     def test_login_required(self):
         self.client.logout()

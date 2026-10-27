@@ -106,13 +106,8 @@ def build_draft(subject_code, force=False):
     docs = eligible_docs(subject_code)
     if not docs:
         return None
-    from mypage.exam import style_for, style_prompt, style_signature, topic_professor
-
-    professor = topic_professor(subject_code)
-    style = style_for(professor, subject_code)  # 교수님 족보에서 배운 출제 스타일 (없으면 None)
-    style_text = style_prompt(style, professor, subject_code)    # 스타일 + 족보 문제를 센 유형 비율·자주 나온 개념
-    # 스타일이나 족보 분석이 바뀌면 초안·챕터도 새로 만든다 (둘 다 없을 때는 해시가 그대로)
-    style_parts = [style_signature(style, professor, subject_code)] if style_text else []
+    # 강의는 올라온 수업 자료만으로 만든다. 교수님 족보 출제 스타일은 내 자료로 문제를 만들 때와 모의 출제에만 쓴다
+    style_text, style_parts = "", []
     from mypage.ontology import concepts_for_docs, text_for_concepts
 
     # 개념 태그가 충분하면 챕터를 개념 단위로 구성한다 (개념 구성이 바뀌면 초안도 새로 만든다)

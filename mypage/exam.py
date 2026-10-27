@@ -6,7 +6,7 @@
 - refresh_style: 묶음의 족보 본문을 AI가 한 번 읽고 문제를 만들 때 쓰는 지시문(guidelines)과 유형 비율을 뽑아 저장한다.
   족보가 그대로면 다시 부르지 않는다 (source_hash). 시스템 작업이라 크레딧을 받지 않는다.
 - style_for: 강의(과목·교수)에 맞는 스타일. 강의 챕터의 확인 문제(course/studio.py)와 자료별 문제 생성에 지시문이 들어간다.
-- generate_mock_exam: 강의의 수업 자료 요약 + 그 교수님 스타일(+ 족보 예시)로 모의 출제. 문제는 ox/mc/short라 서버가 채점한다.
+- generate_mock_exam: 고른 수업 자료들의 요약 + 그 자료의 교수님 스타일(+ 족보 예시)로 모의 출제. 문제는 ox/mc/short라 서버가 채점한다.
 """
 import hashlib
 import json
@@ -225,16 +225,27 @@ def covered_concepts(doc_ids):
     return list(names)[:30]
 
 
-def generate_mock_exam(user, course):
-    """강의 하나의 모의 출제를 만든다 (크레딧을 받고, 쓸 만한 문제가 모자라면 돌려준다). MockExam을 돌려준다."""
-    from course import ai as course_ai
-    from course.studio import eligible_docs
+def usable_for_mock(document):
+    """모의 출제의 재료로 쓸 수 있는 자료: 수업 자료(족보·노트는 아님)이고 요약이나 본문이 있어야 한다."""
+    return (document.document_type == PersonalDocument.DocumentType.LECTURE
+            and bool(document.summary.strip() or document.extracted_text.strip()))
 
-    subject = course.code
-    docs = eligible_docs(subject)
-    if not docs:
-        raise ValueError("이 강의에는 모의 출제에 쓸 수업 자료가 없습니다.")
-    professor = topic_professor(subject)
+
+def _most_common(values):
+    counts = Counter(v for v in values if v)
+    return counts.most_common(1)[0][0] if counts else ""
+
+
+def generate_mock_exam(user, documents):
+    """고른 수업 자료들로 모의 출제를 만든다 (크레딧을 받고, 쓸 만한 문제가 모자라면 돌려준다). MockExam을 돌려준다.
+    출제 스타일은 고른 자료에 적힌 교수님(없으면 과목)의 족보에서 배운 것을 쓴다."""
+    from course import ai as course_ai
+
+    documents = [d for d in documents if usable_for_mock(d)]
+    if not documents:
+        raise ValueError("모의 출제에 쓸 수업 자료가 없습니다. 요약이 끝난 수업 자료를 골라주세요.")
+    subject = _most_common(d.course_name for d in documents)
+    professor = _most_common(d.professor for d in documents)
     style = style_for(professor, subject)
     stats = exam_stats(professor, subject)
     examples = ""
@@ -244,8 +255,9 @@ def generate_mock_exam(user, course):
         examples = "\n".join(f"- [{labels.get(q.qtype, q.qtype)}] {q.text}" for q in rows)
     elif style:
         examples = "\n\n".join(d.extracted_text[:EXAMPLE_CHARS // 3] for d in exam_docs(professor, subject)[:3])[:EXAMPLE_CHARS]
-    material = "\n\n".join(f"## {d['title']}\n{d['summary']}" for d in docs)[:MATERIAL_CHARS]
-    request = f"과목: {course.title}\n"
+    per = max(MATERIAL_CHARS // len(documents), 1500)
+    material = "\n\n".join(f"## {d.title}\n{(d.summary.strip() or d.extracted_text.strip())[:per]}" for d in documents)[:MATERIAL_CHARS]
+    request = f"과목: {subject or documents[0].title}\n"
     if style:
         request += f"출제 스타일({style.label}):\n{style.guidelines}\n"
     plan = type_plan(stats)
@@ -255,7 +267,7 @@ def generate_mock_exam(user, course):
     if stats["concepts"]:
         request += ("개념별 출제 비중(족보에서 자주 나온 순, 앞쪽 개념을 더 많이 묻고 수업 자료의 다른 개념도 1~2문항 섞기): "
                     + ", ".join(f"{n}({c}회)" for n, c in stats["concepts"][:8]) + "\n")
-    covered = covered_concepts([d["id"] for d in docs])
+    covered = covered_concepts([d.id for d in documents])
     if covered:
         request += "수업 자료가 다루는 개념: " + ", ".join(covered) + "\n"
     request += "\n" + core_ai.untrusted("수업자료", material)
@@ -271,8 +283,9 @@ def generate_mock_exam(user, course):
         core_ai.refund(user, "mock_exam", core_ai.cost_for("mock_exam"))
         raise ValueError("AI가 쓸 만한 문제를 충분히 만들지 못했습니다. 크레딧은 돌려드렸습니다. 잠시 후 다시 시도해주세요.")
     course_ai.shuffle_choices([{"questions": questions}])
+    title = documents[0].title if len(documents) == 1 else (subject or "여러 자료")
     return MockExam.objects.create(
-        user=user, course_code=subject, title=str(data.get("title") or f"{course.title} 모의고사")[:200],
+        user=user, course_code=subject, title=str(data.get("title") or f"{title} 모의고사")[:200],
         style_label=style.label if style else "", questions=questions)
 
 
