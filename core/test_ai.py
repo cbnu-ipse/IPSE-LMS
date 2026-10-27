@@ -265,3 +265,47 @@ class ErrorPageTests(TestCase):
     def test_404_page_renders(self):
         from django.template.loader import render_to_string
         self.assertIn("404", render_to_string("404.html"))
+
+
+class GeminiThinkingHeadroomTests(TestCase):
+    """생각하는 Gemini 모델은 생각에 쓴 토큰도 출력 상한에 들어가, 상한이 작은 작업(문제 500 등)은 답이 잘려 JSON이 깨졌다."""
+
+    def setUp(self):
+        from django.conf import settings
+        from django.test import override_settings
+
+        ctx = override_settings(
+            AI_PROVIDERS={**settings.AI_PROVIDERS, "gemini": {"key": "k", "base_url": None, "native": "vertex"}},
+            AI_TASK_PROVIDERS={**settings.AI_TASK_PROVIDERS, "question": "gemini"}, AI_BLOCK_NETWORK=False, AI_THINKING_ALLOWANCE=2000)
+        ctx.enable()
+        self.addCleanup(ctx.disable)
+
+    @staticmethod
+    def _response(text, finish="STOP"):
+        from types import SimpleNamespace
+
+        message = SimpleNamespace(content=text, tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason=finish)],
+                               usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, prompt_tokens_details=SimpleNamespace(cached_tokens=0)))
+
+    def test_output_limit_includes_room_for_thinking(self):
+        from unittest.mock import patch
+
+        with patch("core.vertex.generate", return_value=self._response("{}")) as gen:
+            ai.complete_json("question", [{"role": "user", "content": "x"}])
+        self.assertEqual(gen.call_args.kwargs["max_tokens"], ai.MAX_OUTPUT_TOKENS["question"] + 2000)
+
+    def test_truncated_json_answer_is_retried_with_a_bigger_limit_and_charged_once(self):
+        from unittest.mock import patch
+
+        limits = []
+
+        def fake(api_key, model, messages, *, max_tokens, json_mode=False, tools=None):
+            limits.append(max_tokens)
+            return self._response('{"question": "잘림' if len(limits) == 1 else '{"question": "ok"}', "MAX_TOKENS" if len(limits) == 1 else "STOP")
+
+        with patch("core.vertex.generate", side_effect=fake), patch("core.ai._charge", return_value=0) as charge:
+            self.assertEqual(ai.complete_json("question", [{"role": "user", "content": "x"}]), {"question": "ok"})
+        self.assertEqual(len(limits), 2)
+        self.assertGreater(limits[1], limits[0])
+        charge.assert_called_once()
