@@ -168,3 +168,25 @@ class ProfileAccountCardTestCase(TestCase):
         self.assertContains(self.client.get("/accounts/profile/"), "운영진 승인을 기다리는 중")
         self.client.force_login(boss)
         self.assertContains(self.client.get("/accounts/profile/"), "대기 1건 보기")
+
+
+class ProfileAiUsageTestCase(TestCase):
+    def test_profile_shows_weekly_ai_usage_instead_of_credits(self):
+        from django.test import override_settings
+
+        from core.testing import use_up
+
+        u = User.objects.create_user(username="pu", password="pw")
+        self.client.force_login(u)
+        with override_settings(AI_WEEKLY_LIMIT_POINTS=100):
+            use_up(u, 42)
+            res = self.client.get("/accounts/profile/")
+        self.assertContains(res, "AI 사용량 (주간)")
+        self.assertContains(res, "42%")
+        self.assertContains(res, "0시 초기화")
+        self.assertNotContains(res, "AI 크레딧")
+
+    def test_lecturers_see_no_limit(self):
+        lecturer = User.objects.create_user(username="pl", password="pw", is_lecturer=True)
+        self.client.force_login(lecturer)
+        self.assertContains(self.client.get("/accounts/profile/"), "제한 없음")
