@@ -25,7 +25,7 @@ class UploadEstimateTests(TestCase):
 
     def test_text_file_gets_exact_cost_from_chunk_count_and_balance_check(self):
         credits.grant(self.user, 10, "test")
-        text = "\n\n".join("가" * 11000 for _ in range(4))
+        text = "\n\n".join("가" * 3000 for _ in range(4))
         with patch("mypage.views.extract_text", return_value=text):
             d = self.estimate().json()
         self.assertEqual((d["kind"], d["chunks"], d["cost"], d["unit_cost"]), ("text", 4, 12, 3))
@@ -39,7 +39,7 @@ class UploadEstimateTests(TestCase):
         with patch("mypage.views.extract_text") as extract:
             d = self.estimate("scan.png", b"x" * 2_500_000).json()
         extract.assert_not_called()                                                     # 이미지는 OCR이라 계산 때는 읽지 않는다
-        self.assertEqual((d["kind"], d["ocr_cost"], d["min_cost"], d["max_cost"]), ("image", 3, 6, 33))
+        self.assertEqual((d["kind"], d["ocr_cost"], d["min_cost"], d["max_cost"]), ("image", 3, 6, 93))
 
     def test_unreadable_text_is_refused_at_selection(self):
         with patch("mypage.views.extract_text", return_value=""):
@@ -155,8 +155,8 @@ class TooLongDocumentTests(TestCase):
         self.user = User.objects.create_user(username="long", password="pw")
         self.client.force_login(self.user)
         credits.grant(self.user, 100, "test")
-        self.too_long = "\n\n".join("가" * 11000 for _ in range(40))
-        self.fits = "\n\n".join("가" * 11000 for _ in range(10))
+        self.too_long = "\n\n".join("가" * 3000 for _ in range(50))
+        self.fits = "\n\n".join("가" * 3000 for _ in range(10))
 
     def estimate(self, text, content=b"%PDF"):
         with patch("mypage.views.extract_text", return_value=text):
@@ -167,7 +167,7 @@ class TooLongDocumentTests(TestCase):
         self.assertEqual(res.status_code, 422)
         d = res.json()
         self.assertTrue(d["too_long"])
-        self.assertIn("440,", d["error"])                                             # 실제 글자 수
+        self.assertIn("150,", d["error"])                                             # 실제 글자 수
         self.assertIn("120,000자", d["error"])
         self.assertIn("PDF를 장별로 쪼개서", d["error"])
         self.assertEqual(self.estimate(self.fits, b"%PDF-other").status_code, 200)                  # 10조각까지는 그대로

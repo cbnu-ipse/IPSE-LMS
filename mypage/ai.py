@@ -20,7 +20,8 @@ from core import ai as core_ai
 
 MARKITDOWN_EXTENSIONS = (".pdf", ".docx", ".pptx")
 SUMMARY_CHUNK_CHARS = settings.AI_LIMIT_SUMMARY_CHUNK_CHARS   # 요약 한 번에 넣는 본문 길이 (이보다 긴 자료는 조각으로 나눠 모두 요약한다)
-SUMMARY_MAX_CHUNKS = 10       # 한 자료에서 요약하는 조각 수 상한 (= 약 12만 자)
+SUMMARY_MAX_CHUNKS = 30       # 한 자료에서 요약하는 조각 수 상한 (4,000자씩 = 약 12만 자)
+LEGACY_SUMMARY_CHARS = 12000  # 예전에는 앞 12,000자만 요약했다: 이보다 긴 자료의 옛 요약은 뒷부분이 빠졌을 수 있다
 SUMMARY_INPUT_CHARS = SUMMARY_CHUNK_CHARS   # 예전 이름 (이 길이를 넘는 자료는 앞부분만 요약되던 시절의 기준)
 QUESTION_INPUT_CHARS = 8000   # 문제 생성에 넣는 본문 길이 상한
 
@@ -322,7 +323,7 @@ def split_for_summary(text, chunk_chars=SUMMARY_CHUNK_CHARS):
 
 def generate_summary(extracted_text, user=None, kind="lecture"):
     """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열.
-    긴 자료는 조각으로 나눠 조각마다 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다).
+    긴 자료는 조각으로 나눠 조각마다 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다). 조각은 4,000자 안팎이라 길이에 비례해 세밀하게 크레딧이 든다.
     크레딧은 조각마다 받는다 (모자라면 낼 수 있는 조각까지만 요약)."""
     if not extracted_text.strip():
         return ""

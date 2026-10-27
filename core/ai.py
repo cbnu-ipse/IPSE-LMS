@@ -16,6 +16,7 @@ AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 AI를 직�
 import contextlib
 import json
 import logging
+import re
 import time
 from datetime import timedelta
 
@@ -298,18 +299,42 @@ def complete(task, messages, **kwargs):
     return (chat(task, messages, **kwargs).choices[0].message.content or "").strip()
 
 
+# 수식 자료(LaTeX)가 들어간 답에서 모델이 백슬래시를 이스케이프 없이 쓰는 경우: \det \lambda \[ 는 JSON 오류가 되고,
+# \frac \beta \theta \times 는 우연히 올바른 이스케이프(\f \b \t)로 읽혀 글자가 조용히 망가진다
+_LATEX_RISKY = re.compile(r"(?<!\\)\\(?:[bf][A-Za-z]{2,}|theta|times|tau|text|tilde|therefore|neq|neg|nabla|notin|nu|rho|rightarrow|right|rangle)")
+
+
+def repair_latex_escapes(text):
+    """JSON 문자열 안의 LaTeX 백슬래시를 문자 그대로의 백슬래시로 고친다 (정상 이스케이프 \n \" \\ 는 그대로)."""
+    text = re.sub(r"(?<!\\)\\(?=[A-Za-z]{2,})", r"\\\\", text)               # \frac \det → \\frac \\det
+    return re.sub(r"(?<!\\)\\(?![\\\"/bfnrtu])", r"\\\\", text)               # \[ \( \{ \, 같은 잘못된 이스케이프
+
+
+def _loads(text):
+    if _LATEX_RISKY.search(text):      # 에러 없이 읽히더라도 \frac 같은 글자가 망가지니 먼저 고친다
+        try:
+            return json.loads(repair_latex_escapes(text))
+        except ValueError:
+            pass
+    try:
+        return json.loads(text)
+    except ValueError:
+        return json.loads(repair_latex_escapes(text))
+
+
 def parse_json(text):
-    """모델 답에서 JSON 객체를 꺼낸다. 코드 펜스(```json)나 앞뒤 설명이 붙어도 첫 { ~ 마지막 }를 읽는다."""
+    """모델 답에서 JSON 객체를 꺼낸다. 코드 펜스(```json)나 앞뒤 설명이 붙어도 첫 { ~ 마지막 }를 읽는다.
+    수식의 이스케이프 없는 백슬래시도 읽히게 고친다."""
     text = (text or "").strip()
     if not text:
         return {}
     try:
-        return json.loads(text)
+        return _loads(text)
     except ValueError:
         start, end = text.find("{"), text.rfind("}")
         if start == -1 or end <= start:
             raise
-        return json.loads(text[start:end + 1])
+        return _loads(text[start:end + 1])
 
 
 def complete_json(task, messages, **kwargs):

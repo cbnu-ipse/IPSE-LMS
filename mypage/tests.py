@@ -523,7 +523,7 @@ class WholeDocumentSummaryTests(TestCase):
         chunks = split_for_summary(text)
         self.assertEqual(len(chunks), 1)
         self.assertTrue(chunks[0].endswith("꼬리"))
-        big_tail = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "나" * 5000       # 꼬리가 충분히 길면 따로 둔다
+        big_tail = "가" * (SUMMARY_CHUNK_CHARS - 10) + "\n\n" + "나" * 1500       # 꼬리가 충분히 길면 따로 둔다
         self.assertEqual(len(split_for_summary(big_tail)), 2)
 
     def test_short_document_is_still_one_plain_call(self):
@@ -557,7 +557,7 @@ class SummaryCreditTests(TestCase):
         credits.grant(user or self.user, n, "test")
 
     def doc_text(self, pieces):
-        return "\n\n".join(("가" * 11000) for _ in range(pieces))
+        return "\n\n".join(("가" * 3000) for _ in range(pieces))
 
     def test_only_affordable_chunks_are_summarized_and_each_costs_credits(self):
         from .ai import generate_summary
@@ -626,14 +626,14 @@ class CreditDisplayTests(TestCase):
         response = self.client.get("/mypage/")
         self.assertContains(response, 'title="AI 크레딧')
         self.assertContains(response, "<span>42</span>")
-        self.assertContains(response, 'title="AI 크레딧 3~30 (자료 길이에 따라)"')   # 업로드 버튼: 1조각~최대 10조각
+        self.assertContains(response, 'title="AI 크레딧 3~90 (자료 길이에 따라)"')   # 업로드 버튼: 1조각~최대 30조각
         self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
 
     def test_lecturer_also_sees_cost_badges(self):
         lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
         response = self.client.get("/mypage/")
-        self.assertContains(response, 'title="AI 크레딧 3~30 (자료 길이에 따라)"')
+        self.assertContains(response, 'title="AI 크레딧 3~90 (자료 길이에 따라)"')
 
 
 @override_settings(AI_CREDIT_COSTS={"summary": 3})
@@ -643,7 +643,7 @@ class SummaryCostBadgeTests(TestCase):
         self.client.force_login(self.user)
 
     def long_text(self, pieces):
-        return "\n\n".join("가" * 11000 for _ in range(pieces))
+        return "\n\n".join("가" * 3000 for _ in range(pieces))
 
     def test_retry_buttons_show_the_exact_cost_from_the_chunk_count(self):
         doc = PersonalDocument.objects.create(user=self.user, title="긴 자료", extracted_text=self.long_text(4),
@@ -655,4 +655,4 @@ class SummaryCostBadgeTests(TestCase):
 
     def test_upload_confirm_dialog_explains_the_range(self):
         html = self.client.get("/mypage/").content.decode()
-        self.assertIn("최대 10조각(최대 30크레딧)", html)
+        self.assertIn("최대 30조각(최대 90크레딧)", html)

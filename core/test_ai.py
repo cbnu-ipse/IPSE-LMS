@@ -213,6 +213,25 @@ class ProviderRoutingTestCase(TestCase):
         with self.assertRaises(ValueError):
             ai.parse_json("JSON이 아닙니다")
 
+    def test_parse_json_keeps_unescaped_latex_backslashes(self):
+        # 모델이 수식의 백슬래시를 이스케이프 없이 쓴 답: \subseteq 같은 건 JSON 오류, \frac \theta 는 글자가 망가질 수 있다
+        raw = r'{"q": "$A\subseteq B$ 이고 $\frac{1}{2}\theta$ \[x\]", "n": "줄\n바꿈 \"인용\" \\이미"}'
+        data = ai.parse_json(raw)
+        self.assertEqual(data["q"], "$A\\subseteq B$ 이고 $\\frac{1}{2}\\theta$ \\[x\\]")
+        self.assertEqual(data["n"], '줄\n바꿈 "인용" \\이미')
+        self.assertEqual(ai.parse_json('{"a": "\\frac"}'), {"a": "\\frac"})            # 이미 올바르게 이스케이프된 것은 그대로
+
+    def test_question_generation_survives_latex_backslashes(self):
+        from unittest.mock import patch
+
+        from mypage.ai import generate_one_question
+
+        message = type("M", (), {"content": r'{"question": "$x\in A$ 이면?", "answer": "O", "explanation": "$\subseteq$"}'})()
+        response = type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+        with patch("core.ai.chat", return_value=response):
+            q = generate_one_question("집합 $A\\subseteq B$", "ox", user=None)
+        self.assertIn("\\in", q["question"])
+
 
 class EvalCommandTestCase(TestCase):
     def test_eval_runs_real_functions_with_overridden_model_and_records_nothing(self):
