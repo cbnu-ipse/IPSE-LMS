@@ -98,7 +98,13 @@
                 <p class="text-xs text-slate-400 mt-2">PDF, DOC, DOCX, PPT, PPTX, TXT, MD, RTF, HWP, HWPX, JPG, PNG · 최대 20MB · 글자 약 {{ summary_max_chars }}자 이하(넘으면 PDF를 장별로 쪼개서 올려주세요) · AI가 자료의 주제를 분류하고, 한 주제에 자료가 충분히 모이면 강의 초안을 만듭니다</p>
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+            {% if documents %}
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>시험 5분 전 속성 노트</b>를 손글씨 이미지로 만들 수 있어요.</p>
+                <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.cram_note %}</button>
+            </div>
+            {% endif %}
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" id="doc-grid">
                 {% if not current_folder %}
                     {% for f in folders %}
                     <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group">
@@ -116,17 +122,27 @@
                     {% endfor %}
                 {% endif %}
                 {% for document in documents %}
-                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group">
+                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}"{% endif %}{% if document.document_type == 'note' and document.summary_status == 'processing' %} data-note-processing="1"{% endif %}>
                     <a href="{% url 'mypage:document_preview' document.pk %}" class="flex flex-col items-center text-center gap-2">
+                        {% if document.document_type == 'note' %}
+                            {% if document.file and document.summary_status == 'done' %}
+                            <img src="{{ document.file.url }}" alt="" loading="lazy" style="object-position:top" class="w-full h-28 object-cover rounded-lg border border-amber-100 bg-amber-50">
+                            {% elif document.summary_status == 'processing' %}
+                            <div class="w-full h-28 rounded-lg border border-amber-100 bg-amber-50 flex flex-col items-center justify-center gap-2 text-amber-600"><i class="fa-solid fa-pen-nib fa-beat text-2xl"></i><span class="text-[11px] font-bold">손글씨로 쓰는 중…</span></div>
+                            {% else %}
+                            <div class="w-full h-28 rounded-lg border border-rose-100 bg-rose-50 flex items-center justify-center text-rose-500 text-xs font-bold">노트를 만들지 못했어요</div>
+                            {% endif %}
+                        {% else %}
                         <i class="fa-regular fa-file-lines text-slate-400 text-3xl"></i>
+                        {% endif %}
                         <p class="text-sm font-bold text-slate-700 truncate w-full">{{ document.title }}</p>
                         <p class="text-[11px] text-slate-400">{{ document.uploaded_at|date:"Y-m-d" }}</p>
                         <p class="text-[11px] flex flex-wrap items-center justify-center gap-1">
-                            <span class="px-1.5 py-0.5 rounded-md font-bold {% if document.document_type == 'exam' %}bg-violet-50 text-violet-700 border border-violet-100{% else %}bg-slate-50 text-slate-500 border border-slate-100{% endif %}">{{ document.get_document_type_display }}</span>
+                            <span class="px-1.5 py-0.5 rounded-md font-bold {% if document.document_type == 'exam' %}bg-violet-50 text-violet-700 border border-violet-100{% elif document.document_type == 'note' %}bg-amber-50 text-amber-700 border border-amber-100{% else %}bg-slate-50 text-slate-500 border border-slate-100{% endif %}">{{ document.get_document_type_display }}</span>
                             {% if document.course_name or document.professor %}<span class="text-slate-400 truncate max-w-full">{{ document.course_name }}{% if document.course_name and document.professor %} · {% endif %}{% if document.professor %}{{ document.professor }}{% endif %}</span>{% endif %}
                         </p>
                     </a>
-                    {% if document.summary_status == 'failed' or not document.summary %}
+                    {% if document.document_type != 'note' and document.summary_status == 'failed' or document.document_type != 'note' and not document.summary %}
                     {% if document.summary_status != 'processing' %}
                     <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="text-center">
                         {% csrf_token %}
@@ -151,6 +167,64 @@
         </main>
     </div>
 </section>
+
+<div id="cram-bar" style="bottom:16px;left:16px;right:16px" class="hidden fixed z-40 mx-auto max-w-xl items-center justify-between gap-3 bg-white border border-amber-200 shadow-xl rounded-2xl px-4 py-3">
+    <p class="text-sm text-slate-700"><b id="cram-count">0</b>개 선택 <span class="text-xs text-slate-400">· 최대 {{ cram_max }}개</span></p>
+    <form method="post" action="{% url 'mypage:cram_note_create' %}" id="cram-form" class="flex items-center gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {% if current_folder %}<input type="hidden" name="folder" value="{{ current_folder.pk }}">{% endif %}
+        <button type="button" id="cram-cancel" class="text-xs font-bold text-slate-500 px-3 py-2">취소</button>
+        <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">노트 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.cram_note %}</button>
+    </form>
+</div>
+<script>
+// 속성 노트: 자료를 고르는 모드. 선택한 자료의 id를 숨은 입력으로 보낸다.
+(function () {
+    const toggle = document.getElementById('cram-toggle'), bar = document.getElementById('cram-bar');
+    if (!toggle || !bar) return;
+    const form = document.getElementById('cram-form'), count = document.getElementById('cram-count'), submit = document.getElementById('cram-submit');
+    const MAX = {{ cram_max }};
+    const cards = Array.from(document.querySelectorAll('[data-cram-id]'));
+    let on = false;
+    const picked = () => cards.filter((c) => c.classList.contains('ring-2'));
+    function refresh() {
+        const n = picked().length;
+        count.textContent = n;
+        submit.disabled = n === 0 || n > MAX;
+    }
+    function setMode(next) {
+        on = next;
+        bar.classList.toggle('hidden', !on); bar.classList.toggle('flex', on);
+        toggle.classList.toggle('hidden', on);
+        cards.forEach((c) => {
+            c.classList.remove('ring-2', 'ring-amber-400');
+            c.classList.toggle('cursor-pointer', on);
+            c.querySelector('a').classList.toggle('pointer-events-none', on);
+        });
+        refresh();
+    }
+    toggle.addEventListener('click', () => {
+        if (!cards.length) { window.alert('요약이 끝난 자료가 있어야 노트를 만들 수 있어요.'); return; }
+        setMode(true);
+    });
+    document.getElementById('cram-cancel').addEventListener('click', () => setMode(false));
+    cards.forEach((c) => c.addEventListener('click', (e) => {
+        if (!on || e.target.closest('button, form')) return;
+        if (!c.classList.contains('ring-2') && picked().length >= MAX) { window.alert('한 번에 최대 ' + MAX + '개까지 고를 수 있어요.'); return; }
+        c.classList.toggle('ring-2'); c.classList.toggle('ring-amber-400');
+        refresh();
+    }));
+    form.addEventListener('submit', () => {
+        form.querySelectorAll('input[name=ids]').forEach((i) => i.remove());
+        picked().forEach((c) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = 'ids'; i.value = c.dataset.cramId; form.appendChild(i); });
+    });
+    // 노트를 쓰는 중이면 끝날 때까지 목록을 새로 읽는다
+    if (document.querySelector('[data-note-processing]')) {
+        setTimeout(function poll() { if (!on) location.reload(); else setTimeout(poll, 4000); }, 4000);
+    }
+})();
+</script>
 
 <div id="upload-confirm" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-labelledby="upload-confirm-title">
     <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
