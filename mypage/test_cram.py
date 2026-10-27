@@ -62,6 +62,31 @@ class NormalizeTests(TestCase):
         self.assertEqual(cram.normalize_note([1, 2])["sections"], [])
 
 
+class ParseNoteJsonTests(TestCase):
+    def test_unescaped_latex_backslashes_are_kept_not_fatal(self):
+        raw = r'{"a": "$\frac{1}{2}\theta \det(A-\lambda I)$ \[x\] 줄\n바꿈 \"인용\" \\이미"}'
+        self.assertEqual(cram.parse_note_json(raw)["a"], '$\\frac{1}{2}\\theta \\det(A-\\lambda I)$ \\[x\\] 줄\n바꿈 "인용" \\이미')
+
+    def test_plain_json_and_fenced_json_still_parse(self):
+        self.assertEqual(cram.parse_note_json('{"a": 1}'), {"a": 1})
+        self.assertEqual(cram.parse_note_json('```json\n{"a": "b"}\n```'), {"a": "b"})
+
+    def test_build_survives_latex_backslashes_in_ai_answer(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, True)
+        user = User.objects.create_user(username="u", password="pw")
+        doc = make_doc(user)
+        note = PersonalDocument.objects.create(user=user, title="n", file="", document_type=NOTE,
+                                               summary_status=ProcessingStatus.PROCESSING)
+        raw = ('{"title": "수학", "sections": [{"heading": "고윳값", "points": ["$\\det(A-\\lambda I)=0$", "$\\frac{1}{2}$", "**끝**"]}], "memo": []}')
+        message = type("M", (), {"content": raw})()
+        response = type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+        with override_settings(MEDIA_ROOT=media), patch("core.ai.chat", return_value=response):
+            cram.build_note_document(note.pk, [doc.pk])
+        note.refresh_from_db()
+        self.assertEqual(note.summary_status, ProcessingStatus.DONE)
+
+
 class RenderTests(TestCase):
     def test_short_note_is_one_a4_page(self):
         pages = handnote.render_notes(cram.normalize_note(NOTE_JSON))

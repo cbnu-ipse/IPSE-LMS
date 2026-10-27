@@ -8,6 +8,7 @@
 - 노트 문서는 강의·모의 출제의 재료가 아니다 (eligible_docs는 수업 자료만, exam_docs는 족보만 읽는다).
 """
 import logging
+import re
 
 from django.core.files.base import ContentFile
 
@@ -33,8 +34,8 @@ SYSTEM = (
     f"- 각 section의 points는 2~{MAX_POINTS}개, 한 줄(50자 안팎)로 끝나는 키워드 중심 문장. 문장 끝을 '~다.'로 길게 늘이지 말고 "
     "'A = B', 'A → B', 'A vs B: ...'처럼 줄입니다.\n"
     "- 가장 중요한 말은 **이렇게** 감싸 빨간 펜으로 강조하고, 외울 숫자·용어는 ==이렇게== 감싸 형광펜을 칩니다. 한 줄에 하나씩만.\n"
-    "- 수식은 $x^2$, $\\frac{a}{b}$, $\\mu$ 같은 간단한 LaTeX만 씁니다. 행렬은 \\begin{matrix} 같은 환경 대신 [[a, b], [c, d]]처럼 한 줄로 쓰고, "
-    "표·코드 블록·마크다운 제목도 쓰지 않습니다.\n"
+    "- 수식은 백슬래시(\\) 없이 $x^2$, $a/b$, $mu$, $sigma$, $sum_{i=1}^n$ 처럼 간단히 씁니다 (JSON이 깨지지 않게 \\frac, \\begin 같은 LaTeX 명령은 쓰지 않습니다). "
+    "행렬은 [[a, b], [c, d]]처럼 한 줄로 쓰고, 표·코드 블록·마크다운 제목도 쓰지 않습니다.\n"
     f"- memo는 '마지막 체크!' 칸: 헷갈리기 쉬운 것·시험 함정·꼭 외울 것 3~{MAX_MEMO}개.\n"
     "- title은 과목과 범위가 드러나게 20자 안팎.\n"
     "- 같은 내용을 반복하지 말고 시험에 나올 핵심만 남깁니다 (노트는 A4 한 장 분량이 이상적이고, 넘치면 다음 장에 이어집니다).\n"
@@ -88,6 +89,14 @@ def note_cost(count):
     return core_ai.cost_for("cram_note") * count
 
 
+def parse_note_json(text):
+    """AI 답에서 JSON을 읽는다. 수식의 LaTeX 백슬래시(\\det, \\lambda, \\[ …)를 이스케이프 없이 써도 읽히게 고쳐서 읽는다.
+    (\\frac의 \\f, \\theta의 \\t처럼 우연히 올바른 JSON 이스케이프로 읽혀 글자가 망가지는 것도 막는다.)"""
+    fixed = re.sub(r"(?<!\\)\\(?=[A-Za-z]{2,})", r"\\\\", text or "")      # \frac, \beta, \times → 백슬래시를 문자 그대로
+    fixed = re.sub(r"(?<!\\)\\(?![\\\"/bfnrtu])", r"\\\\", fixed)         # \[ \( \{ \, 같은 나머지 잘못된 이스케이프
+    return core_ai.parse_json(fixed)
+
+
 class NoteError(Exception):
     """사용자에게 그대로 보여 줄 수 있는 실패 이유를 담는다 (노트 자료의 summary에 저장돼 카드·상세 화면에 보인다)."""
 
@@ -106,7 +115,7 @@ def generate_note(user, documents):
         logger.exception("속성 노트 AI 호출 실패")
         raise NoteError("AI 서버가 응답하지 않았거나 요청이 몰려 노트를 만들지 못했습니다. 잠시 후 다시 시도해주세요. 크레딧은 차감되지 않았습니다.")
     try:
-        data = core_ai.parse_json(response.choices[0].message.content)
+        data = parse_note_json(response.choices[0].message.content)
     except Exception:
         core_ai.refund(user, "cram_note", cost)
         raise NoteError("AI의 답을 읽을 수 없었습니다. 다시 시도해주세요. 크레딧은 돌려드렸습니다.")
