@@ -275,7 +275,6 @@
     function fail(message) { errEl.textContent = message; errEl.classList.remove('hidden'); }
     function describe(d) {
         if (d.kind === 'image') return { badge: d.min_cost + '~' + d.max_cost, text: '이미지 글자 읽기 ' + d.ocr_cost + ' + 요약 ' + d.unit_cost + '~' + (d.unit_cost * d.max_chunks) + '크레딧 (읽어 봐야 정확해져요)' };
-        if (d.empty) return { badge: '0', text: '글자를 읽지 못했어요. 스캔한 PDF라면 이미지(JPG·PNG)로 올려 주세요.' };
         return { badge: String(d.cost), text: '글자 ' + d.chars.toLocaleString() + '자 → 요약 ' + d.chunks + '조각 × ' + d.unit_cost + ' = ' + d.cost + '크레딧' };
     }
     fileInput.addEventListener('change', async () => {

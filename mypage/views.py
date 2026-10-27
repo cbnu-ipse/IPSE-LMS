@@ -183,6 +183,11 @@ def document_list(request, folder_id=None):
                     document.delete()
                     messages.error(request, str(exc))
                     return redirect(request.path)
+            if not extracted_text.strip():
+                document.file.delete(save=False)
+                document.delete()
+                messages.error(request, "자료를 올리지 못했습니다. " + UNREADABLE_MESSAGE)
+                return redirect(request.path)
             if detect_prompt_injection(extracted_text):
                 document.summary_status = ProcessingStatus.FAILED
                 document.save(update_fields=["summary_status"])
@@ -240,6 +245,7 @@ def document_list(request, folder_id=None):
     })
 
 
+UNREADABLE_MESSAGE = "글자를 읽지 못했어요. 스캔한 PDF라면 이미지(JPG·PNG)로 올려 주세요."
 UPLOAD_ESTIMATE_PER_MINUTE = 20
 EXTRACT_CACHE_TTL = 900
 
@@ -284,10 +290,12 @@ def upload_estimate(request):
             except TimeoutError as exc:
                 return JsonResponse({"ok": False, "error": str(exc)}, status=503)
             cache.set(key, text, EXTRACT_CACHE_TTL)
+        if not text.strip():               # 스캔한 PDF처럼 글자를 못 읽으면 올려도 요약할 게 없다
+            return JsonResponse({"ok": False, "empty": True, "error": UNREADABLE_MESSAGE}, status=422)
         if summary_too_long(text):         # 앞부분만 요약되는 일이 없게, 요약하지 않고 쪼개서 올리게 한다
             return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
         chunks = summary_chunk_count(text)
-        info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit, empty=not text.strip())
+        info.update(kind="text", chunks=chunks, chars=len(text), cost=chunks * unit)
         need = chunks * unit
     balance = credit_info(request.user, "summary")
     info["balance"] = balance["balance"] if balance else None       # 크레딧이 필요 없는 사용자는 None

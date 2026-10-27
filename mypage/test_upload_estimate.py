@@ -29,7 +29,7 @@ class UploadEstimateTests(TestCase):
         with patch("mypage.views.extract_text", return_value=text):
             d = self.estimate().json()
         self.assertEqual((d["kind"], d["chunks"], d["cost"], d["unit_cost"]), ("text", 4, 12, 3))
-        self.assertEqual((d["balance"], d["enough"], d["empty"]), (10, False, False))     # 12 필요, 10 보유
+        self.assertEqual((d["balance"], d["enough"]), (10, False))     # 12 필요, 10 보유
         credits.grant(self.user, 5, "test")
         with patch("mypage.views.extract_text", return_value=text):
             self.assertTrue(self.estimate().json()["enough"])
@@ -41,10 +41,25 @@ class UploadEstimateTests(TestCase):
         extract.assert_not_called()                                                     # 이미지는 OCR이라 계산 때는 읽지 않는다
         self.assertEqual((d["kind"], d["ocr_cost"], d["min_cost"], d["max_cost"]), ("image", 3, 6, 33))
 
-    def test_unreadable_text_is_flagged_and_costs_nothing(self):
+    def test_unreadable_text_is_refused_at_selection(self):
         with patch("mypage.views.extract_text", return_value=""):
-            d = self.estimate("scan.pdf", b"%PDF").json()
-        self.assertEqual((d["empty"], d["cost"]), (True, 0))
+            res = self.estimate("scan.pdf", b"%PDF")
+        d = res.json()
+        self.assertEqual(res.status_code, 422)
+        self.assertEqual((d["ok"], d["empty"]), (False, True))
+        self.assertIn("글자를 읽지 못했어요", d["error"])
+
+    def test_upload_of_unreadable_file_is_rejected_without_leaving_a_document(self):
+        credits.grant(self.user, 100, "test")
+        data = {"title": "", "file": SimpleUploadedFile("scan.pdf", b"%PDF-1.4"), "document_type": "lecture",
+                "course_name": "운영체제", "professor": "김"}
+        with patch("mypage.views.extract_text", return_value="  \n"), patch("mypage.views.threading.Thread") as thread:
+            res = self.client.post("/mypage/", data, follow=True)
+        self.assertContains(res, "글자를 읽지 못했어요")
+        thread.assert_not_called()
+        self.assertFalse(PersonalDocument.objects.exists())
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.credits, 100)
 
     def test_too_big_or_wrong_type_is_rejected(self):
         with patch("mypage.views.MAX_UPLOAD_SIZE", 2 * 1024 * 1024):
