@@ -333,10 +333,10 @@ def split_for_summary(text, chunk_chars=SUMMARY_WINDOW_CHARS):
     return chunks
 
 
-def generate_summary(extracted_text, user=None, kind="lecture"):
+def generate_summary(extracted_text, user=None, kind="lecture", on_text=None):
     """업로드된 문서 본문을 구조화된 요약으로 반환한다. 본문이 없으면 호출 없이 빈 문자열.
     긴 자료는 12,000자 안팎으로 나눠 요약해 이어 붙인다 (예전에는 앞 12,000자만 넣어 뒷부분이 통째로 빠졌다). 크레딧은 호출 크기와 상관없이 글자 수 4,000자당 1로 세밀하게 받는다.
-    모자라면 낼 수 있는 곳까지만 요약한다."""
+    on_text(글자 조각)을 주면 요약이 만들어지는 대로 넘긴다 (화면에 바로 보여 주는 스트리밍). 모자라면 낼 수 있는 곳까지만 요약한다."""
     if not extracted_text.strip():
         return ""
     chunks = split_for_summary(extracted_text)
@@ -351,7 +351,9 @@ def generate_summary(extracted_text, user=None, kind="lecture"):
                 break                                         # 크레딧으로 낼 수 있는 곳까지만 요약한다
             remaining -= units
         try:
-            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind, cost=units * core_ai.cost_for("summary")))
+            if on_text and parts:
+                on_text("\n\n")                                   # 앞 부분 요약과 이어 붙이는 빈 줄
+            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind, cost=units * core_ai.cost_for("summary"), on_text=on_text))
         except Exception:
             core_ai.refund(user, "summary", paid * core_ai.cost_for("summary"))   # 앞 조각에 낸 크레딧도 돌려준다
             raise
@@ -359,15 +361,18 @@ def generate_summary(extracted_text, user=None, kind="lecture"):
     return "\n\n".join(p for p in parts if p.strip())
 
 
-def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None):
+def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None, on_text=None):
     system = EXAM_SUMMARY_INSTRUCTIONS if kind == "exam" else SUMMARY_INSTRUCTIONS
     if total > 1:
         system += (f"\n\n이 자료는 길어서 {total}조각으로 나눈 {i + 1}번째 조각입니다. 이 조각에 있는 내용만 빠짐없이 요약하고, "
                    "전체 요약인 것처럼 서두나 맺음말을 쓰지 마세요.")
-    return core_ai.complete("summary", [
+    messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": core_ai.untrusted("자료", chunk)},
-    ], user=user, cost=cost)
+    ]
+    if on_text:
+        return core_ai.stream_complete("summary", messages, user=user, cost=cost, on_delta=on_text)
+    return core_ai.complete("summary", messages, user=user, cost=cost)
 
 
 QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}

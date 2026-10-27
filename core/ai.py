@@ -294,6 +294,41 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
     return response
 
 
+def stream_complete(task, messages, *, user=None, max_tokens=None, cost=None, on_delta=None):
+    """complete처럼 전체 답변을 돌려주되, Gemini(네이티브)는 답을 만드는 대로 글자 조각을 on_delta(text)로 넘긴다.
+    크레딧은 호출 전에 차감하고 실패하면 돌려준다 (연결을 여는 단계의 일시 오류는 다시 시도, 글자가 나오기 시작한 뒤의 오류는 올린다).
+    스트리밍을 못 하는 공급자는 다 만든 뒤 한 번에 넘긴다."""
+    provider, model = route(task)
+    native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
+    if native != "vertex":
+        text = complete(task, messages, user=user, max_tokens=max_tokens, cost=cost)
+        if on_delta and text:
+            on_delta(text)
+        return text
+    from . import vertex
+
+    if getattr(settings, "AI_BLOCK_NETWORK", False):
+        raise AIUnavailable("테스트 중에는 실제 AI API를 부르지 않습니다.")
+    limit = max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000)
+    charged = _charge(user, task, cost)
+    usage, parts = {}, []
+    try:
+        resp = _with_retry(lambda: vertex.open_stream(settings.AI_PROVIDERS[provider]["key"], model, messages, max_tokens=limit))
+        for piece in vertex.iter_stream(resp, usage):
+            parts.append(piece)
+            if on_delta:
+                on_delta(piece)
+    except Exception:
+        refund(user, task, charged)
+        raise
+    from types import SimpleNamespace
+
+    _record(user, task, model, SimpleNamespace(usage=SimpleNamespace(
+        prompt_tokens=usage.get("promptTokenCount", 0), completion_tokens=(usage.get("candidatesTokenCount", 0) or 0) + (usage.get("thoughtsTokenCount", 0) or 0),
+        prompt_tokens_details=SimpleNamespace(cached_tokens=usage.get("cachedContentTokenCount", 0)))), True)
+    return "".join(parts).strip()
+
+
 def complete(task, messages, **kwargs):
     """답변 텍스트만 돌려준다."""
     return (chat(task, messages, **kwargs).choices[0].message.content or "").strip()

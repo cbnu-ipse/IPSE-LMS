@@ -100,7 +100,8 @@
             {% if active_panel == 'summary' %}
                 <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-100 p-6 flex flex-col">
                     {% if document.summary_status == 'processing' and not can_resummarize %}
-                        <p class="text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>요약을 생성하고 있습니다...</p>
+                        <p id="stream-status" class="shrink-0 text-sm text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>요약을 생성하고 있습니다...</p>
+                        <div id="stream-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 mt-3 text-sm text-slate-600 leading-relaxed space-y-2" hidden></div>
                     {% elif document.summary_status == 'processing' %}
                         <p class="text-sm text-slate-500 font-medium">요약 생성이 오래 걸리고 있습니다.</p>
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="mt-3">
@@ -301,6 +302,39 @@
     const initial = JSON.parse(document.getElementById('ms-initial-state').textContent);
     const waiting = (initial.summary_status === 'processing' && !initial.can_resummarize) ||
                     initial.questions.some((q) => q[1] === 'processing');
+    // 요약이 만들어지는 중이면 글자를 만드는 대로 받아 바로 보여 준다 (WebSocket, mypage/stream.py). 안 되면 아래 상태 확인이 대신한다
+    const streamBox = document.getElementById('stream-content');
+    if (streamBox && initial.summary_status === 'processing') {
+        const statusEl = document.getElementById('stream-status');
+        let text = '', seq = 0, ws = null, retries = 0, pending = false, pinned = true;
+        streamBox.addEventListener('scroll', () => { pinned = streamBox.scrollHeight - streamBox.scrollTop - streamBox.clientHeight < 60; });
+        function paint() {
+            pending = false;
+            if (!text.trim()) return;
+            streamBox.hidden = false;
+            try { streamBox.innerHTML = window.renderMarkdown(text); } catch (e) { streamBox.textContent = text; }
+            if (window.renderMath) { try { window.renderMath(streamBox); } catch (e) {} }
+            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-pen-nib fa-beat mr-1.5"></i>요약을 만드는 중… 만들어지는 대로 보여 드려요';
+            if (pinned) streamBox.scrollTop = streamBox.scrollHeight;
+        }
+        const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(paint); } };
+        function connect() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(proto + '://' + location.host + '/ws/mypage/summary/{{ document.pk }}/');
+            ws.onmessage = (e) => {
+                const m = JSON.parse(e.data);
+                if (m.type === 'snapshot') { text = m.text; seq = m.seq; schedule(); }
+                else if (m.type === 'delta') {
+                    if (m.seq <= seq) return;                       // 이미 받은 조각
+                    if (m.seq !== seq + 1) { ws.send(JSON.stringify({ type: 'sync' })); return; }   // 건너뛰었으면 처음부터 다시
+                    text += m.text; seq = m.seq; schedule();
+                } else if (m.type === 'done') { ws.onclose = null; location.reload(); }   // 저장된 완성본을 새로 읽는다
+            };
+            ws.onopen = () => { retries = 0; };
+            ws.onclose = () => { if (++retries <= 5) setTimeout(connect, 1500 * retries); };   // 끊기면 몇 번 다시 연결, 안 되면 상태 확인이 대신
+        }
+        try { connect(); } catch (e) {}
+    }
     if (waiting) {
         let tries = 0;
         const timer = setInterval(async () => {
