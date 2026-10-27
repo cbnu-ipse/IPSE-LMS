@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
+from core.testing import use_up
+
 from core.models import AIUsage
 
 from . import ai
@@ -90,7 +92,8 @@ class TokenSavingTestCase(TestCase):
         self.assertNotEqual(thread.call_args.kwargs.get("target").__name__, "_generate_summary_bg")
 
     def test_upload_blocked_when_summary_quota_used(self):
-        res, thread = self.upload(b"another file content " * 10)       # 크레딧 0
+        use_up(self.user, 301)                                          # 이번 주 한도(기본 300)를 다 썼다
+        res, thread = self.upload(b"another file content " * 10)
         thread.assert_not_called()
         self.assertFalse(PersonalDocument.objects.exists())
 
@@ -110,7 +113,8 @@ class TokenSavingTestCase(TestCase):
 
     def test_question_generation_blocked_by_quota(self):
         doc = PersonalDocument.objects.create(user=self.user, title="d", file="d.txt", extracted_text="본문")
-        with patch("mypage.views.threading.Thread") as thread:                 # 크레딧 0
+        use_up(self.user, 301)                                                 # 이번 주 한도를 다 썼다
+        with patch("mypage.views.threading.Thread") as thread:
             self.client.post(f"/mypage/{doc.pk}/generate/", {"question_type": "ox"})
         thread.assert_not_called()
         self.assertFalse(GeneratedQuestion.objects.exists())

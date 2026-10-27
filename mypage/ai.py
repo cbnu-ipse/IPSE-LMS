@@ -343,7 +343,7 @@ def generate_summary(extracted_text, user=None, kind="lecture", on_text=None):
     charges = _window_charges(chunks)
     remaining = core_ai.affordable_units(user, "summary")      # 낼 수 있는 크레딧 단위 수 (제한 없으면 None)
     if remaining is not None and charges[0] > remaining:
-        core_ai.require_credits(user, charges[0] * core_ai.cost_for("summary"))    # 첫 부분도 못 내면 부족하다는 안내와 함께 중단
+        core_ai.require_quota(user, charges[0] * core_ai.cost_for("summary"))    # 첫 부분도 못 내면 부족하다는 안내와 함께 중단
     parts, paid = [], 0
     for i, (chunk, units) in enumerate(zip(chunks, charges)):
         if remaining is not None:

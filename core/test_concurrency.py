@@ -94,10 +94,10 @@ class RetryTests(TestCase):
         self.sleep.assert_not_called()
 
     @override_settings(AI_CREDIT_COSTS={"chat": 2})
-    def test_a_retried_call_charges_credits_only_once(self):
-        from accounts import credits
+    def test_a_retried_call_is_recorded_as_usage_only_once(self):
+        from .models import AIUsage
+
         user = User.objects.create_user(username="retry", password="pw")
-        credits.grant(user, 10, "test")
         attempts = []
 
         class Completions:
@@ -111,5 +111,4 @@ class RetryTests(TestCase):
         client = type("Cl", (), {"chat": type("Ch", (), {"completions": Completions()})()})()
         with override_settings(AI_TASK_PROVIDERS={"chat": "openai"}, AI_MODELS={"chat": "m"}), patch.object(ai, "_client", return_value=client):
             self.assertEqual(ai.complete("chat", [], user=user), "답")
-        user.refresh_from_db()
-        self.assertEqual((len(attempts), user.credits), (2, 8))
+        self.assertEqual((len(attempts), AIUsage.objects.filter(user=user).count()), (2, 1))

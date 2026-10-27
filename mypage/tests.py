@@ -9,6 +9,7 @@ from django.test import override_settings
 from django.urls import reverse
 
 from core import ai as ai_core
+from core.testing import use_up
 
 from .ai import extract_text
 from .forms import PersonalDocumentUploadForm
@@ -546,28 +547,24 @@ class WholeDocumentSummaryTests(TestCase):
         self.assertEqual(thread.call_count, 1)                         # 긴 자료만 다시 시작
 
 
-@override_settings(AI_CREDIT_COSTS={"summary": 3})
-class SummaryCreditTests(TestCase):
+@override_settings(AI_CREDIT_COSTS={"summary": 3}, AI_WEEKLY_LIMIT_POINTS=100)
+class SummaryQuotaTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="chunkuser", password="pw")
         self.client.force_login(self.user)
 
-    def give(self, n, user=None):
-        from accounts import credits
-        credits.grant(user or self.user, n, "test")
-
     def doc_text(self, pieces):
         return "\n\n".join(("가" * 3000) for _ in range(pieces))
 
-    def test_only_affordable_chunks_are_summarized_and_each_costs_credits(self):
+    def test_only_windows_that_fit_the_remaining_quota_are_summarized(self):
         from .ai import generate_summary
-        self.give(10)                                                  # 15,006자 = 2번 호출(3단위 + 1단위), 단위당 3크레딧
+        use_up(self.user, 90)                                          # 남은 10: 15,006자 = 2번 호출(3단위 + 1단위), 단위당 예상 3점
         calls = []
         with patch.object(ai_core, "_client", return_value=_FakeClient(calls)):
             generate_summary(self.doc_text(5), user=self.user)
-        self.assertEqual(len(calls), 1)                                # 둘째 호출(3크레딧)은 낼 수 없어 첫 부분까지만
+        self.assertEqual(len(calls), 1)                                # 둘째 호출은 남은 한도에 들어가지 않아 첫 부분까지만
         self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 1)
+        self.assertEqual(self.user.credits, 0)                         # 크레딧은 쓰지 않는다
 
     def test_charge_follows_characters_not_call_size(self):
         from .ai import _window_charges, summary_chunk_count
@@ -577,37 +574,38 @@ class SummaryCreditTests(TestCase):
         self.assertEqual(summary_chunk_count("가" * 4000), 1)
         self.assertEqual(summary_chunk_count("가" * 4001), 2)
 
-    def test_no_credits_raises_without_calling_model(self):
+    def test_used_up_week_raises_without_calling_model(self):
         from core.ai import AIQuotaExceeded
         from .ai import generate_summary
+        use_up(self.user, 101)
         with patch("core.ai.complete", return_value="요약") as mocked:
             with self.assertRaises(AIQuotaExceeded):
                 generate_summary("짧은 자료", user=self.user)
         mocked.assert_not_called()
 
-    def test_failure_in_later_chunk_refunds_earlier_chunks(self):
+    def test_failure_in_later_window_keeps_only_the_usage_of_calls_that_ran(self):
+        from core.models import AIUsage
         from .ai import generate_summary
-        self.give(12)
         calls = []
         with patch.object(ai_core, "_client", return_value=_FakeClient(calls, fail_on=2)):
             with self.assertRaises(RuntimeError):
                 generate_summary(self.doc_text(5), user=self.user)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 12)
+        self.assertEqual(AIUsage.objects.filter(user=self.user).count(), 1)
 
-    def test_lecturer_pays_nothing(self):
+    def test_lecturer_has_no_limit(self):
         from .ai import generate_summary
         lecturer = get_user_model().objects.create_user(username="lec", password="pw", is_lecturer=True)
+        use_up(lecturer, 1000)
         with patch("core.ai.complete", return_value="요약"):
             self.assertEqual(generate_summary("짧은 자료", user=lecturer), "요약")
 
-    def test_study_page_shows_credits(self):
-        self.give(12)
+    def test_study_page_shows_weekly_usage(self):
+        use_up(self.user, 42)
         doc = PersonalDocument.objects.create(user=self.user, title="t", extracted_text="x", summary="## 요약\n- a",
                                               summary_status=ProcessingStatus.DONE)
         response = self.client.get(f"/mypage/{doc.pk}/")
-        self.assertContains(response, "보유 크레딧 12")
-        self.assertContains(response, "당 3크레딧")
+        self.assertContains(response, "이번 주 AI 사용량 42%")
+        self.assertContains(response, "월요일 0시에 초기화")
 
 
 class _FakeClient:
@@ -625,42 +623,34 @@ class _FakeClient:
 
 
 @override_settings(AI_CREDIT_COSTS={"chat": 1, "summary": 3, "question": 2, "grading": 1})
-class CreditDisplayTests(TestCase):
-    def test_judge_header_shows_credits_and_buttons_show_cost(self):
-        from accounts import credits
+@override_settings(AI_WEEKLY_LIMIT_POINTS=100)
+class UsageDisplayTests(TestCase):
+    def test_judge_header_shows_weekly_usage_gauge_not_credits(self):
         user = get_user_model().objects.create_user(username="shown", password="pw")
-        credits.grant(user, 42, "test")
+        use_up(user, 42)
         self.client.force_login(user)
         response = self.client.get("/mypage/")
-        self.assertContains(response, 'title="AI 크레딧')
-        self.assertContains(response, "<span>42</span>")
-        self.assertContains(response, 'title="AI 크레딧 3~90 (자료 길이에 따라)"')   # 업로드 버튼: 1조각~최대 30조각
-        self.assertContains(response, 'title="AI 크레딧 1"')                  # 챗봇 전송 버튼 비용
+        self.assertContains(response, "AI 42%")
+        self.assertContains(response, "매주 월요일 0시에 초기화")
+        self.assertNotContains(response, 'title="AI 크레딧')
 
-    def test_lecturer_also_sees_cost_badges(self):
+    def test_lecturer_has_no_gauge(self):
         lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
-        response = self.client.get("/mypage/")
-        self.assertContains(response, 'title="AI 크레딧 3~90 (자료 길이에 따라)"')
+        self.assertNotContains(self.client.get("/mypage/"), "AI 0%")
 
 
-@override_settings(AI_CREDIT_COSTS={"summary": 3})
-class SummaryCostBadgeTests(TestCase):
+class UploadUsageNoticeTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="badge", password="pw")
         self.client.force_login(self.user)
 
-    def long_text(self, pieces):
-        return "\n\n".join("가" * 3000 for _ in range(pieces))
-
-    def test_retry_buttons_show_the_exact_cost_from_the_chunk_count(self):
-        doc = PersonalDocument.objects.create(user=self.user, title="긴 자료", extracted_text=self.long_text(4),
-                                              summary="", summary_status=ProcessingStatus.PENDING)
-        self.assertContains(self.client.get("/mypage/"), 'title="AI 크레딧 12"')       # 4조각 × 3
-        self.assertContains(self.client.get(f"/mypage/{doc.pk}/"), 'title="AI 크레딧 12"')
-        PersonalDocument.objects.filter(pk=doc.pk).update(extracted_text="")
-        self.assertContains(self.client.get("/mypage/"), 'title="AI 크레딧 3"')        # 본문을 아직 못 읽었으면 최소(1조각)
-
-    def test_upload_confirm_dialog_explains_the_range(self):
+    def test_upload_confirm_dialog_explains_weekly_usage(self):
         html = self.client.get("/mypage/").content.decode()
-        self.assertIn("최대 30조각(최대 90크레딧)", html)
+        self.assertIn("이번 주 AI 사용량을 써요", html)
+        self.assertIn("월요일 0시에 초기화", html)
+
+    def test_pending_document_offers_a_restart_button(self):
+        PersonalDocument.objects.create(user=self.user, title="긴 자료", extracted_text="가" * 4000, summary="",
+                                        summary_status=ProcessingStatus.PENDING)
+        self.assertContains(self.client.get("/mypage/"), "요약 대기")

@@ -54,52 +54,6 @@ class CoreAITestCase(TestCase):
         self.assertEqual((row.task, row.model, row.prompt_tokens, row.cached_tokens, row.completion_tokens),
                          ("summary", "model-cheap", 500, 400, 50))
 
-    def test_credits_are_spent_per_call_and_exempt_users_pay_nothing(self):
-        from accounts import credits
-        credits.grant(self.student, 5, "test")
-        with patch.object(ai, "_client", return_value=_Client()):
-            ai.complete("chat", [], user=self.student)
-            ai.complete("chat", [], user=self.student, counts_as_request=False)   # 도구 반복·내부 작업은 받지 않는다
-            self.assertEqual(ai.credit_info(self.student, "chat")["balance"], 3)
-            ai.complete("chat", [], user=self.student)
-            with self.assertRaises(ai.AIQuotaExceeded) as ctx:                     # 잔액 1 < 비용 2
-                ai.complete("chat", [], user=self.student)
-            self.assertIn("보상 코드", str(ctx.exception))
-            for _ in range(3):  # 강의자는 크레딧 없이 쓴다
-                ai.complete("chat", [], user=self.lecturer)
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.credits, 1)
-        self.assertEqual(self.lecturer.credits, 0)
-        self.assertTrue(credits.verify_ledger(self.student))
-
-    def test_only_lecturers_are_exempt_staff_and_superusers_pay(self):
-        staff = User.objects.create_user(username="st", password="pw", is_staff=True)
-        admin = User.objects.create_superuser(username="adm", password="pw", email="a@a.com")
-        with patch.object(ai, "_client", return_value=_Client()):
-            for user in (staff, admin):
-                with self.assertRaises(ai.AIQuotaExceeded):                           # 크레딧 0이면 막힌다
-                    ai.complete("chat", [], user=user)
-            ai.complete("chat", [], user=self.lecturer)                                # 강의자는 통과
-            ai.complete("chat", [], user=None)                                         # 시스템 작업도 통과
-
-    def test_failed_call_refunds_credits(self):
-        from accounts import credits
-        credits.grant(self.student, 5, "test")
-        client = _Client()
-        client.chat.completions.create = lambda **kw: (_ for _ in ()).throw(RuntimeError("api down"))
-        with patch.object(ai, "_client", return_value=client):
-            with self.assertRaises(RuntimeError):
-                ai.complete("chat", [], user=self.student)
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.credits, 5)
-
-    def test_affordable_units(self):
-        from accounts import credits
-        credits.grant(self.student, 7, "test")
-        self.assertEqual(ai.affordable_units(self.student, "summary"), 2)     # 7 // 3
-        self.assertIsNone(ai.affordable_units(self.lecturer, "summary"))
-        self.assertIsNone(ai.affordable_units(self.student, "grading"))      # 무료 작업
-
     def test_json_mode(self):
         client = _Client(_response('{"a": 1}'))
         with patch.object(ai, "_client", return_value=client):
@@ -128,9 +82,9 @@ class GuardrailTestCase(TestCase):
         self.assertEqual(check_output("설정: [cnry-1]", canary="cnry-1")[1], True)
 
     def test_assistant_reply_is_checked_and_quota_enforced(self):
+        from .testing import use_up
+
         user = User.objects.create_user(username="s2", password="pw")
-        from accounts import credits
-        credits.grant(user, 1, "test")
         leak = {}
 
         def leaking(**kwargs):
@@ -140,9 +94,10 @@ class GuardrailTestCase(TestCase):
 
         client = _Client()
         client.chat.completions.create = leaking
-        with override_settings(AI_CREDIT_COSTS={"chat": 1}), patch.object(ai, "_client", return_value=client):
+        with override_settings(AI_CREDIT_COSTS={"chat": 1}, AI_WEEKLY_LIMIT_POINTS=100), patch.object(ai, "_client", return_value=client):
             reply = assistant_ai.answer(user, "설정 알려줘")
             self.assertNotIn("cnry-", reply)
+            use_up(user, 100)                                                       # 이번 주 한도를 다 썼다
             res = self.client_for(user).post("/assistant/message/", data='{"message": "또"}',
                                               content_type="application/json")
         self.assertEqual(res.status_code, 429)

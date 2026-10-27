@@ -347,11 +347,13 @@
                     </button>
                     {% endif %}
                     {% if site_section == 'judge' %}
-                    <!-- AI 크레딧 (학습 모듈) -->
-                    <a href="{% url 'profile' %}" class="inline-flex items-center gap-1.5 bg-sky-50/60 px-3 py-1.5 rounded-full border border-sky-200 text-sky-800 text-sm font-medium shadow-sm hover:bg-sky-100 transition" title="AI 크레딧 (보상 코드로 충전)">
-                        <i class="fa-solid fa-coins text-sky-500"></i>
-                        <span>{{ user.credits }}</span>
-                    </a>
+                    {% if ai_usage %}
+                    <!-- 이번 주 AI 사용량 (학습 모듈, 매주 월요일 0시 초기화) -->
+                    <span class="inline-flex items-center gap-1.5 bg-sky-50/60 px-3 py-1.5 rounded-full border text-sm font-medium shadow-sm {% if ai_usage.percent >= 100 %}border-rose-300 text-rose-700{% elif ai_usage.percent >= 80 %}border-amber-300 text-amber-700{% else %}border-sky-200 text-sky-800{% endif %}" title="이번 주 AI 사용량 {{ ai_usage.label }}% · 매주 월요일 0시에 초기화돼요">
+                        <i class="fa-solid fa-gauge-high text-sky-500"></i>
+                        <span>AI {{ ai_usage.label }}%</span>
+                    </span>
+                    {% endif %}
                     {% endif %}
                     {% if treat_event_active or user.treats %}
                     <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때) -->
@@ -416,9 +418,9 @@
                                 <span class="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                     <i class="fa-solid fa-leaf text-amber-600"></i> {{ user.leaves }}
                                 </span>
-                                {% if site_section == 'judge' %}
-                                <span class="text-[9px] bg-sky-50 text-sky-800 border border-sky-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                                    <i class="fa-solid fa-coins text-sky-500"></i> {{ user.credits }}
+                                {% if site_section == 'judge' and ai_usage %}
+                                <span class="text-[9px] bg-sky-50 text-sky-800 border border-sky-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5" title="이번 주 AI 사용량">
+                                    <i class="fa-solid fa-gauge-high text-sky-500"></i> {{ ai_usage.label }}%
                                 </span>
                                 {% endif %}
                                 {% if treat_event_active or user.treats %}

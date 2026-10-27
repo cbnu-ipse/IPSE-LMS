@@ -11,6 +11,7 @@ from PIL import Image
 
 from accounts import credits
 from core import ai as core_ai
+from core.testing import use_up
 
 from . import cram, handnote
 from .models import PersonalDocument, ProcessingStatus
@@ -235,17 +236,19 @@ class CreateViewTests(TestCase):
         self._post(ids)
         self.assertEqual(_FakeThread.started, [])
 
-    def test_insufficient_credits_blocks_start(self):
+    @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
+    def test_weekly_limit_used_up_blocks_start(self):
         doc = make_doc(self.user)
-        with patch("core.ai._is_exempt", return_value=False):
-            self._post([doc.pk])
+        use_up(self.user, 101)
+        self._post([doc.pk])
         self.assertFalse(PersonalDocument.objects.filter(document_type=NOTE).exists())
+        self.assertEqual(_FakeThread.started, [])
 
+    @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
     def test_cost_is_flat_per_note_not_per_document(self):
         a, b, c = (make_doc(self.user, n) for n in "abc")
-        credits.grant(self.user, 3, "test")
-        with patch("core.ai._is_exempt", return_value=False):
-            self._post([a.pk, b.pk, c.pk])                      # 자료 3개여도 정액 2이므로 3으로 충분
+        use_up(self.user, 97)                                   # 남은 3: 자료 3개여도 정액 2라서 시작할 수 있다
+        self._post([a.pk, b.pk, c.pk])
         self.assertEqual(PersonalDocument.objects.filter(document_type=NOTE).count(), 1)
         self.assertEqual(cram.note_cost(1), cram.note_cost(8))
 
@@ -319,7 +322,7 @@ class FailureReasonTests(TestCase):
         self.assertIn("AI 서버", self._build(patch("core.ai.chat", side_effect=RuntimeError("down"))))
 
     def test_quota_reason(self):
-        self.assertIn("크레딧이 부족", self._build(patch("core.ai.chat", side_effect=core_ai.AIQuotaExceeded("부족"))))
+        self.assertIn("이번 주 AI 사용 한도가 모자라", self._build(patch("core.ai.chat", side_effect=core_ai.AIQuotaExceeded("부족"))))
 
     def test_unreadable_answer_reason(self):
         message = type("M", (), {"content": "죄송합니다. JSON이 아닙니다"})()

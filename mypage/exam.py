@@ -198,7 +198,7 @@ def _normalize_mock_question(q):
 
 
 def essay_count(exam, raw_answers=None):
-    """서술형 문항 수 (raw_answers를 주면 답을 쓴 문항만) — 채점 크레딧을 미리 확인할 때 쓴다."""
+    """서술형 문항 수 (raw_answers를 주면 답을 쓴 문항만) — 채점 사용량을 미리 확인할 때 쓴다."""
     return sum(1 for i, q in enumerate(exam.questions)
                if q["type"] == "essay" and (raw_answers is None or (raw_answers.get(str(i)) or "").strip()))
 
@@ -237,7 +237,7 @@ def _most_common(values):
 
 
 def generate_mock_exam(user, documents):
-    """고른 수업 자료들로 모의 출제를 만든다 (크레딧을 받고, 쓸 만한 문제가 모자라면 돌려준다). MockExam을 돌려준다.
+    """고른 수업 자료들로 모의 출제를 만든다 (쓸 만한 문제가 모자라면 ValueError). MockExam을 돌려준다.
     출제 스타일은 고른 자료에 적힌 교수님(없으면 과목)의 족보에서 배운 것을 쓴다."""
     from course import ai as course_ai
 
@@ -281,7 +281,7 @@ def generate_mock_exam(user, documents):
     questions = questions[:MOCK_QUESTIONS]
     if len(questions) < MIN_VALID_QUESTIONS:
         core_ai.refund(user, "mock_exam", core_ai.cost_for("mock_exam"))
-        raise ValueError("AI가 쓸 만한 문제를 충분히 만들지 못했습니다. 크레딧은 돌려드렸습니다. 잠시 후 다시 시도해주세요.")
+        raise ValueError("AI가 쓸 만한 문제를 충분히 만들지 못했습니다. 잠시 후 다시 시도해주세요.")
     course_ai.shuffle_choices([{"questions": questions}])
     title = documents[0].title if len(documents) == 1 else (subject or "여러 자료")
     return MockExam.objects.create(
@@ -291,7 +291,7 @@ def generate_mock_exam(user, documents):
 
 def grade_mock_exam(exam, raw_answers):
     """제출한 답({인덱스: 문자열})을 채점해 저장한다. ox/mc/short는 서버가, 서술형은 AI가 채점한다 (답을 쓴 서술형마다
-    채점 크레딧. 채점이 실패하면 오답 처리하고 크레딧은 돌려준다). 문항별 정오 리스트를 돌려준다."""
+    AI 채점이라 사용량이 든다. 채점이 실패하면 오답 처리한다). 문항별 정오 리스트를 돌려준다."""
     from course.studio import grade_question
     from django.utils import timezone
 
@@ -311,10 +311,10 @@ def grade_mock_exam(exam, raw_answers):
                     graded = grade_answer(q["q"], q["answer"], value, user=exam.user, question_type="essay")
                     ok, note = graded["is_correct"], graded["feedback"]
                 except core_ai.AIQuotaExceeded:
-                    note = "크레딧이 부족해 채점하지 못했습니다."
+                    note = "이번 주 AI 사용 한도가 모자라 채점하지 못했습니다."
                 except Exception:
                     logger.exception("모의 출제 %s 서술형 채점 실패", exam.pk)
-                    note = "채점하지 못했습니다. 크레딧은 돌려드렸습니다."
+                    note = "채점하지 못했습니다."
         else:
             if q["type"] == "ox":
                 value = {"O": True, "X": False}.get(raw.strip().upper())

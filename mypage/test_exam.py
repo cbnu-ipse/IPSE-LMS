@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 
 from accounts import credits
 from core import ai as core_ai
+from core.testing import use_up
 from course import ai as course_ai
 from course import studio, topics
 from course.models import Course, CourseCategory
@@ -148,9 +149,9 @@ class UploadAndEditTests(TestCase):
         doc = PersonalDocument.objects.get()
         self.assertEqual((doc.document_type, doc.course_name, doc.professor), ("exam", "운영체제", "김"))   # 직함은 뗀다
 
-    @override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
-    def test_upload_without_enough_credits_for_whole_document_waits(self):
-        credits.grant(self.user, 3, "test")                                   # 1조각은 낼 수 있지만 전체는 모자란다
+    @override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1}, AI_WEEKLY_LIMIT_POINTS=10)
+    def test_upload_without_enough_quota_for_whole_document_waits(self):
+        use_up(self.user, 6)                                                  # 남은 4: 1조각(3)은 되지만 전체는 모자란다
         text = "\n\n".join("가" * 11000 for _ in range(3))
         with patch("mypage.views.extract_text", return_value=text):
             res, thread = self.upload()
@@ -160,9 +161,9 @@ class UploadAndEditTests(TestCase):
         thread.assert_not_called()                                            # AI를 부르지 않았다
         self.assertContains(self.client.get("/mypage/"), "요약 대기")
 
-    @override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1})
-    def test_image_needs_ocr_plus_summary_credits(self):
-        credits.grant(self.user, 3, "test")                                   # OCR 1 + 요약 3 필요
+    @override_settings(AI_CREDIT_COSTS={"summary": 3, "ocr": 1}, AI_WEEKLY_LIMIT_POINTS=10)
+    def test_image_needs_ocr_plus_summary_quota(self):
+        use_up(self.user, 7)                                                  # 남은 3: OCR 1 + 요약 3 = 4 필요
         with patch("mypage.views.extract_text") as extract:
             res, thread = self.upload(file=SimpleUploadedFile("scan.png", b"x" * 100))
         extract.assert_not_called()
@@ -225,27 +226,21 @@ class MockExamTests(TestCase):
         self.assertIn("프로세스는 실행 중인", ai.call_args.args[1][1]["content"])
         self.assertRedirects(res, mock.get_absolute_url())
 
-    def test_create_without_credits_is_blocked(self):
+    @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
+    def test_create_over_the_weekly_limit_is_blocked(self):
+        use_up(self.user, 101)
         with patch("core.ai.complete_json") as ai:
             res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
         ai.assert_not_called()
         self.assertFalse(MockExam.objects.exists())
-        self.assertContains(res, "크레딧이 부족합니다")
+        self.assertContains(res, "이번 주 AI 사용 한도를 다 썼어요")
 
-    def test_too_few_valid_questions_refunds(self):
-        credits.grant(self.user, 5, "test")
+    def test_too_few_valid_questions_makes_no_exam(self):
         bad = {"title": "t", "questions": [{"type": "essay", "q": "서술"}, {"type": "ox", "q": "ok", "answer": True}]}
-        message = type("M", (), {"content": json.dumps(bad), "tool_calls": None})()
-        response = type("R", (), {"choices": [type("C", (), {"message": message})()], "usage": None})()
-        client = type("Cl", (), {})()
-        client.chat = type("Ch", (), {"completions": type("Co", (), {"create": staticmethod(lambda **kw: response)})()})()
-        with patch.object(core_ai, "_client", return_value=client):              # 실제 차감 경로를 지난다
+        with patch("core.ai.complete_json", return_value=bad):
             res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
         self.assertFalse(MockExam.objects.exists())
-        self.assertContains(res, "크레딧은 돌려드렸습니다")
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 5)                                  # 5 차감 후 5 환불
-        self.assertEqual(credits.verify_ledger(self.user), True)
+        self.assertContains(res, "쓸 만한 문제를 충분히 만들지 못했습니다")
 
     def test_take_and_grade_on_server(self):
         credits.grant(self.user, 5, "test")
@@ -285,12 +280,11 @@ class MockExamTests(TestCase):
         self.assertEqual([q["type"] for q in mock.questions].count("essay"), 2)
 
     @override_settings(AI_CREDIT_COSTS={"mock_exam": 5, "grading": 2})
-    def test_essay_is_graded_by_ai_and_costs_grading_credits_per_answered_essay(self):
-        credits.grant(self.user, 10, "test")
+    def test_essay_is_graded_by_ai_only_for_answered_essays(self):
         mock = self.make_exam()
         page = self.client.get(mock.get_absolute_url())
         self.assertContains(page, "서술형 2문항")
-        self.assertContains(page, 'title="AI 크레딧 4"')                          # 제출 버튼에 최대 비용(2문항 × 2)
+        self.assertContains(page, "이번 주 AI 사용량이 늘어요")
         answers = {f"a_{i}": ("1" if q["type"] == "mc" else "") for i, q in enumerate(mock.questions)}
         answers["a_4"] = "프로세스는 실행 중인 프로그램"                             # 서술형 2개 중 하나만 답한다
         with patch("mypage.ai.grade_answer", return_value={"is_correct": True, "feedback": "핵심을 짚었어요"}) as grade:
@@ -302,15 +296,16 @@ class MockExamTests(TestCase):
         self.assertContains(res, "모범답안")
         self.assertContains(res, "핵심을 짚었어요")
 
-    @override_settings(AI_CREDIT_COSTS={"mock_exam": 5, "grading": 2})
-    def test_essay_grading_blocked_without_credits_and_answers_are_kept(self):
+    @override_settings(AI_CREDIT_COSTS={"mock_exam": 5, "grading": 2}, AI_WEEKLY_LIMIT_POINTS=100)
+    def test_essay_grading_blocked_over_the_weekly_limit_and_answers_are_kept(self):
+        use_up(self.user, 99)                                                      # 남은 1 < 채점 예상 2
         mock = self.make_exam()
         answers = {f"a_{i}": "" for i in range(len(mock.questions))}
         answers["a_4"] = "내가 쓴 긴 답안"
         with patch("mypage.ai.grade_answer") as grade:
             res = self.client.post(mock.get_absolute_url(), answers)
         grade.assert_not_called()
-        self.assertContains(res, "서술형 채점에 크레딧이 필요합니다")
+        self.assertContains(res, "서술형 채점을 할 수 없습니다")
         self.assertContains(res, "내가 쓴 긴 답안")                                  # 다시 쓰지 않아도 되게 답을 돌려준다
         mock.refresh_from_db()
         self.assertIsNone(mock.submitted_at)
@@ -339,11 +334,10 @@ class MockExamTests(TestCase):
         self.assertNotContains(response, "모의 출제")
         self.assertNotContains(response, "김교수 교수님")
 
-    def test_personal_tab_offers_mock_exam_with_cost_for_lecture_documents_only(self):
+    def test_personal_tab_offers_mock_exam_for_lecture_documents_only(self):
         make_doc(self.user, "OS 족보", EXAM, "김교수", ["운영체제"], summary="족보 요약")
         html = self.client.get("/mypage/").content.decode()
         self.assertIn('id="mock-toggle"', html)
-        self.assertIn('<i class="fa-solid fa-coins" style="font-size:.85em"></i> 5', html)
         self.assertEqual(html.count('data-doc-type="lecture"'), 1)
         self.assertEqual(html.count('data-doc-type="exam"'), 1)             # 족보는 카드에 표시만 되고 모의 출제에서는 고를 수 없다 (화면에서 흐리게)
 
