@@ -130,7 +130,7 @@
                             {% elif document.summary_status == 'processing' %}
                             <div class="w-full h-28 rounded-lg border border-amber-100 bg-amber-50 flex flex-col items-center justify-center gap-2 text-amber-600"><i class="fa-solid fa-pen-nib fa-beat text-2xl"></i><span class="text-[11px] font-bold">손글씨로 쓰는 중…</span></div>
                             {% else %}
-                            <div class="w-full h-28 rounded-lg border border-rose-100 bg-rose-50 flex items-center justify-center text-rose-500 text-xs font-bold">노트를 만들지 못했어요</div>
+                            <div class="w-full min-h-28 rounded-lg border border-rose-100 bg-rose-50 flex flex-col items-center justify-center gap-1 p-2 text-rose-600"><span class="text-xs font-bold">노트를 만들지 못했어요</span>{% if document.summary %}<span class="text-[11px] leading-snug text-rose-500 text-left">{{ document.summary|truncatechars:90 }}</span>{% endif %}</div>
                             {% endif %}
                         {% else %}
                         <i class="fa-regular fa-file-lines text-slate-400 text-3xl"></i>

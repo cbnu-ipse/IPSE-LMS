@@ -4,6 +4,7 @@
 
 - 읽는 내용은 자료의 요약(없으면 본문 앞부분). 자료마다 같은 몫을 나눠 읽고, 전체는 SOURCE_CHARS 안으로 줄인다.
 - 크레딧은 고른 자료 1개당 AI_COST_CRAM_NOTE (note_cost). AI를 부르다 실패하면 core.ai가, 노트가 비었거나 그림이 실패하면 여기서 돌려준다.
+- 노트가 실패하면 이유(NoteError)를 노트 자료의 summary에 담아 화면에 보여 준다 (새 컬럼 없이).
 - 노트 문서는 강의·모의 출제의 재료가 아니다 (eligible_docs는 수업 자료만, exam_docs는 족보만 읽는다).
 """
 import logging
@@ -87,17 +88,34 @@ def note_cost(count):
     return core_ai.cost_for("cram_note") * count
 
 
+class NoteError(Exception):
+    """사용자에게 그대로 보여 줄 수 있는 실패 이유를 담는다 (노트 자료의 summary에 저장돼 카드·상세 화면에 보인다)."""
+
+
 def generate_note(user, documents):
-    """자료로 노트 dict를 만든다 (크레딧을 받고, 쓸 만한 내용이 모자라면 돌려주고 ValueError)."""
-    data = core_ai.complete_json("cram_note", [
-        {"role": "system", "content": SYSTEM},
-        {"role": "user", "content": build_request(documents)},
-    ], user=user, cost=note_cost(len(documents)))
+    """자료로 노트 dict를 만든다. 실패하면 크레딧을 돌려주고 이유를 담은 NoteError."""
+    cost = note_cost(len(documents))
+    try:
+        response = core_ai.chat("cram_note", [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": build_request(documents)},
+        ], user=user, json_mode=True, cost=cost)      # 호출이 실패하면 core.ai가 크레딧을 돌려준다
+    except core_ai.AIQuotaExceeded:
+        raise NoteError("크레딧이 부족해 노트를 만들지 못했습니다. 크레딧을 충전한 뒤 다시 만들어주세요.")
+    except Exception:
+        logger.exception("속성 노트 AI 호출 실패")
+        raise NoteError("AI 서버가 응답하지 않았거나 요청이 몰려 노트를 만들지 못했습니다. 잠시 후 다시 시도해주세요. 크레딧은 차감되지 않았습니다.")
+    try:
+        data = core_ai.parse_json(response.choices[0].message.content)
+    except Exception:
+        core_ai.refund(user, "cram_note", cost)
+        raise NoteError("AI의 답을 읽을 수 없었습니다. 다시 시도해주세요. 크레딧은 돌려드렸습니다.")
     note = normalize_note(data, fallback_title=note_title(documents).removesuffix(" 속성 노트") + " 5분 전 노트")
     points = sum(len(s["points"]) for s in note["sections"])
     if not note["sections"] or points < MIN_POINTS:
-        core_ai.refund(user, "cram_note", note_cost(len(documents)))
-        raise ValueError("AI가 쓸 만한 노트를 만들지 못했습니다.")
+        core_ai.refund(user, "cram_note", cost)
+        raise NoteError("고른 자료에서 노트로 만들 만한 내용을 충분히 찾지 못했습니다. 요약이 너무 짧거나 비어 있지 않은지 확인하고, "
+                        "자료를 더 골라 다시 시도해주세요. 크레딧은 돌려드렸습니다.")
     return note
 
 
@@ -122,10 +140,14 @@ def build_note_document(note_id, source_ids):
     charged = 0
     try:
         if not sources:
-            raise ValueError("노트로 만들 자료가 없습니다.")
+            raise NoteError("고른 자료를 읽을 수 없었습니다. 삭제됐거나 요약·본문이 비어 있는 자료입니다. 크레딧은 차감되지 않았습니다.")
         note = generate_note(doc.user, sources)
         charged = note_cost(len(sources))
-        pngs = handnote.render_notes(note)          # A4 한 장씩. 한 장에 안 들어가면 내용을 버리지 않고 다음 장에 이어 쓴다
+        try:
+            pngs = handnote.render_notes(note)      # A4 한 장씩. 한 장에 안 들어가면 내용을 버리지 않고 다음 장에 이어 쓴다
+        except Exception:
+            logger.exception("속성 노트 %s 그리기 실패", note_id)
+            raise NoteError("손글씨 이미지를 그리는 중 문제가 생겼습니다. 잠시 후 다시 시도해주세요. 크레딧은 돌려드렸습니다.")
         total = len(pngs)
         label = (lambda n: f" ({n}/{total})" if total > 1 else "")
         markdown = note_markdown(note)
@@ -140,8 +162,10 @@ def build_note_document(note_id, source_ids):
         doc.summary = markdown
         doc.summary_status = ProcessingStatus.DONE
         doc.save()
-    except Exception:
-        logger.exception("속성 노트 %s 생성 실패", note_id)
-        if charged:    # AI 호출은 성공했지만 그림을 그리지 못한 경우
+    except Exception as exc:
+        reason = str(exc) if isinstance(exc, NoteError) else "노트를 만드는 중 알 수 없는 문제가 생겼습니다. 다시 시도해주세요. 크레딧은 돌려드렸습니다."
+        if not isinstance(exc, NoteError):
+            logger.exception("속성 노트 %s 생성 실패", note_id)
+        if charged:    # AI 호출은 성공했지만 그 뒤(그림·저장)에서 실패한 경우
             core_ai.refund(doc.user, "cram_note", charged)
-        PersonalDocument.objects.filter(pk=note_id).update(summary_status=ProcessingStatus.FAILED)
+        PersonalDocument.objects.filter(pk=note_id).update(summary_status=ProcessingStatus.FAILED, summary=reason)

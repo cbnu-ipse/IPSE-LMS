@@ -1,4 +1,5 @@
 import io
+import json
 import shutil
 import tempfile
 from unittest.mock import patch
@@ -26,6 +27,13 @@ NOTE_JSON = {
     ],
     "memo": ["교착상태 4조건 외우기"],
 }
+
+
+def ai_returns(data):
+    """core.ai.chat이 data(JSON)를 답한 것처럼 돌려주는 패치."""
+    message = type("M", (), {"content": json.dumps(data, ensure_ascii=False)})()
+    response = type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+    return patch("core.ai.chat", return_value=response)
 
 
 class _FakeThread:
@@ -112,7 +120,7 @@ class BuildNoteTests(TestCase):
     def test_builds_png_document_from_selected_sources(self):
         a, b = make_doc(self.user, "a", summary="요약 A"), make_doc(self.user, "b", summary="요약 B")
         note = self._placeholder()
-        with override_settings(MEDIA_ROOT=self.media), patch("core.ai.complete_json", return_value=NOTE_JSON) as ai:
+        with override_settings(MEDIA_ROOT=self.media), ai_returns(NOTE_JSON) as ai:
             cram.build_note_document(note.pk, [a.pk, b.pk])
         note.refresh_from_db()
         self.assertEqual(note.summary_status, ProcessingStatus.DONE)
@@ -128,7 +136,7 @@ class BuildNoteTests(TestCase):
         other = User.objects.create_user(username="o", password="pw")
         secret = make_doc(other, "s", summary="남의 요약")
         note = self._placeholder()
-        with override_settings(MEDIA_ROOT=self.media), patch("core.ai.complete_json", return_value=NOTE_JSON) as ai:
+        with override_settings(MEDIA_ROOT=self.media), ai_returns(NOTE_JSON) as ai:
             cram.build_note_document(note.pk, [secret.pk])
         note.refresh_from_db()
         self.assertEqual(note.summary_status, ProcessingStatus.FAILED)
@@ -137,7 +145,7 @@ class BuildNoteTests(TestCase):
     def test_thin_ai_answer_fails_and_refunds(self):
         doc = make_doc(self.user)
         note = self._placeholder()
-        with override_settings(MEDIA_ROOT=self.media), patch("core.ai.complete_json", return_value={"title": "x", "sections": []}), \
+        with override_settings(MEDIA_ROOT=self.media), ai_returns({"title": "x", "sections": []}), \
                 patch("core.ai.refund") as refund:
             cram.build_note_document(note.pk, [doc.pk])
         note.refresh_from_db()
@@ -148,7 +156,7 @@ class BuildNoteTests(TestCase):
     def test_render_failure_refunds_once(self):
         doc = make_doc(self.user)
         note = self._placeholder()
-        with override_settings(MEDIA_ROOT=self.media), patch("core.ai.complete_json", return_value=NOTE_JSON), \
+        with override_settings(MEDIA_ROOT=self.media), ai_returns(NOTE_JSON), \
                 patch("mypage.handnote.render_notes", side_effect=OSError("boom")), patch("core.ai.refund") as refund:
             cram.build_note_document(note.pk, [doc.pk])
         note.refresh_from_db()
@@ -267,6 +275,52 @@ class PagesTests(TestCase):
         self.assertEqual(exam_docs("김", "운영체제"), [])
 
 
+class FailureReasonTests(TestCase):
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, True)
+        self.user = User.objects.create_user(username="u", password="pw")
+        self.doc = make_doc(self.user)
+        self.note = PersonalDocument.objects.create(user=self.user, title="n", file="", document_type=NOTE,
+                                                    summary_status=ProcessingStatus.PROCESSING)
+
+    def _build(self, patcher):
+        with override_settings(MEDIA_ROOT=self.media), patcher:
+            cram.build_note_document(self.note.pk, [self.doc.pk])
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.summary_status, ProcessingStatus.FAILED)
+        return self.note.summary
+
+    def test_ai_failure_reason(self):
+        self.assertIn("AI 서버", self._build(patch("core.ai.chat", side_effect=RuntimeError("down"))))
+
+    def test_quota_reason(self):
+        self.assertIn("크레딧이 부족", self._build(patch("core.ai.chat", side_effect=core_ai.AIQuotaExceeded("부족"))))
+
+    def test_unreadable_answer_reason(self):
+        message = type("M", (), {"content": "죄송합니다. JSON이 아닙니다"})()
+        response = type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+        self.assertIn("읽을 수 없었습니다", self._build(patch("core.ai.chat", return_value=response)))
+
+    def test_thin_content_reason(self):
+        self.assertIn("충분히 찾지 못했습니다", self._build(ai_returns({"title": "x", "sections": []})))
+
+    def test_render_failure_reason(self):
+        with ai_returns(NOTE_JSON):
+            reason = self._build(patch("mypage.handnote.render_notes", side_effect=OSError("font")))
+        self.assertIn("이미지를 그리는 중", reason)
+
+    def test_unreadable_sources_reason(self):
+        PersonalDocument.objects.filter(pk=self.doc.pk).update(is_deleted=True)
+        self.assertIn("읽을 수 없었습니다", self._build(patch("core.ai.chat")))
+
+    def test_reason_is_shown_in_list_and_detail(self):
+        PersonalDocument.objects.filter(pk=self.note.pk).update(summary_status=ProcessingStatus.FAILED, summary="이유 문구 테스트")
+        self.client.force_login(self.user)
+        self.assertIn("이유 문구 테스트", self.client.get(reverse("mypage:document_list")).content.decode())
+        self.assertIn("이유 문구 테스트", self.client.get(self.note.get_absolute_url()).content.decode())
+
+
 class MoveDocumentTests(TestCase):
     def setUp(self):
         from .models import PersonalFolder
@@ -319,7 +373,7 @@ class MultiPageNoteTests(TestCase):
                                                summary_status=ProcessingStatus.PROCESSING)
         big = {"title": "큰 노트", "memo": ["확인 " * 10] * 6,
                "sections": [{"heading": f"주제{i}", "points": ["긴 문장 " * 12] * 6} for i in range(7)]}
-        with override_settings(MEDIA_ROOT=media), patch("core.ai.complete_json", return_value=big):
+        with override_settings(MEDIA_ROOT=media), ai_returns(big):
             cram.build_note_document(note.pk, [src.pk])
         notes = list(PersonalDocument.objects.filter(document_type=NOTE).order_by("id"))
         self.assertGreater(len(notes), 1)

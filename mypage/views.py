@@ -215,7 +215,9 @@ def document_list(request, folder_id=None):
 
     PersonalDocument.objects.filter(      # 서버가 다시 켜지는 등으로 멈춘 노트는 실패로 돌려 목록이 계속 새로고침되지 않게 한다
         user=request.user, document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
-        uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(summary_status=ProcessingStatus.FAILED)
+        uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(
+        summary_status=ProcessingStatus.FAILED,
+        summary="노트를 만드는 도중 서버가 다시 시작되는 등으로 작업이 중단됐습니다. 다시 만들어주세요. 크레딧이 차감됐는데 돌아오지 않았다면 운영진에게 알려주세요.")
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
         doc_count=Count("documents", filter=Q(documents__is_deleted=False))
     )
