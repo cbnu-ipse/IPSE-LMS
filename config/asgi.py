@@ -9,8 +9,9 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 # Django ASGI 애플리케이션을 먼저 초기화해야 앱 레지스트리가 준비됩니다.
 django_asgi_app = get_asgi_application()
 
-# game 앱의 WebSocket 라우팅 (초기화 이후 임포트)
-from game.routing import websocket_urlpatterns  # noqa: E402
+# game·mypage 앱의 WebSocket 라우팅 (초기화 이후 임포트)
+from game.routing import websocket_urlpatterns as game_websocket_urlpatterns  # noqa: E402
+from mypage.routing import websocket_urlpatterns as mypage_websocket_urlpatterns  # noqa: E402
 
 application = ProtocolTypeRouter(
     {
@@ -18,7 +19,7 @@ application = ProtocolTypeRouter(
         "http": django_asgi_app,
         # WebSocket 트래픽 — 로그인 세션을 AuthMiddlewareStack으로 유지
         "websocket": AuthMiddlewareStack(
-            URLRouter(websocket_urlpatterns)
+            URLRouter(game_websocket_urlpatterns + mypage_websocket_urlpatterns)
         ),
     }
 )

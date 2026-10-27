@@ -28,6 +28,7 @@ from .ai import (
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
+from .stream import SummaryPublisher
 from .ontology import professor_choices, resolve_professor, resolve_subject, subject_choices
 
 logger = logging.getLogger(__name__)
@@ -42,14 +43,20 @@ _summarizing = set()  # 이 프로세스에서 요약을 만드는 중인 문서
 
 def _generate_summary_bg(document_id):
     _summarizing.add(document_id)
+    publisher = None
     try:
         with background_slot():      # 업로드가 몰려도 AI를 부르는 작업은 동시에 몇 개만 (core/concurrency.py)
             document = PersonalDocument.objects.select_related("user").get(pk=document_id)
-            summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type)
+            publisher = SummaryPublisher(document_id)       # 만들어지는 대로 열어 둔 학습 화면에 보낸다 (mypage/stream.py)
+            summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type,
+                                       on_text=publisher.push)
             PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
+            publisher.finish("done")
     except Exception:
         logger.exception("문서 %s 자동 요약 생성 실패", document_id)
         PersonalDocument.objects.filter(pk=document_id).update(summary_status=ProcessingStatus.FAILED)
+        if publisher:
+            publisher.finish("failed")
         connection.close()
         return
     finally:

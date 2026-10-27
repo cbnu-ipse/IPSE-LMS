@@ -15,6 +15,7 @@ import urllib.request
 from types import SimpleNamespace
 
 ENDPOINT = "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent"
+STREAM_ENDPOINT = "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:streamGenerateContent?alt=sse"
 TIMEOUT = 120
 
 
@@ -140,6 +141,50 @@ def to_response(data):
             prompt_tokens=usage.get("promptTokenCount", 0),
             completion_tokens=(usage.get("candidatesTokenCount", 0) or 0) + (usage.get("thoughtsTokenCount", 0) or 0),
             prompt_tokens_details=SimpleNamespace(cached_tokens=usage.get("cachedContentTokenCount", 0))))
+
+
+def _http_error(exc):
+    try:
+        err = json.load(exc)
+        err = (err[0] if isinstance(err, list) else err).get("error", {})
+        message = f"{err.get('status', '')} {err.get('message', '')}".strip()
+    except Exception:
+        message = ""
+    return VertexError(exc.code, message[:300])
+
+
+def open_stream(api_key, model, messages, *, max_tokens):
+    """streamGenerateContent(SSE) 연결을 열어 응답 객체를 돌려준다 (연결이 열리기 전의 오류만 여기서 난다: 다시 시도해도 되는 구간)."""
+    system, contents = to_contents(messages)
+    body = {"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens}}
+    if system:
+        body["systemInstruction"] = system
+    request = urllib.request.Request(
+        STREAM_ENDPOINT.format(model=model), data=json.dumps(body, ensure_ascii=False).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key})
+    try:
+        return urllib.request.urlopen(request, timeout=TIMEOUT)
+    except urllib.error.HTTPError as exc:
+        raise _http_error(exc) from None
+
+
+def iter_stream(resp, usage=None):
+    """SSE 응답 줄을 읽어 답변 글자 조각(생각 요약 제외)을 만드는 대로 내놓는다. usage 딕셔너리를 주면 마지막 사용량을 채워 둔다."""
+    with resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            try:
+                data = json.loads(line[5:].strip())
+            except ValueError:
+                continue
+            if usage is not None and data.get("usageMetadata"):
+                usage.update(data["usageMetadata"])
+            for cand in (data.get("candidates") or [])[:1]:
+                for part in (cand.get("content") or {}).get("parts") or []:
+                    if "text" in part and not part.get("thought"):
+                        yield part["text"]
 
 
 def generate(api_key, model, messages, *, max_tokens, json_mode=False, tools=None):
