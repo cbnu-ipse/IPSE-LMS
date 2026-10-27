@@ -112,9 +112,19 @@ def _brace_arg(s, i):
     return (s[i:i + 1], i + 1)
 
 
+def _flatten_environments(tex):
+    """\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} 같은 환경은 손으로 쓸 수 있게 [a b; c d] 한 줄로 바꾼다."""
+    def flat(m):
+        rows = [" ".join(r.split()) for r in re.split(r"\\\\", m.group(1).replace("&", " "))]
+        return "[" + "; ".join(r for r in rows if r) + "]"
+
+    tex = re.sub(r"\\begin\{[A-Za-z*]+\}(?:\{[^}]*\})?([\s\S]*?)\\end\{[A-Za-z*]+\}", flat, tex)
+    return tex.replace("\\\\", "; ").replace("&", " ")
+
+
 def latex_to_markup(tex):
     """간단한 LaTeX를 손글씨로 쓸 수 있는 글(첨자는 <sub>/<sup>, 막대는 <bar>)로. 복잡한 식은 최대한 읽히게만 바꾼다."""
-    s, out, i = tex, [], 0
+    s, out, i = _flatten_environments(tex), [], 0
     while i < len(s):
         c = s[i]
         if c == "\\":

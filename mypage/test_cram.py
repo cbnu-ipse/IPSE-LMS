@@ -86,6 +86,14 @@ class RenderTests(TestCase):
                 if op[0] == "word":
                     self.assertLess(op[2], handnote.HEIGHT)
 
+    def test_latex_environments_are_flattened_not_leaked(self):
+        out = handnote.to_markup(r"$A^{-1} = \frac{1}{ad-bc}\begin{bmatrix} d & -b \\ -c & a \end{bmatrix}$")
+        self.assertNotIn("begin", out)
+        self.assertNotIn("end", out)
+        self.assertNotIn("&", out)
+        self.assertNotIn("\\", out)
+        self.assertIn("[d -b; -c a]", out)
+
     def test_unsupported_glyphs_do_not_crash(self):
         note = {"title": "Σ μ → ≤ x̄ ∞", "sections": [{"heading": "α β", "points": ["x² ≥ 1 ✓ 😀 $\\bar{x}$ $a_i^2$"]}], "memo": []}
         self.assertTrue(handnote.render_notes(note)[0].startswith(b"\x89PNG"))
