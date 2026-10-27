@@ -11,8 +11,8 @@ NODE = shutil.which("node")
 SCRIPT = r"""
 global.window = {}; global.document = { currentScript: null, createElement: () => ({}), head: { appendChild() {} } };
 global.setTimeout = () => 0;
-require(process.argv[2]);
-console.log(JSON.stringify(window.renderMarkdown(process.argv[3])));
+require(process.argv[1]);
+console.log(JSON.stringify(window.renderMarkdown(process.argv[2])));
 """
 
 
