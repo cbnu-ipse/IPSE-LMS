@@ -45,12 +45,18 @@
                                 <span id="user-leaves-count">{{ user.leaves }}</span>
                             </span>
                         </div>
-                        <div class="bg-sky-50/50 border border-sky-100 rounded-2xl px-3 py-3 text-center shadow-sm">
-                            <span class="text-[9px] text-sky-600 font-bold uppercase tracking-wider block mb-0.5">AI 크레딧</span>
-                            <span class="text-base font-bold text-sky-800 flex items-center justify-center gap-0.5">
-                                <i class="fa-solid fa-coins text-sky-500 text-xs"></i>
-                                <span id="user-credits-count">{{ user.credits }}</span>
+                        <div class="bg-sky-50/50 border border-sky-100 rounded-2xl px-3 py-3 text-center shadow-sm" title="이번 주 AI 사용량 · 매주 월요일 0시에 초기화돼요">
+                            <span class="text-[9px] text-sky-600 font-bold uppercase tracking-wider block mb-0.5">AI 사용량 (주간)</span>
+                            {% if ai_usage %}
+                            <span class="text-base font-bold {% if ai_usage.percent >= 100 %}text-rose-700{% elif ai_usage.percent >= 80 %}text-amber-700{% else %}text-sky-800{% endif %} flex items-center justify-center gap-0.5">
+                                <i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>
+                                <span id="user-ai-usage">{{ ai_usage.label }}%</span>
                             </span>
+                            <span class="block mt-1.5 h-1 rounded-full bg-sky-100 overflow-hidden"><span class="block h-full rounded-full bg-sky-500" style="width: {{ ai_usage.percent }}%"></span></span>
+                            <span class="block mt-1 text-[9px] text-slate-400">{{ ai_usage.reset_at|date:"n월 j일" }} 0시 초기화</span>
+                            {% else %}
+                            <span class="text-base font-bold text-sky-800">제한 없음</span>
+                            {% endif %}
                         </div>
                         <div class="bg-orange-50/50 border border-orange-100 rounded-2xl px-3 py-3 text-center shadow-sm">
                             <span class="text-[9px] text-orange-600 font-bold uppercase tracking-wider block mb-0.5">연속</span>
