@@ -24,7 +24,8 @@
     {% else %}
         <div class="bg-rose-50 border border-rose-100 rounded-2xl py-16 text-center text-rose-600">
             <p class="text-sm font-bold">노트를 만들지 못했어요.</p>
-            <p class="text-xs mt-1">크레딧은 돌려드렸습니다. 내 자료에서 자료를 다시 골라 만들어주세요.</p>
+            <p class="text-xs mt-2 px-6">{% if document.summary %}{{ document.summary }}{% else %}원인을 알 수 없습니다. 잠시 후 다시 시도해주세요.{% endif %}</p>
+            <p class="text-xs mt-2 text-rose-400">내 자료에서 자료를 다시 골라 만들 수 있어요.</p>
         </div>
     {% endif %}
 </section>
