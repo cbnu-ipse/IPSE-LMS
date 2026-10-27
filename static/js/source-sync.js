@@ -132,22 +132,24 @@
         // 크롬 PDF 뷰어는 이미 열린 상태에서 주소의 #page=N만 바꾸면(location.replace·src 모두) 페이지를 옮기지 않는다.
         // 그래서 목표 페이지가 들어간 새 iframe을 만들어 갈아 끼운다 (새 뷰어는 #page=N으로 열린다). 갈아 끼우는 동안은 이전 화면을
         // 남겨 깜빡임을 줄이고, 요약을 빠르게 넘길 때는 마지막 페이지로만 한 번 옮긴다.
+        let pending = null;
         function goToPdfPage(page) {
             shownPage = page;
-            const old = iframe, next = old.cloneNode(false);
+            if (pending) { pending.remove(); pending = null; }           // 아직 뜨는 중인 이전 요청은 버린다 (iframe이 쌓이지 않게)
+            const next = iframe.cloneNode(false);
             next.src = pdfBase + '#page=' + page;
             next.style.cssText = 'position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);opacity:0';
-            let swapped = false;
+            pending = next;
             const swap = () => {
-                if (swapped) return;
-                swapped = true;
-                old.remove();
+                if (pending !== next) return;                              // 그 사이 더 새 요청이 생겼다
+                pending = null;
+                Array.from(src.querySelectorAll('iframe')).forEach((f) => { if (f !== next) f.remove(); });   // 이전 화면 포함 남은 것 전부 치움
                 next.style.cssText = '';
                 iframe = next;
             };
             next.addEventListener('load', () => setTimeout(swap, 250), { once: true });
-            setTimeout(swap, 3000);                // 로드 이벤트가 안 와도 결국 갈아 끼운다
-            old.after(next);
+            setTimeout(swap, 3000);                                         // 로드 이벤트가 안 와도 결국 갈아 끼운다
+            iframe.after(next);
         }
         setHighlight = (m) => {
             const page = m.unit + 1;
