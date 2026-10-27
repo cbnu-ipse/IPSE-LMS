@@ -160,6 +160,13 @@
                                             <button type="submit" name="user_answer" value="O" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">O</button>
                                             <button type="submit" name="user_answer" value="X" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">X</button>
                                         </form>
+                                    {% elif current_question.question_type == "mc" %}
+                                        <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                                            {% csrf_token %}
+                                            {% for option in current_question.options %}
+                                            <button type="submit" name="user_answer" value="{{ forloop.counter0 }}" class="w-full text-left bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-medium px-3 py-2.5 rounded-lg transition"><b class="mr-1.5">{{ forloop.counter }}.</b>{{ option }}</button>
+                                            {% endfor %}
+                                        </form>
                                     {% elif current_question.question_type == "essay" %}
                                         <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
@@ -175,13 +182,13 @@
                                     {% endif %}
                                 {% else %}
                                     <div class="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-sm">
-                                        <p class="text-slate-500">제출한 답: {{ current_question.user_answer }}</p>
+                                        <p class="text-slate-500">제출한 답: {{ current_question.display_user_answer }}</p>
                                         {% if current_question.is_correct %}
                                             <p class="font-bold text-emerald-600">정답입니다</p>
                                         {% else %}
                                             <p class="font-bold text-rose-600">오답입니다</p>
                                         {% endif %}
-                                        <p class="text-slate-500">정답: {{ current_question.answer }}</p>
+                                        <p class="text-slate-500">정답: {{ current_question.display_answer }}</p>
                                         {% if current_question.feedback %}
                                             <div class="rounded-lg {% if current_question.is_correct %}bg-slate-50 text-slate-500{% else %}bg-amber-50 text-amber-700 border border-amber-100{% endif %} px-3 py-2 mt-1">
                                                 {% if not current_question.is_correct %}<span class="font-bold">힌트/해설</span> · {% endif %}{{ current_question.feedback }}
