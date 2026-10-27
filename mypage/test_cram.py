@@ -55,14 +55,26 @@ class NormalizeTests(TestCase):
 
 
 class RenderTests(TestCase):
-    def test_render_returns_png_that_grows_with_content(self):
-        short = handnote.render_note(cram.normalize_note(NOTE_JSON))
-        image = Image.open(io.BytesIO(short))
-        self.assertEqual(image.format, "PNG")
-        self.assertEqual(image.width, handnote.WIDTH)
-        long_note = {**NOTE_JSON, "sections": NOTE_JSON["sections"] * 4}
-        tall = Image.open(io.BytesIO(handnote.render_note(cram.normalize_note(long_note))))
-        self.assertGreater(tall.height, image.height)
+    def test_render_is_always_one_a4_page(self):
+        small = Image.open(io.BytesIO(handnote.render_note(cram.normalize_note(NOTE_JSON))))
+        self.assertEqual(small.format, "PNG")
+        self.assertEqual(small.size, (handnote.WIDTH, handnote.HEIGHT))
+        big = {"title": "큰 노트", "memo": ["확인 " * 12] * 6,
+               "sections": [{"heading": f"주제 {i}", "points": ["긴 문장 " * 14] * 6} for i in range(7)]}
+        note = cram.normalize_note(big)
+        self.assertEqual(Image.open(io.BytesIO(handnote.render_note(note))).size, (handnote.WIDTH, handnote.HEIGHT))
+        lay = handnote._layout(note, handnote._rng_for(note), handnote.MIN_SCALE, None)
+        self.assertLessEqual(lay.y, handnote.HEIGHT)
+
+    def test_everything_fits_by_shrinking_text(self):
+        note = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 30] * 6} for i in range(7)],
+                                    "memo": ["m"] * 6})
+        rng = handnote._rng_for(note)
+        full = handnote._layout(note, rng, 1.0, None)
+        self.assertGreater(full.y, handnote.HEIGHT)                       # 기본 크기로는 한 장을 넘는다
+        realistic = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 10] * 6} for i in range(7)],
+                                         "memo": ["m"] * 6})
+        self.assertLessEqual(handnote._layout(realistic, handnote._rng_for(realistic), handnote.MIN_SCALE, None).y, handnote.HEIGHT)
 
     def test_unsupported_glyphs_do_not_crash(self):
         note = {"title": "Σ μ → ≤ x̄ ∞", "sections": [{"heading": "α β", "points": ["x² ≥ 1 ✓ 😀 $\\bar{x}$ $a_i^2$"]}], "memo": []}
@@ -224,3 +236,45 @@ class PagesTests(TestCase):
                                         extracted_text="t", summary_status=ProcessingStatus.DONE, professor="김")
         self.assertEqual(eligible_docs("운영체제"), [])
         self.assertEqual(exam_docs("김", "운영체제"), [])
+
+
+class MoveDocumentTests(TestCase):
+    def setUp(self):
+        from .models import PersonalFolder
+
+        self.user = User.objects.create_user(username="u", password="pw")
+        self.client.force_login(self.user)
+        self.folder = PersonalFolder.objects.create(user=self.user, name="운영체제")
+        self.doc = make_doc(self.user)
+
+    def _move(self, doc, folder):
+        return self.client.post(reverse("mypage:document_move", args=[doc.pk]), {"folder": folder})
+
+    def test_moves_into_folder_and_back_without_calling_ai(self):
+        with patch("core.ai.chat") as chat, patch("core.ai.complete_json") as cj:
+            self._move(self.doc, self.folder.pk)
+            self.doc.refresh_from_db()
+            self.assertEqual(self.doc.folder_id, self.folder.pk)
+            self._move(self.doc, "")
+            self.doc.refresh_from_db()
+            self.assertIsNone(self.doc.folder_id)
+        chat.assert_not_called()
+        cj.assert_not_called()
+
+    def test_cannot_move_to_or_from_other_users_folders(self):
+        from .models import PersonalFolder
+
+        other = User.objects.create_user(username="o", password="pw")
+        theirs = PersonalFolder.objects.create(user=other, name="남의 폴더")
+        self._move(self.doc, theirs.pk)
+        self.doc.refresh_from_db()
+        self.assertIsNone(self.doc.folder_id)
+        foreign_doc = make_doc(other)
+        self.assertEqual(self._move(foreign_doc, self.folder.pk).status_code, 403)
+
+    def test_get_is_not_allowed(self):
+        self.assertEqual(self.client.get(reverse("mypage:document_move", args=[self.doc.pk])).status_code, 405)
+
+    def test_list_offers_move_button(self):
+        html = self.client.get(reverse("mypage:document_list")).content.decode()
+        self.assertIn("data-move-url", html)
