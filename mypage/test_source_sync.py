@@ -117,6 +117,8 @@ class PdfFollowImplementationTests(TestCase):
         self.assertIn("cloneNode(false)", js)
         self.assertIn("'#page=' + page", js)
         self.assertNotIn("contentWindow.location.replace", js)
+        self.assertIn("if (f !== next) f.remove()", js)                  # 갈아 끼운 뒤에는 이전 iframe이 하나도 남지 않는다
+        self.assertIn("pending.remove()", js)                           # 빠르게 넘길 때 아직 뜨는 중인 요청은 버린다
 
 
 @unittest.skipUnless(shutil.which("node"), "node가 없으면 건너뜁니다")
