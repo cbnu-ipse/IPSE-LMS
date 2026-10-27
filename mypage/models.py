@@ -142,13 +142,15 @@ class PersonalDocument(models.Model):
 class GeneratedQuestion(models.Model):
     class QuestionType(models.TextChoices):
         OX = "ox", "OX"
+        MC = "mc", "객관식"
         SHORT = "short", "단답형"
         ESSAY = "essay", "서술형"
 
     document = models.ForeignKey(PersonalDocument, on_delete=models.CASCADE, related_name="questions")
     question_type = models.CharField(max_length=10, choices=QuestionType.choices)
     question_text = models.TextField(blank=True)
-    answer = models.TextField(blank=True, verbose_name="정답/모범답안")
+    answer = models.TextField(blank=True, verbose_name="정답/모범답안 (객관식은 정답 보기의 번호, 0부터)")
+    options = models.JSONField(default=list, blank=True, verbose_name="객관식 보기")
     status = models.CharField(
         max_length=10, choices=ProcessingStatus.choices, default=ProcessingStatus.DONE,
         verbose_name="문제 생성 상태 (백그라운드 처리 추적용)",
@@ -163,6 +165,22 @@ class GeneratedQuestion(models.Model):
 
     def __str__(self):
         return f"[{self.get_question_type_display()}] {self.question_text[:30]}"
+
+    def _option_label(self, value):
+        try:
+            index = int(value)
+            return f"{index + 1}. {self.options[index]}"
+        except (TypeError, ValueError, IndexError):
+            return str(value)
+
+    @property
+    def display_answer(self):
+        """화면에 보일 정답: 객관식은 '2. 보기 내용', 그 밖에는 저장된 정답 그대로."""
+        return self._option_label(self.answer) if self.question_type == self.QuestionType.MC else self.answer
+
+    @property
+    def display_user_answer(self):
+        return self._option_label(self.user_answer) if self.question_type == self.QuestionType.MC else self.user_answer
 
 
 class ExamStyle(models.Model):

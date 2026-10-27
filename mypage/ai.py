@@ -375,7 +375,7 @@ def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None, on_text=N
     return core_ai.complete("summary", messages, user=user, cost=cost)
 
 
-QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "short": "단답형", "essay": "서술형"}
+QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "mc": "객관식(보기 4개)", "short": "단답형", "essay": "서술형"}
 
 
 def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0, rng=None, style=""):
@@ -386,6 +386,8 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         "학생이 올린 학습 자료만 근거로 복습 문제를 1개 만듭니다. 자료에 없는 내용은 묻지 않습니다.\n"
         'JSON으로만 답하세요: {"question": "...", "answer": "...", "explanation": "..."}\n'
         "- OX 문제의 answer는 O 또는 X, explanation은 정답 근거를 한두 문장으로.\n"
+        '- 객관식은 JSON에 "options"(보기 4개의 배열)를 추가하고 answer는 비워 두세요. options의 **첫 번째가 정답**이고 나머지 셋은 길이·형식이 비슷한 그럴듯한 오답입니다 '
+        "(\"모두 맞다\"·\"모두 틀리다\" 같은 보기는 쓰지 마세요). 보기 앞에 번호나 기호를 붙이지 마세요. explanation은 정답 근거를 한두 문장으로.\n"
         "- 단답형은 하나의 답(단어나 짧은 구)만 묻습니다. '~를 여섯 개 쓰시오'처럼 여러 개를 나열하게 하는 문제는 만들지 마세요. "
         "같은 답을 가리키는 다른 표현만 ' | '로 구분해 answer에 씁니다 (예: 'JOIN | 조인'). 서술형은 모범답안.\n"
         "- 문제 문장에 'OX로 답하시오', '단답으로 쓰시오' 같은 답변 방식 안내는 붙이지 마세요 (화면에 입력 방법이 있습니다).\n"
@@ -408,11 +410,32 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
     if target and str(data.get("answer", "")).strip().upper() != target:   # 모델이 정해 준 정답을 따르지 않으면 한 번 더
         messages[1] = {"role": "user", "content": request + f"\n(반드시 answer는 {target}이어야 합니다. 다시 만들어 주세요.)"}
         data = core_ai.complete_json("question", messages, user=user)
-    return {
+    result = {
         "question": clean_question_text(data.get("question", "")),
         "answer": data.get("answer", ""),
-        "explanation": data.get("explanation", "") if question_type == "ox" else "",
+        "explanation": data.get("explanation", "") if question_type in ("ox", "mc") else "",
+        "options": [],
     }
+    if question_type == "mc":
+        result["options"], result["answer"] = _shuffle_options(data.get("options"), rng)
+    return result
+
+
+def _shuffle_options(raw_options, rng=None):
+    """AI가 준 보기(첫 번째가 정답)를 정리해 섞고, (섞은 보기, 정답 위치 문자열)을 돌려준다. 정답이 늘 같은 자리에 오지 않게 코드가 섞는다."""
+    options = []
+    for o in raw_options or []:
+        text = re.sub(r"^\s*(?:[(\[]?\d+[).\]]|[①-⑤]|[A-Da-d][.)])\s*", "", str(o or "")).strip()      # '1. ', '①', 'A)' 같은 번호를 뗀다
+        if text and text not in options:
+            options.append(text)
+    if len(options) < 4:
+        raise ValueError("객관식 보기를 4개 만들지 못했습니다.")
+    options = options[:4]
+    correct = options[0]
+    order = list(range(4))
+    (rng or random).shuffle(order)
+    shuffled = [options[i] for i in order]
+    return shuffled, str(shuffled.index(correct))
 
 
 # 문제 끝에 붙은 답변 방식 지시 ("OX로 답하시오.", "O/X 중에서 고르시오." 등) — 화면에 이미 O/X 버튼이 있다

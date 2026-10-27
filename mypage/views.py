@@ -62,9 +62,19 @@ def _generate_summary_bg(document_id):
         return
     finally:
         _summarizing.discard(document_id)
+    _questions_after_summary(document_id)       # 요약이 끝나면 기본 문제 5개 (수업 자료만)
     with background_slot():          # 분류·개념 태그·강의 초안도 AI를 부르므로 같은 상한을 지킨다 (요약 자리는 먼저 놓는다)
         _classify_and_build(document_id)
     connection.close()
+
+
+def _questions_after_summary(document_id):
+    """요약이 끝난 뒤 기본 문제를 만든다. 실패해도 요약·분류는 그대로 진행되게 한다."""
+    try:
+        with background_slot():
+            _make_default_questions(document_id)
+    except Exception:
+        logger.exception("문서 %s 기본 문제 생성 실패", document_id)
 
 
 def _course_after_upload_bg(document_id):
@@ -87,6 +97,40 @@ def _classify_and_build(document_id):
         logger.exception("문서 %s 주제 분류·강의 초안 처리 실패", document_id)
 
 
+DEFAULT_QUESTION_PLAN = ("ox", "ox", "mc", "short", "essay")     # 수업 자료를 올리면 요약과 함께 자동으로 만드는 기본 문제 (OX 2·객관식 1·단답 1·서술형 1)
+
+
+def _question_style(document):
+    """내 자료로 문제를 만들 때 쓰는 교수님 족보 출제 스타일 지시문 (없으면 빈 문자열)."""
+    from .exam import style_for, style_prompt, topic_professor
+
+    subject = document.subject_code
+    professor = document.professor or topic_professor(subject)
+    return style_prompt(style_for(professor, subject), professor, subject)
+
+
+def _make_default_questions(document_id):
+    """요약이 끝난 수업 자료의 기본 문제 5개를 차례로 만든다 (이미 문제가 있거나 족보 자료면 만들지 않는다).
+    한도가 모자라면 거기서 멈추고, 한 문제가 실패해도 나머지는 계속한다. 같은 자료로 이미 요약된 자료를 불러온 경우(AI 미사용)는 만들지 않는다."""
+    document = PersonalDocument.objects.select_related("user").get(pk=document_id)
+    if (document.document_type != PersonalDocument.DocumentType.LECTURE or not document.extracted_text.strip()
+            or document.questions.exists()):
+        return
+    style = _question_style(document)
+    existing = []
+    for index, question_type in enumerate(DEFAULT_QUESTION_PLAN):
+        try:
+            check_quota(document.user, "question")
+        except AIQuotaExceeded:
+            break
+        question = GeneratedQuestion.objects.create(document=document, question_type=question_type,
+                                                    status=ProcessingStatus.PROCESSING)
+        _make_question(question.pk, document.extracted_text, question_type, list(existing), document.user, index, style)
+        question.refresh_from_db()
+        if question.status == ProcessingStatus.DONE:
+            existing.append(clean_question_text(question.question_text))
+
+
 def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None, index=0, style=""):
     try:
         with background_slot():
@@ -107,7 +151,7 @@ def _make_question(question_id, extracted_text, question_type, existing_texts, u
                 raise ValueError("이미 만든 문제와 같은 문제가 만들어져 건너뜁니다.")
         # OX 해설은 만들 때 같이 받아 feedback에 넣어 둔다 (답을 낸 뒤에만 화면에 보이고, 다시 부르지 않음)
         GeneratedQuestion.objects.filter(pk=question_id).update(
-            question_text=q.get("question", ""), answer=q.get("answer", ""),
+            question_text=q.get("question", ""), answer=q.get("answer", ""), options=q.get("options") or [],
             feedback=q.get("explanation", ""), status=ProcessingStatus.DONE,
         )
     except Exception:
@@ -282,11 +326,15 @@ def upload_estimate(request):
         return JsonResponse({"ok": False, "error": "잠시 후 다시 시도해주세요."}, status=429)
     data = upload.read()
     unit = cost_for("summary")
-    info = {"ok": True}
+    # 수업 자료는 요약과 함께 기본 문제도 만들므로 그만큼의 예상 사용량을 더한다 (족보는 문제를 만들지 않는다)
+    questions = len(DEFAULT_QUESTION_PLAN) if request.POST.get("document_type", "lecture") == "lecture" else 0
+    extra = questions * cost_for("question")
+    info = {"ok": True, "questions": questions}
     if name.endswith((".jpg", ".jpeg", ".png")):
         ocr = ocr_cost(len(data))
-        info.update(kind="image", min_label=usage.percent_label(ocr + unit), max_label=usage.percent_label(ocr + unit * SUMMARY_MAX_CHUNKS))
-        need = ocr + unit
+        info.update(kind="image", min_label=usage.percent_label(ocr + unit + extra),
+                    max_label=usage.percent_label(ocr + unit * SUMMARY_MAX_CHUNKS + extra))
+        need = ocr + unit + extra
     else:
         content_hash = hashlib.sha256(data).hexdigest()
         key = _extract_cache_key(request.user, content_hash)
@@ -303,7 +351,7 @@ def upload_estimate(request):
         if summary_too_long(text):         # 앞부분만 요약되는 일이 없게, 요약하지 않고 쪼개서 올리게 한다
             return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
         chunks = summary_chunk_count(text)
-        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit))
+        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit + extra))
         need = chunks * unit
     current = usage.info(request.user)                              # 한도가 없는 사용자(강의자 등)는 None
     info["used_label"] = current["label"] if current else None
@@ -477,11 +525,7 @@ def generate_question_view(request, pk):
             question_type=question_type,
             status=ProcessingStatus.PROCESSING,
         )
-    from .exam import style_for, style_prompt, topic_professor
-
-    subject = document.subject_code
-    professor = document.professor or topic_professor(subject)
-    style_text = style_prompt(style_for(professor, subject), professor, subject)    # 교수님 족보에서 배운 출제 스타일
+    style_text = _question_style(document)    # 교수님 족보에서 배운 출제 스타일
     threading.Thread(
         target=_generate_question_bg,
         args=(question.pk, document.extracted_text, question_type, existing_texts, request.user, existing_count),
@@ -520,6 +564,12 @@ def submit_answer_view(request, pk, question_id):
         # 해설은 문제를 만들 때 받아 둔 것(question.feedback)을 그대로 쓴다 — AI를 다시 부르지 않음
         is_correct = user_answer.upper() == question.answer.strip().upper()
         feedback = question.feedback
+    elif question.question_type == GeneratedQuestion.QuestionType.MC:
+        # 객관식도 보기 번호만 비교하고 해설은 만들 때 받아 둔 것을 쓴다 (AI를 부르지 않음)
+        if not user_answer.isdigit() or int(user_answer) >= len(question.options):
+            return fail("보기를 골라주세요.")
+        is_correct = user_answer == question.answer.strip()
+        feedback = question.feedback
     else:
         try:
             result = grade_answer(question.question_text, question.answer, user_answer, user=request.user,
@@ -537,7 +587,7 @@ def submit_answer_view(request, pk, question_id):
     question.save(update_fields=["user_answer", "is_correct", "feedback"])
     if wants_json:
         return JsonResponse({"ok": True, "is_correct": is_correct, "feedback": feedback,
-                             "user_answer": user_answer, "answer": question.answer})
+                             "user_answer": question.display_user_answer, "answer": question.display_answer})
     return redirect(redirect_base)
 
 

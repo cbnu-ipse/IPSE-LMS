@@ -263,7 +263,7 @@
             <div class="flex gap-3"><dt class="w-16 shrink-0 text-slate-400">교수</dt><dd class="min-w-0"><span id="uc-professor" class="font-semibold text-slate-800 break-all"></span><div id="uc-professor-note" class="text-[11px] mt-1"></div></dd></div>
         </dl>
         <p id="uc-estimate" class="hidden text-sm font-bold text-sky-700 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 mb-2"></p>
-        <p class="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>요약은 자료 길이에 비례해 이번 주 AI 사용량을 써요. 글자를 읽은 뒤 예상 사용량을 알려 드리고, 이번 주 한도가 모자라면 요약을 시작하지 않아요. 사용량은 매주 월요일 0시에 초기화돼요.</p>
+        <p class="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>요약은 자료 길이에 비례해 이번 주 AI 사용량을 써요. 수업 자료는 요약과 함께 기본 문제 5개(OX 2·객관식 1·단답 1·서술형 1)도 자동으로 만들어요. 글자를 읽은 뒤 예상 사용량을 알려 드리고, 이번 주 한도가 모자라면 요약을 시작하지 않아요. 사용량은 매주 월요일 0시에 초기화돼요.</p>
         <div class="flex gap-3">
             <button type="button" id="uc-cancel" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">돌아가서 수정</button>
             <button type="button" id="uc-ok" class="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition">확인하고 올리기</button>
@@ -296,7 +296,7 @@
     function fail(message) { errEl.textContent = message; errEl.classList.remove('hidden'); }
     function describe(d) {
         if (d.kind === 'image') return { badge: d.min_label + '~' + d.max_label, text: '이미지 글자 읽기 + 요약: 이번 주 한도의 ' + d.min_label + '~' + d.max_label + '% (읽어 봐야 정확해져요)' };
-        return { badge: d.est_label, text: '글자 ' + d.chars.toLocaleString() + '자 → 요약 ' + d.chunks + '조각 · 이번 주 한도의 약 ' + d.est_label + '%' };
+        return { badge: d.est_label, text: '글자 ' + d.chars.toLocaleString() + '자 → 요약 ' + d.chunks + '조각' + (d.questions ? ' + 기본 문제 ' + d.questions + '개' : '') + ' · 이번 주 한도의 약 ' + d.est_label + '%' };
     }
     fileInput.addEventListener('change', async () => {
         errEl.classList.add('hidden');
@@ -310,7 +310,7 @@
         const mine = ++seq;
         submitBtn.disabled = true; costEl.innerHTML = '<span class="ml-1 font-semibold opacity-90">· 계산 중…</span>'; noteEl.textContent = '글자를 읽어 예상 사용량을 계산하고 있어요';
         ucEstimate.classList.add('hidden');
-        const body = new FormData(); body.append('file', file);
+        const body = new FormData(); body.append('file', file); body.append('document_type', form.elements['document_type'].value);
         try {
             const res = await fetch(ESTIMATE_URL, { method: 'POST', body, credentials: 'same-origin', headers: { 'X-CSRFToken': CSRF } });
             const d = await res.json().catch(() => ({}));
