@@ -111,6 +111,7 @@ class BuildNoteTests(TestCase):
         self.assertTrue(note.file.name.endswith(".png"))
         self.assertEqual(note.title, "운영체제 5분 노트")
         self.assertIn("프로세스 vs 스레드", note.summary)
+        self.assertEqual(ai.call_args.kwargs["cost"], cram.note_cost(2))
         request = ai.call_args[0][1][1]["content"]
         self.assertIn("요약 A", request)
         self.assertIn("요약 B", request)
@@ -135,6 +136,7 @@ class BuildNoteTests(TestCase):
         self.assertEqual(note.summary_status, ProcessingStatus.FAILED)
         refund.assert_called_once()
 
+    @override_settings(AI_CREDIT_COSTS={"cram_note": 1})
     def test_render_failure_refunds_once(self):
         doc = make_doc(self.user)
         note = self._placeholder()
@@ -146,7 +148,7 @@ class BuildNoteTests(TestCase):
         refund.assert_called_once()
 
 
-@override_settings(AI_CREDIT_COSTS={"cram_note": 4})
+@override_settings(AI_CREDIT_COSTS={"cram_note": 2})
 class CreateViewTests(TestCase):
     def setUp(self):
         _FakeThread.started = []
@@ -197,6 +199,15 @@ class CreateViewTests(TestCase):
         with patch("core.ai._is_exempt", return_value=False):
             self._post([doc.pk])
         self.assertFalse(PersonalDocument.objects.filter(document_type=NOTE).exists())
+
+    def test_cost_is_per_selected_document(self):
+        a, b, c = (make_doc(self.user, n) for n in "abc")
+        credits.grant(self.user, 5, "admin_grant", "t")
+        with patch("core.ai._is_exempt", return_value=False):
+            self._post([a.pk, b.pk, c.pk])                      # 3개 x 2 = 6 > 5
+            self.assertFalse(PersonalDocument.objects.filter(document_type=NOTE).exists())
+            self._post([a.pk, b.pk])                            # 2개 x 2 = 4 <= 5
+        self.assertTrue(PersonalDocument.objects.filter(document_type=NOTE).exists())
 
     def test_login_required(self):
         self.client.logout()

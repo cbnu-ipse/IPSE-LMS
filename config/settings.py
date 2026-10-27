@@ -321,7 +321,7 @@ AI_CREDIT_COSTS = {
     "grading": config("AI_COST_GRADING", default=1, cast=int),
     "ocr": config("AI_COST_OCR_PER_MB", default=1, cast=int),      # 이미지 글자 읽기: 파일 크기 1MB(올림)당
     "mock_exam": config("AI_COST_MOCK_EXAM", default=5, cast=int),  # 모의 출제 1회
-    "cram_note": config("AI_COST_CRAM_NOTE", default=4, cast=int),  # 시험 5분 전 속성 노트 1장
+    "cram_note": config("AI_COST_CRAM_NOTE", default=1, cast=int),  # 시험 5분 전 속성 노트: 고른 자료 1개당
 }
 if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
     AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}

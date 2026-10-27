@@ -101,7 +101,7 @@
             {% if documents %}
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>시험 5분 전 속성 노트</b>를 손글씨 이미지로 만들 수 있어요.</p>
-                <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.cram_note %}</button>
+                <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기{% if ai_cost.cram_note %}<span class="ml-1 font-semibold opacity-80"><i class="fa-solid fa-coins" style="font-size:.85em"></i> 자료당 {{ ai_cost.cram_note }}</span>{% endif %}</button>
             </div>
             {% endif %}
             <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" id="doc-grid">
@@ -170,13 +170,13 @@
 </section>
 
 <div id="cram-bar" style="bottom:16px;left:16px;right:16px" class="hidden fixed z-40 mx-auto max-w-xl items-center justify-between gap-3 bg-white border border-amber-200 shadow-xl rounded-2xl px-4 py-3">
-    <p class="text-sm text-slate-700"><b id="cram-count">0</b>개 선택 <span class="text-xs text-slate-400">· 최대 {{ cram_max }}개</span></p>
+    <p class="text-sm text-slate-700"><b id="cram-count">0</b>개 선택 <span class="text-xs text-slate-400">· 최대 {{ cram_max }}개</span>{% if ai_cost.cram_note %}<span class="text-xs font-semibold text-amber-600 ml-1"><i class="fa-solid fa-coins" style="font-size:.85em"></i> <span id="cram-total">0</span>크레딧</span>{% endif %}</p>
     <form method="post" action="{% url 'mypage:cram_note_create' %}" id="cram-form" class="flex items-center gap-2">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
         {% if current_folder %}<input type="hidden" name="folder" value="{{ current_folder.pk }}">{% endif %}
         <button type="button" id="cram-cancel" class="text-xs font-bold text-slate-500 px-3 py-2">취소</button>
-        <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">노트 만들기{% include 'includes/credit_cost.html' with cost=ai_cost.cram_note %}</button>
+        <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">노트 만들기</button>
     </form>
 </div>
 <script>
@@ -185,13 +185,14 @@
     const toggle = document.getElementById('cram-toggle'), bar = document.getElementById('cram-bar');
     if (!toggle || !bar) return;
     const form = document.getElementById('cram-form'), count = document.getElementById('cram-count'), submit = document.getElementById('cram-submit');
-    const MAX = {{ cram_max }};
+    const MAX = {{ cram_max }}, UNIT = {{ ai_cost.cram_note|default:0 }}, total = document.getElementById('cram-total');
     const cards = Array.from(document.querySelectorAll('[data-cram-id]'));
     let on = false;
     const picked = () => cards.filter((c) => c.classList.contains('ring-2'));
     function refresh() {
         const n = picked().length;
         count.textContent = n;
+        if (total) total.textContent = n * UNIT;
         submit.disabled = n === 0 || n > MAX;
     }
     function setMode(next) {

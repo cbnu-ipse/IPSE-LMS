@@ -3,7 +3,7 @@
 손글씨 그림(A4 PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
 
 - 읽는 내용은 자료의 요약(없으면 본문 앞부분). 자료마다 같은 몫을 나눠 읽고, 전체는 SOURCE_CHARS 안으로 줄인다.
-- 크레딧은 노트 한 장에 AI_COST_CRAM_NOTE. AI를 부르다 실패하면 core.ai가, 노트가 비었거나 그림이 실패하면 여기서 돌려준다.
+- 크레딧은 고른 자료 1개당 AI_COST_CRAM_NOTE (note_cost). AI를 부르다 실패하면 core.ai가, 노트가 비었거나 그림이 실패하면 여기서 돌려준다.
 - 노트 문서는 강의·모의 출제의 재료가 아니다 (eligible_docs는 수업 자료만, exam_docs는 족보만 읽는다).
 """
 import logging
@@ -81,16 +81,21 @@ def note_title(documents):
     return f"{base} 속성 노트"[:200]
 
 
+def note_cost(count):
+    """노트 비용: 고른 자료 수 × 자료당 크레딧."""
+    return core_ai.cost_for("cram_note") * count
+
+
 def generate_note(user, documents):
     """자료로 노트 dict를 만든다 (크레딧을 받고, 쓸 만한 내용이 모자라면 돌려주고 ValueError)."""
     data = core_ai.complete_json("cram_note", [
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": build_request(documents)},
-    ], user=user)
+    ], user=user, cost=note_cost(len(documents)))
     note = normalize_note(data, fallback_title=note_title(documents).removesuffix(" 속성 노트") + " 5분 전 노트")
     points = sum(len(s["points"]) for s in note["sections"])
     if not note["sections"] or points < MIN_POINTS:
-        core_ai.refund(user, "cram_note", core_ai.cost_for("cram_note"))
+        core_ai.refund(user, "cram_note", note_cost(len(documents)))
         raise ValueError("AI가 쓸 만한 노트를 만들지 못했습니다.")
     return note
 
@@ -113,12 +118,12 @@ def build_note_document(note_id, source_ids):
     doc = PersonalDocument.objects.select_related("user").get(pk=note_id)
     sources = list(PersonalDocument.objects.filter(pk__in=source_ids, user=doc.user, is_deleted=False).order_by("id"))
     sources = [d for d in sources if usable(d)]
-    charged = False
+    charged = 0
     try:
         if not sources:
             raise ValueError("노트로 만들 자료가 없습니다.")
         note = generate_note(doc.user, sources)
-        charged = True
+        charged = note_cost(len(sources))
         pngs = handnote.render_notes(note)          # A4 한 장씩. 한 장에 안 들어가면 내용을 버리지 않고 다음 장에 이어 쓴다
         total = len(pngs)
         label = (lambda n: f" ({n}/{total})" if total > 1 else "")
@@ -137,5 +142,5 @@ def build_note_document(note_id, source_ids):
     except Exception:
         logger.exception("속성 노트 %s 생성 실패", note_id)
         if charged:    # AI 호출은 성공했지만 그림을 그리지 못한 경우
-            core_ai.refund(doc.user, "cram_note", core_ai.cost_for("cram_note"))
+            core_ai.refund(doc.user, "cram_note", charged)
         PersonalDocument.objects.filter(pk=note_id).update(summary_status=ProcessingStatus.FAILED)

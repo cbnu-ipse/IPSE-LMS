@@ -651,7 +651,7 @@ def _cram_note_bg(note_id, source_ids):
 @require_POST
 def cram_note_create(request):
     """고른 자료로 시험 5분 전 속성 노트를 만든다. 개인 탭에 '생성 중' 노트가 바로 생기고, 그림은 백그라운드에서 그린다."""
-    from .cram import note_title, usable
+    from .cram import note_cost, note_title, usable
 
     back = redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
     try:
@@ -672,7 +672,7 @@ def cram_note_create(request):
                                 f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
         return back
     try:
-        check_quota(request.user, "cram_note")
+        require_credits(request.user, note_cost(len(sources)))      # 고른 자료 수만큼
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back
