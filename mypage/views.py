@@ -352,6 +352,27 @@ def document_rename(request, pk):
 
 
 @login_required
+@require_POST
+def document_move(request, pk):
+    """자료를 다른 폴더(또는 맨 위)로 옮긴다. 위치만 바꾸므로 AI를 부르지 않는다."""
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 옮길 수 있습니다.")
+    raw = request.POST.get("folder", "")
+    folder = None
+    if raw:
+        folder = PersonalFolder.objects.filter(pk=raw if raw.isdigit() else 0, user=request.user).first()
+        if folder is None:
+            messages.error(request, "옮길 폴더를 찾지 못했습니다.")
+            return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+    if document.folder_id != (folder.pk if folder else None):
+        document.folder = folder
+        document.save(update_fields=["folder"])
+    messages.success(request, f"「{document.title}」을(를) {folder.name if folder else '맨 위(폴더 밖)'}(으)로 옮겼습니다.")
+    return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
+
+
+@login_required
 def document_preview(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
@@ -630,7 +651,7 @@ def _cram_note_bg(note_id, source_ids):
 @require_POST
 def cram_note_create(request):
     """고른 자료로 시험 5분 전 속성 노트를 만든다. 개인 탭에 '생성 중' 노트가 바로 생기고, 그림은 백그라운드에서 그린다."""
-    from .cram import note_title, usable
+    from .cram import note_cost, note_title, usable
 
     back = redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
     try:
@@ -651,7 +672,7 @@ def cram_note_create(request):
                                 f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
         return back
     try:
-        check_quota(request.user, "cram_note")
+        require_credits(request.user, note_cost(len(sources)))      # 고른 자료 수만큼
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back

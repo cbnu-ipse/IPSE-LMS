@@ -22,7 +22,8 @@ from PIL import Image, ImageDraw, ImageFont
 FONT_PATH = os.path.join(str(settings.BASE_DIR), "static", "fonts", "NanumPenScript-Regular.ttf")
 
 WIDTH = 1240
-MIN_HEIGHT = 1754                 # A4 세로 (150dpi)
+HEIGHT = 1754                     # A4 세로 (150dpi): 1240 x 1754. 내용이 많으면 글씨를 줄여 이 한 장에 모두 넣는다
+MIN_SCALE = 0.6                    # 이보다 작아지기 전에 다음 장으로 이어 쓴다
 MARGIN_LEFT = 170                 # 빨간 여백선 오른쪽에서 글이 시작한다
 MARGIN_RIGHT = 90
 LINE_H = 70                       # 공책 한 줄
@@ -184,10 +185,23 @@ def parse_segments(markup):
 class _Layout:
     """그릴 것들을 먼저 배치(높이 계산)한 뒤 한 번에 그린다."""
 
-    def __init__(self, rng):
+    def __init__(self, rng, k=1.0):
         self.rng = rng
-        self.ops = []
-        self.y = TOP
+        self.k = k                        # 글씨·줄 간격 배율 (1이 기본, 작을수록 촘촘)
+        self.lh = int(LINE_H * k)
+        self.pages = [[]]                 # 장마다 그릴 것들. 넘치면 다음 장으로 이어 쓴다
+        self.y = int(TOP * k)
+        self.bottom = HEIGHT - int(90 * k)
+
+    @property
+    def ops(self):
+        return self.pages[-1]
+
+    def need(self, height):
+        """height만큼 더 쓸 자리가 이 장에 없으면 다음 장으로 넘어간다 (장 맨 위에서는 넘기지 않는다)."""
+        if self.y + height > self.bottom and self.y > int(TOP * self.k) + self.lh:
+            self.pages.append([])
+            self.y = int(TOP * self.k) + self.lh
 
     def words(self, segs):
         """세그먼트를 단어(공백 기준) 단위로 쪼갠다: [(글, 스타일, 공백 앞붙임 여부)]."""
@@ -224,16 +238,17 @@ class _Layout:
     def text_block(self, markup, size, x0, color=INK, indent=0, rows_per_line=1, bullet=None):
         x1 = WIDTH - MARGIN_RIGHT
         lines = self.wrap(parse_segments(markup), size, x0 + indent, x1)
+        self.need(len(lines) * self.lh * rows_per_line)
         for n, line in enumerate(lines):
             if n == 0 and bullet:
                 self.ops.append(("bullet", x0, self.y, size, bullet))
             for text, style, x in line:
                 self.ops.append(("word", x, self.y, size, text, style, color))
-            self.y += LINE_H * rows_per_line
+            self.y += self.lh * rows_per_line
         return len(lines)
 
     def gap(self, rows=0.5):
-        self.y += int(LINE_H * rows)
+        self.y += int(self.lh * rows)
 
 
 def _rng_for(note):
@@ -288,35 +303,68 @@ def _draw_word(canvas, rng, x, y, size, text, style, color):
     canvas.alpha_composite(layer, (int(x - pad - 4), int(y + dy - pad + (size - fsize) * 0.1)))
 
 
-def render_note(note, today=None):
-    """노트 dict → PNG 바이트."""
-    rng = _rng_for(note)
-    lay = _Layout(rng)
+def _layout(note, rng, k, today):
+    """배율 k로 노트를 배치한다 (그리기 전에 높이만 알아내는 용도로도 쓴다)."""
+    lay = _Layout(rng, k)
+
+    def sz(v):
+        return max(int(v * k), 12)
+
     title_markup = to_markup(note.get("title") or "시험 5분 전 노트")
-    lay.ops.append(("title", MARGIN_LEFT, lay.y, TITLE_SIZE, title_markup))
-    lay.y += int(LINE_H * 2.1)
-    lay.ops.append(("date", WIDTH - MARGIN_RIGHT, TOP - 60, SMALL_SIZE, (today or date.today()).strftime("%Y.%m.%d")))
+    lay.ops.append(("title", MARGIN_LEFT, lay.y, sz(TITLE_SIZE), title_markup))
+    lay.y += int(lay.lh * 2.1)
+    lay.ops.append(("date", WIDTH - MARGIN_RIGHT, int(TOP * k) - int(60 * k), sz(SMALL_SIZE),
+                    (today or date.today()).strftime("%Y.%m.%d")))
 
     for si, section in enumerate(note.get("sections", []), 1):
-        lay.gap(0.35)
-        lay.ops.append(("heading", MARGIN_LEFT - 8, lay.y, HEAD_SIZE, to_markup(section.get("heading", "")), si))
-        lay.y += int(LINE_H * 1.35)
+        lay.gap(0.3)
+        lay.need(int(lay.lh * 3.3))      # 제목만 장 끝에 홀로 남지 않게 첫 줄과 함께 넘긴다
+        lay.ops.append(("heading", MARGIN_LEFT - 8, lay.y, sz(HEAD_SIZE), to_markup(section.get("heading", "")), si))
+        lay.y += int(lay.lh * 1.3)
         for point in section.get("points", []):
-            lay.text_block(to_markup(point), BODY_SIZE, MARGIN_LEFT + 20, indent=44, bullet="dash")
-        lay.gap(0.25)
+            lay.text_block(to_markup(point), sz(BODY_SIZE), MARGIN_LEFT + int(20 * k), indent=int(44 * k) + 6, bullet="dash")
+        lay.gap(0.15)
 
     memo = note.get("memo") or []
     if memo:
-        lay.gap(0.6)
-        top = lay.y
-        lay.ops.append(("memo_title", MARGIN_LEFT + 10, lay.y + 8, HEAD_SIZE - 6, "마지막 체크!"))
-        lay.y += int(LINE_H * 1.45)
-        for item in memo:
-            lay.text_block(to_markup(item), BODY_SIZE, MARGIN_LEFT + 36, indent=56, bullet="check", color=INK)
-        lay.ops.append(("box", MARGIN_LEFT - 8, top - 6, WIDTH - MARGIN_RIGHT + 10, lay.y + 6))
         lay.gap(0.4)
+        lay.need(int(lay.lh * (1.4 + 1.3 * len(memo))))      # 상자가 장 사이에서 갈라지지 않게
+        top = lay.y
+        lay.ops.append(("memo_title", MARGIN_LEFT + 10, lay.y + int(8 * k), sz(HEAD_SIZE - 6), "마지막 체크!"))
+        lay.y += int(lay.lh * 1.4)
+        for item in memo:
+            lay.text_block(to_markup(item), sz(BODY_SIZE), MARGIN_LEFT + int(36 * k), indent=int(56 * k) + 6, bullet="check", color=INK)
+        lay.ops.append(("box", MARGIN_LEFT - 8, top - 6, WIDTH - MARGIN_RIGHT + 10, lay.y + 6))
+    return lay
 
-    height = max(MIN_HEIGHT, lay.y + 160)
+
+def render_notes(note, today=None):
+    """노트 dict → A4(1240x1754) PNG 바이트 목록. 한 장에 들어가도록 글씨를 (MIN_SCALE까지) 줄이고,
+    그래도 넘치면 내용을 버리지 않고 다음 장에 이어 쓴다."""
+    rng = _rng_for(note)
+    low = _layout(note, rng, MIN_SCALE, today)
+    pages = len(low.pages)
+    k = MIN_SCALE
+    for cand in range(100, int(MIN_SCALE * 100) - 1, -3):          # 같은 장 수로 끝나는 가장 큰 글씨를 쓴다
+        trial = _layout(note, rng, cand / 100, today)
+        if len(trial.pages) <= pages:
+            k, low = cand / 100, trial
+            break
+    lay = low
+    total = len(lay.pages)
+    title = to_markup(note.get("title") or "시험 5분 전 노트")
+    for n, ops in enumerate(lay.pages):
+        if total > 1:
+            if n:
+                ops.append(("word", MARGIN_LEFT, int(TOP * k) - int(30 * k), max(int(SMALL_SIZE * k), 14),
+                            f"{safe_text(note.get('title') or '')} (이어서)", frozenset(), GRAY))
+            ops.append(("word", WIDTH - MARGIN_RIGHT - 60, HEIGHT - int(70 * k), max(int(SMALL_SIZE * k), 14),
+                        f"{n + 1} / {total}", frozenset(), GRAY))
+    return [_paint(lay, ops, rng, k) for ops in lay.pages]
+
+
+def _paint(lay, ops, rng, k):
+    height = HEIGHT
     canvas = Image.new("RGBA", (WIDTH, height), PAPER + (255,))
     d = ImageDraw.Draw(canvas)
     # 종이 결(아주 옅은 얼룩) + 공책 줄 + 여백선
@@ -324,16 +372,16 @@ def render_note(note, today=None):
         x, y = rng.randrange(WIDTH), rng.randrange(height)
         shade = rng.randint(-5, 3)
         d.point((x, y), fill=(PAPER[0] + shade, PAPER[1] + shade, PAPER[2] + shade, 255))
-    y = TOP + LINE_H - 18
-    while y < height - 60:
+    y = int(TOP * k) + lay.lh - int(18 * k)
+    while y < height - 40:
         d.line([(60, y), (WIDTH - 60, y)], fill=RULE + (255,), width=2)
-        y += LINE_H
+        y += lay.lh
     d.line([(MARGIN_LEFT - 34, 0), (MARGIN_LEFT - 34, height)], fill=MARGIN_LINE + (255,), width=3)
     for hole in range(3):                                                   # 공책 구멍
         cy = int(height * (0.2 + 0.3 * hole))
         d.ellipse([34, cy - 20, 74, cy + 20], fill=(232, 228, 216, 255), outline=(206, 200, 186, 255), width=2)
 
-    for op in lay.ops:
+    for op in ops:
         kind = op[0]
         if kind == "title":
             _, x, y, size, markup = op
@@ -351,9 +399,10 @@ def render_note(note, today=None):
             segs = parse_segments(markup)
             width = sum(font(size).getlength(t) for t, _ in segs) + 100
             band_w = min(width, WIDTH - MARGIN_RIGHT - x)
-            d.rounded_rectangle([x + 54, y + 22, x + 54 + band_w - 40, y + size * 1.02], radius=10, fill=MARK + (170,))
-            _star(d, x + 28, y + size * 0.62, 20, RED + (255,))
-            cx = x + 64
+            u = size / HEAD_SIZE
+            d.rounded_rectangle([x + 54 * u, y + 22 * u, x + 54 * u + band_w - 40 * u, y + size * 1.02], radius=10, fill=MARK + (170,))
+            _star(d, x + 28 * u, y + size * 0.62, 20 * u, RED + (255,))
+            cx = x + 64 * u
             for text, style, wx in lay.wrap(segs, size, cx, WIDTH - MARGIN_RIGHT)[0]:
                 _draw_word(canvas, rng, wx, y, size, text, style, INK)
         elif kind == "word":
@@ -363,9 +412,11 @@ def render_note(note, today=None):
             _, x, y, size, shape = op
             cy = y + size * 0.62
             if shape == "check":
-                d.line([(x + 2, cy), (x + 13, cy + 12), (x + 32, cy - 14)], fill=RED + (255,), width=5, joint="curve")
+                u = size / BODY_SIZE
+                d.line([(x + 2 * u, cy), (x + 13 * u, cy + 12 * u), (x + 32 * u, cy - 14 * u)], fill=RED + (255,), width=max(int(5 * u), 2), joint="curve")
             else:
-                _wobble_line(d, x + 4, cy, x + 30, INK + (255,), rng, width=5, amp=2)
+                u = size / BODY_SIZE
+                _wobble_line(d, x + 4 * u, cy, x + 30 * u, INK + (255,), rng, width=max(int(5 * u), 2), amp=2 * u)
         elif kind == "memo_title":
             _, x, y, size, text = op
             _draw_word(canvas, rng, x, y, size, text, frozenset({"b"}), RED)
