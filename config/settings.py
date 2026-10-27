@@ -315,13 +315,13 @@ AI_MODELS = {t: _env_or_default(f"AI_MODEL_{t.upper()}", d[1]) for t, d in _AI_T
 # AI를 한 번 쓸 때 드는 크레딧(User.credits, accounts/credits.py). 강의자만 크레딧 없이 쓴다.
 # 요약은 조각(AI_LIMIT_SUMMARY_CHUNK_CHARS 글자)마다 받는다. 0이면 무료. 환경변수 AI_COST_<작업>으로 바꾼다
 AI_CREDIT_COSTS = {
-    "chat": config("AI_COST_CHAT", default=1, cast=int),
+    "chat": config("AI_COST_CHAT", default=2, cast=int),
     "summary": config("AI_COST_SUMMARY", default=1, cast=int),
-    "question": config("AI_COST_QUESTION", default=2, cast=int),
-    "grading": config("AI_COST_GRADING", default=1, cast=int),
+    "question": config("AI_COST_QUESTION", default=7, cast=int),
+    "grading": config("AI_COST_GRADING", default=3, cast=int),
     "ocr": config("AI_COST_OCR_PER_MB", default=1, cast=int),      # 이미지 글자 읽기: 파일 크기 1MB(올림)당
-    "mock_exam": config("AI_COST_MOCK_EXAM", default=5, cast=int),  # 모의 출제 1회
-    "cram_note": config("AI_COST_CRAM_NOTE", default=1, cast=int),  # 시험 5분 전 속성 노트: 고른 자료 1개당
+    "mock_exam": config("AI_COST_MOCK_EXAM", default=25, cast=int),  # 모의 출제 1회 (고른 수업 자료 요약 + 문항 10개)
+    "cram_note": config("AI_COST_CRAM_NOTE", default=3, cast=int),  # 시험 5분 전 속성 노트 1장(고른 자료 수와 무관)
 }
 if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
     AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}

@@ -710,26 +710,37 @@ def cram_note_create(request):
 
 @login_required
 @require_POST
-def mock_exam_create(request, slug):
-    """강의의 수업 자료 + 교수님 출제 스타일로 모의 출제를 만든다 (크레딧을 받고, 만들지 못하면 돌려준다)."""
-    from course.models import Course
+def mock_exam_create(request):
+    """고른 수업 자료들로 모의 출제를 만든다 (교수님 족보 스타일 적용, 크레딧을 받고 만들지 못하면 돌려준다)."""
+    from .cram import MAX_SOURCES
+    from .exam import generate_mock_exam, usable_for_mock
 
-    from .exam import generate_mock_exam
-
-    course = get_object_or_404(Course, slug=slug)
+    back = redirect("mypage:document_list")
+    try:
+        ids = [int(v) for v in request.POST.getlist("ids")]
+    except ValueError:
+        ids = []
+    documents = [d for d in PersonalDocument.objects.filter(pk__in=ids, user=request.user, is_deleted=False).order_by("id")
+                 if usable_for_mock(d)]
+    if not documents:
+        messages.error(request, "모의 출제에 쓸 수업 자료를 하나 이상 골라주세요. (요약이 끝난 수업 자료만 고를 수 있습니다.)")
+        return back
+    if len(documents) > MAX_SOURCES:
+        messages.error(request, f"한 번에 최대 {MAX_SOURCES}개 자료까지 고를 수 있습니다.")
+        return back
     try:
         check_quota(request.user, "mock_exam")
-        exam = generate_mock_exam(request.user, course)
+        exam = generate_mock_exam(request.user, documents)
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
-        return redirect("course_detail", slug=slug)
+        return back
     except ValueError as exc:
         messages.error(request, str(exc))
-        return redirect("course_detail", slug=slug)
+        return back
     except Exception:
-        logger.exception("모의 출제 생성 실패: %s", slug)
+        logger.exception("모의 출제 생성 실패")
         messages.error(request, "모의 출제를 만들지 못했습니다. 잠시 후 다시 시도해주세요.")
-        return redirect("course_detail", slug=slug)
+        return back
     return redirect(exam.get_absolute_url())
 
 

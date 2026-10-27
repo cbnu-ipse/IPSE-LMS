@@ -242,7 +242,7 @@ class MockExamUsesAnalysisTests(TestCase):
             ExamQuestion.objects.create(document=ex, number=i, text=f"페이징 문제 {i}", qtype="mc").concepts.add(paging)
         answer = {"title": "t", "questions": [{"type": "mc", "q": f"q{i}", "options": ["a", "b"], "answer": 0} for i in range(10)]}
         with patch("core.ai.complete_json", return_value=answer) as ai:
-            mock = exam.generate_mock_exam(user, course)
+            mock = exam.generate_mock_exam(user, [lecture])
         prompt = ai.call_args.args[1][1]["content"]
         self.assertIn("객관식 10개", prompt)                       # 족보가 전부 객관식이라 문항 구성도 그렇다
         self.assertIn("페이징(4회)", prompt)
@@ -422,7 +422,7 @@ class CoursePageAndBackfillTests(TestCase):
         self.user = User.objects.create_user(username="r", password="pw")
         self.os = Subject.objects.get_or_create(name="운영체제")[0]
 
-    def test_course_page_shows_frequent_concepts(self):
+    def test_course_page_does_not_show_exam_style_or_frequent_concepts(self):
         category = CourseCategory.objects.create(title="AI")
         course = Course.objects.create(code="운영체제", title="운영체제", category=category, instructor=self.user)
         paper = make_doc(self.user, self.os, "족보", EXAM, "김")
@@ -432,8 +432,8 @@ class CoursePageAndBackfillTests(TestCase):
             ExamQuestion.objects.create(document=paper, number=i, text="q", qtype="mc").concepts.add(paging)
         self.client.force_login(self.user)
         page = self.client.get(f"/course/{course.slug}/")
-        self.assertContains(page, "족보에서 자주 나온 개념")
-        self.assertContains(page, "페이징 3")
+        self.assertNotContains(page, "족보에서 자주 나온 개념")
+        self.assertNotContains(page, "모의 출제")
 
     def test_backfill_tags_untagged_documents_and_skips_tagged(self):
         legacy = PersonalDocument.objects.create(user=self.user, title="옛 자료", extracted_text="x", summary=SUMMARY,

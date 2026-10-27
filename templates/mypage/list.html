@@ -100,8 +100,11 @@
 
             {% if documents %}
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>시험 5분 전 속성 노트</b>를 손글씨 이미지로 만들 수 있어요.</p>
-                <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기{% if ai_cost.cram_note %}<span class="ml-1 font-semibold opacity-80"><i class="fa-solid fa-coins" style="font-size:.85em"></i> 자료당 {{ ai_cost.cram_note }}</span>{% endif %}</button>
+                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>시험 5분 전 속성 노트</b>(손글씨 이미지)나 <b>모의 출제</b>를 만들 수 있어요.</p>
+                <div id="select-toolbar" class="flex flex-wrap gap-2">
+                    <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기{% if ai_cost.cram_note %}<span class="ml-1 font-semibold opacity-80"><i class="fa-solid fa-coins" style="font-size:.85em"></i> {{ ai_cost.cram_note }}</span>{% endif %}</button>
+                    <button type="button" id="mock-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition">모의 출제{% if ai_cost.mock_exam %}<span class="ml-1 font-semibold opacity-80"><i class="fa-solid fa-coins" style="font-size:.85em"></i> {{ ai_cost.mock_exam }}</span>{% endif %}</button>
+                </div>
             </div>
             {% endif %}
             <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" id="doc-grid">
@@ -122,7 +125,7 @@
                     {% endfor %}
                 {% endif %}
                 {% for document in documents %}
-                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}"{% endif %}{% if document.document_type == 'note' and document.summary_status == 'processing' %} data-note-processing="1"{% endif %}>
+                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}" data-doc-type="{{ document.document_type }}"{% endif %}{% if document.document_type == 'note' and document.summary_status == 'processing' %} data-note-processing="1"{% endif %}>
                     <a href="{% url 'mypage:document_preview' document.pk %}" class="flex flex-col items-center text-center gap-2">
                         {% if document.document_type == 'note' %}
                             {% if document.file and document.summary_status == 'done' %}
@@ -170,60 +173,82 @@
 </section>
 
 <div id="cram-bar" style="bottom:16px;left:16px;right:16px" class="hidden fixed z-40 mx-auto max-w-xl items-center justify-between gap-3 bg-white border border-amber-200 shadow-xl rounded-2xl px-4 py-3">
-    <p class="text-sm text-slate-700"><b id="cram-count">0</b>개 선택 <span class="text-xs text-slate-400">· 최대 {{ cram_max }}개</span>{% if ai_cost.cram_note %}<span class="text-xs font-semibold text-amber-600 ml-1"><i class="fa-solid fa-coins" style="font-size:.85em"></i> <span id="cram-total">0</span>크레딧</span>{% endif %}</p>
+    <p class="text-sm text-slate-700"><span id="cram-mode" class="font-bold text-amber-600"></span> · <b id="cram-count">0</b>개 선택 <span class="text-xs text-slate-400">· 최대 {{ cram_max }}개</span><span id="cram-cost" class="text-xs font-semibold text-amber-600 ml-1"><i class="fa-solid fa-coins" style="font-size:.85em"></i> <span id="cram-total">0</span>크레딧</span></p>
     <form method="post" action="{% url 'mypage:cram_note_create' %}" id="cram-form" class="flex items-center gap-2">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
         {% if current_folder %}<input type="hidden" name="folder" value="{{ current_folder.pk }}">{% endif %}
         <button type="button" id="cram-cancel" class="text-xs font-bold text-slate-500 px-3 py-2">취소</button>
-        <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">노트 만들기</button>
+        <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">만들기</button>
     </form>
 </div>
+<div id="mock-loading" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60" role="status" aria-live="polite">
+    <div class="bg-white rounded-2xl px-8 py-7 text-center shadow-2xl">
+        <i class="fa-solid fa-file-pen fa-beat text-3xl text-sky-500 mb-3"></i>
+        <p class="text-sm font-bold text-slate-800">모의고사를 만들고 있어요…</p>
+        <p class="text-xs text-slate-500 mt-1">교수님 출제 스타일을 반영해 보통 20~40초 걸려요. 창을 닫지 말아 주세요.</p>
+    </div>
+</div>
 <script>
-// 속성 노트: 자료를 고르는 모드. 선택한 자료의 id를 숨은 입력으로 보낸다.
+// 자료를 고르는 모드(속성 노트 / 모의 출제). 선택한 자료의 id를 숨은 입력으로 보낸다. 비용은 고른 자료 수와 무관한 정액이다.
 (function () {
-    const toggle = document.getElementById('cram-toggle'), bar = document.getElementById('cram-bar');
-    if (!toggle || !bar) return;
+    const noteBtn = document.getElementById('cram-toggle'), mockBtn = document.getElementById('mock-toggle'), bar = document.getElementById('cram-bar');
+    if (!noteBtn || !bar) return;
     const form = document.getElementById('cram-form'), count = document.getElementById('cram-count'), submit = document.getElementById('cram-submit');
-    const MAX = {{ cram_max }}, UNIT = {{ ai_cost.cram_note|default:0 }}, total = document.getElementById('cram-total');
+    const total = document.getElementById('cram-total'), costEl = document.getElementById('cram-cost'), modeEl = document.getElementById('cram-mode');
+    const MAX = {{ cram_max }};
+    const MODES = {
+        note: { label: '속성 노트', cost: {{ ai_cost.cram_note|default:0 }}, action: "{% url 'mypage:cram_note_create' %}", submit: '노트 만들기', only: null, empty: '요약이 끝난 자료가 있어야 노트를 만들 수 있어요.' },
+        mock: { label: '모의 출제', cost: {{ ai_cost.mock_exam|default:0 }}, action: "{% url 'mypage:mock_exam_create' %}", submit: '모의고사 만들기', only: 'lecture', empty: '요약이 끝난 수업 자료가 있어야 모의 출제를 할 수 있어요.' },
+    };
     const cards = Array.from(document.querySelectorAll('[data-cram-id]'));
-    let on = false;
+    let mode = null;
     const picked = () => cards.filter((c) => c.classList.contains('ring-2'));
+    const allowed = (c) => !mode || !MODES[mode].only || c.dataset.docType === MODES[mode].only;
     function refresh() {
         const n = picked().length;
         count.textContent = n;
-        if (total) total.textContent = n * UNIT;
+        costEl.classList.toggle('hidden', !MODES[mode || 'note'].cost);
+        total.textContent = n > 0 ? MODES[mode || 'note'].cost : 0;
         submit.disabled = n === 0 || n > MAX;
     }
     function setMode(next) {
-        on = next;
+        mode = next;
+        const on = !!mode;
         bar.classList.toggle('hidden', !on); bar.classList.toggle('flex', on);
-        toggle.classList.toggle('hidden', on);
+        document.getElementById('select-toolbar').classList.toggle('hidden', on);
+        if (on) { modeEl.textContent = MODES[mode].label; form.action = MODES[mode].action; submit.textContent = MODES[mode].submit; }
         cards.forEach((c) => {
-            c.classList.remove('ring-2', 'ring-amber-400');
-            c.classList.toggle('cursor-pointer', on);
+            c.classList.remove('ring-2'); c.style.boxShadow = '';     // 고른 카드는 ring-2 표시 + 호박색 테두리(전용 색 클래스는 CSS에 없어 직접 지정)
+            const ok = on && allowed(c);
+            c.classList.toggle('cursor-pointer', ok);
+            c.classList.toggle('opacity-40', on && !ok);               // 이 모드에서 고를 수 없는 자료(예: 모의 출제의 족보)
             c.querySelector('a').classList.toggle('pointer-events-none', on);
         });
         refresh();
     }
-    toggle.addEventListener('click', () => {
-        if (!cards.length) { window.alert('요약이 끝난 자료가 있어야 노트를 만들 수 있어요.'); return; }
-        setMode(true);
-    });
-    document.getElementById('cram-cancel').addEventListener('click', () => setMode(false));
+    function start(next) {
+        if (!cards.some((c) => !MODES[next].only || c.dataset.docType === MODES[next].only)) { window.alert(MODES[next].empty); return; }
+        setMode(next);
+    }
+    noteBtn.addEventListener('click', () => start('note'));
+    if (mockBtn) mockBtn.addEventListener('click', () => start('mock'));
+    document.getElementById('cram-cancel').addEventListener('click', () => setMode(null));
     cards.forEach((c) => c.addEventListener('click', (e) => {
-        if (!on || e.target.closest('button, form')) return;
+        if (!mode || !allowed(c) || e.target.closest('button, form')) return;
         if (!c.classList.contains('ring-2') && picked().length >= MAX) { window.alert('한 번에 최대 ' + MAX + '개까지 고를 수 있어요.'); return; }
-        c.classList.toggle('ring-2'); c.classList.toggle('ring-amber-400');
+        c.classList.toggle('ring-2'); c.style.boxShadow = c.classList.contains('ring-2') ? '0 0 0 3px #fbbf24' : '';
         refresh();
     }));
     form.addEventListener('submit', () => {
         form.querySelectorAll('input[name=ids]').forEach((i) => i.remove());
         picked().forEach((c) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = 'ids'; i.value = c.dataset.cramId; form.appendChild(i); });
+        if (mode === 'mock') { const o = document.getElementById('mock-loading'); o.classList.remove('hidden'); o.classList.add('flex'); }   // 모의고사는 바로 만들어 열리므로 기다리는 동안 안내
     });
+    window.addEventListener('pageshow', (e) => { if (e.persisted) { const o = document.getElementById('mock-loading'); o.classList.add('hidden'); o.classList.remove('flex'); } });
     // 노트를 쓰는 중이면 끝날 때까지 목록을 새로 읽는다
     if (document.querySelector('[data-note-processing]')) {
-        setTimeout(function poll() { if (!on) location.reload(); else setTimeout(poll, 4000); }, 4000);
+        setTimeout(function poll() { if (!mode) location.reload(); else setTimeout(poll, 4000); }, 4000);
     }
 })();
 </script>
