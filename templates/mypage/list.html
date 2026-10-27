@@ -151,6 +151,7 @@
                     {% endif %}
                     {% endif %}
                     <button type="button" data-rename-url="{% url 'mypage:document_rename' document.pk %}" data-rename-field="title" data-rename-value="{{ document.title }}" class="absolute top-2 left-2 text-xs text-slate-400 hover:text-slate-600 px-2 py-1 lg:opacity-0 lg:group-hover:opacity-100 transition" title="이름 바꾸기" aria-label="{{ document.title }} 이름 바꾸기"><i class="fa-solid fa-pen"></i></button>
+                    <button type="button" data-move-url="{% url 'mypage:document_move' document.pk %}" data-move-folder="{{ document.folder_id|default_if_none:'' }}" class="absolute top-2 left-9 text-xs text-slate-400 hover:text-slate-600 px-2 py-1 lg:opacity-0 lg:group-hover:opacity-100 transition" title="폴더로 이동" aria-label="{{ document.title }} 폴더로 이동"><i class="fa-solid fa-folder-open"></i></button>
                     <form method="post" action="{% url 'mypage:document_delete' document.pk %}" onsubmit="return confirm('삭제하시겠습니까?');" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
                         {% csrf_token %}
                         <button type="submit" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
@@ -371,6 +372,41 @@
     document.getElementById('uc-cancel').addEventListener('click', hide);
     modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+})();
+</script>
+
+<div id="move-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true">
+    <form id="move-form" method="post" class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <h3 class="text-lg font-bold text-slate-800">어느 폴더로 옮길까요?</h3>
+        <select name="folder" id="move-select" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm">
+            <option value="">맨 위 (폴더 밖)</option>
+            {% for f in folders %}<option value="{{ f.pk }}">{{ f.name }}</option>{% endfor %}
+        </select>
+        <div class="flex justify-end gap-2">
+            <button type="button" id="move-cancel" class="text-sm font-bold text-slate-500 px-4 py-2">취소</button>
+            <button type="submit" class="text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-xl transition">옮기기</button>
+        </div>
+    </form>
+</div>
+<script>
+// 폴더 이동 버튼: 폴더를 고르면 위치만 바뀐다 (AI 호출 없음)
+(function () {
+    const modal = document.getElementById('move-modal'), form = document.getElementById('move-form'), select = document.getElementById('move-select');
+    const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-move-url]');
+        if (!btn) return;
+        e.preventDefault();
+        form.action = btn.dataset.moveUrl;
+        select.value = btn.dataset.moveFolder || '';
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+        select.focus();
+    });
+    document.getElementById('move-cancel').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 })();
 </script>
 
