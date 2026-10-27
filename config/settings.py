@@ -337,6 +337,7 @@ CURRENCY_GRANT_MAX = {
 AI_LIMIT_SUMMARY_CHUNK_CHARS = config("AI_LIMIT_SUMMARY_CHUNK_CHARS", default=4000, cast=int)   # 요약 크레딧 단위: 이 글자 수마다 AI_COST_SUMMARY (작을수록 비용이 세밀하게 늘어난다)
 AI_LIMIT_SUMMARY_WINDOW_CHARS = config("AI_LIMIT_SUMMARY_WINDOW_CHARS", default=12000, cast=int)  # 요약을 한 번에 부르는 글자 수 (클수록 문맥이 이어지고 중복이 줄지만 덜 자세해진다)
 # 테스트 실행 중에는 실제 AI API를 절대 부르지 않는다 (core.ai._client가 막는다 — 테스트는 _client를 가짜로 바꿔 쓴다)
+AI_THINKING_ALLOWANCE = config("AI_THINKING_ALLOWANCE", default=2000, cast=int)   # Gemini가 '생각'에 쓸 토큰 여유 (출력 상한에 포함되므로 작업별 상한에 더한다)
 AI_BLOCK_NETWORK = len(sys.argv) > 1 and sys.argv[1] == "test"
 SERVER_EMAIL = EMAIL_FROM_ADDRESS
 

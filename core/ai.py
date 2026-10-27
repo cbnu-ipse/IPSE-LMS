@@ -85,12 +85,18 @@ def _client(provider="openai"):
     return OpenAI(api_key=cfg["key"], base_url=cfg.get("base_url"))
 
 
+def _output_limit(limit):
+    """Gemini는 '생각'에 쓴 토큰도 출력 상한(maxOutputTokens)에 포함된다. 생각하는 모델(예: gemini-3.6-flash)에 작업별 상한(예: 문제 500)만 주면
+    생각만 하다 답이 잘려 JSON이 깨지므로, 생각에 쓸 여유(AI_THINKING_ALLOWANCE)를 더해 준다. 답 길이는 프롬프트가 정한다."""
+    return limit + settings.AI_THINKING_ALLOWANCE
+
+
 def _vertex_generate(model, messages, limit, json_mode, tools):
     from . import vertex
 
     if getattr(settings, "AI_BLOCK_NETWORK", False):
         raise AIUnavailable("테스트 중에는 실제 AI API를 부르지 않습니다.")
-    return vertex.generate(settings.AI_PROVIDERS["gemini"]["key"], model, messages, max_tokens=limit,
+    return vertex.generate(settings.AI_PROVIDERS["gemini"]["key"], model, messages, max_tokens=_output_limit(limit),
                            json_mode=json_mode, tools=tools)
 
 
@@ -256,6 +262,10 @@ def _with_retry(call):
     return call()
 
 
+def _truncated(response):
+    return bool(getattr(response.choices[0], "finish_reason", None) == "MAX_TOKENS")
+
+
 def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_mode=False,
          max_tokens=None, cost=None, **kwargs):
     """chat.completions 호출 한 번. OpenAI 응답 객체를 그대로 돌려준다 (도구 호출이 필요한 챗봇용).
@@ -282,6 +292,9 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
 
     try:
         response = _with_retry(call)
+        if native == "vertex" and json_mode and _truncated(response):     # 그래도 잘렸으면 상한을 크게 올려 한 번 더 (크레딧은 다시 받지 않는다)
+            logger.warning("AI 답이 출력 상한에서 잘려 상한을 올려 다시 부릅니다: task=%s", task)
+            response = _with_retry(lambda: _vertex_generate(model, messages, limit * 4, json_mode, kwargs.get("tools")))
     except Exception:
         refund(user, task, charged)
         raise
@@ -313,7 +326,7 @@ def stream_complete(task, messages, *, user=None, max_tokens=None, cost=None, on
     charged = _charge(user, task, cost)
     usage, parts = {}, []
     try:
-        resp = _with_retry(lambda: vertex.open_stream(settings.AI_PROVIDERS[provider]["key"], model, messages, max_tokens=limit))
+        resp = _with_retry(lambda: vertex.open_stream(settings.AI_PROVIDERS[provider]["key"], model, messages, max_tokens=_output_limit(limit)))
         for piece in vertex.iter_stream(resp, usage):
             parts.append(piece)
             if on_delta:
