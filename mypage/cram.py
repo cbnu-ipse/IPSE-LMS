@@ -1,6 +1,6 @@
 """
 '시험 5분 전 속성 노트': 사용자가 고른 자료(하나 또는 여러 개)를 AI가 시험 직전에 훑을 한 장짜리 노트로 줄이고,
-손글씨 그림(PNG)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
+손글씨 그림(A4 PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
 
 - 읽는 내용은 자료의 요약(없으면 본문 앞부분). 자료마다 같은 몫을 나눠 읽고, 전체는 SOURCE_CHARS 안으로 줄인다.
 - 크레딧은 노트 한 장에 AI_COST_CRAM_NOTE. AI를 부르다 실패하면 core.ai가, 노트가 비었거나 그림이 실패하면 여기서 돌려준다.
@@ -35,7 +35,7 @@ SYSTEM = (
     "- 수식은 $x^2$, $\\frac{a}{b}$, $\\mu$ 같은 간단한 LaTeX만 씁니다. 표·코드 블록·마크다운 제목은 쓰지 않습니다.\n"
     f"- memo는 '마지막 체크!' 칸: 헷갈리기 쉬운 것·시험 함정·꼭 외울 것 3~{MAX_MEMO}개.\n"
     "- title은 과목과 범위가 드러나게 20자 안팎.\n"
-    "- 노트는 A4 한 장에 모두 들어가야 하므로 군더더기 없이 압축합니다. 같은 내용을 반복하지 말고 시험에 나올 핵심만 남깁니다.\n"
+    "- 같은 내용을 반복하지 말고 시험에 나올 핵심만 남깁니다 (노트는 A4 한 장 분량이 이상적이고, 넘치면 다음 장에 이어집니다).\n"
     'JSON으로만 답하세요: {"title": "...", "sections": [{"heading": "...", "points": ["..."]}], "memo": ["..."]}'
 )
 
@@ -119,10 +119,19 @@ def build_note_document(note_id, source_ids):
             raise ValueError("노트로 만들 자료가 없습니다.")
         note = generate_note(doc.user, sources)
         charged = True
-        png = handnote.render_note(note)
-        doc.file.save("cram-note.png", ContentFile(png), save=False)
-        doc.title = note["title"][:200]
-        doc.summary = note_markdown(note)
+        pngs = handnote.render_notes(note)          # A4 한 장씩. 한 장에 안 들어가면 내용을 버리지 않고 다음 장에 이어 쓴다
+        total = len(pngs)
+        label = (lambda n: f" ({n}/{total})" if total > 1 else "")
+        markdown = note_markdown(note)
+        for n, png in enumerate(pngs[1:], 2):       # 둘째 장부터는 같은 자리에 새 노트 자료로 만든다
+            extra = PersonalDocument.objects.create(
+                user=doc.user, folder=doc.folder, title=f"{note['title'][:190]}{label(n)}", file="",
+                document_type=PersonalDocument.DocumentType.NOTE, course_name=doc.course_name, professor=doc.professor,
+                is_course_material=False, summary=markdown, summary_status=ProcessingStatus.DONE)
+            extra.file.save("cram-note.png", ContentFile(png), save=True)
+        doc.file.save("cram-note.png", ContentFile(pngs[0]), save=False)
+        doc.title = f"{note['title'][:190]}{label(1)}"
+        doc.summary = markdown
         doc.summary_status = ProcessingStatus.DONE
         doc.save()
     except Exception:

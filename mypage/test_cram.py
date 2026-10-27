@@ -55,30 +55,40 @@ class NormalizeTests(TestCase):
 
 
 class RenderTests(TestCase):
-    def test_render_is_always_one_a4_page(self):
-        small = Image.open(io.BytesIO(handnote.render_note(cram.normalize_note(NOTE_JSON))))
-        self.assertEqual(small.format, "PNG")
-        self.assertEqual(small.size, (handnote.WIDTH, handnote.HEIGHT))
-        big = {"title": "큰 노트", "memo": ["확인 " * 12] * 6,
-               "sections": [{"heading": f"주제 {i}", "points": ["긴 문장 " * 14] * 6} for i in range(7)]}
-        note = cram.normalize_note(big)
-        self.assertEqual(Image.open(io.BytesIO(handnote.render_note(note))).size, (handnote.WIDTH, handnote.HEIGHT))
-        lay = handnote._layout(note, handnote._rng_for(note), handnote.MIN_SCALE, None)
-        self.assertLessEqual(lay.y, handnote.HEIGHT)
+    def test_short_note_is_one_a4_page(self):
+        pages = handnote.render_notes(cram.normalize_note(NOTE_JSON))
+        self.assertEqual(len(pages), 1)
+        image = Image.open(io.BytesIO(pages[0]))
+        self.assertEqual(image.format, "PNG")
+        self.assertEqual(image.size, (handnote.WIDTH, handnote.HEIGHT))
 
-    def test_everything_fits_by_shrinking_text(self):
-        note = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 30] * 6} for i in range(7)],
-                                    "memo": ["m"] * 6})
-        rng = handnote._rng_for(note)
-        full = handnote._layout(note, rng, 1.0, None)
-        self.assertGreater(full.y, handnote.HEIGHT)                       # 기본 크기로는 한 장을 넘는다
-        realistic = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 10] * 6} for i in range(7)],
-                                         "memo": ["m"] * 6})
-        self.assertLessEqual(handnote._layout(realistic, handnote._rng_for(realistic), handnote.MIN_SCALE, None).y, handnote.HEIGHT)
+    def test_overflow_continues_on_next_page_without_dropping_content(self):
+        big = cram.normalize_note({"title": "큰 노트", "memo": ["확인 " * 10] * 6,
+                                   "sections": [{"heading": f"주제{i}", "points": [f"항목{i}-{j} " + "긴 문장 " * 12 for j in range(6)]}
+                                                for i in range(7)]})
+        lay = handnote._layout(big, handnote._rng_for(big), handnote.MIN_SCALE, None)
+        self.assertGreater(len(lay.pages), 1)
+        pages = handnote.render_notes(big)
+        self.assertEqual(len(pages), len(lay.pages))
+        for png in pages:
+            self.assertEqual(Image.open(io.BytesIO(png)).size, (handnote.WIDTH, handnote.HEIGHT))
+        words = [op[4] for page in lay.pages for op in page if op[0] == "word"]
+        for i in range(7):                                               # 모든 항목이 어느 장에든 그려진다
+            for j in range(6):
+                self.assertIn(f"항목{i}-{j}", words)
+
+    def test_no_op_goes_below_page_bottom(self):
+        big = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 30] * 6} for i in range(7)],
+                                   "memo": ["m"] * 6})
+        lay = handnote._layout(big, handnote._rng_for(big), handnote.MIN_SCALE, None)
+        for page in lay.pages:
+            for op in page:
+                if op[0] == "word":
+                    self.assertLess(op[2], handnote.HEIGHT)
 
     def test_unsupported_glyphs_do_not_crash(self):
         note = {"title": "Σ μ → ≤ x̄ ∞", "sections": [{"heading": "α β", "points": ["x² ≥ 1 ✓ 😀 $\\bar{x}$ $a_i^2$"]}], "memo": []}
-        self.assertTrue(handnote.render_note(note).startswith(b"\x89PNG"))
+        self.assertTrue(handnote.render_notes(note)[0].startswith(b"\x89PNG"))
 
 
 class BuildNoteTests(TestCase):
@@ -129,7 +139,7 @@ class BuildNoteTests(TestCase):
         doc = make_doc(self.user)
         note = self._placeholder()
         with override_settings(MEDIA_ROOT=self.media), patch("core.ai.complete_json", return_value=NOTE_JSON), \
-                patch("mypage.handnote.render_note", side_effect=OSError("boom")), patch("core.ai.refund") as refund:
+                patch("mypage.handnote.render_notes", side_effect=OSError("boom")), patch("core.ai.refund") as refund:
             cram.build_note_document(note.pk, [doc.pk])
         note.refresh_from_db()
         self.assertEqual(note.summary_status, ProcessingStatus.FAILED)
@@ -278,3 +288,22 @@ class MoveDocumentTests(TestCase):
     def test_list_offers_move_button(self):
         html = self.client.get(reverse("mypage:document_list")).content.decode()
         self.assertIn("data-move-url", html)
+
+
+class MultiPageNoteTests(TestCase):
+    def test_overflow_creates_one_note_document_per_page(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, True)
+        user = User.objects.create_user(username="u", password="pw")
+        src = make_doc(user, "a", course_name="운영체제")
+        note = PersonalDocument.objects.create(user=user, title="n", file="", document_type=NOTE,
+                                               summary_status=ProcessingStatus.PROCESSING)
+        big = {"title": "큰 노트", "memo": ["확인 " * 10] * 6,
+               "sections": [{"heading": f"주제{i}", "points": ["긴 문장 " * 12] * 6} for i in range(7)]}
+        with override_settings(MEDIA_ROOT=media), patch("core.ai.complete_json", return_value=big):
+            cram.build_note_document(note.pk, [src.pk])
+        notes = list(PersonalDocument.objects.filter(document_type=NOTE).order_by("id"))
+        self.assertGreater(len(notes), 1)
+        self.assertTrue(all(n.summary_status == ProcessingStatus.DONE and n.file.name.endswith(".png") for n in notes))
+        self.assertTrue(notes[0].title.endswith(f"(1/{len(notes)})"))
+        self.assertTrue(notes[-1].title.endswith(f"({len(notes)}/{len(notes)})"))

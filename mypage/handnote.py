@@ -23,7 +23,7 @@ FONT_PATH = os.path.join(str(settings.BASE_DIR), "static", "fonts", "NanumPenScr
 
 WIDTH = 1240
 HEIGHT = 1754                     # A4 세로 (150dpi): 1240 x 1754. 내용이 많으면 글씨를 줄여 이 한 장에 모두 넣는다
-MIN_SCALE = 0.38
+MIN_SCALE = 0.6                    # 이보다 작아지기 전에 다음 장으로 이어 쓴다
 MARGIN_LEFT = 170                 # 빨간 여백선 오른쪽에서 글이 시작한다
 MARGIN_RIGHT = 90
 LINE_H = 70                       # 공책 한 줄
@@ -189,8 +189,19 @@ class _Layout:
         self.rng = rng
         self.k = k                        # 글씨·줄 간격 배율 (1이 기본, 작을수록 촘촘)
         self.lh = int(LINE_H * k)
-        self.ops = []
+        self.pages = [[]]                 # 장마다 그릴 것들. 넘치면 다음 장으로 이어 쓴다
         self.y = int(TOP * k)
+        self.bottom = HEIGHT - int(90 * k)
+
+    @property
+    def ops(self):
+        return self.pages[-1]
+
+    def need(self, height):
+        """height만큼 더 쓸 자리가 이 장에 없으면 다음 장으로 넘어간다 (장 맨 위에서는 넘기지 않는다)."""
+        if self.y + height > self.bottom and self.y > int(TOP * self.k) + self.lh:
+            self.pages.append([])
+            self.y = int(TOP * self.k) + self.lh
 
     def words(self, segs):
         """세그먼트를 단어(공백 기준) 단위로 쪼갠다: [(글, 스타일, 공백 앞붙임 여부)]."""
@@ -227,6 +238,7 @@ class _Layout:
     def text_block(self, markup, size, x0, color=INK, indent=0, rows_per_line=1, bullet=None):
         x1 = WIDTH - MARGIN_RIGHT
         lines = self.wrap(parse_segments(markup), size, x0 + indent, x1)
+        self.need(len(lines) * self.lh * rows_per_line)
         for n, line in enumerate(lines):
             if n == 0 and bullet:
                 self.ops.append(("bullet", x0, self.y, size, bullet))
@@ -306,6 +318,7 @@ def _layout(note, rng, k, today):
 
     for si, section in enumerate(note.get("sections", []), 1):
         lay.gap(0.3)
+        lay.need(int(lay.lh * 3.3))      # 제목만 장 끝에 홀로 남지 않게 첫 줄과 함께 넘긴다
         lay.ops.append(("heading", MARGIN_LEFT - 8, lay.y, sz(HEAD_SIZE), to_markup(section.get("heading", "")), si))
         lay.y += int(lay.lh * 1.3)
         for point in section.get("points", []):
@@ -315,6 +328,7 @@ def _layout(note, rng, k, today):
     memo = note.get("memo") or []
     if memo:
         lay.gap(0.4)
+        lay.need(int(lay.lh * (1.4 + 1.3 * len(memo))))      # 상자가 장 사이에서 갈라지지 않게
         top = lay.y
         lay.ops.append(("memo_title", MARGIN_LEFT + 10, lay.y + int(8 * k), sz(HEAD_SIZE - 6), "마지막 체크!"))
         lay.y += int(lay.lh * 1.4)
@@ -324,22 +338,32 @@ def _layout(note, rng, k, today):
     return lay
 
 
-def render_note(note, today=None):
-    """노트 dict → A4 한 장(1240x1754) PNG 바이트. 내용이 넘치면 글씨를 줄여 모두 그 안에 넣는다."""
+def render_notes(note, today=None):
+    """노트 dict → A4(1240x1754) PNG 바이트 목록. 한 장에 들어가도록 글씨를 (MIN_SCALE까지) 줄이고,
+    그래도 넘치면 내용을 버리지 않고 다음 장에 이어 쓴다."""
     rng = _rng_for(note)
-    note = {**note, "sections": [{**s, "points": list(s.get("points", []))} for s in note.get("sections", [])]}
-    k = 1.0
-    while True:
-        lay = _layout(note, rng, k, today)
-        if lay.y + int(70 * k) <= HEIGHT:
+    low = _layout(note, rng, MIN_SCALE, today)
+    pages = len(low.pages)
+    k = MIN_SCALE
+    for cand in range(100, int(MIN_SCALE * 100) - 1, -3):          # 같은 장 수로 끝나는 가장 큰 글씨를 쓴다
+        trial = _layout(note, rng, cand / 100, today)
+        if len(trial.pages) <= pages:
+            k, low = cand / 100, trial
             break
-        if k > MIN_SCALE:
-            k = max(round(k - 0.03, 2), MIN_SCALE)
-        else:                      # 가장 작은 글씨로도 넘치는 (비정상적으로 긴) 노트는 가장 긴 항목의 마지막 줄부터 덜어낸다
-            longest = max(note["sections"], key=lambda sec: len(sec["points"]), default=None)
-            if not longest or len(longest["points"]) <= 1:
-                break
-            longest["points"].pop()
+    lay = low
+    total = len(lay.pages)
+    title = to_markup(note.get("title") or "시험 5분 전 노트")
+    for n, ops in enumerate(lay.pages):
+        if total > 1:
+            if n:
+                ops.append(("word", MARGIN_LEFT, int(TOP * k) - int(30 * k), max(int(SMALL_SIZE * k), 14),
+                            f"{safe_text(note.get('title') or '')} (이어서)", frozenset(), GRAY))
+            ops.append(("word", WIDTH - MARGIN_RIGHT - 60, HEIGHT - int(70 * k), max(int(SMALL_SIZE * k), 14),
+                        f"{n + 1} / {total}", frozenset(), GRAY))
+    return [_paint(lay, ops, rng, k) for ops in lay.pages]
+
+
+def _paint(lay, ops, rng, k):
     height = HEIGHT
     canvas = Image.new("RGBA", (WIDTH, height), PAPER + (255,))
     d = ImageDraw.Draw(canvas)
@@ -357,7 +381,7 @@ def render_note(note, today=None):
         cy = int(height * (0.2 + 0.3 * hole))
         d.ellipse([34, cy - 20, 74, cy + 20], fill=(232, 228, 216, 255), outline=(206, 200, 186, 255), width=2)
 
-    for op in lay.ops:
+    for op in ops:
         kind = op[0]
         if kind == "title":
             _, x, y, size, markup = op
