@@ -37,3 +37,14 @@ class BacktickedMathTests(SimpleTestCase):
     def test_summary_prompt_does_not_tell_the_model_to_backtick_math(self):
         self.assertIn("수식을 백틱(`)으로 한 번 더 감싸지 마세요", ai.SUMMARY_INSTRUCTIONS)
         self.assertNotIn("코드·수식·고유 표기는", ai.SUMMARY_INSTRUCTIONS)
+
+
+class SummaryColumnCenteringTests(SimpleTestCase):
+    def test_centering_rule_outranks_markdown_lite_margins(self):
+        """fab.html이 markdown-lite.css를 본문에서 한 번 더 불러 학습 화면의 <style>보다 뒤에 온다. 특이도가 같으면 .md-h 등의
+        margin 단축 속성이 margin auto를 덮어 요약이 왼쪽으로 붙으므로, 가운데 정렬 규칙은 클래스 하나보다 특이도가 높아야 한다."""
+        html = (Path(settings.BASE_DIR) / "templates" / "mypage" / "preview.html").read_text(encoding="utf-8")
+        self.assertIn("div.ms-sum-center > * { max-width: 40rem; margin-left: auto; margin-right: auto; }", html)
+        self.assertNotIn("\n    .ms-sum-center > * {", html)
+        fab = (Path(settings.BASE_DIR) / "templates" / "assistant" / "fab.html").read_text(encoding="utf-8")
+        self.assertIn("markdown-lite.css", fab)                      # 이 두 번째 로드가 문제의 원인이었다
