@@ -17,7 +17,7 @@ from collections import Counter
 
 from core import ai as core_ai
 
-from .ai import unescape_newlines
+from .ai import REASON_REQUEST, strip_reason_request, unescape_newlines
 from . import scope
 from .figure import normalize_figure
 from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument, WrongNote
@@ -55,6 +55,7 @@ MOCK_SYSTEM = (
     "- 유형은 ox, mc(객관식), short(단답), essay(서술형)를 씁니다. 계산형·코드형도 풀이나 설명을 쓰게 하는 essay로 냅니다.\n"
     "- 출제 스타일이 주어지면 유형 비율·문제 문장·보기 구성·난이도를 그에 맞춥니다. 예시 족보의 문제는 베끼지 말고 방식만 따릅니다. "
     "스타일이 없으면 OX 2, 객관식 4, 단답 2, 서술형 2개 정도로 섞습니다.\n"
+    "- OX 문제는 참/거짓만 고르는 문제입니다. '이유를 설명하시오', '근거를 쓰시오'처럼 글로 답하게 하는 문장은 OX에 쓰지 말고(이유는 explanation에만), 이유를 묻고 싶으면 서술형(essay)으로 냅니다.\n"
     "- 정답이 한쪽으로 쏠리지 않게 합니다 (OX는 O/X를 섞고, 객관식 정답 번호도 골고루).\n"
     "- 문제 문장(q)은 마크다운으로 읽기 좋게 씁니다: 긴 지문은 문단(빈 줄)으로 나누고, 코드·의사코드·메시지 흐름은 ``` 블록에 줄마다 넣고, "
     "수식은 $...$ 로 씁니다. 행렬·벡터·사상도 수식으로 쓰고 행렬은 한 줄로 "
@@ -259,6 +260,14 @@ def _normalize_typed_question(q, kind, text, explanation):
         answer = q.get("answer")
         if isinstance(answer, str):
             answer = answer.strip().upper() in ("O", "TRUE", "참", "T", "YES")
+        if REASON_REQUEST.search(text):      # OX는 O/X만 고르므로 '이유를 설명하시오' 같은 서술 요구는 뗀다
+            stripped = strip_reason_request(text)
+            if stripped:
+                text = stripped
+            elif explanation:                # 진술이 남지 않으면 서술형으로 바꾼다 (모범답안 = 참/거짓 + 해설)
+                return {"type": "essay", "q": text, "answer": f"{'참' if answer else '거짓'}. {explanation}"[:2000], "explanation": explanation}
+            else:
+                return None
         return {"type": "ox", "q": text, "answer": bool(answer), "explanation": explanation}
     if kind == "mc":
         options = [_block(o, 300) for o in (q.get("options") or []) if _block(o, 300)][:6]
