@@ -41,7 +41,22 @@
     {% if score is None and essays %}
     <p class="no-print text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>서술형 {{ essays }}문항은 AI가 채점해서, 답을 쓴 문항만큼 이번 주 AI 사용량이 늘어요. 채점은 한 번만 하고 결과는 저장돼요. 틀린 문제와 "모르겠음"으로 넘긴 문제는 오답노트에 담겨 다시 풀 수 있어요.</p>
     {% endif %}
-    <form method="post" class="space-y-4">
+    {% if score is None %}
+    <div id="scan-panel" class="no-print mb-4 rounded-2xl border border-sky-100 bg-sky-50/60 p-4" data-url="{% url 'mypage:mock_read_answers' exam.pk %}" data-max="{{ scan_max_images }}">
+        <p class="text-sm font-bold text-sky-800"><i class="fa-solid fa-camera mr-1.5"></i>종이에 푼 답을 사진으로 입력</p>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">손으로 푼 답안을 사진으로 올리면 인식한 답이 아래 답 입력란에 채워져요. <b>자동으로 제출되지 않으니</b> 인식된 답을 확인·수정한 뒤 '제출하고 채점하기'를 눌러주세요.
+            손글씨 인식은 완벽하지 않을 수 있어요. 답 옆에 <b>문항 번호</b>를 함께 적으면 더 잘 읽혀요. 사진은 저장하지 않아요 (최대 {{ scan_max_images }}장).</p>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+            <label class="cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition">
+                <input type="file" id="scan-camera" accept="image/*" capture="environment" class="hidden"><i class="fa-solid fa-camera"></i>사진 찍기</label>
+            <label class="cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border border-sky-200 bg-white text-sky-700 hover:bg-sky-50 transition">
+                <input type="file" id="scan-library" accept="image/*" multiple class="hidden"><i class="fa-solid fa-image"></i>앨범에서 선택</label>
+            {% if scan_cost %}<span class="text-[11px] text-slate-500" title="예상 AI 사용량이에요. 사진 한 장당이고, 실제 사용량은 토큰으로 세요">{% include 'includes/credit_cost.html' with cost=scan_cost %}<span class="ml-0.5">/ 장</span></span>{% endif %}
+        </div>
+        <p id="scan-status" role="status" aria-live="polite" class="hidden text-xs mt-2 font-medium"></p>
+    </div>
+    {% endif %}
+    <form method="post" class="space-y-4" id="exam-form">
         {% csrf_token %}
         {% for row in rows %}
         <div class="mq-card bg-white rounded-2xl border {% if score is not None %}{% if row.correct %}border-emerald-200{% else %}border-rose-200{% endif %}{% else %}border-slate-200{% endif %} p-5 shadow-sm">
@@ -103,5 +118,88 @@ document.querySelectorAll('.unsure-box').forEach(function (box) {
         card.style.opacity = box.checked ? '.75' : '';
     });
 });
+
+// 종이에 푼 답 사진 → 인식한 답을 입력란에 채운다 (제출은 사용자가 직접 한다)
+(function () {
+    var panel = document.getElementById('scan-panel');
+    if (!panel) return;
+    var form = document.getElementById('exam-form'), status = document.getElementById('scan-status');
+    var camera = document.getElementById('scan-camera'), library = document.getElementById('scan-library');
+    var MAX = parseInt(panel.dataset.max, 10) || 3, MAX_BYTES = 10 * 1024 * 1024;
+    var csrf = form.querySelector('input[name=csrfmiddlewaretoken]').value;
+    var busy = false;
+
+    function say(text, kind) {
+        status.textContent = text;
+        status.className = 'text-xs mt-2 font-medium ' + (kind === 'error' ? 'text-rose-600' : kind === 'ok' ? 'text-emerald-700' : 'text-slate-500');
+    }
+    function badge(card, text) {
+        var tag = card.querySelector('.scan-badge');
+        if (!tag) {
+            tag = document.createElement('span');
+            tag.className = 'scan-badge ml-2 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700';
+            card.querySelector('.flex').appendChild(tag);
+        }
+        tag.textContent = text;
+    }
+    function fill(answers) {
+        var cards = form.querySelectorAll('.mq-card'), first = null;
+        Object.keys(answers).forEach(function (key) {
+            var card = cards[parseInt(key, 10)], value = answers[key];
+            if (!card) return;
+            var unsure = card.querySelector('.unsure-box');
+            if (unsure && unsure.checked) { unsure.checked = false; unsure.dispatchEvent(new Event('change')); }   // 답이 있으면 '모르겠음'을 풀고 입력란을 연다
+            var radios = card.querySelectorAll('input[type=radio]');
+            if (radios.length) {
+                radios.forEach(function (r) { r.checked = (r.value === value); });
+            } else {
+                var field = card.querySelector('input[type=text], textarea');
+                if (field) field.value = value;
+            }
+            card.style.boxShadow = '0 0 0 3px #fbbf24';
+            badge(card, '사진에서 인식 · 확인해주세요');
+            first = first || card;
+        });
+        return first;
+    }
+    form.addEventListener('change', function (e) {          // 사용자가 직접 확인·수정한 문항은 표시를 푼다
+        var card = e.target.closest && e.target.closest('.mq-card');
+        if (card && e.isTrusted && card.style.boxShadow) { card.style.boxShadow = ''; badge(card, '직접 확인함'); }
+    });
+    form.addEventListener('input', function (e) {
+        var card = e.target.closest && e.target.closest('.mq-card');
+        if (card && e.isTrusted && card.style.boxShadow) { card.style.boxShadow = ''; badge(card, '직접 확인함'); }
+    });
+
+    async function send(files) {
+        if (busy || !files.length) return;
+        if (files.length > MAX) { say('사진은 한 번에 ' + MAX + '장까지 올릴 수 있어요.', 'error'); return; }
+        for (var i = 0; i < files.length; i++) {
+            if (files[i].size > MAX_BYTES) { say('사진은 한 장에 10MB를 넘을 수 없어요.', 'error'); return; }
+        }
+        busy = true;
+        [camera, library].forEach(function (el) { el.disabled = true; });
+        say('답안을 읽고 있어요… 잠시만 기다려주세요 (보통 10~20초)', 'info');
+        var body = new FormData();
+        Array.prototype.forEach.call(files, function (f) { body.append('images', f); });
+        try {
+            var res = await fetch(panel.dataset.url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'X-CSRFToken': csrf } });
+            var d = await res.json().catch(function () { return {}; });
+            if (!res.ok || !d.ok) { say(d.error || '사진을 읽지 못했어요. 잠시 후 다시 시도해주세요.', 'error'); return; }
+            var first = fill(d.answers);
+            if (!d.recognized) { say('인식한 답이 없어요. 글씨가 잘 보이게 다시 찍어 보거나 직접 입력해주세요.', 'error'); return; }
+            say(d.recognized + '문항을 인식해 입력했어요. 노란 표시가 있는 문항을 확인·수정한 뒤 제출하세요 (아직 제출되지 않았어요).'
+                + (d.unreadable.length ? ' 인식하지 못한 문항: ' + d.unreadable.join(', ') + '번' : ''), 'ok');
+            if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (e) {
+            say('사진을 올리지 못했어요. 네트워크를 확인하고 다시 시도해주세요.', 'error');
+        } finally {
+            busy = false;
+            [camera, library].forEach(function (el) { el.disabled = false; el.value = ''; });     // 같은 사진을 다시 고를 수 있게
+        }
+    }
+    camera.addEventListener('change', function () { send(camera.files); });
+    library.addEventListener('change', function () { send(library.files); });
+})();
 </script>
 {% endblock %}
