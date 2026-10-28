@@ -21,6 +21,7 @@ from .ai import REASON_REQUEST, strip_reason_request, unescape_newlines
 from . import scope
 from .figure import normalize_figure
 from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument, WrongNote
+from .titles import clean_title
 from .naming import professor_key  # noqa: F401 (다른 모듈이 mypage.exam에서 가져다 쓴다)
 from .ontology import exam_questions_for, exam_stats
 
@@ -55,6 +56,7 @@ MOCK_SYSTEM = (
     "- 유형은 ox, mc(객관식), short(단답), essay(서술형)를 씁니다. 계산형·코드형도 풀이나 설명을 쓰게 하는 essay로 냅니다.\n"
     "- 출제 스타일이 주어지면 유형 비율·문제 문장·보기 구성·난이도를 그에 맞춥니다. 예시 족보의 문제는 베끼지 말고 방식만 따릅니다. "
     "스타일이 없으면 OX 2, 객관식 4, 단답 2, 서술형 2개 정도로 섞습니다.\n"
+    "- title은 과목과 범위만 간단히 씁니다. 교수·강사 이름이나 '스타일', '출제 방식' 같은 말은 제목에 쓰지 않습니다.\n"
     "- OX 문제는 참/거짓만 고르는 문제입니다. '이유를 설명하시오', '근거를 쓰시오'처럼 글로 답하게 하는 문장은 OX에 쓰지 말고(이유는 explanation에만), 이유를 묻고 싶으면 서술형(essay)으로 냅니다.\n"
     "- 정답이 한쪽으로 쏠리지 않게 합니다 (OX는 O/X를 섞고, 객관식 정답 번호도 골고루).\n"
     "- 문제 문장(q)은 마크다운으로 읽기 좋게 씁니다: 긴 지문은 문단(빈 줄)으로 나누고, 코드·의사코드·메시지 흐름은 ``` 블록에 줄마다 넣고, "
@@ -413,7 +415,7 @@ def generate_mock_exam(user, documents, document=None, focus=None):
             material = scoped[:MATERIAL_CHARS]
     request = f"과목: {subject or documents[0].title}\n"
     if style:
-        request += f"출제 스타일({style.label}):\n{style.guidelines}\n"
+        request += f"출제 스타일:\n{style.guidelines}\n"       # 교수님 이름은 프롬프트에 넣지 않는다 (제목 등에 새지 않게)
     plan = type_plan(stats)
     if plan:
         labels = {"ox": "OX", "mc": "객관식", "short": "단답", "essay": "서술형"}
@@ -448,7 +450,7 @@ def generate_mock_exam(user, documents, document=None, focus=None):
     course_ai.shuffle_choices([{"questions": questions}])
     title = documents[0].title if len(documents) == 1 else (subject or "여러 자료")
     return MockExam.objects.create(
-        user=user, document=document, course_code=subject, title=str(data.get("title") or f"{title} 모의고사")[:200],
+        user=user, document=document, course_code=subject, title=clean_title(data.get("title"), f"{title} 모의고사", [professor, style.label if style else ""])[:200],
         style_label=style.label if style else "", questions=questions)
 
 
