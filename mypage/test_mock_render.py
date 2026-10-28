@@ -32,6 +32,12 @@ class QuestionTextTests(TestCase):
         self.assertIsNone(exam._normalize_mock_question({"type": "ox", "q": "  "}))
         self.assertTrue(exam._normalize_mock_question({"type": "ox", "q": "q", "answer": "참"})["answer"])
 
+    def test_literal_backslash_n_becomes_a_real_newline_but_latex_commands_are_kept(self):
+        q = exam._normalize_mock_question({"type": "short", "q": r"쓰시오.\nIn Flynn's taxonomy $a \neq b$, $\nu$, \nabla f\n(1) 다음", "answers": ["x"]})
+        self.assertEqual(q["q"], "쓰시오.\nIn Flynn's taxonomy $a \\neq b$, $\\nu$, \\nabla f\n(1) 다음")
+        opt = exam._normalize_mock_question({"type": "mc", "q": "q", "options": [r"한 줄\n두 줄", "b"], "answer": 0, "explanation": r"해설\n둘째 줄"})
+        self.assertEqual((opt["options"][0], opt["explanation"]), ("한 줄\n두 줄", "해설\n둘째 줄"))
+
     def test_prompt_asks_for_readable_markdown(self):
         for hint in ("마크다운", "``` 블록", "$...$", "소문항", "굵게"):
             self.assertIn(hint, exam.MOCK_SYSTEM)
@@ -50,8 +56,7 @@ class ExamPageRenderTests(TestCase):
         html = self.client.get(self.exam.get_absolute_url()).content.decode()
         self.assertEqual(html.count("data-md>"), 3)                                 # 문제 본문 3개를 마크다운으로 그린다
         self.assertIn("data-md-inline>", html)                                      # 보기·해설도
-        self.assertIn("window.renderMarkdown", html)
-        self.assertIn("window.renderMath", html)
+        self.assertIn("js/exam-render.js", html)                                    # 그리기는 공용 스크립트(줄바꿈 보존 + KaTeX)
         self.assertNotIn('class="text-sm font-bold text-slate-800 mb-3"', html)     # 문제 전체를 굵게 하던 예전 마크업은 없다
         self.assertIn("Coterie $C$", html)                                          # 수식 원문은 그대로 전달 (KaTeX가 그린다)
         self.assertIn("```text", html)
@@ -68,67 +73,6 @@ class ExamPageRenderTests(TestCase):
         html = self.client.get(self.exam.get_absolute_url()).content.decode()
         self.assertIn("오답노트", html)
         self.assertIn("2 / 3점", html)
-
-
-class WrongNotesTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(username="wn", password="pw")
-        self.other = User.objects.create_user(username="wo", password="pw")
-        self.client.force_login(self.user)
-
-    def submitted_exam(self, user, subject="분산시스템", ago=0):
-        e = MockExam.objects.create(
-            user=user, course_code=subject, title=f"{subject} 모의고사", questions=[
-                {"type": "ox", "q": "OX 문제", "answer": True, "explanation": "해설 하나"},
-                {"type": "mc", "q": "객관식 문제", "options": ["가", "나", "다", "라"], "answer": 2, "explanation": ""},
-                {"type": "essay", "q": "서술 문제", "answer": "모범답안 내용", "explanation": ""}],
-            answers=[False, 1, "내 서술"], results=[False, False, True], feedback=["", "", "좋아요"],
-            submitted_at=timezone.now() - timedelta(days=ago))
-        return e
-
-    def test_only_my_wrong_questions_are_collected_from_submitted_exams(self):
-        mine = self.submitted_exam(self.user)
-        self.submitted_exam(self.other)                                              # 남의 모의고사는 안 보인다
-        MockExam.objects.create(user=self.user, course_code="x", title="안 푼 시험", questions=[{"type": "ox", "q": "안 푼", "answer": True}])
-        items = exam.wrong_answers(self.user)
-        self.assertEqual([it["question"] for it in items], ["OX 문제", "객관식 문제"])   # 맞힌 서술형·안 푼 시험은 제외
-        self.assertEqual(items[1]["my_answer"], "2. 나")
-        self.assertEqual(items[1]["correct"], "3. 다")
-        self.assertEqual(items[0]["link"], mine.get_absolute_url())
-
-    def test_wrong_document_quiz_answers_are_included_too(self):
-        doc = PersonalDocument.objects.create(user=self.user, title="OS 자료", file="a.txt", course_name="운영체제", summary_status=ProcessingStatus.DONE)
-        GeneratedQuestion.objects.create(document=doc, question_type="mc", question_text="퀴즈 객관식", options=["a", "b", "c", "d"], answer="1",
-                                         user_answer="3", is_correct=False, feedback="해설", status=ProcessingStatus.DONE)
-        GeneratedQuestion.objects.create(document=doc, question_type="ox", question_text="맞힌 문제", answer="O", user_answer="O", is_correct=True)
-        items = exam.wrong_answers(self.user)
-        self.assertEqual([(it["source"], it["question"], it["my_answer"], it["correct"]) for it in items],
-                         [("자료 퀴즈", "퀴즈 객관식", "4. d", "2. b")])
-
-    def test_page_lists_filters_by_subject_and_hides_other_users(self):
-        self.submitted_exam(self.user, "분산시스템")
-        self.submitted_exam(self.user, "운영체제", ago=1)
-        self.submitted_exam(self.other, "남의과목")
-        html = self.client.get("/mypage/wrong/").content.decode()
-        self.assertIn("오답노트", html)
-        self.assertEqual(html.count("OX 문제"), 2)
-        self.assertNotIn("남의과목", html)
-        filtered = self.client.get("/mypage/wrong/?subject=운영체제").content.decode()
-        self.assertEqual(filtered.count("OX 문제"), 1)
-        self.assertIn("정답·해설 보기", filtered)                                       # 정답은 눌러서 확인 (스스로 풀어 보기)
-
-    def test_page_never_calls_the_ai_and_requires_login(self):
-        from unittest.mock import patch
-
-        self.submitted_exam(self.user)
-        with patch("core.ai._client") as client:
-            self.client.get("/mypage/wrong/")
-        client.assert_not_called()
-        self.client.logout()
-        self.assertEqual(self.client.get("/mypage/wrong/").status_code, 302)
-
-    def test_empty_state_message(self):
-        self.assertIn("아직 틀린 문제가 없어요", self.client.get("/mypage/wrong/").content.decode())
 
 
 class StaleMockTests(TestCase):

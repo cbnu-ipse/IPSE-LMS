@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}오답노트 | IPSE LMS{% endblock %}
 
 {% block content %}
@@ -9,61 +10,152 @@
     .wn-body .md-pre { font-size: .8rem; }
     .wn-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
-<section class="max-w-3xl mx-auto px-4 py-10">
+<section class="max-w-3xl mx-auto px-4 py-10" id="wn-root" data-csrf="{{ csrf_token }}">
     <div class="flex items-center justify-between gap-3 mb-2">
         <h1 class="text-2xl font-bold text-slate-800"><i class="fa-solid fa-book-bookmark text-rose-500 mr-2"></i>오답노트</h1>
         <a href="{% url 'mypage:document_list' %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료</a>
     </div>
-    <p class="text-sm text-slate-500 mb-5">모의고사와 자료 퀴즈에서 틀린 문제가 자동으로 모여요. 채점 결과는 이미 저장돼 있어서 여기서는 AI를 다시 부르지 않아요.</p>
+    <p class="text-sm text-slate-500 mb-5">틀린 문제와 "모르겠음"으로 넘긴 문제가 모여요. 여기서 <b>다시 풀어</b> 보세요. 다시 맞혀도 사라지지 않고 <b>맞은 횟수·틀린 횟수</b>만 쌓이며, 필요 없으면 직접 제거할 수 있어요. 채점은 서버에서 바로 하고 AI를 부르지 않아요 (서술형은 모범답안을 보고 직접 고르기).</p>
 
-    {% if subjects %}
-    <div class="flex flex-wrap gap-2 mb-5">
-        <a href="{% url 'mypage:wrong_notes' %}" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if not subject %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">전체 {{ total }}</a>
-        {% for s in subjects %}<a href="?subject={{ s|urlencode }}" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if s == subject %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">{{ s }}</a>{% endfor %}
+    {% if total %}
+    <div class="flex flex-wrap items-center gap-2 mb-5">
+        <a href="?{% if subject %}subject={{ subject|urlencode }}&{% endif %}sort=recent" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if sort != 'wrong' %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">최근순</a>
+        <a href="?{% if subject %}subject={{ subject|urlencode }}&{% endif %}sort=wrong" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if sort == 'wrong' %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">자주 틀린 순</a>
+        {% if subjects %}<span class="text-slate-300">|</span>
+        <a href="?sort={{ sort }}" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if not subject %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">전체 {{ total }}</a>
+        {% for s in subjects %}<a href="?subject={{ s|urlencode }}&sort={{ sort }}" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if s == subject %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">{{ s }}</a>{% endfor %}
+        {% endif %}
     </div>
     {% endif %}
 
-    <div class="space-y-4">
-        {% for it in items %}
-        <div class="bg-white rounded-2xl border border-rose-100 p-5 shadow-sm">
+    <div class="space-y-4" id="wn-list">
+        {% for n in items %}
+        <div class="wn-card bg-white rounded-2xl border border-rose-100 p-5 shadow-sm" data-id="{{ n.pk }}" data-type="{{ n.question.type }}"
+             data-answer-url="{% url 'mypage:wrong_note_answer' n.pk %}" data-remove-url="{% url 'mypage:wrong_note_remove' n.pk %}">
             <div class="flex flex-wrap items-center gap-2 mb-2.5 text-[11px]">
-                <span class="font-bold px-2 py-0.5 rounded-md {% if it.source == '모의고사' %}bg-sky-50 text-sky-700{% else %}bg-emerald-50 text-emerald-700{% endif %}">{{ it.source }}</span>
-                <span class="font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{% if it.type == 'ox' %}O/X{% elif it.type == 'mc' %}객관식{% elif it.type == 'essay' %}서술형{% else %}단답형{% endif %}</span>
-                <a href="{{ it.link }}" class="text-slate-400 hover:text-slate-600 truncate">{{ it.source_title }}</a>
-                <span class="ml-auto text-slate-300">{{ it.when|date:"Y-m-d" }}</span>
+                <span class="font-bold px-2 py-0.5 rounded-md {% if n.source == 'mock' %}bg-sky-50 text-sky-700{% else %}bg-emerald-50 text-emerald-700{% endif %}">{{ n.get_source_display }}</span>
+                <span class="font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{% if n.question.type == 'ox' %}O/X{% elif n.question.type == 'mc' %}객관식{% elif n.question.type == 'essay' %}서술형{% else %}단답형{% endif %}</span>
+                {% if n.reason == 'unknown' %}<span class="font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700">모르겠음</span>{% endif %}
+                <span class="text-slate-400 truncate">{{ n.source_title }}</span>
+                <span class="ml-auto flex items-center gap-2">
+                    <span class="font-bold text-emerald-600" title="다시 풀어 맞힌 횟수">맞은 횟수 <span class="cnt-correct">{{ n.correct_count }}</span></span>
+                    <span class="font-bold text-rose-500" title="틀린 횟수 (처음 틀린 것 포함)">틀린 횟수 <span class="cnt-wrong">{{ n.wrong_count }}</span></span>
+                    <button type="button" class="wn-remove text-slate-300 hover:text-rose-500 transition" title="오답노트에서 제거" aria-label="오답노트에서 제거"><i class="fa-solid fa-trash-can"></i></button>
+                </span>
             </div>
-            <div class="wn-body wn-plain" data-md>{{ it.question }}</div>
-            {% if it.options %}
-            <ul class="mt-2 text-sm text-slate-600 space-y-0.5">{% for option in it.options %}<li><b>{{ forloop.counter }}.</b> <span data-md-inline>{{ option }}</span></li>{% endfor %}</ul>
-            {% endif %}
-            <p class="mt-3 text-sm text-rose-600"><b>내 답</b> · <span class="wn-plain">{{ it.my_answer }}</span></p>
-            <details class="mt-2 group">
-                <summary class="cursor-pointer text-xs font-bold text-emerald-700 hover:text-emerald-800 select-none">정답·해설 보기</summary>
-                <div class="mt-2 text-sm text-slate-700"><b class="text-slate-500">{% if it.type == 'essay' %}모범답안{% else %}정답{% endif %}</b> · <span class="wn-body" data-md-inline>{{ it.correct }}</span></div>
-                {% if it.note %}<p class="mt-2 text-sm text-slate-600 wn-plain">{{ it.note }}</p>{% endif %}
-                {% if it.explanation %}<div class="mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2"><span class="wn-body" data-md-inline>{{ it.explanation }}</span></div>{% endif %}
-            </details>
+            <div class="wn-body wn-plain" data-md>{{ n.question.q }}</div>
+
+            <form class="wn-form mt-3">
+                {% if n.question.type == 'ox' %}
+                <div class="flex gap-4 text-sm">
+                    <label class="flex items-center gap-1.5"><input type="radio" name="ans-{{ n.pk }}" value="O"> O</label>
+                    <label class="flex items-center gap-1.5"><input type="radio" name="ans-{{ n.pk }}" value="X"> X</label>
+                </div>
+                {% elif n.question.type == 'mc' %}
+                <div class="space-y-1.5 text-sm">
+                    {% for option in n.question.options %}
+                    <label class="flex items-start gap-2"><input type="radio" name="ans-{{ n.pk }}" value="{{ forloop.counter0 }}" class="mt-1.5"> <span class="wn-body"><b>{{ forloop.counter }}.</b> <span data-md-inline>{{ option }}</span></span></label>
+                    {% endfor %}
+                </div>
+                {% elif n.question.type == 'essay' %}
+                <textarea name="ans-{{ n.pk }}" rows="5" placeholder="답을 서술해 보세요. 제출하면 모범답안을 보여 줘요" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"></textarea>
+                {% else %}
+                <input type="text" name="ans-{{ n.pk }}" autocomplete="off" placeholder="답을 입력하세요" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
+                {% endif %}
+                <div class="flex items-center gap-2 mt-3">
+                    <button type="submit" class="wn-submit bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-2 rounded-lg transition">제출</button>
+                    <button type="button" class="wn-unknown text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-amber-50 hover:text-amber-700 transition">모르겠음</button>
+                </div>
+            </form>
+            <p class="wn-error hidden mt-2 text-xs font-bold text-rose-600"></p>
+            <div class="wn-result hidden mt-3 pt-3 border-t border-slate-100 text-sm"></div>
+            <div class="wn-answer-data hidden">{% if n.question.type == 'essay' %}{{ n.correct_text }}{% endif %}</div>
         </div>
         {% empty %}
         <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl py-16 text-center text-sm text-slate-400">
-            {% if total %}이 과목에는 틀린 문제가 없어요.{% else %}아직 틀린 문제가 없어요. 모의고사를 풀거나 자료 퀴즈를 풀면 틀린 문제가 여기에 모여요.{% endif %}
+            {% if total %}이 과목에는 오답노트 문제가 없어요.{% else %}아직 오답노트에 담긴 문제가 없어요. 모의고사나 자료 퀴즈에서 틀리거나 "모르겠음"을 누른 문제가 여기에 모여요.{% endif %}
         </div>
         {% endfor %}
     </div>
 </section>
+<script src="{% static 'js/exam-render.js' %}?v={{ static_version }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    function draw() {
-        if (typeof window.renderMarkdown !== 'function') return;
-        document.querySelectorAll('[data-md]').forEach(function (el) {
-            try { el.innerHTML = window.renderMarkdown(el.textContent); el.classList.remove('wn-plain'); } catch (e) {}
-        });
-        document.querySelectorAll('[data-md-inline]').forEach(function (el) {
-            try { el.innerHTML = window.renderMarkdown(el.textContent).replace(/^<p class="md-p">([\s\S]*)<\/p>$/, '$1'); } catch (e) {}
-        });
-        if (typeof window.renderMath === 'function') { try { window.renderMath(document); } catch (e) {} }
+(function () {
+    var root = document.getElementById('wn-root'), csrf = root.dataset.csrf;
+    function post(url, body) {
+        return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf }, body: JSON.stringify(body || {}) })
+            .then(function (res) { return res.json().then(function (d) { return { ok: res.ok && d.ok !== false, data: d }; }); });
     }
-    if (typeof window.renderMarkdown === 'function') draw(); else window.addEventListener('load', draw);
-});
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function md(text) { try { return window.renderMarkdown(window.ExamMd.splitLines(text)); } catch (e) { return '<p>' + esc(text) + '</p>'; } }
+
+    document.querySelectorAll('.wn-card').forEach(function (card) {
+        var form = card.querySelector('.wn-form'), result = card.querySelector('.wn-result'), errEl = card.querySelector('.wn-error');
+        var type = card.dataset.type, answerUrl = card.dataset.answerUrl, busy = false;
+        var essayModel = (card.querySelector('.wn-answer-data') || {}).textContent || '';
+
+        function value() {
+            if (type === 'ox' || type === 'mc') { var r = form.querySelector('input[type=radio]:checked'); return r ? r.value : ''; }
+            var el = form.querySelector('textarea, input[type=text]'); return el ? el.value.trim() : '';
+        }
+        function showError(msg) { errEl.textContent = msg; errEl.classList.toggle('hidden', !msg); }
+        function setCounts(d) {
+            card.querySelector('.cnt-correct').textContent = d.correct_count;
+            card.querySelector('.cnt-wrong').textContent = d.wrong_count;
+        }
+        function lock(on) { form.querySelectorAll('input, textarea, button').forEach(function (el) { el.disabled = on; }); }
+        function showResult(d, unknown) {
+            var good = d.correct;
+            var html = '<p class="font-bold ' + (good ? 'text-emerald-600' : 'text-rose-600') + '">' + (unknown ? '모르겠음으로 기록했어요' : (good ? '정답이에요!' : '오답이에요')) + '</p>' +
+                '<div class="mt-1.5 text-slate-700"><b class="text-slate-500">' + (type === 'essay' ? '모범답안' : '정답') + '</b> · <span class="wn-body wn-res-correct">' + md(d.correct_text) + '</span></div>' +
+                (d.explanation ? '<div class="mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 wn-body">' + md(d.explanation) + '</div>' : '') +
+                '<button type="button" class="wn-retry mt-3 text-xs font-bold text-emerald-700 hover:text-emerald-800">다시 풀기</button>';
+            result.innerHTML = html; result.classList.remove('hidden');
+            if (typeof window.renderMath === 'function') window.renderMath(result);
+            result.querySelector('.wn-retry').addEventListener('click', function () {
+                result.classList.add('hidden'); result.innerHTML = '';
+                form.reset(); lock(false); form.classList.remove('hidden'); showError('');
+            });
+            form.classList.add('hidden');
+        }
+        function showSelfGrade(d) {
+            result.innerHTML = '<div class="text-slate-700"><b class="text-slate-500">모범답안</b> · <span class="wn-body">' + md(d.correct_text) + '</span></div>' +
+                (d.explanation ? '<div class="mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 wn-body">' + md(d.explanation) + '</div>' : '') +
+                '<p class="mt-3 text-xs font-bold text-slate-500">내 답을 모범답안과 비교해 보세요. 맞게 썼나요?</p>' +
+                '<div class="flex gap-2 mt-1.5"><button type="button" class="wn-self bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-lg" data-v="1">맞았어요</button>' +
+                '<button type="button" class="wn-self bg-white border border-slate-200 text-slate-600 text-xs font-bold px-4 py-2 rounded-lg" data-v="0">틀렸어요</button></div>';
+            result.classList.remove('hidden');
+            if (typeof window.renderMath === 'function') window.renderMath(result);
+            form.classList.add('hidden');
+            result.querySelectorAll('.wn-self').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    result.querySelectorAll('.wn-self').forEach(function (x) { x.disabled = true; });
+                    post(answerUrl, { answer: value() || '', self_correct: b.dataset.v === '1' }).then(function (r) {
+                        if (!r.ok) { showError(r.data.error || '기록하지 못했어요.'); return; }
+                        setCounts(r.data); showResult(r.data, false);
+                    });
+                });
+            });
+        }
+        function submit(unknown) {
+            if (busy) return;
+            var v = value();
+            if (!unknown && !v) { showError('답을 입력하거나 고른 뒤 제출해 주세요. 잘 모르겠으면 "모르겠음"을 눌러요.'); return; }
+            showError(''); busy = true; lock(true);
+            post(answerUrl, unknown ? { unknown: true } : { answer: v }).then(function (r) {
+                busy = false; lock(false);
+                if (!r.ok) { showError(r.data.error || '제출하지 못했어요.'); return; }
+                if (r.data.needs_self_grade) { showSelfGrade(r.data); return; }
+                setCounts(r.data); showResult(r.data, unknown);
+            }).catch(function () { busy = false; lock(false); showError('네트워크 오류로 제출하지 못했어요.'); });
+        }
+        form.addEventListener('submit', function (e) { e.preventDefault(); submit(false); });
+        card.querySelector('.wn-unknown').addEventListener('click', function () { submit(true); });
+        card.querySelector('.wn-remove').addEventListener('click', function () {
+            if (!window.confirm('이 문제를 오답노트에서 제거할까요? 제거하면 다시 담기지 않아요.')) return;
+            post(card.dataset.removeUrl).then(function (r) { if (r.ok) card.remove(); });
+        });
+    });
+})();
 </script>
 {% endblock %}

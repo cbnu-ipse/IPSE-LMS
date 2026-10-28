@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{{ exam.title }} | IPSE LMS{% endblock %}
 
 {% block content %}
@@ -38,7 +39,7 @@
     </div>
     {% endif %}
     {% if score is None and essays %}
-    <p class="no-print text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>서술형 {{ essays }}문항은 AI가 채점해서, 답을 쓴 문항만큼 이번 주 AI 사용량이 늘어요. 채점은 한 번만 하고 결과는 저장돼, 틀린 문제는 오답노트에서 다시 볼 수 있어요.</p>
+    <p class="no-print text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>서술형 {{ essays }}문항은 AI가 채점해서, 답을 쓴 문항만큼 이번 주 AI 사용량이 늘어요. 채점은 한 번만 하고 결과는 저장돼요. 틀린 문제와 "모르겠음"으로 넘긴 문제는 오답노트에 담겨 다시 풀 수 있어요.</p>
     {% endif %}
     <form method="post" class="space-y-4">
         {% csrf_token %}
@@ -68,12 +69,13 @@
                 {% else %}
                 <input type="text" name="a_{{ row.index }}" value="{{ row.value }}" autocomplete="off" placeholder="답을 입력하세요" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
                 {% endif %}
+                <label class="no-print inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-slate-400 hover:text-amber-600 cursor-pointer select-none"><input type="checkbox" name="u_{{ row.index }}" value="1" class="unsure-box"> 모르겠음 <span class="font-normal text-slate-300">(찍지 않고 넘어가면 오답노트에 담겨요)</span></label>
             {% else %}
                 {% if row.q.type == 'mc' %}
                 <ul class="text-sm text-slate-600 mb-3 space-y-0.5">{% for option in row.q.options %}<li><b>{{ forloop.counter }}.</b> <span data-md-inline>{{ option }}</span></li>{% endfor %}</ul>
                 {% endif %}
                 <p class="text-sm text-slate-600"><b class="text-slate-500">내 답</b> · <span class="mq-plain">{{ row.answer_text }}</span></p>
-                {% if row.q.type == 'essay' and row.note %}<p class="text-sm text-slate-700 mt-2 mq-plain">{{ row.note }}</p>{% endif %}
+                {% if row.note %}<p class="text-sm text-slate-700 mt-2 mq-plain">{{ row.note }}</p>{% endif %}
                 {% if not row.correct %}
                 <div class="mt-2 text-sm text-slate-700"><b class="text-slate-500">{% if row.q.type == 'essay' %}모범답안{% else %}정답{% endif %}</b> · <span class="mq-body" data-md-inline>{{ row.correct_text }}</span></div>
                 {% endif %}
@@ -88,23 +90,15 @@
     </form>
     <a href="{% url 'mypage:document_list' %}" class="no-print inline-block mt-6 text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료로 돌아가기</a>
 </section>
+<script src="{% static 'js/exam-render.js' %}?v={{ static_version }}"></script>
 <script>
-// 문제 본문·보기·해설은 마크다운과 수식($...$)으로 그린다 (그리기에 실패하면 줄바꿈을 살린 원문 그대로 보인다)
-document.addEventListener('DOMContentLoaded', function () {
-    function draw() {
-        if (typeof window.renderMarkdown !== 'function') return;
-        document.querySelectorAll('[data-md]').forEach(function (el) {
-            try { el.innerHTML = window.renderMarkdown(el.textContent); el.classList.remove('mq-plain'); } catch (e) {}
-        });
-        document.querySelectorAll('[data-md-inline]').forEach(function (el) {
-            try {
-                var html = window.renderMarkdown(el.textContent);
-                el.innerHTML = html.replace(/^<p class="md-p">([\s\S]*)<\/p>$/, '$1');       // 보기 한 줄은 문단 여백 없이
-            } catch (e) {}
-        });
-        if (typeof window.renderMath === 'function') { try { window.renderMath(document); } catch (e) {} }
-    }
-    if (typeof window.renderMarkdown === 'function') draw(); else window.addEventListener('load', draw);
+// '모르겠음'을 누른 문항은 답 입력을 잠가 찍지 않게 한다 (눌렀다 풀면 다시 열린다)
+document.querySelectorAll('.unsure-box').forEach(function (box) {
+    box.addEventListener('change', function () {
+        var card = box.closest('.mq-card');
+        card.querySelectorAll('input[type=radio], input[type=text], textarea').forEach(function (el) { el.disabled = box.checked; });
+        card.style.opacity = box.checked ? '.75' : '';
+    });
 });
 </script>
 {% endblock %}

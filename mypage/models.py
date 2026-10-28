@@ -261,3 +261,40 @@ class ExamQuestion(models.Model):
 
     def __str__(self):
         return f"[{self.get_qtype_display()}] {self.text[:30]}"
+
+
+class WrongNote(models.Model):
+    """오답노트 한 문제. 모의고사나 자료 퀴즈에서 틀렸거나 '모르겠음'으로 넘긴 문제를 문제 내용(스냅샷)과 함께 모아 두고,
+    다시 풀 때마다 맞은 횟수·틀린 횟수를 센다. 다시 맞혀도 사라지지 않고 사용자가 직접 제거한다 (제거한 문제는 다시 생기지 않는다)."""
+
+    class Source(models.TextChoices):
+        MOCK = "mock", "모의고사"
+        QUIZ = "quiz", "자료 퀴즈"
+
+    class Reason(models.TextChoices):
+        WRONG = "wrong", "틀림"
+        UNKNOWN = "unknown", "모르겠음"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wrong_notes")
+    source = models.CharField(max_length=10, choices=Source.choices)
+    source_id = models.PositiveIntegerField(verbose_name="모의고사 id 또는 자료 퀴즈 문제 id")
+    index = models.PositiveIntegerField(default=0, verbose_name="모의고사의 문항 번호(0부터)")
+    source_title = models.CharField(max_length=200, blank=True)
+    subject = models.CharField(max_length=100, blank=True, verbose_name="과목")
+    question = models.JSONField(default=dict, verbose_name="문제 내용(모의고사 문제와 같은 모양: type/q/options/answer/answers/explanation)")
+    reason = models.CharField(max_length=10, choices=Reason.choices, default=Reason.WRONG, verbose_name="처음 담긴 이유")
+    wrong_count = models.PositiveIntegerField(default=0, verbose_name="틀린 횟수")
+    correct_count = models.PositiveIntegerField(default=0, verbose_name="맞은 횟수")
+    last_answer = models.TextField(blank=True)
+    last_result = models.BooleanField(null=True, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    is_removed = models.BooleanField(default=False, verbose_name="사용자가 제거함")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=["user", "source", "source_id", "index"], name="wrongnote_unique_question")]
+
+    def __str__(self):
+        return f"{self.user} · {self.source_title} · {str(self.question.get('q', ''))[:30]}"

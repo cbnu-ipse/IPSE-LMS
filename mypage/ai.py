@@ -375,7 +375,15 @@ def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None, on_text=N
     return core_ai.complete("summary", messages, user=user, cost=cost)
 
 
-QUESTION_TYPE_LABELS = {"ox": "OX(참/거짓)", "mc": "객관식(보기 4개)", "short": "단답형", "essay": "서술형"}
+# 모델이 줄바꿈을 JSON 이스케이프(\n)가 아니라 글자 그대로의 백슬래시+n으로 보낼 때가 있다 ("…쓰시오.\nIn Flynn's…"). LaTeX 명령(\neq, \nu …)은 건드리지 않는다
+_LITERAL_NEWLINE = re.compile(r"(?<!\\)\\n(?!(?:eq|eg|abla|u|otin|ot|i|e|leq|geq|subset|supset|mid|parallel|exists|less|gtr|prec|succ|cong|sim|vdash|vDash|rightarrow|leftarrow|Rightarrow|Leftarrow)(?![A-Za-z]))")
+
+
+def unescape_newlines(text):
+    return _LITERAL_NEWLINE.sub("\n", str(text or ""))
+QUESTION_TYPE_LABELS = {
+
+"ox": "OX(참/거짓)", "mc": "객관식(보기 4개)", "short": "단답형", "essay": "서술형"}
 
 
 def generate_one_question(extracted_text, question_type, existing_questions=(), user=None, index=0, rng=None, style=""):
@@ -411,9 +419,9 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         messages[1] = {"role": "user", "content": request + f"\n(반드시 answer는 {target}이어야 합니다. 다시 만들어 주세요.)"}
         data = core_ai.complete_json("question", messages, user=user)
     result = {
-        "question": clean_question_text(data.get("question", "")),
+        "question": clean_question_text(unescape_newlines(data.get("question", ""))),
         "answer": data.get("answer", ""),
-        "explanation": data.get("explanation", "") if question_type in ("ox", "mc") else "",
+        "explanation": unescape_newlines(data.get("explanation", "")) if question_type in ("ox", "mc") else "",
         "options": [],
     }
     if question_type == "mc":

@@ -16,7 +16,8 @@ from collections import Counter
 
 from core import ai as core_ai
 
-from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument
+from .ai import unescape_newlines
+from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument, WrongNote
 from .naming import professor_key  # noqa: F401 (다른 모듈이 mypage.exam에서 가져다 쓴다)
 from .ontology import exam_questions_for, exam_stats
 
@@ -48,7 +49,7 @@ MOCK_SYSTEM = (
     "- 정답이 한쪽으로 쏠리지 않게 합니다 (OX는 O/X를 섞고, 객관식 정답 번호도 골고루).\n"
     "- 문제 문장(q)은 마크다운으로 읽기 좋게 씁니다: 긴 지문은 문단(빈 줄)으로 나누고, 코드·의사코드·메시지 흐름은 ``` 블록에 줄마다 넣고, "
     "수식은 $...$ 로 쓰되 \\frac 같은 LaTeX 명령 없이 $Q_i \\cap Q_j$ 정도로 간단히, 빈칸은 (1)_____ 처럼, (1)(2)(3) 소문항은 줄을 바꿔 나열합니다. "
-    "문제 전체를 **굵게** 감싸지 말고 핵심 용어에만 씁니다. 문제 하나는 1200자 안으로 끝냅니다.\n"
+    "문제 전체를 **굵게** 감싸지 말고 핵심 용어에만 씁니다. 문제 하나는 1200자 안으로 끝냅니다. 줄바꿈은 JSON 문자열의 \\n 하나로만 쓰고 글자 그대로의 백슬래시+n을 쓰지 않습니다.\n"
     "- 형식:\n"
     '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
     '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 2, "explanation": "..."} (answer는 0부터)\n'
@@ -190,7 +191,7 @@ def refresh_for(professors=(), subjects=()):
 
 def _block(value, limit):
     """줄바꿈은 살리고(코드 블록·소문항이 한 줄로 뭉개지지 않게) 양끝 공백·세 줄 이상의 빈 줄만 정리한다."""
-    text = re.sub(r"[ \t]+\n", "\n", str(value or "").replace("\r\n", "\n")).strip()
+    text = re.sub(r"[ \t]+\n", "\n", unescape_newlines(str(value or "").replace("\r\n", "\n"))).strip()
     return re.sub(r"\n{3,}", "\n\n", text)[:limit]
 
 
@@ -317,9 +318,12 @@ def generate_mock_exam(user, documents, document=None):
         style_label=style.label if style else "", questions=questions)
 
 
-def grade_mock_exam(exam, raw_answers):
+def grade_mock_exam(exam, raw_answers, unsure=()):
     """제출한 답({인덱스: 문자열})을 채점해 저장한다. ox/mc/short는 서버가, 서술형은 AI가 채점한다 (답을 쓴 서술형마다
-    AI 채점이라 사용량이 든다. 채점이 실패하면 오답 처리한다). 문항별 정오 리스트를 돌려준다."""
+    AI 채점이라 사용량이 든다. 채점이 실패하면 오답 처리한다). 문항별 정오 리스트를 돌려준다.
+    unsure: '모르겠음'을 누른 문항 번호(문자열) 모음 — 찍지 않고 넘어간 것이라 오답으로 세고(서술형도 AI를 부르지 않는다),
+    틀린 문제와 함께 오답노트에 담는다."""
+    from . import wrongnotes
     from course.studio import grade_question
     from django.utils import timezone
 
@@ -327,9 +331,11 @@ def grade_mock_exam(exam, raw_answers):
 
     answers, results, feedback = [], [], []
     for i, q in enumerate(exam.questions):
-        raw = raw_answers.get(str(i), "")
+        raw = "" if str(i) in unsure else raw_answers.get(str(i), "")
         note = ""
-        if q["type"] == "essay":
+        if str(i) in unsure:
+            value, ok, note = None, False, "모르겠음으로 표시했어요."
+        elif q["type"] == "essay":
             value = raw.strip()
             ok = False
             if not value:
@@ -356,6 +362,10 @@ def grade_mock_exam(exam, raw_answers):
         feedback.append(note)
     exam.answers, exam.results, exam.feedback, exam.submitted_at = answers, results, feedback, timezone.now()
     exam.save(update_fields=["answers", "results", "feedback", "submitted_at"])
+    for i, (q, ok) in enumerate(zip(exam.questions, results)):          # 틀린 문제·모르겠음은 오답노트에 담는다
+        if not ok:
+            reason = WrongNote.Reason.UNKNOWN if str(i) in unsure else WrongNote.Reason.WRONG
+            wrongnotes.record(exam.user, WrongNote.Source.MOCK, exam.pk, i, exam.title, exam.course_code, q, reason)
     return results
 
 
@@ -415,39 +425,11 @@ def exam_rows(exam, posted=None):
             elif q["type"] == "essay":
                 row["correct_text"] = q["answer"]
                 row["answer_text"] = row["answer"] or "무응답"
-                row["note"] = exam.feedback[i] if i < len(exam.feedback) else ""
             else:
                 row["correct_text"] = " / ".join(q["answers"])
                 row["answer_text"] = row["answer"] or "무응답"
+            row["note"] = exam.feedback[i] if i < len(exam.feedback) else ""
+            if "모르겠음" in row["note"]:
+                row["answer_text"] = "모르겠음"
         rows.append(row)
     return rows
-
-
-def wrong_answers(user, subject=""):
-    """내가 틀린 문제 모음(오답노트): 채점이 끝난 모의고사의 오답 + 자료별 퀴즈의 오답, 최근 것부터.
-    이미 저장된 채점 결과를 읽을 뿐이라 AI를 부르지 않는다. subject를 주면 그 과목만."""
-    from .models import GeneratedQuestion
-
-    items = []
-    for exam in MockExam.objects.filter(user=user, submitted_at__isnull=False).order_by("-submitted_at"):
-        if subject and exam.course_code != subject:
-            continue
-        for row in exam_rows(exam):
-            if row["correct"]:
-                continue
-            items.append({"source": "모의고사", "source_title": exam.title, "subject": exam.course_code, "when": exam.submitted_at,
-                          "type": row["q"]["type"], "question": row["q"]["q"], "options": row["q"].get("options") or [],
-                          "my_answer": row["answer_text"], "correct": row["correct_text"],
-                          "explanation": row["q"].get("explanation") or "", "note": row.get("note", ""),
-                          "link": exam.get_absolute_url()})
-    quiz = (GeneratedQuestion.objects.filter(document__user=user, document__is_deleted=False, is_correct=False)
-            .select_related("document").order_by("-created_at"))
-    for q in quiz:
-        if subject and q.document.course_name != subject:
-            continue
-        items.append({"source": "자료 퀴즈", "source_title": q.document.title, "subject": q.document.course_name, "when": q.created_at,
-                      "type": q.question_type, "question": q.question_text, "options": q.options or [],
-                      "my_answer": q.display_user_answer, "correct": q.display_answer, "explanation": q.feedback, "note": "",
-                      "link": q.document.get_absolute_url() + "?panel=quiz"})
-    items.sort(key=lambda it: it["when"], reverse=True)
-    return items
