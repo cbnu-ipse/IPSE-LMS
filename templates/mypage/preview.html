@@ -161,6 +161,7 @@
                                             {% csrf_token %}
                                             <button type="submit" name="user_answer" value="O" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">O</button>
                                             <button type="submit" name="user_answer" value="X" class="flex-1 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-bold py-2 rounded-lg transition">X</button>
+                                            <button type="submit" name="unknown" value="1" formnovalidate class="ms-unknown text-[11px] font-bold px-2.5 py-2 rounded-lg border border-slate-200 text-slate-400 hover:bg-amber-50 hover:text-amber-700 transition" title="찍지 않고 넘어가기 — 오답노트에 담겨요">모르겠음</button>
                                         </form>
                                     {% elif current_question.question_type == "mc" %}
                                         <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer mt-3 pt-3 border-t border-slate-100 space-y-1.5">
@@ -168,18 +169,20 @@
                                             {% for option in current_question.options %}
                                             <button type="submit" name="user_answer" value="{{ forloop.counter0 }}" class="w-full text-left bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 text-xs font-medium px-3 py-2.5 rounded-lg transition"><b class="mr-1.5">{{ forloop.counter }}.</b>{{ option }}</button>
                                             {% endfor %}
+                                            <div class="pt-1"><button type="submit" name="unknown" value="1" formnovalidate class="ms-unknown text-[11px] font-bold px-2.5 py-2 rounded-lg border border-slate-200 text-slate-400 hover:bg-amber-50 hover:text-amber-700 transition" title="찍지 않고 넘어가기 — 오답노트에 담겨요">모르겠음</button></div>
                                         </form>
                                     {% elif current_question.question_type == "essay" %}
                                         <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
                                             <textarea name="user_answer" required rows="8" placeholder="답을 자유롭게 서술하세요 (Ctrl/⌘ + Enter로 제출)" class="ms-essay w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"></textarea>
-                                            <div class="flex justify-end mt-2"><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2 rounded-lg transition">제출{% include 'includes/credit_cost.html' with cost=ai_cost.grading %}</button></div>
+                                            <div class="flex justify-end gap-2 mt-2"><button type="submit" name="unknown" value="1" formnovalidate class="ms-unknown text-[11px] font-bold px-2.5 py-2 rounded-lg border border-slate-200 text-slate-400 hover:bg-amber-50 hover:text-amber-700 transition" title="찍지 않고 넘어가기 — 오답노트에 담겨요">모르겠음</button><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2 rounded-lg transition">제출{% include 'includes/credit_cost.html' with cost=ai_cost.grading %}</button></div>
                                         </form>
                                     {% else %}
                                         <form method="post" action="{% url 'mypage:submit_answer' document.pk current_question.pk %}?q={{ q_index }}" class="ms-answer flex gap-2 mt-3 pt-3 border-t border-slate-100">
                                             {% csrf_token %}
                                             <input type="text" name="user_answer" required placeholder="답을 입력하세요" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
                                             <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 rounded-lg transition">제출{% include 'includes/credit_cost.html' with cost=ai_cost.grading %}</button>
+                                            <button type="submit" name="unknown" value="1" formnovalidate class="ms-unknown text-[11px] font-bold px-2.5 py-2 rounded-lg border border-slate-200 text-slate-400 hover:bg-amber-50 hover:text-amber-700 transition" title="찍지 않고 넘어가기 — 오답노트에 담겨요">모르겠음</button>
                                         </form>
                                     {% endif %}
                                 {% else %}
@@ -254,7 +257,7 @@
         const submitter = e.submitter;
         const data = new FormData(form);
         if (submitter && submitter.name) data.set(submitter.name, submitter.value);
-        if (!String(data.get('user_answer') || '').trim()) return;
+        if (!data.get('unknown') && !String(data.get('user_answer') || '').trim()) return;
         form.querySelectorAll('button, textarea, input[type=text]').forEach((el) => { el.disabled = true; });
         const label = submitter && submitter.textContent;
         if (submitter) submitter.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 채점 중';

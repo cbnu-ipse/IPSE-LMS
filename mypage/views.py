@@ -1,4 +1,5 @@
 import hashlib
+import json
 import io
 import logging
 import os
@@ -559,11 +560,17 @@ def submit_answer_view(request, pk, question_id):
     if question.status != ProcessingStatus.DONE:
         return fail("문제를 아직 생성하고 있습니다. 잠시 후 다시 시도해주세요.")
 
-    user_answer = request.POST.get("user_answer", "").strip()
+    from . import wrongnotes
+
+    unknown = bool(request.POST.get("unknown"))
+    user_answer = wrongnotes.UNKNOWN_ANSWER if unknown else request.POST.get("user_answer", "").strip()
     if not user_answer:
         return fail("답을 입력해주세요.")
 
-    if question.question_type == GeneratedQuestion.QuestionType.OX:
+    if unknown:
+        # 모르겠음: 찍지 않고 넘어간 것이라 오답으로 세고, 채점(AI)은 하지 않는다. 해설은 만들 때 받아 둔 것이 있으면 보여 준다
+        is_correct, feedback = False, (question.feedback if question.question_type in ("ox", "mc") else "")
+    elif question.question_type == GeneratedQuestion.QuestionType.OX:
         # 해설은 문제를 만들 때 받아 둔 것(question.feedback)을 그대로 쓴다 — AI를 다시 부르지 않음
         is_correct = user_answer.upper() == question.answer.strip().upper()
         feedback = question.feedback
@@ -588,6 +595,10 @@ def submit_answer_view(request, pk, question_id):
     question.is_correct = is_correct
     question.feedback = feedback
     question.save(update_fields=["user_answer", "is_correct", "feedback"])
+    if not is_correct:                      # 틀렸거나 모르겠음이면 오답노트에 담는다
+        from .models import WrongNote
+        wrongnotes.record(request.user, WrongNote.Source.QUIZ, question.pk, 0, question.document.title, question.document.course_name,
+                          wrongnotes.snapshot_from_quiz(question), WrongNote.Reason.UNKNOWN if unknown else WrongNote.Reason.WRONG)
     if wants_json:
         return JsonResponse({"ok": True, "is_correct": is_correct, "feedback": feedback,
                              "user_answer": question.display_user_answer, "answer": question.display_answer})
@@ -822,12 +833,14 @@ def mock_exam(request, pk):
     posted = {}
     if request.method == "POST" and exam.submitted_at is None:
         posted = {k[2:]: v for k, v in request.POST.items() if k.startswith("a_")}
+        unsure = {k[2:] for k, v in request.POST.items() if k.startswith("u_") and v}        # '모르겠음'을 누른 문항
+        posted = {k: ("" if k in unsure else v) for k, v in posted.items()}                  # 그 문항의 답은 채점하지 않는다
         try:    # 서술형은 AI가 채점하므로 답을 쓴 서술형 수만큼 채점 사용량이 필요하다 (모자라면 채점하지 않고 답을 그대로 보여 준다)
             require_quota(request.user, essay_count(exam, posted) * cost_for("grading"))
         except AIQuotaExceeded as exc:
             messages.error(request, f"서술형 채점을 할 수 없습니다. {exc}")
         else:
-            grade_mock_exam(exam, posted)
+            grade_mock_exam(exam, posted, unsure)
             return redirect(exam.get_absolute_url())
     rows = exam_rows(exam, posted)
     score = sum(exam.results) if exam.submitted_at else None
@@ -840,11 +853,54 @@ def mock_exam(request, pk):
 
 @login_required
 def wrong_notes(request):
-    """오답노트: 내가 틀린 문제(모의고사·자료 퀴즈)를 모아 다시 본다. 이미 저장된 채점 결과를 읽을 뿐이라 AI를 부르지 않는다."""
-    from .exam import wrong_answers
+    """오답노트: 틀렸거나 '모르겠음'으로 넘긴 문제를 모아 다시 푼다. 맞은 횟수·틀린 횟수가 쌓이고, 직접 제거할 수 있다."""
+    from . import wrongnotes
+    from .models import WrongNote
 
+    wrongnotes.sync(request.user)                                     # 예전에 푼 오답도 처음 열 때 채워 준다
     subject = request.GET.get("subject", "").strip()
-    everything = wrong_answers(request.user)
-    subjects = sorted({it["subject"] for it in everything if it["subject"]})
-    items = [it for it in everything if not subject or it["subject"] == subject]
-    return render(request, "mypage/wrong_notes.html", {"items": items, "subjects": subjects, "subject": subject, "total": len(everything)})
+    sort = request.GET.get("sort", "recent")
+    notes = list(WrongNote.objects.filter(user=request.user, is_removed=False))
+    subjects = sorted({n.subject for n in notes if n.subject})
+    items = [n for n in notes if not subject or n.subject == subject]
+    if sort == "wrong":
+        items.sort(key=lambda n: (-n.wrong_count, n.correct_count, -n.pk))        # 자주 틀리고 아직 못 맞힌 문제부터
+    for n in items:
+        n.correct_text = wrongnotes.correct_text(n.question)
+    return render(request, "mypage/wrong_notes.html", {"items": items, "subjects": subjects, "subject": subject, "sort": sort, "total": len(notes)})
+
+
+def _owned_note(request, pk):
+    from .models import WrongNote
+
+    return get_object_or_404(WrongNote, pk=pk, user=request.user, is_removed=False)
+
+
+@login_required
+@require_POST
+def wrong_note_answer(request, pk):
+    """오답노트 문제를 다시 푼 답을 기록한다 (AI 호출 없음). 서술형은 모범답안을 보고 스스로 맞았는지 고른다."""
+    from . import wrongnotes
+
+    note = _owned_note(request, pk)
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "잘못된 요청입니다."}, status=400)
+    self_correct = body.get("self_correct")
+    try:
+        result = wrongnotes.attempt(note, answer=body.get("answer"), unknown=bool(body.get("unknown")),
+                                    self_correct=self_correct if isinstance(self_correct, bool) else None)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, **result})
+
+
+@login_required
+@require_POST
+def wrong_note_remove(request, pk):
+    """사용자가 오답노트에서 문제를 제거한다 (제거한 문제는 다시 담기지 않는다)."""
+    note = _owned_note(request, pk)
+    note.is_removed = True
+    note.save(update_fields=["is_removed", "updated_at"])
+    return JsonResponse({"ok": True})
