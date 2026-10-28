@@ -128,6 +128,21 @@ class PersonalDocument(models.Model):
     concepts = models.ManyToManyField("Concept", through="DocumentConcept", blank=True, related_name="documents",
                                       verbose_name="다루는 개념")
     is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")
+    # 올릴 때 서버가 규칙(mypage/doctype.py)으로 짐작한 자료 구분과 확신도. 사용자가 고른 구분과 크게 다르면 검토 대상이다
+    suggested_type = models.CharField(max_length=10, blank=True, default="", verbose_name="서버가 짐작한 구분")
+    type_confidence = models.FloatField(default=0, verbose_name="구분 짐작 확신도")
+
+    class ReviewStatus(models.TextChoices):
+        PENDING = "pending", "검토 전"
+        APPROVED = "approved", "맞음"
+        REJECTED = "rejected", "잘못됨"
+
+    # 강의자·관리자가 족보·과목·교수 정보를 확인한 결과. 잘못됨은 족보 학습(출제 스타일·통계)에서 빠진다 (accounts/trust.py)
+    review_status = models.CharField(max_length=10, choices=ReviewStatus.choices, default=ReviewStatus.PENDING,
+                                     db_index=True, verbose_name="검토 결과")
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="reviewed_documents", verbose_name="검토한 사람")
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="검토 일시")
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -298,3 +313,17 @@ class WrongNote(models.Model):
 
     def __str__(self):
         return f"{self.user} · {self.source_title} · {str(self.question.get('q', ''))[:30]}"
+
+
+class DocTypeRules(models.Model):
+    """자료 구분(족보/수업 자료)을 짐작하는 규칙값. 기본값은 코드에 있고(mypage/doctype.py), AI가 정리해 새로 쓴 값이 있으면 가장 최근 것을 쓴다."""
+    rules = models.JSONField(default=dict, verbose_name="규칙")
+    source = models.CharField(max_length=20, default="ai", verbose_name="만든 방법")
+    sample_count = models.PositiveIntegerField(default=0, verbose_name="근거 자료 수")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "자료 구분 규칙"
+        verbose_name_plural = "자료 구분 규칙"

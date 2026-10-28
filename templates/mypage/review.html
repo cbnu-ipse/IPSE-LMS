@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}족보 검토 | IPSE LMS{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <a href="{% url 'mypage:document_list' %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료</a>
+    <h1 class="text-2xl font-bold text-slate-800 mt-2 mb-1">족보 검토</h1>
+    <p class="text-sm text-slate-500 mb-5">일반 사용자가 올린 족보와, 서버의 짐작과 올린 구분이 크게 다른 자료입니다. 과목·교수 이름과 구분이 맞는지 확인해 주세요.
+        <b>맞음</b>이면 올린 사람의 신뢰도가 오르고, <b>잘못됨</b>이면 크게 내려가며 그 자료는 출제 스타일·통계 학습에서 빠집니다. 신뢰도가 낮은 사용자의 족보는 확인 전에도 학습에 쓰이지 않습니다.</p>
+    {% for message in messages %}<div class="px-4 py-2.5 rounded-xl text-sm font-medium mb-3 bg-emerald-50 text-emerald-700 border border-emerald-100">{{ message }}</div>{% endfor %}
+    {% for d in docs %}
+    <div class="bg-white rounded-2xl border {% if d.suspect %}border-amber-300{% else %}border-slate-100{% endif %} p-5 mb-3">
+        <div class="flex flex-wrap items-center gap-2 text-xs mb-2">
+            <span class="font-bold px-2 py-0.5 rounded-md {% if d.document_type == 'exam' %}bg-violet-50 text-violet-700{% else %}bg-sky-50 text-sky-700{% endif %}">{{ d.get_document_type_display }}으로 올림</span>
+            {% if d.suspect %}<span class="font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700">서버는 {% if d.suggested_type == 'exam' %}족보{% else %}수업 자료{% endif %}로 짐작 ({{ d.type_confidence }})</span>{% endif %}
+            <span class="text-slate-400">{{ d.user.username }} · 신뢰도 {{ d.trust }}</span>
+            <span class="text-slate-400">{{ d.uploaded_at|date:"Y-m-d H:i" }}</span>
+        </div>
+        <div class="font-bold text-slate-800">{{ d.title }}</div>
+        <div class="text-sm text-slate-600 mt-0.5">과목 <b>{{ d.course_name|default:"-" }}</b> · 교수 <b>{{ d.professor|default:"-" }}</b></div>
+        {% if d.snippet %}<p class="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 mt-2 break-words">{{ d.snippet }}</p>{% endif %}
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+            <a href="{{ d.file.url }}" target="_blank" rel="noopener" class="text-xs font-bold text-slate-500 hover:text-slate-700 mr-auto"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>원본 파일 열기</a>
+            <form method="post" action="{% url 'mypage:review_decide' d.pk %}">{% csrf_token %}<input type="hidden" name="decision" value="reject">
+                <button class="text-xs font-bold px-3 py-2 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50">잘못됨</button></form>
+            <form method="post" action="{% url 'mypage:review_decide' d.pk %}">{% csrf_token %}<input type="hidden" name="decision" value="approve">
+                <button class="text-xs font-bold px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">맞음</button></form>
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-sm text-slate-400 text-center py-16">검토할 자료가 없어요.</p>
+    {% endfor %}
+</div>
+{% endblock %}

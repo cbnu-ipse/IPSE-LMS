@@ -31,9 +31,11 @@ class PersonalDocumentUploadForm(forms.ModelForm):
         widget=forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "자료명 (비워두면 파일명 사용)"}),
     )
     # 자료 정보는 올릴 때 모두 입력한다 — 올린 뒤에는 고칠 수 없다 (분류·강의·출제 스타일이 이 정보로 정해지므로)
+    # 기본값은 '선택 안 함'이고 직접 골라야 올라간다 (서버가 파일을 보고 짐작한 구분은 파일을 고를 때 화면이 미리 골라 줄 뿐이다: mypage/doctype.py)
     document_type = forms.ChoiceField(
-        choices=[c for c in PersonalDocument.DocumentType.choices if c[0] not in (PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK)],   # 속성 노트는 올리지 않고 만든다
-        initial=PersonalDocument.DocumentType.LECTURE, label="자료 구분",
+        choices=[("", "자료 구분 선택…")] + [c for c in PersonalDocument.DocumentType.choices
+                                          if c[0] not in (PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK)],   # 속성 노트는 올리지 않고 만든다
+        initial="", label="자료 구분", error_messages={"required": "자료 구분을 선택해주세요."},
         widget=forms.Select(attrs={"class": INPUT_CLASS}))
     course_name = forms.CharField(
         max_length=50, label="과목 이름",

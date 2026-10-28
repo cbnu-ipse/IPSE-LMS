@@ -256,9 +256,20 @@ def _document_subject(document):
 
 # ── 교수님 출제 통계 (모의 출제·강의 확인 문제의 근거) ─────────────────────────
 
-def exam_questions_for(professor="", subject_name=""):
-    """교수님의 족보 문제들(과목이 달라도 전부). 교수 이름이 없으면 그 과목의 족보 문제."""
-    qs = ExamQuestion.objects.filter(document__document_type=PersonalDocument.DocumentType.EXAM)
+def trusted_exam_weights():
+    """학습에 써도 되는 족보의 {문서 id: 올린 사람의 신뢰도 가중치(처음 신뢰도 50 = 1배)} (mypage.exam.learnable, accounts/trust.py)."""
+    from accounts import trust
+
+    from .exam import learnable
+
+    docs = PersonalDocument.objects.filter(document_type=PersonalDocument.DocumentType.EXAM).select_related("user")
+    return {d.pk: trust.weight(d.user) for d in docs if learnable(d)}
+
+
+def exam_questions_for(professor="", subject_name="", weights=None):
+    """교수님의 족보 문제들(과목이 달라도 전부). 교수 이름이 없으면 그 과목의 족보 문제. 신뢰할 수 없는 족보의 문제는 뺀다."""
+    weights = trusted_exam_weights() if weights is None else weights
+    qs = ExamQuestion.objects.filter(document_id__in=list(weights))
     key = professor_key(professor)
     if key:
         ids = [d.pk for d in PersonalDocument.objects.filter(document_type=PersonalDocument.DocumentType.EXAM)
@@ -268,22 +279,33 @@ def exam_questions_for(professor="", subject_name=""):
 
 
 def exam_stats(professor="", subject_name=""):
-    """{"total", "type_mix"{유형:비율}, "type_counts", "concepts"[(개념, 횟수)], "scope"}. 문제가 없으면 total=0.
-    유형 비중은 그 교수님 족보 전체(과목 무관), 개념 빈도는 그 과목 안에서만 센다 (개념은 과목마다 따로이므로)."""
-    questions = list(exam_questions_for(professor, subject_name).prefetch_related("concepts__subject"))
+    """{"total", "type_mix"{유형:비율}, "type_counts", "type_weight", "concepts"[(개념, 횟수)], "scope"}. 문제가 없으면 total=0.
+    유형 비중은 그 교수님 족보 전체(과목 무관), 개념 빈도는 그 과목 안에서만 센다 (개념은 과목마다 따로이므로).
+    신뢰할 수 없는 족보는 빼고, 신뢰도가 높은 사용자의 족보를 더 크게 센다 (type_weight·type_mix·개념 횟수)."""
+    weights = trusted_exam_weights()
+    questions = list(exam_questions_for(professor, subject_name, weights).prefetch_related("concepts__subject"))
     counts = Counter(q.qtype for q in questions)
+    weighted = Counter()
+    for q in questions:
+        weighted[q.qtype] += weights.get(q.document_id, 0)
     total = len(questions)
     in_subject = [q for q in questions if any(c.subject.name == subject_name for c in q.concepts.all())] if subject_name else []
     pool = in_subject
     scope = "professor"
     if not pool and subject_name:      # 그 교수님 족보에 이 과목 문제가 없으면 이 과목의 모든 족보로
-        pool = list(ExamQuestion.objects.filter(document__document_type=PersonalDocument.DocumentType.EXAM,
+        pool = list(ExamQuestion.objects.filter(document_id__in=list(weights),
                                                 concepts__subject__name=subject_name).distinct().prefetch_related("concepts__subject"))
         scope = "subject"
-    freq = Counter(c.name for q in pool for c in q.concepts.all() if c.subject.name == subject_name)
-    return {"total": total, "type_counts": dict(counts),
-            "type_mix": {t: round(n / total, 2) for t, n in counts.items()} if total else {},
-            "concepts": freq.most_common(12), "concept_scope": scope if freq else ""}
+    freq = Counter()
+    for q in pool:
+        for c in q.concepts.all():
+            if c.subject.name == subject_name:
+                freq[c.name] += weights.get(q.document_id, 0)
+    ranked = [(name, max(1, round(n))) for name, n in freq.most_common(12)]
+    weight_total = sum(weighted.values())
+    return {"total": total, "type_counts": dict(counts), "type_weight": {t: round(w, 2) for t, w in weighted.items()},
+            "type_mix": {t: round(w / weight_total, 2) for t, w in weighted.items()} if total and weight_total else {},
+            "concepts": ranked, "concept_scope": scope if freq else ""}
 
 
 # ── 개념 정리 (강의자 화면) ─────────────────────────────────────────────────

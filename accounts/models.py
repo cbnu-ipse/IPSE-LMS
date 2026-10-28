@@ -60,6 +60,8 @@ class User(AbstractUser):
     treats = models.PositiveIntegerField(default=0, verbose_name="사탕")
     # 학습 모듈(judge 사이트) 재화 (accounts/credits.py). 낙엽·사탕과 별개, 잔액은 원장(CreditTransaction)과 함께만 바뀐다
     credits = models.PositiveIntegerField(default=0, verbose_name="크레딧")
+    # 업로드 자료(과목·교수·족보 구분)를 얼마나 믿을지 0~100 (accounts/trust.py). 강의자는 저장값과 상관없이 항상 100으로 본다
+    trust_score = models.PositiveSmallIntegerField(default=50, verbose_name="신뢰도")
     # 놀이터 게임의 AI 플레이어 계정 (is_active=False로 만들어 로그인·랭킹·목록에서 빠진다)
     is_bot = models.BooleanField(default=False, verbose_name="AI 봇")
     # 졸업생: 본인 신청 → 운영진 승인. 기능 제한 없이 이름 옆에 졸업생 마크만 붙는다.
@@ -654,3 +656,23 @@ class CurrencyGrant(models.Model):
 
     def __str__(self):
         return f"{self.granted_by} → {self.recipient}: {self.get_currency_display()} {self.amount}"
+
+
+class TrustEvent(models.Model):
+    """신뢰도 변동 내역. 점수는 accounts/trust.py의 adjust()로만 바꾼다."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trust_events")
+    delta = models.SmallIntegerField(verbose_name="변동")
+    score_after = models.PositiveSmallIntegerField(verbose_name="변동 후 신뢰도")
+    reason = models.CharField(max_length=100, verbose_name="사유")
+    document_id = models.PositiveIntegerField(null=True, blank=True, verbose_name="관련 자료 ID")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name="trust_events_made", verbose_name="처리한 사람")
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "신뢰도 변동 내역"
+        verbose_name_plural = "신뢰도 변동 내역"
+
+    def __str__(self):
+        return f"{self.user_id} {self.delta:+d} → {self.score_after} ({self.reason})"

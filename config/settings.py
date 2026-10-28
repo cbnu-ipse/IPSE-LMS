@@ -302,6 +302,7 @@ _AI_TASK_DEFAULTS = {
     "concepts": ("gemini", "gemini-3.5-flash-lite"),        # 수업 자료 요약의 개념 태그
     "exam_analysis": ("gemini", "gemini-3.5-flash-lite"),   # 족보를 문제 단위로 분석(유형·개념)
     "cram_note": ("gemini", "gemini-3.5-flash-lite"),       # 시험 5분 전 속성 노트 내용
+    "doctype_rules": ("gemini", "gemini-3.5-flash-lite"),   # 자료 구분(족보/수업 자료) 판단 규칙값 정리 (mypage/doctype.py)
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 
@@ -441,3 +442,5 @@ STORAGES = {
         },
     },
 }
+# 이 신뢰도(0~100) 미만인 사용자의 족보는 출제 스타일·통계 학습에 쓰지 않는다 (accounts/trust.py). 강의자는 항상 100
+TRUST_MIN_TO_LEARN = config("TRUST_MIN_TO_LEARN", default=40, cast=int)
