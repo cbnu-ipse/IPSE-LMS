@@ -1,21 +1,48 @@
-MIT License
+IPSE-LMS Proprietary License — Permission Required
+(IPSE-LMS 저작권자 허가 필요 라이선스)
 
-Copyright (c) 2026 JJJJJJONG
+Copyright (c) 2026 JJJJJJONG. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. No permission is granted by default.
+   Except as expressly allowed in section 2, no one may use, run, copy,
+   modify, merge, publish, distribute, sublicense, host as a service, or sell
+   this software and its associated files (the "Software"), in whole or in
+   part, without the prior permission of the copyright holder.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. Permission.
+   Any use of the Software requires the copyright holder's prior permission,
+   which must be given in writing (e-mail or another recorded written form is
+   sufficient) and may be limited in purpose, scope, duration, or conditions,
+   and may be withdrawn for future use. Viewing the source code on the
+   repository's hosting platform, to the extent that platform's terms allow,
+   does not by itself grant any other right.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. Conditions of any permission.
+   Where permission is given, the copyright notice above and this license text
+   must be kept in all copies or substantial portions of the Software.
+
+4. Third-party components.
+   The Software includes or depends on third-party components (for example
+   fonts under the SIL Open Font License, such as NanumPenScript in
+   static/fonts, and open-source libraries listed in requirements files).
+   Those components remain under their own licenses, which are not changed by
+   this license.
+
+5. No warranty; limitation of liability.
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------
+요약 (참고용, 위 영문 조항이 우선합니다)
+
+- 이 소프트웨어는 저작권자의 사전 허가 없이는 사용·복사·수정·배포·서비스 운영·판매를
+  할 수 없습니다.
+- 허가는 서면(이메일 등 기록이 남는 형태)으로 받아야 하며, 목적·범위·기간 등의 조건이
+  붙거나 앞으로의 사용에 대해 철회될 수 있습니다.
+- 허가를 받은 경우에도 저작권 표시와 이 라이선스 문구를 유지해야 합니다.
+- 글꼴(SIL OFL)과 오픈소스 라이브러리 등 제3자 구성 요소는 각자의 라이선스를 따릅니다.
