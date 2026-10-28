@@ -330,19 +330,6 @@
                         </div>
                     </div>
 
-                    {% if site_section == 'judge' and ai_usage %}
-                    <!-- 이번 주 AI 사용량 (학습 모듈, 매주 월요일 0시 초기화) -->
-                    <span class="inline-flex items-center gap-1.5 h-10 px-3 rounded-full border bg-white text-sm font-semibold {% if ai_usage.percent >= 100 %}border-rose-300 text-rose-700{% elif ai_usage.percent >= 80 %}border-amber-300 text-amber-700{% else %}border-slate-200 text-slate-700{% endif %}" title="이번 주 AI 사용량 {{ ai_usage.label }}% · 매주 월요일 0시에 초기화돼요">
-                        <i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>
-                        <span>AI {{ ai_usage.label }}%</span>
-                    </span>
-                    {% endif %}
-                    {% if treat_event_active or user.treats %}
-                    <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때만 밖에 보인다) -->
-                    <a href="/game/trick-or-treat/" class="inline-flex items-center gap-1 h-10 px-3 rounded-full border border-slate-200 bg-white text-sm font-bold text-orange-700 hover:bg-orange-50 transition" title="할로윈 사탕">
-                        🍬 <span>{{ user.treats }}</span>
-                    </a>
-                    {% endif %}
 
                     <!-- 사용자 메뉴: 프로필·재화·사이트 이동·로그아웃을 한곳에 모은다 -->
                     <div class="relative" id="user-menu-container">
@@ -361,13 +348,6 @@
                             </a>
                             <div class="px-4 py-3 grid grid-cols-2 gap-2 text-sm border-b border-slate-100">
                                 <span class="flex items-center gap-1.5 text-slate-600" title="낙엽 잔액"><i class="fa-solid fa-leaf text-emerald-600 text-xs"></i>낙엽 <b class="ml-auto text-slate-800">{{ user.leaves }}</b></span>
-                                {% if treat_event_active or user.treats %}<span class="flex items-center gap-1.5 text-slate-600" title="할로윈 사탕">🍬 사탕 <b class="ml-auto text-slate-800">{{ user.treats }}</b></span>{% endif %}
-                                {% if ai_usage %}
-                                <span class="col-span-2 block" title="매주 월요일 0시에 초기화돼요">
-                                    <span class="flex items-center gap-1.5 text-slate-600"><i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>이번 주 AI 사용량 <b class="ml-auto {% if ai_usage.percent >= 100 %}text-rose-700{% elif ai_usage.percent >= 80 %}text-amber-700{% else %}text-slate-800{% endif %}">{{ ai_usage.label }}%</b></span>
-                                    <span class="block mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span class="block h-full rounded-full {% if ai_usage.percent >= 100 %}bg-rose-500{% elif ai_usage.percent >= 80 %}bg-amber-500{% else %}bg-sky-500{% endif %}" style="width: {{ ai_usage.percent }}%"></span></span>
-                                </span>
-                                {% endif %}
                             </div>
                             <div class="py-1.5 text-sm font-medium text-slate-700">
                                 <a href="{% url 'profile' %}" role="menuitem" class="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition"><i class="fa-solid fa-user w-4 text-center text-slate-400"></i>프로필</a>
@@ -426,95 +406,73 @@
         <div id="mobile-menu" class="md:hidden hidden border-t border-slate-100 bg-white shadow-xl rounded-b-2xl overflow-hidden">
             <div class="max-w-7xl mx-auto px-4 py-4 space-y-4">
                 {% if user.is_authenticated %}
-                <!-- 세련된 프로필 카드 -->
-                <div class="bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-2xl p-4 border border-emerald-100/50 flex items-center justify-between shadow-sm">
-                    <a href="{% url 'profile' %}" class="flex items-center gap-3 group">
-                        <div class="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-md">
-                            <img src="{{ request.user.get_picture }}" alt="Profile" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
-                        </div>
-                        <div>
-                            <h4 class="text-sm font-bold text-slate-800 hover:text-emerald-700 transition">{{ user.display_name }}님</h4>
-                            <div class="flex items-center gap-1.5 mt-1">
-                                <span class="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.5 rounded-md shadow-[0_1px_2px_rgba(5,150,105,0.2)]">LV.{{ user.student.level|default:"1" }}</span>
-                                <span class="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                                    <i class="fa-solid fa-leaf text-amber-600"></i> {{ user.leaves }}
-                                </span>
-                                {% if site_section == 'judge' and ai_usage %}
-                                <span class="text-[9px] bg-sky-50 text-sky-800 border border-sky-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5" title="이번 주 AI 사용량">
-                                    <i class="fa-solid fa-gauge-high text-sky-500"></i> {{ ai_usage.label }}%
-                                </span>
-                                {% endif %}
-                                {% if treat_event_active or user.treats %}
-                                <span class="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 font-bold px-1.5 py-0.5 rounded-md">🍬 {{ user.treats }}</span>
-                                {% endif %}
-                            </div>
-                        </div>
+                <!-- 프로필 카드: 이름·레벨·낙엽만 간단히 -->
+                <div class="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 border border-slate-100 px-3.5 py-3">
+                    <a href="{% url 'profile' %}" class="flex items-center gap-3 min-w-0 group">
+                        <img src="{{ request.user.get_picture }}" alt="Profile" class="w-11 h-11 rounded-full object-cover border-2 border-white shadow shrink-0">
+                        <span class="min-w-0">
+                            <span class="block text-sm font-bold text-slate-800 truncate">{{ user.display_name }}님</span>
+                            <span class="flex items-center gap-1.5 mt-0.5 text-[10px] font-bold">
+                                <span class="text-white bg-emerald-600 rounded-md px-1.5 py-0.5">LV.{{ user.student.level|default:"1" }}</span>
+                                <span class="text-amber-800"><i class="fa-solid fa-leaf text-amber-600"></i> {{ user.leaves }}</span>
+                            </span>
+                        </span>
                     </a>
-                    <button type="button" onclick="doLogout()" class="text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl border border-rose-100 transition">로그아웃</button>
+                    <button type="button" onclick="doLogout()" class="shrink-0 text-[11px] font-bold text-slate-500 hover:text-rose-600 px-3 py-2 rounded-xl border border-slate-200 bg-white transition">로그아웃</button>
                 </div>
-                {% if can_grant_currency %}
-                <button type="button" onclick="openGrantModal()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-100 transition"><i class="fa-solid fa-hand-holding-heart"></i>재화 지급</button>
-                {% endif %}
                 {% else %}
                 <!-- 로그인 유도 박스 -->
                 <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-center">
                     <p class="text-xs text-slate-500 mb-3 font-medium">로그인하시면 더 많은 서비스를 이용할 수 있습니다.</p>
-                    <a href="{% url 'login' %}" class="block bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-[0_2px_4px_rgba(16,185,129,0.2)]">로그인</a>
+                    <a href="{% url 'login' %}" class="block bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition">로그인</a>
                 </div>
                 {% endif %}
 
-                <!-- 메뉴 링크 리스트 (하단바와 중복 제외) -->
-                <div class="space-y-1">
+                {% if site_section != 'game' %}
+                <!-- 이 사이트의 메뉴: 아이콘 타일 -->
+                <div class="grid grid-cols-3 gap-2">
                     {% if site_section == 'judge' %}
-                        <a href="{% url 'community_main' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
-                            <span>← 잎새로 돌아가기</span>
-                            <i class="fa-solid fa-arrow-left text-[10px]"></i>
-                        </a>
-                        <a href="{% url 'course_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">학습</a>
-                        <a href="{% url 'problem_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">문제</a>
-                        <a href="{% url 'contest:list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">대회</a>
-                        <a href="{% url 'ranking:home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
-                        <a href="{% url 'mypage:document_list' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">개인</a>
-                        <a href="{% url 'mypage:learning' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">내 학습</a>
-                        {% if request.user.is_lecturer or request.user.is_superuser %}
-                        <a href="{% url 'course_studio' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">강의 생성</a>
-                        {% endif %}
-                    {% elif site_section == 'game' %}
-                        <a href="{% url 'community_main' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100/70 transition">
-                            <span>← 잎새로 돌아가기</span>
-                            <i class="fa-solid fa-arrow-left text-[10px]"></i>
-                        </a>
-                        <a href="{% url 'mypage:document_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
-                            <span>대회 및 채점 사이트 바로가기</span>
-                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
-                        </a>
-                    {% else %}
-                        <a href="{% url 'community_home' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">커뮤니티</a>
-                        <a href="{% url 'timetable' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">수업 시간표</a>
-                        <a href="{% url 'ranking:community' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">랭킹</a>
-                        {% if request.user.is_staff %}
-                        <a href="{% url 'recruit_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100/60 transition">
-                            <span>모집 관리</span>
-                            <i class="fa-solid fa-gear text-xs"></i>
-                        </a>
-                        {% endif %}
-                        <div class="border-t border-slate-100 my-2"></div>
-                        <a href="{% url 'game_lobby' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100/70 transition">
-                            <span>IPSE 놀이터 바로가기</span>
-                            <i class="fa-solid fa-gamepad text-[10px]"></i>
-                        </a>
-                        <a href="{% url 'mypage:document_list' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100/70 transition">
-                            <span>대회 및 채점 사이트 바로가기</span>
-                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
-                        </a>
+                    <a href="{% url 'course_list' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-graduation-cap text-emerald-600"></i>학습</a>
+                    <a href="{% url 'problem_list' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-list-check text-emerald-600"></i>문제</a>
+                    <a href="{% url 'contest:list' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-trophy text-emerald-600"></i>대회</a>
+                    <a href="{% url 'ranking:home' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-ranking-star text-emerald-600"></i>랭킹</a>
+                    <a href="{% url 'mypage:document_list' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-folder-open text-emerald-600"></i>개인</a>
+                    <a href="{% url 'mypage:learning' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-book-open text-emerald-600"></i>내 학습</a>
+                    {% if request.user.is_lecturer or request.user.is_superuser %}
+                    <a href="{% url 'course_studio' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-wand-magic-sparkles text-emerald-600"></i>강의 생성</a>
                     {% endif %}
-                    <div class="border-t border-slate-100 my-2"></div>
-                    <a href="{% url 'introduce' %}" class="block px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">소개</a>
+                    {% else %}
+                    <a href="{% url 'community_home' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-comments text-emerald-600"></i>커뮤니티</a>
+                    <a href="{% url 'timetable' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-calendar-days text-emerald-600"></i>시간표</a>
+                    <a href="{% url 'ranking:community' %}" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"><i class="fa-solid fa-ranking-star text-emerald-600"></i>랭킹</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- 다른 사이트로 이동 (지금 있는 사이트는 뺀다) -->
+                <div>
+                    <p class="px-1 mb-1.5 text-[10px] font-bold text-slate-400 tracking-wide">다른 사이트</p>
+                    <div class="flex gap-2">
+                        {% if site_section != 'community' %}<a href="{% url 'community_main' %}" class="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-green-200 bg-green-50 text-xs font-bold text-green-700 transition"><i class="fa-solid fa-leaf"></i>잎새</a>{% endif %}
+                        {% if site_section != 'game' %}<a href="{% url 'game_lobby' %}" class="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-xs font-bold text-amber-700 transition"><i class="fa-solid fa-gamepad"></i>놀이터</a>{% endif %}
+                        {% if site_section != 'judge' %}<a href="{% url 'mypage:document_list' %}" class="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-sky-200 bg-sky-50 text-xs font-bold text-sky-700 transition"><i class="fa-solid fa-square-terminal"></i>Judge</a>{% endif %}
+                    </div>
+                </div>
+
+                <!-- 기타 -->
+                <div class="border-t border-slate-100 pt-2 text-sm font-medium text-slate-700">
+                    <a href="{% url 'introduce' %}" class="flex items-center gap-2.5 px-2 py-2.5 rounded-xl hover:bg-slate-50 transition"><i class="fa-solid fa-circle-info w-4 text-center text-slate-400"></i>소개</a>
                     {% if user.is_authenticated %}
-                    <a href="{% url 'notification_center' %}" class="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition">
-                        <span>알림</span>
-                        <span id="mobile-menu-notification-badge" class="bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 hidden">0</span>
+                    <a href="{% url 'notification_center' %}" class="flex items-center gap-2.5 px-2 py-2.5 rounded-xl hover:bg-slate-50 transition">
+                        <i class="fa-solid fa-bell w-4 text-center text-slate-400"></i>알림
+                        <span id="mobile-menu-notification-badge" class="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 hidden">0</span>
                     </a>
+                    {% if site_section == 'community' and request.user.is_staff %}
+                    <a href="{% url 'recruit_list' %}" class="flex items-center gap-2.5 px-2 py-2.5 rounded-xl hover:bg-slate-50 transition"><i class="fa-solid fa-gear w-4 text-center text-amber-500"></i>모집 관리</a>
+                    {% endif %}
+                    {% if can_grant_currency %}
+                    <button type="button" onclick="openGrantModal()" class="w-full flex items-center gap-2.5 px-2 py-2.5 rounded-xl hover:bg-slate-50 transition text-left"><i class="fa-solid fa-hand-holding-heart w-4 text-center text-violet-500"></i>재화 지급</button>
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>

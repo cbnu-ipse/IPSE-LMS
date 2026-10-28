@@ -155,7 +155,6 @@ TEMPLATES = [
                 "core.context_processors.vapid_settings",
                 "core.context_processors.site_section",
                 "core.context_processors.ai_cost",
-                "core.context_processors.ai_usage",
                 "game.context_processors.pending_season_reward",
                 "game.context_processors.static_version",
                 "accounts.context_processors.treat_event",

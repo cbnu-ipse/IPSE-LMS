@@ -599,14 +599,6 @@ class SummaryQuotaTests(TestCase):
         with patch("core.ai.complete", return_value="요약"):
             self.assertEqual(generate_summary("짧은 자료", user=lecturer), "요약")
 
-    def test_study_page_shows_weekly_usage(self):
-        use_up(self.user, 42)
-        doc = PersonalDocument.objects.create(user=self.user, title="t", extracted_text="x", summary="## 요약\n- a",
-                                              summary_status=ProcessingStatus.DONE)
-        response = self.client.get(f"/mypage/{doc.pk}/")
-        self.assertContains(response, "이번 주 AI 사용량 42%")
-        self.assertContains(response, "월요일 0시에 초기화")
-
 
 class _FakeClient:
     """OpenAI 호환 클라이언트 흉내 — 호출 횟수를 기록하고 fail_on번째 호출에서 실패한다."""
@@ -623,21 +615,21 @@ class _FakeClient:
 
 
 @override_settings(AI_CREDIT_COSTS={"chat": 1, "summary": 3, "question": 2, "grading": 1})
-@override_settings(AI_WEEKLY_LIMIT_POINTS=100)
-class UsageDisplayTests(TestCase):
-    def test_judge_header_shows_weekly_usage_gauge_not_credits(self):
+class NoUsageGaugeTests(TestCase):
+    """AI 사용량 게이지는 화면 어디에도 보이지 않는다 (한도 자체는 그대로 적용된다)."""
+
+    @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
+    def test_pages_do_not_show_the_weekly_gauge(self):
         user = get_user_model().objects.create_user(username="shown", password="pw")
         use_up(user, 42)
+        doc = PersonalDocument.objects.create(user=user, title="t", extracted_text="x", summary="## 요약\n- a",
+                                              summary_status=ProcessingStatus.DONE)
         self.client.force_login(user)
-        response = self.client.get("/mypage/")
-        self.assertContains(response, "AI 42%")
-        self.assertContains(response, "매주 월요일 0시에 초기화")
-        self.assertNotContains(response, 'title="AI 크레딧')
-
-    def test_lecturer_has_no_gauge(self):
-        lecturer = get_user_model().objects.create_user(username="lect", password="pw", is_lecturer=True)
-        self.client.force_login(lecturer)
-        self.assertNotContains(self.client.get("/mypage/"), "AI 0%")
+        for url in ("/mypage/", f"/mypage/{doc.pk}/", "/accounts/profile/"):
+            html = self.client.get(url).content.decode()
+            self.assertNotIn("AI 42%", html)
+            self.assertNotIn("이번 주 AI 사용량 42%", html)
+            self.assertNotIn("AI 사용량 (주간)", html)
 
 
 class UploadUsageNoticeTests(TestCase):

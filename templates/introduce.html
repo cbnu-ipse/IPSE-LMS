@@ -208,19 +208,22 @@
                 자체 개발 학습 플랫폼 & 온라인 저지
             </h2>
             <p class="text-lg leading-9 text-slate-600 max-w-4xl mx-auto">
-                IPSE는 동아리원들을 위한 자체 학습 관리 시스템(LMS)과 알고리즘 채점 시스템(Judge)을 구축하여 운영하고 있습니다.
-                언제 어디서나 강의를 듣고 문제를 풀며 실력을 증명할 수 있습니다.
+                IPSE는 동아리원들을 위한 학습 플랫폼(LMS)과 알고리즘 온라인 저지(Judge)를 직접 만들어 운영하고 있습니다.
+                수업 자료를 올리면 AI가 요약하고 문제를 만들어 주고, 시험 직전에는 손글씨 노트와 모의고사까지 준비할 수 있습니다.
             </p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-14 items-center mb-20">
             <div class="reveal-left">
                 <h3 class="text-3xl font-semibold tracking-[-0.04em] leading-tight text-slate-900 mb-6">
-                    동료들과 함께 풀고<br>실시간으로 채점받는 환경
+                    자료를 올리면<br>요약·문제·모의고사까지
                 </h3>
+                <p class="text-base leading-8 text-slate-600 mb-4">
+                    수업 자료를 올리면 요약이 만들어지는 대로 바로 보이고, OX·객관식·단답·서술형 기본 문제가 함께 만들어집니다.
+                    시험 5분 전에는 선택한 자료를 손글씨 A4 노트로 정리하고, 교수님 족보 스타일을 반영한 모의 출제로 마무리할 수 있습니다.
+                </p>
                 <p class="text-base leading-8 text-slate-600 mb-8">
-                    웹 기반 컴파일러 및 채점 엔진을 통해 제출 즉시 정답 여부를 판단하고 코드 성능을 평가받을 수 있습니다.
-                    또한 동아리 전용 강의 콘텐츠가 매주 업데이트되어 트렌디한 기술 스택을 빠르게 체득합니다.
+                    알고리즘 문제는 웹 기반 컴파일러와 채점 엔진으로 제출 즉시 채점되고, 막히는 내용은 학습 화면의 AI 어시스턴트에게 바로 물어볼 수 있습니다.
                 </p>
                 <div class="flex flex-wrap gap-4">
                     <a href="{% url 'mypage:document_list' %}" class="inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
@@ -233,14 +236,14 @@
                 <div class="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-8 shadow-sm">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="rounded-xl border border-emerald-100 bg-white p-6">
-                            <p class="text-xs text-slate-400 uppercase tracking-[0.16em] mb-3">Update</p>
-                            <p class="text-5xl font-semibold text-emerald-700 tracking-[-0.05em] mb-2">7일</p>
-                            <p class="text-sm leading-7 text-slate-600">강의 콘텐츠 평균 최신화 주기</p>
+                            <p class="text-xs text-slate-400 uppercase tracking-[0.16em] mb-3">Auto Questions</p>
+                            <p class="text-5xl font-semibold text-emerald-700 tracking-[-0.05em] mb-2">5개</p>
+                            <p class="text-sm leading-7 text-slate-600">자료 하나를 올리면 자동으로 만들어지는 기본 문제</p>
                         </div>
                         <div class="rounded-xl border border-emerald-100 bg-white p-6">
-                            <p class="text-xs text-slate-400 uppercase tracking-[0.16em] mb-3">Expansion</p>
-                            <p class="text-5xl font-semibold text-emerald-500 tracking-[-0.05em] mb-2">30일</p>
-                            <p class="text-sm leading-7 text-slate-600">신규 학습 트랙 평균 추가 주기</p>
+                            <p class="text-xs text-slate-400 uppercase tracking-[0.16em] mb-3">Question Types</p>
+                            <p class="text-5xl font-semibold text-emerald-500 tracking-[-0.05em] mb-2">4종</p>
+                            <p class="text-sm leading-7 text-slate-600">OX · 객관식 · 단답형 · 서술형 문제 유형</p>
                         </div>
                     </div>
                 </div>
@@ -253,7 +256,7 @@
                     <i class="fa-solid fa-wand-magic-sparkles text-emerald-700 text-2xl"></i>
                 </div>
                 <h3 class="text-3xl font-semibold text-slate-900 mb-4">Simple</h3>
-                <p class="text-base leading-8 text-slate-600">누구나 쉽게 이해할 수 있는 구조와 간결한 사용 흐름</p>
+                <p class="text-base leading-8 text-slate-600">자료만 올리면 요약과 문제가 자동으로 만들어지는 간결한 사용 흐름</p>
             </div>
 
             <div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center hover:-translate-y-1 hover:shadow-[0_20px_50px_rgba(16,185,129,0.08)] transition duration-300 reveal-up">
@@ -261,7 +264,7 @@
                     <i class="fa-solid fa-chart-line text-emerald-700 text-2xl"></i>
                 </div>
                 <h3 class="text-3xl font-semibold text-slate-900 mb-4">Tracking</h3>
-                <p class="text-base leading-8 text-slate-600">진행률, 기록, 성과를 한눈에 추적하는 대시보드 중심 설계</p>
+                <p class="text-base leading-8 text-slate-600">내 학습 기록과 풀이 현황, 랭킹을 한눈에 확인하는 대시보드</p>
             </div>
 
             <div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center hover:-translate-y-1 hover:shadow-[0_20px_50px_rgba(16,185,129,0.08)] transition duration-300 reveal-up">
@@ -410,7 +413,7 @@
         </h2>
 
         <p class="text-lg lg:text-xl leading-9 text-white/90 max-w-3xl mx-auto mb-10">
-            강의로 배우고, 문제로 익히고, 대회로 증명하는 구조로
+            자료로 배우고, 문제로 익히고, 대회로 증명하는 구조로
             더 선명한 성장 경험을 만들 수 있습니다.
         </p>
 
@@ -427,6 +430,23 @@
         </div>
     </div>
 </section>
+
+{% if active_recruitment_form %}
+<!-- 모집 중인 잎새 모집글이 있으면 소개 페이지 맨 아래에서 바로 갈 수 있게 한다 -->
+<section id="recruiting" class="bg-amber-50 border-t border-amber-100">
+    <div class="max-w-6xl mx-auto px-6 py-12 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
+        <div>
+            <p class="text-xs font-semibold text-amber-700 tracking-[0.18em] uppercase mb-2">Recruiting</p>
+            <h3 class="text-2xl lg:text-3xl font-semibold tracking-[-0.03em] text-slate-900">{{ active_recruitment_form.title }}</h3>
+            <p class="mt-2 text-sm text-slate-600">IPSE와 함께할 새 동아리원을 모집하고 있어요.{% if active_recruitment_form.closes_at %} 마감 {{ active_recruitment_form.closes_at|date:"Y년 n월 j일 H:i" }}{% endif %}</p>
+        </div>
+        <a href="{% url 'recruit_apply' active_recruitment_form.id %}"
+           class="shrink-0 inline-flex items-center justify-center px-8 py-4 bg-amber-500 hover:bg-amber-600 text-white text-base font-semibold rounded-xl transition">
+            모집글 보고 지원하기 <i class="fa-solid fa-arrow-right ml-2 text-sm"></i>
+        </a>
+    </div>
+</section>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
