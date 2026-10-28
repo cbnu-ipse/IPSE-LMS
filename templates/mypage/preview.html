@@ -32,7 +32,9 @@
     .ms-sync.off { background: rgba(100, 116, 139, .88); }
     /* 요약: 읽기 좋은 폭의 칼럼을 가운데에 두고, 글씨에 위계(제목 > 부제목 > 본문 > 강조)를 준다 */
     .ms-sum-center { font-size: 1.05rem; line-height: 1.9; color: #334155; }
-    .ms-sum-center > * { max-width: 40rem; margin-left: auto; margin-right: auto; }
+    /* div. 를 붙여 특이도를 높인다: 어시스턴트 조각(fab.html)이 markdown-lite.css를 본문에서 한 번 더 불러 이 <style>보다 뒤에 오므로,
+       특이도가 같으면 .md-h/.md-list/.md-quote의 margin 단축 속성이 가운데 정렬(auto)을 덮어쓴다 */
+    div.ms-sum-center > * { max-width: 40rem; margin-left: auto; margin-right: auto; }
     .ms-sum-center .md-h { text-align: center; }
     .ms-sum-center .md-h1, .ms-sum-center .md-h2 { font-size: 1.6em; color: #047857; border-bottom: 3px solid #a7f3d0; padding-bottom: .3em; margin-bottom: .8em; }
     .ms-sum-center .md-h3 { font-size: 1.3em; color: #0f766e; border-left: 0; padding-left: 0; margin-bottom: .6em; }
