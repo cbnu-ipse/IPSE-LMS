@@ -1,7 +1,7 @@
 IPSE-LMS Proprietary License — Permission Required
 (IPSE-LMS 저작권자 허가 필요 라이선스)
 
-Copyright (c) 2026 JJJJJJONG. All rights reserved.
+Copyright (c) 2026 IPSE. All rights reserved.
 
 1. No permission is granted by default.
    Except as expressly allowed in section 2, no one may use, run, copy,
@@ -11,8 +11,8 @@ Copyright (c) 2026 JJJJJJONG. All rights reserved.
 
 2. Permission.
    Any use of the Software requires the copyright holder's prior permission,
-   which must be given in writing (e-mail or another recorded written form is
-   sufficient) and may be limited in purpose, scope, duration, or conditions,
+   which must be requested by e-mail to cbnuipse8@gmail.com and given in
+   writing (e-mail or another recorded written form is sufficient) and may be limited in purpose, scope, duration, or conditions,
    and may be withdrawn for future use. Viewing the source code on the
    repository's hosting platform, to the extent that platform's terms allow,
    does not by itself grant any other right.
@@ -37,12 +37,14 @@ Copyright (c) 2026 JJJJJJONG. All rights reserved.
    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
    DEALINGS IN THE SOFTWARE.
 
+Contact for permission / 사용 허가 문의: cbnuipse8@gmail.com
+
 --------------------------------------------------------------------------
 요약 (참고용, 위 영문 조항이 우선합니다)
 
 - 이 소프트웨어는 저작권자의 사전 허가 없이는 사용·복사·수정·배포·서비스 운영·판매를
   할 수 없습니다.
-- 허가는 서면(이메일 등 기록이 남는 형태)으로 받아야 하며, 목적·범위·기간 등의 조건이
+- 사용 허가는 cbnuipse8@gmail.com 으로 문의해 서면(이메일 등 기록이 남는 형태)으로 받아야 하며, 목적·범위·기간 등의 조건이
   붙거나 앞으로의 사용에 대해 철회될 수 있습니다.
 - 허가를 받은 경우에도 저작권 표시와 이 라이선스 문구를 유지해야 합니다.
 - 글꼴(SIL OFL)과 오픈소스 라이브러리 등 제3자 구성 요소는 각자의 라이선스를 따릅니다.

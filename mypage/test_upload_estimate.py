@@ -37,9 +37,10 @@ class UploadEstimateTests(TestCase):
     def test_lecturers_have_no_limit_in_the_estimate(self):
         lecturer = User.objects.create_user(username="lecest", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
+        use_up(lecturer, 500)                                                  # 한도를 훌쩍 넘겨도
         with patch("mypage.views.extract_text", return_value="가" * 3000):
             d = self.estimate().json()
-        self.assertEqual((d["used_label"], d["enough"]), (None, True))
+        self.assertEqual((d["used_label"], d["enough"]), ("500", True))        # 사용량은 보이고, 막히지는 않는다
 
     def test_image_estimate_is_a_percent_range_without_reading_the_file(self):
         with patch("mypage.views.extract_text") as extract:

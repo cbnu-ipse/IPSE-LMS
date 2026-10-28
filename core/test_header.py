@@ -16,14 +16,18 @@ class HeaderUserMenuTests(TestCase):
         start = html.index('id="user-menu-container"')
         return html[start:html.index("</nav>", start)]
 
-    def test_header_shows_no_ai_gauge_and_no_candy_anywhere(self):
+    def test_top_bar_has_no_candy_or_ai_chips_but_the_menu_does(self):
         use_up(self.user, 42)
-        for url in ("/mypage/", "/game/", "/introduce/"):
-            html = self.client.get(url).content.decode()
-            self.assertNotIn("AI 42%", html)
-            self.assertNotIn("AI 사용량 42", html)
-            self.assertNotIn('title="할로윈 사탕"', html)
-            self.assertNotIn("🍬 <span", html)
+        self.user.treats = 3
+        self.user.save(update_fields=["treats"])
+        html = self.client.get("/mypage/").content.decode()
+        outside = html[:html.index('id="user-menu-container"')]
+        self.assertNotIn("AI 42%", outside)                                  # 위 바에는 AI·사탕 칩이 없다
+        self.assertNotIn("🍬 <span", outside)
+        menu = self.menu(html)
+        self.assertIn("이번 주 AI 사용량", menu)                              # 드롭다운에는 보인다
+        self.assertIn("42%", menu)
+        self.assertIn("사탕", menu)
 
     def test_judge_header_keeps_only_bell_and_a_user_menu_outside(self):
         html = self.client.get("/mypage/").content.decode()
@@ -32,13 +36,26 @@ class HeaderUserMenuTests(TestCase):
         self.assertNotIn('title="낙엽 잔액"', outside)                         # 낙엽·재화 지급·로그아웃은 메뉴 안으로
         self.assertNotIn("openGrantModal()", outside)
 
-    def test_menu_holds_profile_balance_site_links_and_logout(self):
+    def test_menu_holds_profile_balance_usage_site_links_and_logout(self):
+        use_up(self.user, 42)
         menu = self.menu(self.client.get("/mypage/").content.decode())
-        for text in ("프로필", "낙엽", "IPSE 놀이터", "잎새 커뮤니티", "로그아웃", 'onclick="doLogout()"'):
+        for text in ("프로필", "낙엽", "이번 주 AI 사용량", "IPSE 놀이터", "잎새 커뮤니티", "로그아웃", 'onclick="doLogout()"'):
             self.assertIn(text, menu)
         self.assertNotIn("IPSE Judge (학습)", menu)                             # 지금 있는 사이트로는 가는 링크를 두지 않는다
-        self.assertNotIn("사탕", menu)
-        self.assertNotIn("AI 사용량", menu)
+
+    def test_lecturers_and_admins_see_the_usage_and_only_lecturers_are_uncapped(self):
+        lecturer = User.objects.create_user(username="hl", password="pw", is_lecturer=True)
+        admin = User.objects.create_user(username="ha", password="pw", is_superuser=True)
+        use_up(lecturer, 135)
+        use_up(admin, 20)
+        self.client.force_login(lecturer)
+        menu = self.menu(self.client.get("/mypage/").content.decode())
+        self.assertIn("135%", menu)                                           # 100%를 넘어도 그대로 보인다
+        self.assertIn("(제한 없음)", menu)
+        self.client.force_login(admin)
+        menu = self.menu(self.client.get("/mypage/").content.decode())
+        self.assertIn("20%", menu)
+        self.assertNotIn("(제한 없음)", menu)                                   # 관리자는 일반 사용자와 같은 한도
 
     def test_site_links_exclude_the_current_site(self):
         menu = self.menu(self.client.get("/game/").content.decode())
@@ -77,8 +94,8 @@ class MobileMenuTests(TestCase):
         self.assertNotIn("</i>Judge</a>", menu)                                 # 지금 있는 사이트는 뺀다
         for text in ("소개", "알림", "로그아웃"):
             self.assertIn(text, menu)
-        for gone in ("사탕", "AI 사용량", "← 잎새로 돌아가기"):
-            self.assertNotIn(gone, menu)
+        self.assertIn('title="이번 주 AI 사용량"', menu)                         # 낙엽 옆에 AI 사용량도 작게 보인다
+        self.assertNotIn("← 잎새로 돌아가기", menu)
 
     def test_staff_extras_only_for_the_right_people(self):
         lecturer = User.objects.create_user(username="ml", password="pw", is_lecturer=True)

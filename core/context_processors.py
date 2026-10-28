@@ -23,6 +23,18 @@ def vapid_settings(request):
     }
 
 
+def ai_usage(request):
+    """헤더 메뉴·프로필 등에 보일 이번 주 AI 사용량 {used, limit, percent, label, reset_at, unlimited}. 로그인한 사용자만 (강의자 포함)."""
+    from . import usage
+
+    user = getattr(request, 'user', None)
+    if not user or not user.is_authenticated:
+        return {'ai_usage': None}
+    if not hasattr(request, '_ai_usage'):      # 한 요청에서 한 번만 센다
+        request._ai_usage = usage.info(user)
+    return {'ai_usage': request._ai_usage}
+
+
 def ai_cost(request):
     """작업별 예상 사용량 점수 {작업: 점수} (AI_COST_<작업>). 시작 전 확인과 화면 계산용이고, 실제 사용량은 토큰으로 센다."""
     from django.conf import settings

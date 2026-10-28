@@ -615,21 +615,27 @@ class _FakeClient:
 
 
 @override_settings(AI_CREDIT_COSTS={"chat": 1, "summary": 3, "question": 2, "grading": 1})
-class NoUsageGaugeTests(TestCase):
-    """AI 사용량 게이지는 화면 어디에도 보이지 않는다 (한도 자체는 그대로 적용된다)."""
+class UsageShownTests(TestCase):
+    """AI 사용량은 위 바가 아니라 메뉴·프로필·학습 화면에 보인다 (강의자·관리자 포함)."""
 
     @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
-    def test_pages_do_not_show_the_weekly_gauge(self):
+    def test_profile_and_study_page_show_the_weekly_usage(self):
         user = get_user_model().objects.create_user(username="shown", password="pw")
         use_up(user, 42)
         doc = PersonalDocument.objects.create(user=user, title="t", extracted_text="x", summary="## 요약\n- a",
                                               summary_status=ProcessingStatus.DONE)
         self.client.force_login(user)
-        for url in ("/mypage/", f"/mypage/{doc.pk}/", "/accounts/profile/"):
-            html = self.client.get(url).content.decode()
-            self.assertNotIn("AI 42%", html)
-            self.assertNotIn("이번 주 AI 사용량 42%", html)
-            self.assertNotIn("AI 사용량 (주간)", html)
+        self.assertContains(self.client.get(f"/mypage/{doc.pk}/"), "이번 주 AI 사용량 42%")
+        profile = self.client.get("/accounts/profile/")
+        self.assertContains(profile, "AI 사용")
+        self.assertContains(profile, "42%")
+
+    @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
+    def test_lecturer_sees_usage_above_100_percent(self):
+        lecturer = get_user_model().objects.create_user(username="lectshown", password="pw", is_lecturer=True)
+        use_up(lecturer, 135)
+        self.client.force_login(lecturer)
+        self.assertContains(self.client.get("/accounts/profile/"), "135%")
 
 
 class UploadUsageNoticeTests(TestCase):

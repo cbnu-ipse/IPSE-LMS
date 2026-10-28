@@ -53,8 +53,17 @@ class InfoTests(TestCase):
         self.assertAlmostEqual(info["remaining"], 70, delta=0.5)
         self.assertEqual(info["reset_at"], usage.next_reset())
 
-    def test_exempt_users_have_no_gauge(self):
-        self.assertIsNone(usage.info(User.objects.create_user(username="l", password="pw", is_lecturer=True)))
+    def test_lecturers_see_their_usage_too_and_it_can_pass_100_percent(self):
+        lecturer = User.objects.create_user(username="l", password="pw", is_lecturer=True)
+        use_up(lecturer, 135)
+        info = usage.info(lecturer)
+        self.assertTrue(info["unlimited"])
+        self.assertEqual((info["label"], info["percent"]), ("135", 100))          # 라벨은 100을 넘어도 그대로, 막대만 100에서 멈춘다
+        ai.require_quota(lecturer, 500)                                           # 그래도 막히지 않는다
+        normal = usage.info(self.user)
+        self.assertFalse(normal["unlimited"])
+
+    def test_system_work_has_no_gauge(self):
         self.assertIsNone(usage.info(None))
 
     def test_percent_is_capped_at_100(self):

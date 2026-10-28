@@ -171,11 +171,10 @@ class ProfileAccountCardTestCase(TestCase):
 
 
 class ProfileTilesTestCase(TestCase):
-    def test_profile_has_three_stat_tiles_and_no_ai_usage_or_credits(self):
+    def test_profile_shows_stat_tiles_including_weekly_ai_usage_without_credits(self):
         u = User.objects.create_user(username="pu", password="pw")
         self.client.force_login(u)
         res = self.client.get("/accounts/profile/")
-        for label in ("등급", "낙엽", "연속"):
+        for label in ("등급", "낙엽", "AI 사용", "연속"):
             self.assertContains(res, label)
         self.assertNotContains(res, "AI 크레딧")
-        self.assertNotContains(res, "AI 사용")
