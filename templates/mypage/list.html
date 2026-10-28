@@ -184,12 +184,15 @@
     </div>
 </section>
 
-<div id="cram-bar" style="bottom:16px;left:16px;right:16px" class="hidden fixed z-40 mx-auto max-w-xl items-center justify-between gap-3 bg-white border border-amber-200 shadow-xl rounded-2xl px-4 py-3">
+<div id="cram-bar" style="bottom:16px;left:16px;right:16px" class="hidden fixed z-40 mx-auto max-w-2xl flex-wrap items-center justify-between gap-3 bg-white border border-amber-200 shadow-xl rounded-2xl px-4 py-3">
     <p class="text-sm text-slate-700"><span id="cram-mode" class="font-bold text-amber-600"></span> · <b id="cram-count">0</b>개 선택 <span class="text-xs text-slate-400">· 최대 {{ cram_max }}개</span></p>
     <form method="post" action="{% url 'mypage:cram_note_create' %}" id="cram-form" class="flex items-center gap-2">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
         {% if current_folder %}<input type="hidden" name="folder" value="{{ current_folder.pk }}">{% endif %}
+        <input type="text" name="focus" maxlength="100" autocomplete="off" placeholder="추가 요청 (선택, 100자 이내) 예: 프림 알고리즘은 꼭 나온대요"
+               title="교수님이 나온다고 한 내용 등을 간단히 적어요. 선택한 자료에 실제로 나오는 용어만 찾아서 반영하고, 적은 글은 AI에 그대로 전달되지 않아요."
+               class="w-64 max-w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400">
         <button type="button" id="cram-cancel" class="text-xs font-bold text-slate-500 px-3 py-2">취소</button>
         <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">만들기</button>
     </form>
