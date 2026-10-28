@@ -90,13 +90,12 @@ def share_mock(user, exam):
     mix = " · ".join(f"{TYPE_NAMES[t]} {n}" for t, n in counts.items() if t in TYPE_NAMES)
     content = (f"{exam.title}\n\n모의고사 {len(exam.questions)}문항 ({mix})\n"
                + (f"과목: {exam.course_code}\n" if exam.course_code else "")
-               + (f"출제 스타일: {exam.style_label}\n" if exam.style_label else "")
                + "\n문제와 정답은 불러온 뒤에 볼 수 있어요. '내 자료로 불러오기'를 누르면 내 개인 탭에 새 시험이 만들어져요.")
     with transaction.atomic():
         post = CommunityPost.objects.create(title=f"[모의고사] {exam.title}"[:200], content=content, author=user, category="free")
         material = SharedMaterial.objects.create(
             post=post, author=user, kind=SharedMaterial.Kind.MOCK, title=exam.title[:200], course_name=exam.course_code[:50], source_key=key,
-            payload={"course_code": exam.course_code, "style_label": exam.style_label, "questions": copy.deepcopy(exam.questions)})
+            payload={"course_code": exam.course_code, "questions": copy.deepcopy(exam.questions)})
     return material, True
 
 
@@ -129,7 +128,7 @@ def _import_mock(user, material):
         raise ShareError("불러올 수 있는 문제가 없어요.")
     payload = material.payload
     exam = MockExam.objects.create(user=user, course_code=str(payload.get("course_code") or "")[:50], title=material.title,
-                                   style_label=str(payload.get("style_label") or "")[:100], questions=questions)
+                                   questions=questions)
     document = PersonalDocument.objects.create(
         user=user, title=material.title[:200], file="", document_type=PersonalDocument.DocumentType.MOCK, is_course_material=False,
         course_name=material.course_name, summary_status=ProcessingStatus.DONE,

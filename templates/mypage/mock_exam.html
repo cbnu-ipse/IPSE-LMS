@@ -23,7 +23,6 @@
         <div class="min-w-0">
             <h1 class="text-2xl font-bold text-slate-800">{{ exam.title }}</h1>
             <p class="text-xs text-slate-400 mt-1 mb-6">
-                {% if exam.style_label %}<i class="fa-solid fa-wand-magic-sparkles text-sky-500 mr-1"></i>{{ exam.style_label }} 출제 스타일 ·{% endif %}
                 {{ rows|length }}문항{% if score is not None %} · <b class="text-slate-700">{{ score }} / {{ total }}점</b>{% endif %}
             </p>
         </div>

@@ -258,6 +258,7 @@ class MockExamTests(TestCase):
         self.assertEqual((mock.style_label, len(mock.questions), mock.document_id), ("김교수 교수님", 10, document.pk))
         self.assertEqual((document.summary_status, document.title), (ProcessingStatus.DONE, "OS 모의고사"))
         self.assertIn("10문항", document.summary)
+        self.assertNotIn("교수님", document.summary)                         # 적용한 출제 스타일은 카드에 드러내지 않는다
         self.assertIn("- 객관식 위주", self.last_ai.call_args.args[1][1]["content"])
         self.assertIn("프로세스는 실행 중인", self.last_ai.call_args.args[1][1]["content"])
 

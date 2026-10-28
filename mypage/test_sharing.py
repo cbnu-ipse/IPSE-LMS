@@ -193,3 +193,49 @@ class PagesTests(SharingTestCase):
         self.assertNotContains(res, "비밀 문제 하나")
         self.client.force_login(self.author)
         self.assertNotContains(self.client.get(url), f"/mypage/share/{material.pk}/import/")         # 본인에게는 불러오기 양식이 없다
+
+
+class StyleHiddenTests(SharingTestCase):
+    """적용한 교수님 출제 스타일은 어디에도 드러나지 않는다."""
+
+    def test_the_mock_exam_page_does_not_mention_the_exam_style(self):
+        self.client.force_login(self.author)
+        html = self.client.get(self.exam.get_absolute_url()).content.decode()
+        self.assertNotIn("출제 스타일", html)
+        self.assertNotIn("김교수", html)
+
+    def test_the_board_post_and_payload_do_not_mention_it_and_import_does_not_copy_it(self):
+        self.share("mock", self.exam.pk)
+        post, material = CommunityPost.objects.get(), SharedMaterial.objects.get()
+        self.assertNotIn("스타일", post.title + post.content)
+        self.assertNotIn("김교수", post.title + post.content)
+        self.assertNotIn("style_label", material.payload)
+        material.payload["style_label"] = "옛날 글의 스타일"                     # 예전에 올린 글에 남아 있어도 복사하지 않는다
+        material.save()
+        self.client.force_login(self.reader)
+        self.client.post(f"/mypage/share/{material.pk}/import/")
+        self.assertEqual(MockExam.objects.get(user=self.reader).style_label, "")
+
+    def test_public_pages_do_not_advertise_style_learning(self):
+        self.client.logout()
+        self.assertNotIn("족보 스타일", self.client.get("/introduce/").content.decode())
+        self.client.force_login(self.author)
+        self.assertNotIn("출제 스타일", self.client.get("/mypage/").content.decode())
+
+    def test_data_migration_scrubs_existing_cards_and_posts(self):
+        import importlib
+
+        from django.apps import apps as global_apps
+
+        self.share("mock", self.exam.pk)
+        post, material = CommunityPost.objects.get(), SharedMaterial.objects.get()
+        CommunityPost.objects.filter(pk=post.pk).update(content=post.content.replace("\n\n문제와", "\n출제 스타일: 김교수 교수님\n\n문제와"))
+        SharedMaterial.objects.filter(pk=material.pk).update(payload={**material.payload, "style_label": "김교수 교수님"})
+        document = PersonalDocument.objects.create(user=self.author, title="모의", file="", document_type="mock", summary="3문항 · 김교수 교수님 · 운영체제",
+                                                   summary_status=ProcessingStatus.DONE)
+        MockExam.objects.filter(pk=self.exam.pk).update(document=document)
+        importlib.import_module("mypage.migrations.0022_hide_exam_style_mentions").scrub(global_apps, None)
+        post.refresh_from_db(); material.refresh_from_db(); document.refresh_from_db()
+        self.assertNotIn("출제 스타일", post.content)
+        self.assertNotIn("style_label", material.payload)
+        self.assertEqual(document.summary, "3문항 · 운영체제")
