@@ -86,7 +86,8 @@
         </div>
         {% endfor %}
         {% if score is None %}
-        <button type="submit" class="no-print w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-3 rounded-xl transition">제출하고 채점하기</button>
+        <button type="submit" class="no-print w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-3 rounded-xl transition">제출하고 채점하기{% if grade_cost %}{% include 'includes/credit_cost.html' with cost=grade_cost %}{% endif %}</button>
+        {% if essays %}<p class="no-print text-center text-[11px] text-slate-400 -mt-3">서술형 {{ essays }}문항은 AI가 채점해요 (답을 쓴 문항만, 최대 위 예상 사용량). 나머지는 AI 없이 채점돼요.</p>{% endif %}
         {% endif %}
     </form>
     <a href="{% url 'mypage:document_list' %}" class="no-print inline-block mt-6 text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료로 돌아가기</a>

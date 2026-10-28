@@ -22,6 +22,8 @@
     .ms-grid.src-closed { grid-template-columns: minmax(0, 1fr); }
     .ms-grid.src-closed .ms-src { display: none; }
     .ms-src { position: relative; background: #fff; border: 1px solid #f1f5f9; border-radius: 16px; padding: 6px; min-height: 0; display: flex; }
+    .ms-src > .ms-img { flex: 1; width: 100%; min-height: 0; overflow: auto; border-radius: 12px; text-align: center; }
+    .ms-src > .ms-img img { max-width: 100%; height: auto; display: inline-block; }
     .ms-src > iframe, .ms-src > pre, .ms-src > .ms-text { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
     .ms-src > pre, .ms-src > .ms-text { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; position: relative; }
     /* 요약과 연결된 원문 위치 표시 */
@@ -84,6 +86,8 @@
         <div class="ms-src" id="ms-src">
             {% if is_pdf %}
                 <iframe src="{{ document.file.url }}" title="원문"></iframe>
+            {% elif is_image %}
+                <div class="ms-img"><img src="{{ document.file.url }}" alt="{{ document.title }} 원본 이미지"></div>
             {% else %}
                 <pre>{{ document.extracted_text|default:"미리볼 수 있는 텍스트가 없습니다." }}</pre>
             {% endif %}

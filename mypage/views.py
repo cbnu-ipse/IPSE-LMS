@@ -63,19 +63,9 @@ def _generate_summary_bg(document_id):
         return
     finally:
         _summarizing.discard(document_id)
-    _questions_after_summary(document_id)       # 요약이 끝나면 기본 문제 5개 (수업 자료만)
     with background_slot():          # 분류·개념 태그·강의 초안도 AI를 부르므로 같은 상한을 지킨다 (요약 자리는 먼저 놓는다)
         _classify_and_build(document_id)
     connection.close()
-
-
-def _questions_after_summary(document_id):
-    """요약이 끝난 뒤 기본 문제를 만든다. 실패해도 요약·분류는 그대로 진행되게 한다."""
-    try:
-        with background_slot():
-            _make_default_questions(document_id)
-    except Exception:
-        logger.exception("문서 %s 기본 문제 생성 실패", document_id)
 
 
 def _course_after_upload_bg(document_id):
@@ -97,9 +87,6 @@ def _classify_and_build(document_id):
         logger.exception("문서 %s 주제 분류·강의 초안 처리 실패", document_id)
 
 
-DEFAULT_QUESTION_PLAN = ("ox", "ox", "mc", "short", "essay")     # 수업 자료를 올리면 요약과 함께 자동으로 만드는 기본 문제 (OX 2·객관식 1·단답 1·서술형 1)
-
-
 def _question_style(document):
     """내 자료로 문제를 만들 때 쓰는 교수님 족보 출제 스타일 지시문 (없으면 빈 문자열)."""
     from .exam import style_for, style_prompt, topic_professor
@@ -107,28 +94,6 @@ def _question_style(document):
     subject = document.subject_code
     professor = document.professor or topic_professor(subject)
     return style_prompt(style_for(professor, subject), professor, subject)
-
-
-def _make_default_questions(document_id):
-    """요약이 끝난 수업 자료의 기본 문제 5개를 차례로 만든다 (이미 문제가 있거나 족보 자료면 만들지 않는다).
-    한도가 모자라면 거기서 멈추고, 한 문제가 실패해도 나머지는 계속한다. 같은 자료로 이미 요약된 자료를 불러온 경우(AI 미사용)는 만들지 않는다."""
-    document = PersonalDocument.objects.select_related("user").get(pk=document_id)
-    if (document.document_type != PersonalDocument.DocumentType.LECTURE or not document.extracted_text.strip()
-            or document.questions.exists()):
-        return
-    style = _question_style(document)
-    existing = []
-    for index, question_type in enumerate(DEFAULT_QUESTION_PLAN):
-        try:
-            check_quota(document.user, "question")
-        except AIQuotaExceeded:
-            break
-        question = GeneratedQuestion.objects.create(document=document, question_type=question_type,
-                                                    status=ProcessingStatus.PROCESSING)
-        _make_question(question.pk, document.extracted_text, question_type, list(existing), document.user, index, style)
-        question.refresh_from_db()
-        if question.status == ProcessingStatus.DONE:
-            existing.append(clean_question_text(question.question_text))
 
 
 def _generate_question_bg(question_id, extracted_text, question_type, existing_texts, user=None, index=0, style=""):
@@ -326,15 +291,12 @@ def upload_estimate(request):
         return JsonResponse({"ok": False, "error": "잠시 후 다시 시도해주세요."}, status=429)
     data = upload.read()
     unit = cost_for("summary")
-    # 수업 자료는 요약과 함께 기본 문제도 만들므로 그만큼의 예상 사용량을 더한다 (족보는 문제를 만들지 않는다)
-    questions = len(DEFAULT_QUESTION_PLAN) if request.POST.get("document_type", "lecture") == "lecture" else 0
-    extra = questions * cost_for("question")
-    info = {"ok": True, "questions": questions}
+    info = {"ok": True}
     if name.endswith((".jpg", ".jpeg", ".png")):
         ocr = ocr_cost(len(data))
-        info.update(kind="image", min_label=usage.percent_label(ocr + unit + extra),
-                    max_label=usage.percent_label(ocr + unit * SUMMARY_MAX_CHUNKS + extra))
-        need = ocr + unit + extra
+        info.update(kind="image", min_label=usage.percent_label(ocr + unit),
+                    max_label=usage.percent_label(ocr + unit * SUMMARY_MAX_CHUNKS))
+        need = ocr + unit
     else:
         content_hash = hashlib.sha256(data).hexdigest()
         key = _extract_cache_key(request.user, content_hash)
@@ -351,7 +313,7 @@ def upload_estimate(request):
         if summary_too_long(text):         # 앞부분만 요약되는 일이 없게, 요약하지 않고 쪼개서 올리게 한다
             return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
         chunks = summary_chunk_count(text)
-        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit + extra))
+        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit))
         need = chunks * unit
     current = usage.info(request.user)                              # 한도가 없는 사용자(강의자 등)는 None
     info["used_label"] = current["label"] if current else None
@@ -452,6 +414,7 @@ def document_preview(request, pk):
         return render(request, "mypage/note.html", {"document": document})   # 생성 중·실패 안내
 
     is_pdf = document.file.name.lower().endswith(".pdf")
+    is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))     # 이미지는 읽어 낸 글자 대신 원본을 그대로 보여 준다
     source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
     active_panel = request.GET.get("panel", "summary")
     if active_panel not in ("summary", "quiz"):
@@ -472,6 +435,7 @@ def document_preview(request, pk):
     return render(request, "mypage/preview.html", {
         "document": document,
         "is_pdf": is_pdf,
+        "is_image": is_image,
         "source_pages": source_pages,
         "active_panel": active_panel,
         "current_questions": current_questions,
@@ -847,7 +811,7 @@ def mock_exam(request, pk):
     essays = essay_count(exam)
     return render(request, "mypage/mock_exam.html", {
         "exam": exam, "rows": rows, "score": score, "total": len(exam.questions),
-        "essays": essays,
+        "essays": essays, "grade_cost": essays * cost_for("grading"),
     })
 
 
