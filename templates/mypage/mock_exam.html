@@ -28,6 +28,7 @@
             </p>
         </div>
         <div class="no-print shrink-0 flex gap-2">
+            <button type="button" class="js-share-board text-xs font-bold px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-60" data-url="{% url 'mypage:share_mock' exam.pk %}" data-csrf="{{ csrf_token }}" title="자유게시판에 올리고 게시글 링크를 복사해요"><i class="fa-solid fa-share-nodes mr-1"></i>게시판에 올리기</button>
             <button type="button" onclick="window.print()" class="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition" title="인쇄하거나 PDF로 저장"><i class="fa-solid fa-print mr-1"></i>인쇄·PDF</button>
             {% if score is not None %}<a href="{% url 'mypage:wrong_notes' %}" class="text-xs font-bold px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"><i class="fa-solid fa-book-bookmark mr-1"></i>오답노트</a>{% endif %}
         </div>
@@ -93,6 +94,7 @@
     <a href="{% url 'mypage:document_list' %}" class="no-print inline-block mt-6 text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료로 돌아가기</a>
 </section>
 <script src="{% static 'js/exam-render.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/share-board.js' %}?v={{ static_version }}"></script>
 <script>
 // '모르겠음'을 누른 문항은 답 입력을 잠가 찍지 않게 한다 (눌렀다 풀면 다시 열린다)
 document.querySelectorAll('.unsure-box').forEach(function (box) {

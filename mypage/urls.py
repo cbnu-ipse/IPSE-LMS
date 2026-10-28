@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import share_views, views
 
 app_name = "mypage"
 
@@ -15,6 +15,9 @@ urlpatterns = [
     path("cram/create/", views.cram_note_create, name="cram_note_create"),
     path("mock/create/", views.mock_exam_create, name="mock_exam_create"),
     path("mock/<int:pk>/", views.mock_exam, name="mock_exam"),
+    path("share/note/<int:pk>/", share_views.share_note, name="share_note"),
+    path("share/mock/<int:pk>/", share_views.share_mock, name="share_mock"),
+    path("share/<int:pk>/import/", share_views.shared_import, name="shared_import"),
     path("review/", views.review_list, name="review_list"),
     path("review/<int:pk>/", views.review_decide, name="review_decide"),
     path("wrong/", views.wrong_notes, name="wrong_notes"),
