@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static figures %}
 {% block title %}오답노트 | IPSE LMS{% endblock %}
 
 {% block content %}
@@ -44,6 +44,7 @@
                 </span>
             </div>
             <div class="wn-body wn-plain" data-md>{{ n.question.q }}</div>
+            {% with fig=n.question|figure_src %}{% if fig %}<figure class="my-3"><img src="{{ fig }}" alt="{{ n.question.figure.alt }}" class="max-w-full mx-auto rounded-lg border border-slate-200 bg-white p-2" style="max-height:340px"></figure>{% endif %}{% endwith %}
 
             <form class="wn-form mt-3">
                 {% if n.question.type == 'ox' %}

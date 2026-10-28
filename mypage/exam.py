@@ -17,6 +17,7 @@ from collections import Counter
 from core import ai as core_ai
 
 from .ai import unescape_newlines
+from .figure import normalize_figure
 from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument, WrongNote
 from .naming import professor_key  # noqa: F401 (다른 모듈이 mypage.exam에서 가져다 쓴다)
 from .ontology import exam_questions_for, exam_stats
@@ -50,11 +51,18 @@ MOCK_SYSTEM = (
     "- 문제 문장(q)은 마크다운으로 읽기 좋게 씁니다: 긴 지문은 문단(빈 줄)으로 나누고, 코드·의사코드·메시지 흐름은 ``` 블록에 줄마다 넣고, "
     "수식은 $...$ 로 쓰되 \\frac 같은 LaTeX 명령 없이 $Q_i \\cap Q_j$ 정도로 간단히, 빈칸은 (1)_____ 처럼, (1)(2)(3) 소문항은 줄을 바꿔 나열합니다. "
     "문제 전체를 **굵게** 감싸지 말고 핵심 용어에만 씁니다. 문제 하나는 1200자 안으로 끝냅니다. 줄바꿈은 JSON 문자열의 \\n 하나로만 쓰고 글자 그대로의 백슬래시+n을 쓰지 않습니다.\n"
+    "- 자료가 그래프·분포·구조·흐름을 다루면(히스토그램, 노드·네트워크·메시지 흐름, 트리·그래프 등) 그것을 묻는 문제 1~3개에는 figure(그림)를 반드시 붙입니다. 자료에 그런 내용이 없으면 붙이지 않습니다. "
+    "figure는 {\"svg\": \"<svg viewBox='0 0 480 300'>...</svg>\", \"alt\": \"그림 설명\"} 모양이고 어떤 유형의 문제에도 붙일 수 있습니다. "
+    "SVG 규칙: viewBox 필수(가로 300~560, 세로 400 이하), width·height·style·script·image·외부 주소 금지, "
+    "rect·circle·ellipse·line·polyline·polygon·path·text·g·defs·marker만 사용, 글자는 font-size 12~14, 선·글자는 어두운 색(#334155)에 배경은 칠하지 않습니다. "
+    "그림의 숫자·라벨은 문제 본문·보기와 정확히 일치해야 하고, 정답을 그림에서 바로 읽을 수 있으면 안 됩니다. 그림은 전체의 3문항 이하로 합니다.\n"
     "- 형식:\n"
     '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
     '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 2, "explanation": "..."} (answer는 0부터)\n'
     '  단답: {"type": "short", "q": "...", "answers": ["정답", "다른 표현"], "explanation": "..."}\n'
     '  서술형: {"type": "essay", "q": "...", "answer": "채점 기준이 되는 모범답안(핵심 요소 포함, 3~6문장)", "explanation": "..."}\n'
+    '  그림이 있는 문제는 위 어느 유형이든 같은 객체에 "figure"를 더합니다. 예: {"type": "mc", "q": "...", "options": [...], "answer": 1, "explanation": "...", '
+    '"figure": {"svg": "<svg viewBox=\'0 0 400 240\'>...</svg>", "alt": "계급별 도수 히스토그램"}}\n'
     'JSON으로만 답하세요: {"title": "...", "questions": [...]}'
 )
 
@@ -206,6 +214,14 @@ def _normalize_mock_question(q):
     explanation = _block(q.get("explanation"), 600)
     if not text:
         return None
+    figure = normalize_figure(q.get("figure"))
+    out = _normalize_typed_question(q, kind, text, explanation)
+    if out and figure:
+        out["figure"] = figure
+    return out
+
+
+def _normalize_typed_question(q, kind, text, explanation):
     if kind == "essay":
         answer = _block(q.get("answer"), 2000)
         return {"type": "essay", "q": text, "answer": answer, "explanation": explanation} if answer else None
