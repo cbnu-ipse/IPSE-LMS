@@ -84,7 +84,18 @@
         justify-content: center;
         transition: opacity 0.25s ease-out;
     }
+    /* 페이지 이동 전환 (MPA View Transitions): 새 화면이 준비될 때까지 브라우저가 이전 화면을 그대로 보여 주다가 짧게 교차한다.
+       지원하지 않는 브라우저는 효과 없이 그냥 이동한다. 내비게이션 바는 따로 이름을 붙여 본문만 바뀌는 것처럼 보이게 한다. */
+    @view-transition { navigation: auto; }
+    ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.16s; }
+    #site-nav { view-transition-name: site-nav; }
+    ::view-transition-group(site-nav) { animation-duration: 0s; }
+    @media (prefers-reduced-motion: reduce) {
+      ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+    }
     </style>
+    <!-- 부작용 없는 목록 화면만 마우스를 올리면 미리 가져온다 (Chromium). 게시글 상세처럼 열면 조회수가 오르는 화면은 넣지 않는다 -->
+    <script type="speculationrules">{"prefetch": [{"where": {"href_matches": ["/mypage/", "/community/"]}, "eagerness": "moderate"}]}</script>
 </head>
 
 <body class="{% if site_section == 'judge' %}host-judge{% else %}host-community{% endif %} bg-gradient-to-b from-slate-50 via-white to-slate-50 text-[#3a3a3a] min-h-screen flex flex-col">
@@ -113,11 +124,9 @@
       </div>
     </div>
     <script>
-      // 페이지 이동 중이었다면(showLoader에서 세팅) 새 문서가 그려지기 전에 로더를 이어서 표시한다.
-      // (일반 <a> 이동은 문서를 통째로 새로 그리므로, 애니메이션 "시작 시각"만 이어받아 동일한 곡선을 계속 그린다.
-      //  실제 로드 속도와 무관하게 항상 정해진 시간 동안 하나의 일정한 속도로 채워지므로,
-      //  로드가 언제 끝났는지 티가 나는 속도 변화(seam)가 생기지 않는다.)
-      window.__loaderTotalMs = 550;
+      // 로더는 이동이 오래 걸릴 때만 보인다 (빠른 이동은 View Transitions가 부드럽게 이어 준다). 새 문서에서는 이어서 그리지 않는다.
+      // 잎이 채워지는 애니메이션은 보이기 시작한 시점부터 __loaderTotalMs 동안 한 번만 돈다.
+      window.__loaderTotalMs = 900;
       window.__loaderStartedAt = null;
       window.__loaderRaf = null;
       // 자정(KST) 경과 후 bfcache로 복원된 화면(방명록 완료 배지 등 날짜 기준 UI)이 갱신되도록 렌더 시점 날짜를 기록
@@ -134,29 +143,14 @@
         }
         tick();
       };
-      (function() {
-        var wasNavigating = false;
-        var startedAt = 0;
-        try {
-          wasNavigating = sessionStorage.getItem('pageLoaderActive') === '1';
-          startedAt = parseInt(sessionStorage.getItem('pageLoaderStartedAt'), 10) || 0;
-          sessionStorage.removeItem('pageLoaderActive');
-          sessionStorage.removeItem('pageLoaderStartedAt');
-        } catch (e) {}
-        if (wasNavigating && startedAt) {
-          var loader = document.getElementById('page-loader');
-          window.__loaderStartedAt = startedAt;
-          if (loader) loader.style.display = 'flex';
-          window.__runLoaderAnimation();
-        }
-      })();
+      try { sessionStorage.removeItem('pageLoaderActive'); sessionStorage.removeItem('pageLoaderStartedAt'); } catch (e) {}   // 예전 방식이 남긴 값 정리
     </script>
     <!-- ── /loader ── -->
 
 
     {% block navbar %}
     {% if not is_embedded %}
-    <nav class="bg-white/70 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <nav id="site-nav" class="bg-white/70 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-stretch">
 
             <div class="flex items-center gap-6 lg:gap-10 shrink-0">
@@ -959,9 +953,12 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
 
     {% block extra_js %}{% endblock %}
     <script>
-      // 페이지 전환 로딩
+      // 페이지 전환 로딩: 링크·폼으로 이동을 시작한 뒤 LOADER_DELAY_MS가 지나도 새 화면이 안 오면 그때 로더를 보인다.
       (function(){
         const loader = document.getElementById('page-loader');
+        const LOADER_DELAY_MS = 300;     // 이보다 빨리 열리는 이동은 로더 없이 전환만 보인다
+        const GIVE_UP_MS = 15000;        // 이동이 취소되거나 다운로드라 문서가 안 바뀌어도 화면이 막힌 채 남지 않게 한다
+        let showTimer = null, giveUpTimer = null;
         window.isPageLoading = false;
 
         function rootDomain(h) {
@@ -977,46 +974,31 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
 
         const leafFill = document.getElementById('sk-leaf-fill');
 
-        function showLoader() {
-          if (!loader) return;
-          window.isPageLoading = true;
+        function revealLoader() {
+          if (!loader || !window.isPageLoading) return;
           window.__loaderStartedAt = Date.now();
-          try {
-            sessionStorage.setItem('pageLoaderActive', '1');
-            sessionStorage.setItem('pageLoaderStartedAt', String(window.__loaderStartedAt));
-          } catch (e) {}
-          if (leafFill) {
-            leafFill.style.transition = '';
-            leafFill.style.clipPath = 'inset(100% 0 0 0)';
-          }
+          if (leafFill) { leafFill.style.transition = ''; leafFill.style.clipPath = 'inset(100% 0 0 0)'; }
           loader.style.opacity = '';
           loader.style.display = 'flex';
           window.__runLoaderAnimation();
         }
 
-        // 애니메이션이 정해진 시간(__loaderTotalMs) 동안 하나의 곡선으로 100%까지 다 채워진 뒤에만 fadeout한다.
-        // 실제 페이지 로드가 그보다 먼저 끝나도 바로 넘기지 않고 애니메이션이 끝날 때까지 기다리므로,
-        // 채워지는 속도가 도중에 바뀌는 지점(=로드 완료 시점을 노출하는 seam)이 생기지 않는다.
+        function showLoader() {
+          if (!loader) return;
+          window.isPageLoading = true;
+          clearTimeout(showTimer); clearTimeout(giveUpTimer);
+          showTimer = setTimeout(revealLoader, LOADER_DELAY_MS);
+          giveUpTimer = setTimeout(hideLoader, GIVE_UP_MS);
+        }
+
         function hideLoader() {
           window.isPageLoading = false;
-          if (!loader) { cancelAnimationFrame(window.__loaderRaf); return; }
-          const elapsed = window.__loaderStartedAt ? Date.now() - window.__loaderStartedAt : window.__loaderTotalMs;
-          const wait = Math.max(0, window.__loaderTotalMs - elapsed);
-          setTimeout(function() {
-            cancelAnimationFrame(window.__loaderRaf);
-            if (leafFill) leafFill.style.clipPath = 'inset(0% 0 0 0)';
-            loader.style.opacity = '0';
-            loader.style.transition = 'opacity 0.2s ease-out';
-            setTimeout(function() {
-              loader.style.display = 'none';
-              loader.style.opacity = '';
-              loader.style.transition = '';
-              if (leafFill) {
-                leafFill.style.transition = '';
-                leafFill.style.clipPath = 'inset(100% 0 0 0)';
-              }
-            }, 200);
-          }, wait);
+          clearTimeout(showTimer); clearTimeout(giveUpTimer);
+          cancelAnimationFrame(window.__loaderRaf);
+          if (!loader) return;
+          loader.style.display = 'none';
+          loader.style.opacity = '';
+          if (leafFill) { leafFill.style.transition = ''; leafFill.style.clipPath = 'inset(100% 0 0 0)'; }
         }
 
         // 링크 클릭
@@ -1037,6 +1019,7 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
           } catch(err) { return; }
 
           showLoader();
+          setTimeout(function() { if (e.defaultPrevented) hideLoader(); }, 0);      // 다른 스크립트가 이동을 막았다면 로딩 상태를 풀어 준다
         }, { capture: true });
 
         // 폼 제출
@@ -1058,22 +1041,7 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
           }
         });
 
-        // 새로고침(F5, Ctrl/Cmd+R) 시에도 로더를 보여준다.
-        // ponytail: beforeunload/unload는 뒤/앞으로가기 캐시(bfcache)를 깨뜨릴 수 있어 사용하지 않음 —
-        // 그 대신 키보드 단축키만 가로채므로, 브라우저 새로고침 버튼/주소창 새로고침은
-        // 페이지 JS가 원천적으로 감지할 수 없어 커버되지 않음.
-        document.addEventListener('keydown', function(e) {
-          if (window.isPageLoading) return;
-          const isF5 = e.key === 'F5';
-          const isCtrlR = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R');
-          if (!isF5 && !isCtrlR) return;
-          e.preventDefault();
-          showLoader();
-          requestAnimationFrame(function() { requestAnimationFrame(function() { location.reload(); }); });
-        });
-
-        // JS가 직접 트리거하는 location.reload() 폴링(예: 요약/문제 생성 대기)에서도 재사용
-        window.showLoader = showLoader;
+        window.showLoader = showLoader;       // 다른 스크립트가 이동을 시작할 때 쓸 수 있다 (오래 걸릴 때만 보인다)
       })();
 
       // 로그아웃: CORS/cross-subdomain 문제를 완벽히 방지하기 위해 표준 HTML Form POST 전송 방식을 사용합니다.

@@ -1,3 +1,5 @@
+import json
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
@@ -147,3 +149,30 @@ class IntroducePageTests(TestCase):
         RecruitmentForm.objects.create(title="마감됨", is_active=True, created_by=owner, closes_at=timezone.now() - timedelta(days=1))
         RecruitmentForm.objects.create(title="아직 안 열림", is_active=True, created_by=owner, opens_at=timezone.now() + timedelta(days=1))
         self.assertNotIn('id="recruiting"', self.client.get("/introduce/").content.decode())
+
+
+class PageTransitionTests(TestCase):
+    """페이지 이동 전환: View Transitions + 오래 걸릴 때만 보이는 로더."""
+
+    def html(self):
+        return self.client.get("/introduce/").content.decode()
+
+    def test_pages_opt_in_to_view_transitions_and_keep_the_nav_still(self):
+        html = self.html()
+        self.assertIn("@view-transition { navigation: auto; }", html)
+        self.assertIn('id="site-nav"', html)
+        self.assertIn("view-transition-name: site-nav", html)
+        self.assertIn("prefers-reduced-motion: reduce", html)
+
+    def test_the_loader_appears_only_when_navigation_is_slow(self):
+        html = self.html()
+        self.assertIn("LOADER_DELAY_MS = 300", html)
+        self.assertNotIn("pageLoaderActive')", html.replace("removeItem('pageLoaderActive')", ""))    # 새 문서에서 이어 그리지 않는다
+        self.assertNotIn("e.key === 'F5'", html)                                                       # 새로고침 단축키를 가로채지 않는다
+
+    def test_only_side_effect_free_list_pages_are_prefetched(self):
+        html = self.html()
+        start = html.index('<script type="speculationrules">') + len('<script type="speculationrules">')
+        rules = json.loads(html[start:html.index("</script>", start)])
+        patterns = rules["prefetch"][0]["where"]["href_matches"]
+        self.assertEqual(patterns, ["/mypage/", "/community/"])                                         # 게시글 상세(조회수 증가)는 넣지 않는다
