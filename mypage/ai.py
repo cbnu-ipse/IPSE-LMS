@@ -399,6 +399,7 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         "- 단답형은 하나의 답(단어나 짧은 구)만 묻습니다. '~를 여섯 개 쓰시오'처럼 여러 개를 나열하게 하는 문제는 만들지 마세요. "
         "같은 답을 가리키는 다른 표현만 ' | '로 구분해 answer에 씁니다 (예: 'JOIN | 조인'). 서술형은 모범답안.\n"
         "- 문제 문장에 'OX로 답하시오', '단답으로 쓰시오' 같은 답변 방식 안내는 붙이지 마세요 (화면에 입력 방법이 있습니다).\n"
+        "- OX 문제는 참/거짓만 고르는 문제입니다. '이유를 설명하시오', '근거를 쓰시오'처럼 글로 답하게 하는 문장은 쓰지 마세요 (이유는 explanation에만 씁니다). 이유를 묻고 싶으면 서술형으로 냅니다.\n"
         + (f"- 교수님 족보에서 배운 출제 스타일이 있습니다. 문제 문장·난이도·묻는 방식을 이에 맞추되, 족보의 문제를 그대로 베끼지 마세요:\n{style}\n" if style else "")
         + "\n" + core_ai.untrusted("자료", question_window(extracted_text, index))
     )
@@ -424,6 +425,11 @@ def generate_one_question(extracted_text, question_type, existing_questions=(), 
         "explanation": unescape_newlines(data.get("explanation", "")) if question_type in ("ox", "mc") else "",
         "options": [],
     }
+    if question_type == "ox" and REASON_REQUEST.search(result["question"]):
+        stripped = strip_reason_request(result["question"])
+        if not stripped:
+            raise ValueError("OX 문제에 이유 설명을 요구하는 문장만 있어 건너뜁니다.")
+        result["question"] = stripped
     if question_type == "mc":
         result["options"], result["answer"] = _shuffle_options(data.get("options"), rng)
     return result
@@ -444,6 +450,22 @@ def _shuffle_options(raw_options, rng=None):
     (rng or random).shuffle(order)
     shuffled = [options[i] for i in order]
     return shuffled, str(shuffled.index(correct))
+
+
+# OX 문제에 붙은 '이유를 설명하시오' 같은 서술 요구 — OX는 O/X만 고르는 문제라 답을 쓸 칸이 없다 ("다음 설명은 옳다" 같은 평서문은 잡지 않는다)
+REASON_REQUEST = re.compile(r"(설명|서술|기술|논술)\s*(하시오|하라|하세요|해라|해\s*보시오|하고|하여|하며)|(이유|근거|까닭)[를을]?\s*(쓰|적|밝히|제시|들어|말하)")
+
+
+def strip_reason_request(text):
+    """OX 문제 문장에서 서술을 요구하는 문장("거짓인 경우 판단 이유를 설명하시오.")만 떼어 낸다. 떼고 남는 진술이 없으면 None."""
+    kept = []
+    for line in str(text or "").split("\n"):
+        sentences = [x for x in re.split(r"(?<=[.?!])\s+", line.strip()) if x]
+        sentences = [x for x in sentences if not REASON_REQUEST.search(x)]
+        if sentences:
+            kept.append(" ".join(sentences))
+    cleaned = "\n\n".join(kept).strip()
+    return cleaned if len(cleaned) >= 8 else None
 
 
 # 문제 끝에 붙은 답변 방식 지시 ("OX로 답하시오.", "O/X 중에서 고르시오." 등) — 화면에 이미 O/X 버튼이 있다
