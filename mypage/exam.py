@@ -76,9 +76,28 @@ def style_key(professor="", subject=""):
     return f"s:{subject}" if subject else ""
 
 
+def learnable(document):
+    """이 족보를 출제 스타일·통계 학습에 써도 되는가: '잘못됨'으로 검토된 것은 빼고, '맞음'이거나 올린 사람의 신뢰도가 기준 이상이어야 한다 (accounts/trust.py)."""
+    from accounts import trust
+
+    status = PersonalDocument.ReviewStatus
+    if document.review_status == status.REJECTED:
+        return False
+    return document.review_status == status.APPROVED or trust.trusted_for_learning(document.user)
+
+
 def exam_docs(professor="", subject=""):
-    """스타일의 근거가 되는 족보. 교수 이름이 있으면 과목과 상관없이 그 교수님 족보 전부, 없으면 그 과목의 족보."""
-    qs = PersonalDocument.objects.filter(document_type=PersonalDocument.DocumentType.EXAM).exclude(extracted_text="")
+    """스타일의 근거가 되는 족보. 교수 이름이 있으면 과목과 상관없이 그 교수님 족보 전부, 없으면 그 과목의 족보.
+    신뢰할 수 있는 족보만 쓰고, 한정된 분량 안에서 신뢰도가 높은 사용자의 것을 먼저 쓴다."""
+    from accounts import trust
+
+    docs = _exam_docs(professor, subject)
+    docs = [d for d in docs if learnable(d)]
+    return sorted(docs, key=lambda d: (-trust.effective(d.user), d.pk))
+
+
+def _exam_docs(professor="", subject=""):
+    qs = PersonalDocument.objects.filter(document_type=PersonalDocument.DocumentType.EXAM).exclude(extracted_text="").select_related("user")
     pk = professor_key(professor)
     if pk:
         return [d for d in qs.exclude(professor="").order_by("id") if professor_key(d.professor) == pk]
@@ -256,7 +275,7 @@ def type_plan(stats, total=MOCK_QUESTIONS):
     if stats["total"] < 3:
         return {}
     shares = Counter()
-    for qtype, n in stats["type_counts"].items():
+    for qtype, n in (stats.get("type_weight") or stats["type_counts"]).items():
         shares[{"calc": "essay", "code": "essay", "other": "short"}.get(qtype, qtype)] += n
     exact = {t: total * n / sum(shares.values()) for t, n in shares.items()}
     plan = {t: int(v) for t, v in exact.items()}

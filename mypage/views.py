@@ -12,7 +12,8 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db import connection, transaction
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponseForbidden, JsonResponse
+from accounts.decorators import lecturer_required
+from django.http import Http404, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -28,6 +29,7 @@ from .ai import (
     pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
+from . import doctype
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .stream import SummaryPublisher
@@ -126,6 +128,19 @@ def _make_question(question_id, extracted_text, question_type, existing_texts, u
         connection.close()
 
 
+def _record_doctype(document, text, data=None):
+    """올린 자료의 구분을 규칙으로 짐작해 남기고, 사용자가 고른 구분과 같으면 신뢰도를 조금 올린다 (accounts/trust.py)."""
+    from accounts import trust
+
+    try:
+        guess = doctype.suggest(document.file.name, text, data)
+        PersonalDocument.objects.filter(pk=document.pk).update(suggested_type=guess["type"], type_confidence=guess["confidence"])
+        if guess["type"] and guess["type"] == document.document_type:
+            trust.reward_clean_upload(document.user, document)
+    except Exception:
+        logger.exception("자료 %s 구분 짐작 실패", document.pk)
+
+
 @login_required
 def document_list(request, folder_id=None):
     folder = None
@@ -142,6 +157,9 @@ def document_list(request, folder_id=None):
             document.folder = folder
             if not document.title:
                 document.title = os.path.splitext(document.file.name)[0]
+            if request.user.is_lecturer:         # 강의자가 올린 자료는 확인된 것으로 본다
+                document.review_status = PersonalDocument.ReviewStatus.APPROVED
+                document.reviewed_at = timezone.now()
             typed_course = form.cleaned_data["course_name"]
 
             def apply_info():
@@ -157,7 +175,8 @@ def document_list(request, folder_id=None):
 
             upload = request.FILES["file"]
             upload.seek(0)
-            content_hash = hashlib.sha256(upload.read()).hexdigest()
+            raw_upload = upload.read()
+            content_hash = hashlib.sha256(raw_upload).hexdigest()
             upload.seek(0)
             # 같은 파일이 이미 요약돼 있으면 AI를 부르지 않고 그 결과를 쓴다 (토큰 절약)
             same = (PersonalDocument.objects.filter(content_hash=content_hash, summary_status=ProcessingStatus.DONE,
@@ -170,6 +189,7 @@ def document_list(request, folder_id=None):
                 document.summary_status = ProcessingStatus.DONE
                 apply_info()
                 document.save()
+                _record_doctype(document, document.extracted_text, raw_upload)
                 threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 요약을 바로 불러왔습니다.")
                 return redirect(request.path)
@@ -216,6 +236,7 @@ def document_list(request, folder_id=None):
                 messages.error(request, "자료를 올리지 못했습니다. " + too_long_message(len(extracted_text)))
                 return redirect(request.path)
             document.extracted_text = extracted_text
+            _record_doctype(document, extracted_text, raw_upload)
             try:    # 본문을 읽은 뒤 전체 조각 수로 필요한 사용량을 미리 확인한다 (AI를 부르지 않고 글자 수로 센다)
                 require_quota(request.user, summary_chunk_count(extracted_text) * cost_for("summary"))
             except AIQuotaExceeded as exc:
@@ -255,6 +276,8 @@ def document_list(request, folder_id=None):
         "summary_max_chunks": SUMMARY_MAX_CHUNKS,
         "summary_max_chars": f"{SUMMARY_MAX_CHARS:,}",
         "cram_max": CRAM_MAX_SOURCES,
+        "can_review": request.user.is_lecturer or request.user.is_superuser,
+        "review_pending": len(_review_queue()) if (request.user.is_lecturer or request.user.is_superuser) else 0,
         "max_upload_bytes": MAX_UPLOAD_SIZE,
         "subject_choices": subject_choices(),
         "professor_choices": professor_choices(),
@@ -291,7 +314,7 @@ def upload_estimate(request):
         return JsonResponse({"ok": False, "error": "잠시 후 다시 시도해주세요."}, status=429)
     data = upload.read()
     unit = cost_for("summary")
-    info = {"ok": True}
+    info = {"ok": True, "suggest": doctype.suggest(name, "", data)}      # 이미지는 글자를 읽기 전이라 파일 모양만으로 짐작한다
     if name.endswith((".jpg", ".jpeg", ".png")):
         ocr = ocr_cost(len(data))
         info.update(kind="image", min_label=usage.percent_label(ocr + unit),
@@ -312,6 +335,7 @@ def upload_estimate(request):
             return JsonResponse({"ok": False, "empty": True, "error": UNREADABLE_MESSAGE}, status=422)
         if summary_too_long(text):         # 앞부분만 요약되는 일이 없게, 요약하지 않고 쪼개서 올리게 한다
             return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
+        info["suggest"] = doctype.suggest(name, text, data)
         chunks = summary_chunk_count(text)
         info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit))
         need = chunks * unit
@@ -868,3 +892,57 @@ def wrong_note_remove(request, pk):
     note.is_removed = True
     note.save(update_fields=["is_removed", "updated_at"])
     return JsonResponse({"ok": True})
+
+
+REVIEW_PAGE_SIZE = 100
+
+
+def _review_queue():
+    """검토할 자료: 아직 검토하지 않은 일반 사용자의 족보와, 서버의 짐작과 사용자가 고른 구분이 크게 다른 자료. 구분이 의심되는 것이 먼저."""
+    from django.db.models import Q
+
+    pending = PersonalDocument.objects.filter(review_status=PersonalDocument.ReviewStatus.PENDING, is_deleted=False,
+                                              user__is_lecturer=False).select_related("user")
+    docs = list(pending.filter(Q(document_type=PersonalDocument.DocumentType.EXAM)
+                               | (Q(document_type=PersonalDocument.DocumentType.LECTURE) & Q(suggested_type=PersonalDocument.DocumentType.EXAM)
+                                  & Q(type_confidence__gte=0.5))).order_by("-uploaded_at")[:REVIEW_PAGE_SIZE])
+    for d in docs:
+        d.suspect = bool(d.suggested_type) and d.suggested_type != d.document_type and d.type_confidence >= 0.5
+        d.snippet = " ".join(d.extracted_text[:300].split())
+    docs.sort(key=lambda d: (not d.suspect,))
+    return docs
+
+
+@login_required
+@lecturer_required
+def review_list(request):
+    """강의자·관리자가 족보와 과목·교수 정보를 확인하는 화면. '맞음'이면 신뢰도가 오르고, '잘못됨'이면 크게 내려가며 그 자료는 족보 학습에서 빠진다."""
+    from accounts import trust
+
+    docs = _review_queue()
+    for d in docs:
+        d.trust = trust.effective(d.user)
+    return render(request, "mypage/review.html", {"docs": docs})
+
+
+@login_required
+@lecturer_required
+@require_POST
+def review_decide(request, pk):
+    from accounts import trust
+
+    decision = request.POST.get("decision")
+    if decision not in ("approve", "reject"):
+        return HttpResponseBadRequest("결정을 확인해주세요.")
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    status = PersonalDocument.ReviewStatus
+    approved = decision == "approve"
+    updated = PersonalDocument.objects.filter(pk=pk, review_status=status.PENDING).update(      # 한 번만 처리 (두 번 눌러도 신뢰도가 두 번 바뀌지 않게)
+        review_status=status.APPROVED if approved else status.REJECTED, reviewed_by=request.user, reviewed_at=timezone.now())
+    if not updated:
+        messages.info(request, "이미 검토한 자료입니다.")
+        return redirect("mypage:review_list")
+    trust.adjust(document.user, trust.APPROVED_DELTA if approved else trust.REJECTED_DELTA,
+                 "자료 확인: 맞음" if approved else "자료 확인: 잘못됨", document=document, actor=request.user)
+    messages.success(request, f"「{document.title}」을(를) {'맞음' if approved else '잘못됨'}으로 처리했습니다.")
+    return redirect("mypage:review_list")
