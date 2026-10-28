@@ -135,15 +135,16 @@ class CallsTests(TestCase):
 
         return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
-    def test_a_call_adds_to_usage_and_does_not_spend_credits(self):
+    def test_a_call_adds_to_usage_and_a_big_one_pays_only_the_overage_in_credits(self):
         from accounts import credits
         credits.grant(self.user, 5, "test")
         with patch.object(ai, "_client", return_value=self.fake_client(prompt=1_000_000, completion=0)):
             ai.complete("chat", [], user=self.user)
         self.user.refresh_from_db()
-        self.assertEqual(self.user.credits, 5)                                    # 크레딧은 그대로
         self.assertAlmostEqual(usage.used_points(self.user), 1.5 / 0.002, delta=0.01)   # 입력 100만 토큰 = 750점
         self.assertEqual(usage.info(self.user)["percent"], 100)
+        self.assertEqual(self.user.credits, 0)                                    # 초과분(650점)이 잔액(5)보다 커서 잔액만큼만 낸다
+        self.assertTrue(credits.verify_ledger(self.user))
 
     def test_calls_are_refused_once_the_week_is_used_up(self):
         use_up(self.user, 101)
@@ -162,3 +163,116 @@ class CallsTests(TestCase):
             with self.assertRaises(RuntimeError):
                 ai.complete("chat", [], user=self.user)
         self.assertEqual(AIUsage.objects.filter(user=self.user).count(), 0)
+
+
+@override_settings(AI_POINT_USD=0.002, AI_WEEKLY_LIMIT_POINTS=100, AI_BLOCK_NETWORK=False,
+                   AI_MODELS={"chat": "m"}, AI_TASK_PROVIDERS={"chat": "openai"}, AI_CREDIT_COSTS={"chat": 2, "mock_exam": 40})
+class CreditOverageTests(TestCase):
+    """한도를 넘은 만큼은 크레딧(1크레딧 = 1점)으로 낸다."""
+
+    def setUp(self):
+        from accounts import credits
+        self.credits = credits
+        self.user = User.objects.create_user(username="c", password="pw")
+
+    def call(self, user=None, prompt=1_000):       # 입력 1,000토큰 = 0.75점
+        with patch.object(ai, "_client", return_value=CallsTests.fake_client(prompt=prompt, completion=0)):
+            return ai.complete("chat", [], user=user or self.user)
+
+    def balance(self):
+        self.user.refresh_from_db()
+        return self.user.credits
+
+    def paid(self):
+        return usage.credits_paid(self.user)
+
+    def test_calls_within_the_limit_cost_no_credits(self):
+        self.credits.grant(self.user, 50, "test")
+        self.call(prompt=100_000)                                             # 75점
+        self.assertEqual((self.balance(), self.paid()), (50, 0))
+
+    def test_the_part_over_the_limit_is_paid_in_credits_rounded_up_and_never_twice(self):
+        self.credits.grant(self.user, 50, "test")
+        use_up(self.user, 95)
+        self.call(prompt=10_000)                                              # 7.5점 → 한도 100을 2.5점 넘김 → 3크레딧
+        self.assertEqual((self.balance(), self.paid()), (47, 3))
+        self.call(prompt=10_000)                                              # 누적 초과 10점 → 지금까지 3 → 7 더
+        self.assertEqual((self.balance(), self.paid()), (40, 10))
+        self.assertEqual(usage.settle_overage(self.user), 0)                  # 다시 정산해도 더 내지 않는다
+        self.assertTrue(self.credits.verify_ledger(self.user))
+        self.assertEqual(set(self.user.credit_transactions.exclude(transaction_type="test").values_list("transaction_type", flat=True)), {"ai_usage"})
+
+    def test_credits_keep_calls_going_after_the_limit_and_no_credits_stops_them(self):
+        use_up(self.user, 120)
+        with patch.object(ai, "_client", return_value=CallsTests.fake_client()) as client:
+            with self.assertRaises(ai.AIQuotaExceeded) as ctx:
+                ai.complete("chat", [], user=self.user)
+            self.assertIn("크레딧", str(ctx.exception))
+            client.assert_not_called()
+        self.credits.grant(self.user, 30, "test")
+        self.call()
+        self.assertEqual(self.balance(), 30 - (20 + 1 - 0))                   # 초과 20.75점 → 21 (이미 낸 것 없음)
+
+    def test_a_job_that_already_started_is_not_cut_off_when_credits_run_out_midway(self):
+        from core.concurrency import background_slot
+        self.credits.grant(self.user, 2, "test")
+        use_up(self.user, 100)
+        with background_slot():
+            self.call(prompt=100_000)                                         # 75점 초과, 잔액은 2뿐이지만 끊지 않는다
+            self.call(prompt=100_000)
+        self.assertEqual(self.balance(), 0)                                   # 있는 만큼만 내고 마이너스는 없다
+        self.assertGreater(usage.overage_points(self.user), self.paid())      # 못 낸 분이 남는다
+        with self.assertRaises(ai.AIQuotaExceeded):                           # 작업 밖에서는 막힌다
+            self.call()
+
+    def test_unpaid_shortfall_is_collected_when_credits_arrive_and_counts_against_what_is_available(self):
+        from core.concurrency import background_slot
+        use_up(self.user, 100)
+        with background_slot():
+            self.call(prompt=10_000)                                          # 7.5점 초과, 크레딧 없음 → 못 냄
+        self.assertEqual(usage.overage_points(self.user), 8)
+        self.credits.grant(self.user, 10, "test")
+        self.assertEqual(usage.info(self.user)["available"], 2)               # 10 - 못 낸 8
+        usage.settle_overage(self.user)
+        self.assertEqual((self.balance(), self.paid()), (2, 8))
+
+    def test_starting_a_task_needs_the_estimate_to_fit_in_remaining_limit_plus_credits(self):
+        use_up(self.user, 80)                                                 # 남은 한도 20
+        with self.assertRaises(ai.AIQuotaExceeded):
+            ai.check_quota(self.user, "mock_exam")                            # 예상 40점 > 20
+        self.credits.grant(self.user, 20, "test")
+        ai.check_quota(self.user, "mock_exam")                                # 20 + 20 = 40 ≥ 40
+        self.assertEqual(ai.affordable_units(self.user, "mock_exam"), 1)
+
+    def test_lecturers_never_spend_credits(self):
+        lecturer = User.objects.create_user(username="l", password="pw", is_lecturer=True)
+        self.credits.grant(lecturer, 10, "test")
+        use_up(lecturer, 500)
+        self.call(user=lecturer, prompt=100_000)
+        lecturer.refresh_from_db()
+        self.assertEqual(lecturer.credits, 10)
+
+    def test_the_overage_resets_with_the_week_but_credits_carry_over(self):
+        from datetime import timedelta
+        self.credits.grant(self.user, 100, "test")
+        use_up(self.user, 130, when=timezone.now() - timedelta(days=8))       # 지난 주에 초과 (이번 주와 무관)
+        self.assertEqual(usage.overage_points(self.user), 0)
+        info = usage.info(self.user)
+        self.assertEqual((info["credits"], info["using_credits"], info["overage"]), (100, False, 0))
+        self.assertEqual(info["available"], 100 + 100)
+
+    def test_info_reports_credit_use(self):
+        self.credits.grant(self.user, 40, "test")
+        use_up(self.user, 110)
+        info = usage.info(self.user)
+        self.assertTrue(info["using_credits"])
+        self.assertEqual((info["overage"], info["credits"], info["available"]), (10, 40, 30))
+
+    def test_header_menu_shows_credits_and_overage(self):
+        self.client.force_login(self.user)
+        self.assertNotContains(self.client.get("/mypage/"), "fa-coins")           # 크레딧도 초과도 없으면 보이지 않는다
+        self.credits.grant(self.user, 40, "test")
+        use_up(self.user, 110)
+        res = self.client.get("/mypage/")
+        self.assertContains(res, "초과 10점 사용 중")
+        self.assertContains(res, "fa-coins")

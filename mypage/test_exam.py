@@ -268,7 +268,7 @@ class MockExamTests(TestCase):
             res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
         ai.assert_not_called()
         self.assertFalse(PersonalDocument.objects.filter(document_type=PersonalDocument.DocumentType.MOCK).exists())
-        self.assertContains(res, "이번 주 AI 사용 한도를 다 썼어요")
+        self.assertContains(res, "이번 주 AI 사용 한도를 다 썼고 남은 크레딧도 없어요")
 
     def test_too_few_valid_questions_marks_the_card_failed_with_the_reason(self):
         bad = {"title": "t", "questions": [{"type": "essay", "q": "서술"}, {"type": "ox", "q": "ok", "answer": True}]}

@@ -52,6 +52,7 @@
                                 <i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>
                                 <span id="user-ai-usage">{{ ai_usage.label }}%</span>
                             </span>
+                            {% if ai_usage.credits or ai_usage.using_credits %}<span class="block mt-0.5 text-[10px] font-bold text-violet-600"><i class="fa-solid fa-coins"></i> 크레딧 {{ ai_usage.credits }}</span>{% endif %}
                             {% endif %}
                         </div>
                         <div class="bg-orange-50/50 border border-orange-100 rounded-2xl px-3 py-3 text-center shadow-sm">

@@ -319,7 +319,7 @@
             const info = describe(d);
             costEl.innerHTML = gauge(info.badge);
             const usedNote = d.used_label === null ? '' : ' · 지금까지 ' + d.used_label + '% 사용';
-            noteEl.textContent = info.text + usedNote + (d.enough ? '' : ' — 이번 주 한도가 모자라요(요약은 월요일 0시 이후 시작할 수 있어요)');
+            noteEl.textContent = info.text + usedNote + (d.enough ? '' : ' — 이번 주 한도와 크레딧이 모자라요(요약은 월요일 0시 이후 시작할 수 있어요)');
             noteEl.className = 'text-xs ' + (d.enough ? 'text-slate-500' : 'text-amber-700 font-bold');
             ucEstimate.textContent = '예상 사용량 ' + info.badge + '% · ' + info.text;
             ucEstimate.classList.remove('hidden');
