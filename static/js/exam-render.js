@@ -3,8 +3,13 @@
 (function () {
     var BLOCK_START = /^([-*+]\s|\d+[.)]\s|\||>|#)/;
 
+    // 여러 줄에 걸친 $$ ... $$ (행렬 등)는 한 줄로 합친다: 마크다운 렌더러가 수식을 줄 단위로 찾고, LaTeX에서 줄바꿈은 공백이라 뜻이 같다
+    function joinDisplayMath(text) {
+        return text.replace(/\$\$([\s\S]+?)\$\$/g, function (m, tex) { return '$$' + tex.replace(/\s*\n\s*/g, ' ').trim() + '$$'; });
+    }
+
     function splitLines(text) {
-        var lines = String(text || '').replace(/\r\n/g, '\n').split('\n'), out = [], fence = false;
+        var lines = joinDisplayMath(String(text || '').replace(/\r\n/g, '\n')).split('\n'), out = [], fence = false;
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i], t = line.trim();
             out.push(line);

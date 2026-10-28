@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from . import exam
@@ -85,3 +85,28 @@ class StaleMockTests(TestCase):
         self.client.get("/mypage/")
         doc.refresh_from_db()
         self.assertEqual(doc.summary_status, ProcessingStatus.FAILED)
+
+
+class ExamMarkdownScriptTests(SimpleTestCase):
+    """static/js/exam-render.js의 줄 나누기 (node가 없으면 건너뛴다)."""
+
+    def split(self, text):
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node 없음")
+        script = Path(__file__).resolve().parents[1] / "static/js/exam-render.js"
+        code = ("global.window = {addEventListener(){}}; global.document = {readyState: 'complete', addEventListener(){}, querySelectorAll(){return []}};"
+                f"require({json.dumps(str(script))}); process.stdout.write(JSON.stringify(window.ExamMd.splitLines(JSON.parse(process.argv[1]))));")
+        out = subprocess.run([node, "-e", code, json.dumps(text)], capture_output=True, text=True, check=True).stdout
+        return json.loads(out)
+
+    def test_multiline_display_math_such_as_a_matrix_is_kept_on_one_line(self):
+        text = "다음 행렬이다.\n$$\n\\begin{bmatrix} 2 & 1 \\\\\n1 & -1 \\end{bmatrix}\n$$\n(1) 값을 구하시오."
+        lines = self.split(text).split("\n")
+        self.assertIn("$$\\begin{bmatrix} 2 & 1 \\\\ 1 & -1 \\end{bmatrix}$$", lines)       # 한 줄로 합쳐져 수식 렌더러가 찾을 수 있다
+        self.assertEqual(self.split("가\n나"), "가\n\n나")                                   # 보통 줄바꿈은 그대로 문단으로 나눈다
