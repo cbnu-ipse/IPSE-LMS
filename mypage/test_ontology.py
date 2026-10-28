@@ -240,7 +240,8 @@ class MockExamUsesAnalysisTests(TestCase):
         ex = make_doc(user, os_, "족보", EXAM, "김", text="raw exam text")
         for i in range(4):
             ExamQuestion.objects.create(document=ex, number=i, text=f"페이징 문제 {i}", qtype="mc").concepts.add(paging)
-        answer = {"title": "t", "questions": [{"type": "mc", "q": f"q{i}", "options": ["a", "b"], "answer": 0} for i in range(10)]}
+        source = lecture.summary.strip()[:30]
+        answer = {"title": "t", "questions": [{"type": "mc", "q": f"q{i}", "options": ["a", "b"], "answer": 0, "source": source} for i in range(10)]}
         with patch("core.ai.complete_json", return_value=answer) as ai:
             mock = exam.generate_mock_exam(user, [lecture])
         prompt = ai.call_args.args[1][1]["content"]

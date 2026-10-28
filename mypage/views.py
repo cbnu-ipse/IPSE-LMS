@@ -29,7 +29,7 @@ from .ai import (
     pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
-from . import doctype
+from . import doctype, focus
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .stream import SummaryPublisher
@@ -702,12 +702,12 @@ def document_status(request, pk):
 
 # ── 시험 5분 전 속성 노트 ────────────────────────────────────────────────────
 
-def _cram_note_bg(note_id, source_ids):
+def _cram_note_bg(note_id, source_ids, focus=()):
     from .cram import build_note_document
 
     try:
         with background_slot():
-            build_note_document(note_id, source_ids)
+            build_note_document(note_id, source_ids, focus)
     finally:
         connection.close()
 
@@ -730,6 +730,13 @@ def cram_note_create(request):
     if len(sources) > CRAM_MAX_SOURCES:
         messages.error(request, f"한 번에 최대 {CRAM_MAX_SOURCES}개 자료까지 고를 수 있습니다.")
         return back
+    from .cram import note_material
+
+    try:       # 추가 요청: 사용자의 글은 AI에 보내지 않고, 자료에 실제로 나오는 용어만 뽑아 쓴다 (mypage/focus.py)
+        focus_terms = focus.parse(request.POST.get("focus"), note_material(sources))
+    except focus.FocusError as exc:
+        messages.error(request, str(exc))
+        return back
     in_flight = PersonalDocument.objects.filter(
         user=request.user, summary_status=ProcessingStatus.PROCESSING, uploaded_at__gte=timezone.now() - STALE_AFTER).count()
     if in_flight >= settings.MAX_PROCESSING_PER_USER:
@@ -749,19 +756,21 @@ def cram_note_create(request):
         document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
         course_name=courses[0] if len(courses) == 1 else "", professor=professors[0] if len(professors) == 1 else "",
         is_course_material=False)
-    threading.Thread(target=_cram_note_bg, args=(note.pk, [d.pk for d in sources]), daemon=True).start()
-    messages.success(request, "속성 노트를 손글씨로 쓰고 있습니다. 잠시 후 개인 탭에 나타납니다.")
+    extra = {"kwargs": {"focus": focus_terms}} if focus_terms else {}
+    threading.Thread(target=_cram_note_bg, args=(note.pk, [d.pk for d in sources]), daemon=True, **extra).start()
+    messages.success(request, "속성 노트를 손글씨로 쓰고 있습니다. 잠시 후 개인 탭에 나타납니다."
+                              + (f" (꼭 넣을 내용: {', '.join(focus_terms)})" if focus_terms else ""))
     return back
 
 
 # ── 모의 출제 ────────────────────────────────────────────────────────────────
 
-def _mock_exam_bg(document_id, source_ids):
+def _mock_exam_bg(document_id, source_ids, focus=()):
     from .exam import build_mock_document
 
     try:
         with background_slot():
-            build_mock_document(document_id, source_ids)
+            build_mock_document(document_id, source_ids, focus)
     finally:
         connection.close()
 
@@ -793,6 +802,13 @@ def mock_exam_create(request):
         messages.error(request, f"처리 중인 자료가 {in_flight}개 있습니다. 몇 개가 끝난 뒤에 만들어주세요 "
                                 f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
         return back
+    from .exam import build_material
+
+    try:       # 추가 요청: 사용자의 글은 AI에 보내지 않고, 자료에 실제로 나오는 용어만 뽑아 쓴다 (mypage/focus.py)
+        focus_terms = focus.parse(request.POST.get("focus"), build_material(sources))
+    except focus.FocusError as exc:
+        messages.error(request, str(exc))
+        return back
     try:
         check_quota(request.user, "mock_exam")
     except AIQuotaExceeded as exc:
@@ -806,8 +822,10 @@ def mock_exam_create(request):
         user=request.user, folder=folder, title=title[:200], file="", document_type=PersonalDocument.DocumentType.MOCK,
         summary_status=ProcessingStatus.PROCESSING, is_course_material=False,
         course_name=courses[0] if len(courses) == 1 else "", professor=professors[0] if len(professors) == 1 else "")
-    threading.Thread(target=_mock_exam_bg, args=(document.pk, [d.pk for d in sources]), daemon=True).start()
-    messages.success(request, "모의고사를 만들고 있습니다. 잠시 후 개인 탭에 나타나고, 끝나면 눌러서 풀 수 있어요.")
+    extra = {"kwargs": {"focus": focus_terms}} if focus_terms else {}
+    threading.Thread(target=_mock_exam_bg, args=(document.pk, [d.pk for d in sources]), daemon=True, **extra).start()
+    messages.success(request, "모의고사를 만들고 있습니다. 잠시 후 개인 탭에 나타나고, 끝나면 눌러서 풀 수 있어요."
+                              + (f" (꼭 넣을 내용: {', '.join(focus_terms)})" if focus_terms else ""))
     return back
 
 

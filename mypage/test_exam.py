@@ -211,9 +211,9 @@ class MockExamTests(TestCase):
         ExamStyle.objects.create(key="p:김", label="김교수 교수님", guidelines="- 객관식 위주", source_hash="h", doc_count=2)
 
     QUESTIONS = {"title": "OS 모의고사", "questions": (
-        [{"type": "ox", "q": f"OX {i}", "answer": i % 2 == 0, "explanation": "e"} for i in range(3)]
-        + [{"type": "mc", "q": f"MC {i}", "options": ["a", "b", "c", "d"], "answer": 1, "explanation": "e"} for i in range(4)]
-        + [{"type": "short", "q": f"SH {i}", "answers": ["프로세스"], "explanation": "e"} for i in range(3)])}
+        [{"type": "ox", "q": f"OX {i}", "answer": i % 2 == 0, "explanation": "e", "source": "프로세스는 실행 중인 프로그램이다"} for i in range(3)]
+        + [{"type": "mc", "q": f"MC {i}", "options": ["a", "b", "c", "d"], "answer": 1, "explanation": "e", "source": "프로세스는 실행 중인 프로그램이다"} for i in range(4)]
+        + [{"type": "short", "q": f"SH {i}", "answers": ["프로세스"], "explanation": "e", "source": "프로세스는 실행 중인 프로그램이다"} for i in range(3)])}
 
     def post_create(self, ids=None):
         """모의고사 만들기를 요청한다 (백그라운드 스레드는 실행하지 않고 어떤 인자로 시작됐는지만 기록한다)."""
@@ -276,7 +276,7 @@ class MockExamTests(TestCase):
         document = self.build(bad)
         self.assertFalse(MockExam.objects.exists())
         self.assertEqual(document.summary_status, ProcessingStatus.FAILED)
-        self.assertIn("쓸 만한 문제를 충분히 만들지 못했습니다", document.summary)
+        self.assertIn("근거한 문제를 충분히 만들지 못했습니다", document.summary)
 
     def test_ai_failure_and_quota_reasons_are_shown(self):
         from . import exam as exam_module
@@ -435,12 +435,13 @@ class MockExamTests(TestCase):
 
     def test_style_comes_from_the_selected_documents_professor(self):
         ExamStyle.objects.create(key="p:이", label="이교수 교수님", guidelines="- 서술형 위주", source_hash="h2", doc_count=1)
-        lee = make_doc(self.user, "이교수 자료", LECTURE, "이교수", ["운영체제"], summary="스케줄링", course_name="운영체제")
+        lee = make_doc(self.user, "이교수 자료", LECTURE, "이교수", ["운영체제"], summary="스케줄링은 CPU를 배분하는 방법이다", course_name="운영체제")
         credits.grant(self.user, 10, "test")
         _, started = self.post_create([lee.pk])
         from . import exam as exam_module
 
-        with patch("core.ai.complete_json", return_value=self.QUESTIONS) as ai:
+        data = {**self.QUESTIONS, "questions": [{**q, "source": "스케줄링은 CPU를 배분하는 방법이다"} for q in self.QUESTIONS["questions"]]}
+        with patch("core.ai.complete_json", return_value=data) as ai:
             exam_module.build_mock_document(*started[0][1])
         self.assertEqual(MockExam.objects.get().style_label, "이교수 교수님")
         self.assertIn("- 서술형 위주", ai.call_args.args[1][1]["content"])
