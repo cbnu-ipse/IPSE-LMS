@@ -114,7 +114,7 @@ class IntroducePageTests(TestCase):
         res = self.client.get("/introduce/")
         self.assertEqual(res.status_code, 200)                                  # 로그인 없이 볼 수 있다
         html = res.content.decode()
-        for text in ("자료를 올리면", "손글씨 A4 노트", "모의 출제", "OX · 객관식 · 단답형 · 서술형", "5개"):
+        for text in ("자료를 올리면", "손글씨 A4 노트", "모의 출제", "OX · 객관식 · 단답형 · 서술형", "매주 월요일 0시에 초기화되는 AI 사용 한도"):
             self.assertIn(text, html)
         self.assertNotIn("강의 콘텐츠 평균 최신화 주기", html)                      # 근거 없던 '7일/30일' 지표는 뺐다
         self.assertNotIn("신규 학습 트랙 평균 추가 주기", html)

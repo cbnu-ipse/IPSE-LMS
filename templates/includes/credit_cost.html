@@ -1,1 +1,1 @@
-{# 크레딧 비용 표시는 없앴다 (AI 사용은 주간 한도, core/usage.py). 예전 include를 그대로 두기 위해 빈 조각으로 남긴다. #}
+{# 이 동작이 쓸 예상 AI 사용량(이번 주 한도 대비 %와 점수). cost에 점수를 넘긴다. 한도를 넘으면 초과분은 크레딧(1점 = 1크레딧)으로 나간다. #}{% load cost %}{% with label=cost|cost_label %}{% if label %}<span class="ml-1.5 text-[10px] font-semibold opacity-80 whitespace-nowrap" title="예상 AI 사용량이에요. 실제 사용량은 토큰으로 세고, 한도를 넘으면 초과분은 크레딧으로 나가요">· {{ label }}</span>{% endif %}{% endwith %}

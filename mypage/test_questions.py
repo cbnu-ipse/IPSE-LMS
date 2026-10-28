@@ -100,112 +100,28 @@ class MultipleChoiceQuizTests(TestCase):
                          (ProcessingStatus.DONE, ["w", "x", "y", "z"], "1", "해설"))
 
 
-class DefaultQuestionsTests(TestCase):
+class NoAutomaticQuestionsTests(TestCase):
+    """자료를 올려도 문제는 자동으로 만들지 않는다 (사용자가 원할 때만 만든다)."""
+
     def setUp(self):
         self.user = User.objects.create_user(username="dq", password="pw")
 
-    @staticmethod
-    def fake(extra=None):
-        calls = []
-
-        def generate(text, question_type, existing_questions=(), user=None, index=0, rng=None, style=""):
-            calls.append({"type": question_type, "existing": list(existing_questions), "index": index, "style": style})
-            q = {"question": f"{question_type} 문제 {len(calls)}", "answer": "O" if question_type == "ox" else "답",
-                 "explanation": "해설", "options": []}
-            if question_type == "mc":
-                q.update(options=["a", "b", "c", "d"], answer="1")
-            return {**q, **(extra or {})}
-
-        return generate, calls
-
-    def test_lecture_upload_gets_five_default_questions_ox2_mc1_short1_essay1(self):
-        doc = make_doc(self.user)
-        generate, calls = self.fake()
-        with patch("mypage.views.generate_one_question", side_effect=generate):
-            views._make_default_questions(doc.pk)
-        questions = list(doc.questions.order_by("pk"))
-        self.assertEqual([q.question_type for q in questions], ["ox", "ox", "mc", "short", "essay"])
-        self.assertTrue(all(q.status == ProcessingStatus.DONE for q in questions))
-        self.assertEqual(questions[2].options, ["a", "b", "c", "d"])
-        self.assertEqual(len(calls[3]["existing"]), 3)      # 이미 만든 문제 3개를 알려 줘 겹치지 않게 한다
-        self.assertTrue(calls[3]["existing"][0].startswith("ox 문제 1"))
-        self.assertEqual([c["index"] for c in calls], [0, 1, 2, 3, 4])                       # 자료의 다른 구간에서
-
-    def test_exam_documents_and_documents_that_already_have_questions_are_skipped(self):
-        generate, calls = self.fake()
-        with patch("mypage.views.generate_one_question", side_effect=generate):
-            views._make_default_questions(make_doc(self.user, EXAM).pk)
-            doc = make_doc(self.user)
-            GeneratedQuestion.objects.create(document=doc, question_type="ox", question_text="이미 있음", answer="O")
-            views._make_default_questions(doc.pk)
-        self.assertEqual(calls, [])
-
-    @override_settings(AI_CREDIT_COSTS={"question": 7}, AI_WEEKLY_LIMIT_POINTS=100)
-    def test_it_stops_when_the_weekly_limit_is_used_up(self):
-        doc = make_doc(self.user)
-        use_up(self.user, 85)                                                                # 남은 15: 한 문제(7)씩 두 번까지
-        generate, calls = self.fake()
-
-        def generate_and_use(*args, **kwargs):
-            result = generate(*args, **kwargs)
-            use_up(self.user, 7)                                                              # 실제 호출처럼 사용량이 쌓인다
-            return result
-
-        with patch("mypage.views.generate_one_question", side_effect=generate_and_use):
-            views._make_default_questions(doc.pk)
-        self.assertEqual(doc.questions.count(), 2)
-
-    def test_one_failed_question_does_not_stop_the_rest(self):
-        doc = make_doc(self.user)
-        generate, calls = self.fake()
-
-        def flaky(*args, **kwargs):
-            if len(calls) == 1:
-                calls.append("boom")
-                raise RuntimeError("api down")
-            return generate(*args, **kwargs)
-
-        with patch("mypage.views.generate_one_question", side_effect=flaky):
-            views._make_default_questions(doc.pk)
-        statuses = [q.status for q in doc.questions.order_by("pk")]
-        self.assertEqual(len(statuses), 5)
-        self.assertEqual(statuses.count(ProcessingStatus.FAILED), 1)
-        self.assertEqual(statuses.count(ProcessingStatus.DONE), 4)
-
-    def test_style_of_the_documents_professor_is_applied(self):
-        ExamStyle.objects.create(key="p:김", label="김교수 교수님", guidelines="- 함정 보기를 넣는다", source_hash="h", doc_count=1)
-        doc = make_doc(self.user, professor="김교수")
-        generate, calls = self.fake()
-        with patch("mypage.views.generate_one_question", side_effect=generate):
-            views._make_default_questions(doc.pk)
-        self.assertTrue(all("함정 보기" in c["style"] for c in calls))
-
-    def test_summary_background_job_creates_the_questions_after_the_summary(self):
-        doc = make_doc(self.user)
-        PersonalDocument.objects.filter(pk=doc.pk).update(summary="", summary_status=ProcessingStatus.PROCESSING)
-        order = []
-        with patch("mypage.views.generate_summary", side_effect=lambda *a, **k: order.append("summary") or "새 요약"), \
-                patch("mypage.views._make_default_questions", side_effect=lambda pk: order.append("questions")), \
-                patch("mypage.views._classify_and_build", side_effect=lambda pk: order.append("classify")):
-            views._generate_summary_bg(doc.pk)
-        self.assertEqual(order, ["summary", "questions", "classify"])
-        doc.refresh_from_db()
-        self.assertEqual((doc.summary, doc.summary_status), ("새 요약", ProcessingStatus.DONE))
-
-    def test_a_failure_while_making_questions_does_not_break_the_summary_or_classification(self):
+    def test_summary_job_summarizes_and_classifies_but_makes_no_questions(self):
         doc = make_doc(self.user)
         PersonalDocument.objects.filter(pk=doc.pk).update(summary="", summary_status=ProcessingStatus.PROCESSING)
         with patch("mypage.views.generate_summary", return_value="새 요약"), \
-                patch("mypage.views._make_default_questions", side_effect=RuntimeError("boom")), \
+                patch("mypage.views.generate_one_question") as generate, \
                 patch("mypage.views._classify_and_build") as classify:
             views._generate_summary_bg(doc.pk)
+        generate.assert_not_called()
         classify.assert_called_once()
         doc.refresh_from_db()
-        self.assertEqual(doc.summary_status, ProcessingStatus.DONE)
+        self.assertEqual((doc.summary, doc.summary_status), ("새 요약", ProcessingStatus.DONE))
+        self.assertFalse(doc.questions.exists())
 
 
 @override_settings(AI_CREDIT_COSTS={"summary": 1, "question": 7}, AI_WEEKLY_LIMIT_POINTS=100)
-class EstimateIncludesQuestionsTests(TestCase):
+class EstimateTests(TestCase):
     def setUp(self):
         from django.core.cache import cache
         cache.clear()
@@ -217,7 +133,7 @@ class EstimateIncludesQuestionsTests(TestCase):
         with patch("mypage.views.extract_text", return_value="가" * 3000):
             return self.client.post("/mypage/estimate/", {"file": SimpleUploadedFile("a.txt", b"x"), "document_type": document_type}).json()
 
-    def test_lecture_estimate_adds_five_questions_and_exam_estimate_does_not(self):
+    def test_upload_estimate_covers_only_the_summary(self):
         lecture, exam = self.estimate("lecture"), self.estimate("exam")
-        self.assertEqual((lecture["questions"], lecture["est_label"]), (5, "36"))     # 요약 1 + 문제 5 × 7 = 36점
-        self.assertEqual((exam["questions"], exam["est_label"]), (0, "1.0"))
+        self.assertEqual((lecture["est_label"], exam["est_label"]), ("1.0", "1.0"))      # 요약 1조각 = 1점 (문제는 포함하지 않는다)
+        self.assertNotIn("questions", lecture)

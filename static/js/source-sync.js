@@ -200,6 +200,7 @@
             });
         }, { passive: true });
     } else {
+        pill.remove();          // 이미지 같은 원문은 따라갈 위치가 없다
         return;
     }
 
