@@ -4,7 +4,7 @@ AI 주간 사용 한도 (크레딧 대신). 사용자마다 매주 월요일 0�
 - 사용량은 AI를 실제로 부른 기록(AIUsage)의 토큰을 모델 단가(AI_MODEL_PRICES)로 환산한 '점수'를 합친 것이다.
   점수 1 = AI_POINT_USD(약 0.0018달러). 한도는 AI_WEEKLY_LIMIT_POINTS점이고, 화면에는 % 게이지로 보여 준다.
 - 호출 전에는 이미 한도를 다 썼는지(또는 시작하려는 작업이 남은 한도를 넘는지)만 확인한다. 호출은 끝까지 가고 그만큼이 사용량에 더해진다.
-- 강의자와 시스템 작업(user=None)은 한도가 없다 (core.ai._is_exempt).
+- 강의자와 시스템 작업(user=None)은 한도가 없다 (core.ai._is_exempt). 강의자도 사용량은 볼 수 있다(100%를 넘어도 막히지 않을 뿐).
 - 작업의 예상 점수는 AI_CREDIT_COSTS(AI_COST_<작업>)를 쓴다. 비용 표시·시작 전 확인용이고, 실제 사용량은 토큰으로 센다.
 """
 from datetime import timedelta
@@ -62,15 +62,17 @@ def percent_label(points, limit=None):
 
 
 def info(user, now=None):
-    """화면에 보일 사용량 {used, limit, percent(0~100 정수), label, remaining, reset_at}. 한도가 없는 사용자(강의자 등)는 None."""
+    """화면에 보일 사용량 {used, limit, remaining, percent(막대용 0~100 정수), label, reset_at, unlimited}.
+    강의자도 사용량을 볼 수 있다 (한도가 없어 100%를 넘어도 막히지 않을 뿐: unlimited=True, label은 100을 넘을 수 있다).
+    시스템 작업(user=None)은 None."""
     from .ai import _is_exempt
 
-    if _is_exempt(user) or not getattr(user, "pk", None):
+    if not getattr(user, "pk", None):
         return None
     limit = limit_points()
     used = used_points(user, now)
     return {
         "used": used, "limit": limit, "remaining": max(limit - used, 0),
         "percent": min(int(used / limit * 100), 100) if limit else 0, "label": percent_label(used, limit),
-        "reset_at": next_reset(now),
+        "reset_at": next_reset(now), "unlimited": _is_exempt(user),
     }
