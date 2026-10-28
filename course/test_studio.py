@@ -426,6 +426,21 @@ class ChoiceBalanceTestCase(TestCase):
         self.assertEqual([q["type"] for q in sets[-1]["questions"]], ["ox", "ox", "short"])
         self.assertIn("객관식 금지", ai.call_args.args[1][0]["content"])
 
+    def test_generate_chapter_survives_the_json_breakage_that_made_drafts_fail(self):
+        """'Invalid \\escape'·'Invalid control character'로 강의 초안이 실패하던 답: 카드 본문에 이스케이프 없는 백슬래시와 날 줄바꿈이 든 응답."""
+        raw = ('{"sets": [{"title": "세트1", "cards": [{"title": "변수 이름", "body": "snake\\_case와 \\(수식\\)\n둘째 줄\t탭 50\\%"}]},\n'
+               ' {"title": "세트2", "cards": [{"title": "코드", "body": "```python\nx = 1\nprint(x)\n```"}]}],\n'
+               ' "quiz": [{"type": "ox", "q": "O 문제", "answer": true, "explanation": "e"}]}')
+        message = type("M", (), {"content": raw})()
+        response = type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+        with patch("core.ai.chat", return_value=response) as chat:
+            sets = course_ai.generate_chapter("과목", {"title": "챕터"}, [{"title": "d", "summary": "s"}])
+        self.assertEqual(chat.call_count, 1)                                          # 다시 부르지 않고 읽힌다
+        self.assertEqual(len(sets), 2)
+        self.assertIn("snake\\_case", sets[0]["cards"][0]["body"])
+        self.assertIn("\n둘째 줄\t탭", sets[0]["cards"][0]["body"])
+        self.assertIn("print(x)", sets[1]["cards"][0]["body"])
+
     def test_quiz_is_capped_and_legacy_per_set_questions_are_collected(self):
         many = [{"type": "ox", "q": f"q{i}", "answer": i % 2 == 0, "explanation": ""} for i in range(9)]
         sets = course_ai.attach_quiz([{"title": "a", "cards": []}, {"title": "b", "cards": []}], many)

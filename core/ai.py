@@ -347,22 +347,62 @@ def complete(task, messages, **kwargs):
 _LATEX_RISKY = re.compile(r"(?<!\\)\\(?:[bf][A-Za-z]{2,}|theta|times|tau|text|tilde|therefore|neq|neg|nabla|notin|nu|rho|rightarrow|right|rangle)")
 
 
-def repair_latex_escapes(text):
-    """JSON 문자열 안의 LaTeX 백슬래시를 문자 그대로의 백슬래시로 고친다 (정상 이스케이프 \n \" \\ 는 그대로)."""
-    text = re.sub(r"(?<!\\)\\(?=[A-Za-z]{2,})", r"\\\\", text)               # \frac \det → \\frac \\det
-    return re.sub(r"(?<!\\)\\(?![\\\"/bfnrtu])", r"\\\\", text)               # \[ \( \{ \, 같은 잘못된 이스케이프
+def repair_json_strings(text):
+    """JSON 문자열 안의 흔한 깨짐을 고친다. 문자열 안에서만 처리하므로 정상 JSON은 건드리지 않는다.
+    - 잘못된 이스케이프(\\_ \\( \\% \\u뒤가 16진수 아님 등)의 백슬래시는 글자 그대로의 백슬래시로 (\\\\)
+    - 수식 명령이 JSON 이스케이프와 우연히 겹치는 것(\\frac의 \\f, \\theta의 \\t …)도 글자 그대로의 백슬래시로
+    - 줄바꿈·탭 같은 날 제어문자(Invalid control character)는 \\n \\t \\uXXXX로
+    정상 이스케이프(\\n \\" \\\\ \\uAC00 …)는 그대로 둔다."""
+    out, in_string, i, n = [], False, 0, len(text)
+    while i < n:
+        c = text[i]
+        if not in_string:
+            out.append(c)
+            in_string = c == '"'
+            i += 1
+        elif c == '"':
+            out.append(c)
+            in_string = False
+            i += 1
+        elif c == "\\":
+            nxt = text[i + 1] if i + 1 < n else ""
+            if _LATEX_RISKY.match(text, i):
+                out.append("\\\\")                                   # \frac → \\frac (글자 그대로)
+                i += 1
+            elif nxt in ('"', "\\", "/"):
+                out.append(c + nxt)
+                i += 2
+            elif nxt in ("b", "f", "n", "r", "t"):
+                out.append(c + nxt)
+                i += 2
+            elif nxt == "u" and re.match(r"[0-9a-fA-F]{4}", text[i + 2:i + 6]):
+                out.append(text[i:i + 6])
+                i += 6
+            else:                                                       # \_ \( \% \ 뒤가 없는 백슬래시 등 → 글자 그대로
+                out.append("\\\\")
+                i += 1
+        elif ord(c) < 0x20:
+            out.append({"\n": "\\n", "\r": "\\r", "\t": "\\t"}.get(c, "\\u%04x" % ord(c)))
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+repair_latex_escapes = repair_json_strings      # 예전 이름
 
 
 def _loads(text):
     if _LATEX_RISKY.search(text):      # 에러 없이 읽히더라도 \frac 같은 글자가 망가지니 먼저 고친다
         try:
-            return json.loads(repair_latex_escapes(text))
+            return json.loads(repair_json_strings(text))
         except ValueError:
             pass
     try:
         return json.loads(text)
     except ValueError:
-        return json.loads(repair_latex_escapes(text))
+        return json.loads(repair_json_strings(text))
 
 
 def parse_json(text):
@@ -381,8 +421,16 @@ def parse_json(text):
 
 
 def complete_json(task, messages, **kwargs):
-    """JSON 모드로 불러 dict로 돌려준다 (공급자에 따라 JSON 모드가 없으면 파서가 보완)."""
-    return parse_json(chat(task, messages, json_mode=True, **kwargs).choices[0].message.content or "{}")
+    """JSON 모드로 불러 dict로 돌려준다 (공급자에 따라 JSON 모드가 없으면 파서가 보완). 답이 JSON으로 읽히지 않으면 한 번 더 부른다
+    (잘못된 이스케이프·잘린 문자열처럼 호출마다 우연히 생기는 깨짐이라 다시 부르면 대개 읽힌다)."""
+    for attempt in (1, 2):
+        content = chat(task, messages, json_mode=True, **kwargs).choices[0].message.content or "{}"
+        try:
+            return parse_json(content)
+        except ValueError:
+            if attempt == 2:
+                raise
+            logger.warning("AI 답을 JSON으로 읽지 못해 한 번 더 부릅니다: task=%s", task)
 
 
 def untrusted(label, text):

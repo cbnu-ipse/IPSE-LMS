@@ -176,6 +176,39 @@ class ProviderRoutingTestCase(TestCase):
         self.assertEqual(data["n"], '줄\n바꿈 "인용" \\이미')
         self.assertEqual(ai.parse_json('{"a": "\\frac"}'), {"a": "\\frac"})            # 이미 올바르게 이스케이프된 것은 그대로
 
+    def test_parse_json_repairs_invalid_escapes_and_raw_control_characters(self):
+        # 강의 생성이 실패하던 오류: "Invalid \\escape", "Invalid control character" — 모델이 문자열 안에 이스케이프 없는 백슬래시나 날 줄바꿈·탭을 넣은 답
+        raw = '{"body": "변수명 x\\_y와 \\(식\\)과 50\\% 그리고 \\u12 끝", "code": "줄1\n줄2\t탭", "ok": true}'
+        data = ai.parse_json(raw)
+        self.assertEqual(data["body"], "변수명 x\\_y와 \\(식\\)과 50\\% 그리고 \\u12 끝")
+        self.assertEqual(data["code"], "줄1\n줄2\t탭")
+        self.assertTrue(data["ok"])
+        pretty = '{\n  "cards": [\n    {"title": "정의", "body": "첫 줄\n둘째 줄 \\_ 밑줄"}\n  ]\n}'
+        self.assertEqual(ai.parse_json(pretty)["cards"][0]["body"], "첫 줄\n둘째 줄 \\_ 밑줄")
+
+    def test_parse_json_leaves_valid_json_and_structure_untouched(self):
+        raw = '{"a": "줄\\n바꿈 \\"인용\\" \\\\백슬래시 \\uac00", "b": [1, 2, {"c": null}], "d": "/\\/"}'
+        self.assertEqual(ai.parse_json(raw), {"a": '줄\n바꿈 "인용" \\백슬래시 가', "b": [1, 2, {"c": None}], "d": "//"})
+        self.assertEqual(ai.parse_json('  {"x": 1,\n "y": 2}\n'), {"x": 1, "y": 2})                   # 문자열 밖의 줄바꿈은 그대로 둔다
+
+    def test_complete_json_asks_once_more_when_the_answer_is_not_json_and_then_gives_up(self):
+        from unittest.mock import patch
+
+        def reply(text):
+            message = type("M", (), {"content": text})()
+            return type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+
+        with patch("core.ai.chat", side_effect=[reply('{"a": "끝이 잘린'), reply('{"a": 1}')]) as chat:
+            self.assertEqual(ai.complete_json("summary", []), {"a": 1})
+        self.assertEqual(chat.call_count, 2)
+        with patch("core.ai.chat", side_effect=[reply("JSON 아님"), reply("역시 아님")]) as chat:
+            with self.assertRaises(ValueError):
+                ai.complete_json("summary", [])
+        self.assertEqual(chat.call_count, 2)                                                           # 두 번까지만
+        with patch("core.ai.chat", return_value=reply('{"ok": 1}')) as chat:
+            ai.complete_json("summary", [])
+        self.assertEqual(chat.call_count, 1)                                                           # 정상이면 한 번
+
     def test_question_generation_survives_latex_backslashes(self):
         from unittest.mock import patch
 
