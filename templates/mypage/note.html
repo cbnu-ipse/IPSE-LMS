@@ -17,13 +17,13 @@
     {% elif document.summary_status == 'processing' %}
         <div id="note-wait" class="bg-amber-50 border border-amber-100 rounded-2xl py-20 text-center text-amber-700">
             <i class="fa-solid fa-pen-nib fa-beat text-3xl mb-3"></i>
-            <p class="text-sm font-bold">손글씨로 노트를 쓰고 있어요…</p>
+            <p class="text-sm font-bold">{% if document.document_type == 'mock' %}모의고사를 만들고 있어요…{% else %}손글씨로 노트를 쓰고 있어요…{% endif %}</p>
             <p class="text-xs mt-1 text-amber-600">끝나면 이 화면이 저절로 바뀝니다.</p>
         </div>
         <script>setTimeout(function () { location.reload(); }, 4000);</script>
     {% else %}
         <div class="bg-rose-50 border border-rose-100 rounded-2xl py-16 text-center text-rose-600">
-            <p class="text-sm font-bold">노트를 만들지 못했어요.</p>
+            <p class="text-sm font-bold">{% if document.document_type == 'mock' %}모의고사를 만들지 못했어요.{% else %}노트를 만들지 못했어요.{% endif %}</p>
             <p class="text-xs mt-2 px-6">{% if document.summary %}{{ document.summary }}{% else %}원인을 알 수 없습니다. 잠시 후 다시 시도해주세요.{% endif %}</p>
             <p class="text-xs mt-2 text-rose-400">내 자료에서 자료를 다시 골라 만들 수 있어요.</p>
         </div>

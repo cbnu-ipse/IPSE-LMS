@@ -87,6 +87,7 @@ class PersonalDocument(models.Model):
         LECTURE = "lecture", "수업 자료"     # 강의를 만드는 데 쓴다
         EXAM = "exam", "족보"                # 기출·모의고사: 교수님 출제 스타일을 배워 문제 만들 때 쓴다
         NOTE = "note", "속성 노트"            # 선택한 자료로 AI가 만든 시험 5분 전 노트(손글씨 이미지). 올리는 자료가 아니라 만들어지는 것
+        MOCK = "mock", "모의고사"             # 선택한 자료로 AI가 출제한 모의고사. 개인 탭에 만들어지는 자료이고 시험은 MockExam에 있다
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_documents")
     folder = models.ForeignKey(PersonalFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="documents")
@@ -205,6 +206,8 @@ class ExamStyle(models.Model):
 class MockExam(models.Model):
     """모의 출제. 수업 자료 요약 + 교수 출제 스타일로 만든 문제 묶음 (ox/mc/short, 서버가 채점)."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="mock_exams")
+    # 개인 탭에 보이는 모의고사 자료(만드는 동안은 '생성 중' 카드). 예전에 만든 시험은 없을 수 있다
+    document = models.OneToOneField("PersonalDocument", null=True, blank=True, on_delete=models.SET_NULL, related_name="mock_exam")
     course_code = models.CharField(max_length=50, verbose_name="강의 코드(주제 이름)")
     title = models.CharField(max_length=200, blank=True)
     style_label = models.CharField(max_length=100, blank=True, verbose_name="적용한 출제 스타일")

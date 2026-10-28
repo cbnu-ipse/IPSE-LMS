@@ -100,10 +100,11 @@
 
             {% if documents %}
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>시험 5분 전 속성 노트</b>(손글씨 이미지)나 <b>모의 출제</b>를 만들 수 있어요.</p>
+                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>속성 노트</b>나 <b>모의고사</b>를 만들 수 있어요.</p>
                 <div id="select-toolbar" class="flex flex-wrap gap-2">
                     <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기</button>
-                    <button type="button" id="mock-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition">모의 출제</button>
+                    <a href="{% url 'mypage:wrong_notes' %}" class="text-xs font-bold px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"><i class="fa-solid fa-book-bookmark mr-1"></i>오답노트</a>
+                    <button type="button" id="mock-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition">모의고사</button>
                 </div>
             </div>
             {% endif %}
@@ -125,7 +126,7 @@
                     {% endfor %}
                 {% endif %}
                 {% for document in documents %}
-                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}" data-doc-type="{{ document.document_type }}"{% endif %}{% if document.document_type == 'note' and document.summary_status == 'processing' %} data-note-processing="1"{% endif %}>
+                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.document_type != 'mock' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}" data-doc-type="{{ document.document_type }}"{% endif %}{% if document.document_type == 'note' or document.document_type == 'mock' %}{% if document.summary_status == 'processing' %} data-note-processing="1"{% endif %}{% endif %}>
                     <a href="{% url 'mypage:document_preview' document.pk %}" class="flex flex-col items-center text-center gap-2">
                         {% if document.document_type == 'note' %}
                             {% if document.file and document.summary_status == 'done' %}
@@ -135,17 +136,25 @@
                             {% else %}
                             <div class="w-full min-h-28 rounded-lg border border-rose-100 bg-rose-50 flex flex-col items-center justify-center gap-1 p-2 text-rose-600"><span class="text-xs font-bold">노트를 만들지 못했어요</span>{% if document.summary %}<span class="text-[11px] leading-snug text-rose-500 text-left">{{ document.summary|truncatechars:90 }}</span>{% endif %}</div>
                             {% endif %}
+                        {% elif document.document_type == 'mock' %}
+                            {% if document.summary_status == 'done' %}
+                            <div class="w-full h-28 rounded-lg border border-sky-100 bg-sky-50 flex flex-col items-center justify-center gap-1 text-sky-700"><i class="fa-solid fa-file-pen text-3xl"></i><span class="text-[11px] font-bold">{{ document.summary }}</span></div>
+                            {% elif document.summary_status == 'processing' %}
+                            <div class="w-full h-28 rounded-lg border border-sky-100 bg-sky-50 flex flex-col items-center justify-center gap-2 text-sky-600"><i class="fa-solid fa-file-pen fa-beat text-2xl"></i><span class="text-[11px] font-bold">모의고사를 만드는 중…</span></div>
+                            {% else %}
+                            <div class="w-full min-h-28 rounded-lg border border-rose-100 bg-rose-50 flex flex-col items-center justify-center gap-1 p-2 text-rose-600"><span class="text-xs font-bold">모의고사를 만들지 못했어요</span>{% if document.summary %}<span class="text-[11px] leading-snug text-rose-500 text-left">{{ document.summary|truncatechars:90 }}</span>{% endif %}</div>
+                            {% endif %}
                         {% else %}
                         <i class="fa-regular fa-file-lines text-slate-400 text-3xl"></i>
                         {% endif %}
                         <p class="text-sm font-bold text-slate-700 truncate w-full">{{ document.title }}</p>
                         <p class="text-[11px] text-slate-400">{{ document.uploaded_at|date:"Y-m-d" }}</p>
                         <p class="text-[11px] flex flex-wrap items-center justify-center gap-1">
-                            <span class="px-1.5 py-0.5 rounded-md font-bold {% if document.document_type == 'exam' %}bg-violet-50 text-violet-700 border border-violet-100{% elif document.document_type == 'note' %}bg-amber-50 text-amber-700 border border-amber-100{% else %}bg-slate-50 text-slate-500 border border-slate-100{% endif %}">{{ document.get_document_type_display }}</span>
+                            <span class="px-1.5 py-0.5 rounded-md font-bold {% if document.document_type == 'exam' %}bg-violet-50 text-violet-700 border border-violet-100{% elif document.document_type == 'mock' %}bg-sky-50 text-sky-700 border border-sky-100{% elif document.document_type == 'note' %}bg-amber-50 text-amber-700 border border-amber-100{% else %}bg-slate-50 text-slate-500 border border-slate-100{% endif %}">{{ document.get_document_type_display }}</span>
                             {% if document.course_name or document.professor %}<span class="text-slate-400 truncate max-w-full">{{ document.course_name }}{% if document.course_name and document.professor %} · {% endif %}{% if document.professor %}{{ document.professor }}{% endif %}</span>{% endif %}
                         </p>
                     </a>
-                    {% if document.document_type != 'note' and document.summary_status == 'failed' or document.document_type != 'note' and not document.summary %}
+                    {% if document.document_type != 'note' and document.document_type != 'mock' and document.summary_status == 'failed' or document.document_type != 'note' and document.document_type != 'mock' and not document.summary %}
                     {% if document.summary_status != 'processing' %}
                     <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="text-center">
                         {% csrf_token %}
@@ -182,13 +191,6 @@
         <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">만들기</button>
     </form>
 </div>
-<div id="mock-loading" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60" role="status" aria-live="polite">
-    <div class="bg-white rounded-2xl px-8 py-7 text-center shadow-2xl">
-        <i class="fa-solid fa-file-pen fa-beat text-3xl text-sky-500 mb-3"></i>
-        <p class="text-sm font-bold text-slate-800">모의고사를 만들고 있어요…</p>
-        <p class="text-xs text-slate-500 mt-1">교수님 출제 스타일을 반영해 보통 20~40초 걸려요. 창을 닫지 말아 주세요.</p>
-    </div>
-</div>
 <script>
 // 자료를 고르는 모드(속성 노트 / 모의 출제). 선택한 자료의 id를 숨은 입력으로 보낸다. 비용은 고른 자료 수와 무관한 정액이다.
 (function () {
@@ -199,7 +201,7 @@
     const MAX = {{ cram_max }};
     const MODES = {
         note: { label: '속성 노트', action: "{% url 'mypage:cram_note_create' %}", submit: '노트 만들기', only: null, empty: '요약이 끝난 자료가 있어야 노트를 만들 수 있어요.' },
-        mock: { label: '모의 출제', action: "{% url 'mypage:mock_exam_create' %}", submit: '모의고사 만들기', only: 'lecture', empty: '요약이 끝난 수업 자료가 있어야 모의 출제를 할 수 있어요.' },
+        mock: { label: '모의고사', action: "{% url 'mypage:mock_exam_create' %}", submit: '모의고사 만들기', only: 'lecture', empty: '요약이 끝난 수업 자료가 있어야 모의고사를 만들 수 있어요.' },
     };
     const cards = Array.from(document.querySelectorAll('[data-cram-id]'));
     let mode = null;
@@ -241,9 +243,7 @@
     form.addEventListener('submit', () => {
         form.querySelectorAll('input[name=ids]').forEach((i) => i.remove());
         picked().forEach((c) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = 'ids'; i.value = c.dataset.cramId; form.appendChild(i); });
-        if (mode === 'mock') { const o = document.getElementById('mock-loading'); o.classList.remove('hidden'); o.classList.add('flex'); }   // 모의고사는 바로 만들어 열리므로 기다리는 동안 안내
     });
-    window.addEventListener('pageshow', (e) => { if (e.persisted) { const o = document.getElementById('mock-loading'); o.classList.add('hidden'); o.classList.remove('flex'); } });
     // 노트를 쓰는 중이면 끝날 때까지 목록을 새로 읽는다
     if (document.querySelector('[data-note-processing]')) {
         setTimeout(function poll() { if (!mode) location.reload(); else setTimeout(poll, 4000); }, 4000);

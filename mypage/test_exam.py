@@ -215,16 +215,51 @@ class MockExamTests(TestCase):
         + [{"type": "mc", "q": f"MC {i}", "options": ["a", "b", "c", "d"], "answer": 1, "explanation": "e"} for i in range(4)]
         + [{"type": "short", "q": f"SH {i}", "answers": ["프로세스"], "explanation": "e"} for i in range(3)])}
 
-    def test_create_charges_credits_and_uses_style(self):
-        credits.grant(self.user, 7, "test")
-        with patch("core.ai.complete_json", return_value=self.QUESTIONS) as ai:
-            res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]})
-        self.assertEqual(MockExam.objects.count(), 1)
+    def post_create(self, ids=None):
+        """모의고사 만들기를 요청한다 (백그라운드 스레드는 실행하지 않고 어떤 인자로 시작됐는지만 기록한다)."""
+        started = []
+
+        class FakeThread:
+            def __init__(self, target=None, args=(), daemon=None):
+                started.append((target, args))
+
+            def start(self):
+                pass
+
+        with patch("mypage.views.threading.Thread", FakeThread):
+            res = self.client.post("/mypage/mock/create/", {"ids": ids or [self.doc.pk]})
+        return res, started
+
+    def build(self, data=None):
+        """요청 → 백그라운드 작업을 직접 실행해 시험까지 만든다. 만들어진 모의고사 자료를 돌려준다."""
+        from . import exam as exam_module
+
+        _, started = self.post_create()
+        document = PersonalDocument.objects.get(document_type=PersonalDocument.DocumentType.MOCK)
+        with patch("core.ai.complete_json", return_value=data or self.QUESTIONS) as ai:
+            exam_module.build_mock_document(*started[0][1])
+        self.last_ai = ai
+        document.refresh_from_db()
+        return document
+
+    def test_create_returns_immediately_with_a_generating_card_and_starts_a_worker(self):
+        with patch("core.ai.complete_json") as ai:
+            res, started = self.post_create()
+        ai.assert_not_called()                                                     # 요청에서는 AI를 부르지 않는다 (비동기)
+        self.assertRedirects(res, "/mypage/", fetch_redirect_response=False)
+        document = PersonalDocument.objects.get(document_type=PersonalDocument.DocumentType.MOCK)
+        self.assertEqual((document.summary_status, document.title, document.course_name), (ProcessingStatus.PROCESSING, "운영체제 모의고사", "운영체제"))
+        self.assertFalse(MockExam.objects.exists())
+        self.assertEqual(started[0][1], (document.pk, [self.doc.pk]))
+
+    def test_background_build_makes_the_exam_with_style_and_links_it_to_the_document(self):
+        document = self.build()
         mock = MockExam.objects.get()
-        self.assertEqual((mock.style_label, len(mock.questions)), ("김교수 교수님", 10))
-        self.assertIn("- 객관식 위주", ai.call_args.args[1][1]["content"])
-        self.assertIn("프로세스는 실행 중인", ai.call_args.args[1][1]["content"])
-        self.assertRedirects(res, mock.get_absolute_url())
+        self.assertEqual((mock.style_label, len(mock.questions), mock.document_id), ("김교수 교수님", 10, document.pk))
+        self.assertEqual((document.summary_status, document.title), (ProcessingStatus.DONE, "OS 모의고사"))
+        self.assertIn("10문항", document.summary)
+        self.assertIn("- 객관식 위주", self.last_ai.call_args.args[1][1]["content"])
+        self.assertIn("프로세스는 실행 중인", self.last_ai.call_args.args[1][1]["content"])
 
     @override_settings(AI_WEEKLY_LIMIT_POINTS=100)
     def test_create_over_the_weekly_limit_is_blocked(self):
@@ -232,20 +267,65 @@ class MockExamTests(TestCase):
         with patch("core.ai.complete_json") as ai:
             res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
         ai.assert_not_called()
-        self.assertFalse(MockExam.objects.exists())
+        self.assertFalse(PersonalDocument.objects.filter(document_type=PersonalDocument.DocumentType.MOCK).exists())
         self.assertContains(res, "이번 주 AI 사용 한도를 다 썼어요")
 
-    def test_too_few_valid_questions_makes_no_exam(self):
+    def test_too_few_valid_questions_marks_the_card_failed_with_the_reason(self):
         bad = {"title": "t", "questions": [{"type": "essay", "q": "서술"}, {"type": "ox", "q": "ok", "answer": True}]}
-        with patch("core.ai.complete_json", return_value=bad):
-            res = self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]}, follow=True)
+        document = self.build(bad)
         self.assertFalse(MockExam.objects.exists())
-        self.assertContains(res, "쓸 만한 문제를 충분히 만들지 못했습니다")
+        self.assertEqual(document.summary_status, ProcessingStatus.FAILED)
+        self.assertIn("쓸 만한 문제를 충분히 만들지 못했습니다", document.summary)
+
+    def test_ai_failure_and_quota_reasons_are_shown(self):
+        from . import exam as exam_module
+
+        _, started = self.post_create()
+        document = PersonalDocument.objects.get(document_type=PersonalDocument.DocumentType.MOCK)
+        with patch("core.ai.complete_json", side_effect=RuntimeError("down")):
+            exam_module.build_mock_document(*started[0][1])
+        document.refresh_from_db()
+        self.assertIn("AI 서버가 응답하지 않았거나", document.summary)
+        PersonalDocument.objects.filter(pk=document.pk).update(summary_status=ProcessingStatus.PROCESSING, summary="")
+        with patch("core.ai.complete_json", side_effect=core_ai.AIQuotaExceeded("한도")):
+            exam_module.build_mock_document(*started[0][1])
+        document.refresh_from_db()
+        self.assertIn("이번 주 AI 사용 한도가 모자라", document.summary)
+
+    def test_card_states_in_the_personal_tab_and_polling_while_generating(self):
+        self.post_create()
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn("모의고사를 만드는 중", html)
+        self.assertIn("data-note-processing", html)                                # 끝날 때까지 목록을 새로 읽는다
+        self.assertNotIn("요약 실패 · 다시 만들기", html)
+
+    def test_open_card_goes_straight_to_the_exam_and_a_generating_one_shows_a_waiting_page(self):
+        self.post_create()
+        document = PersonalDocument.objects.get(document_type=PersonalDocument.DocumentType.MOCK)
+        waiting = self.client.get(document.get_absolute_url())
+        self.assertContains(waiting, "모의고사를 만들고 있어요")
+        document.delete()
+        done = self.build()
+        res = self.client.get(done.get_absolute_url())
+        self.assertRedirects(res, MockExam.objects.get().get_absolute_url(), fetch_redirect_response=False)
+
+    def test_mock_documents_cannot_be_sources_resummarized_or_uploaded(self):
+        document = self.build()
+        html = self.client.get("/mypage/").content.decode()
+        self.assertNotIn(f'data-cram-id="{document.pk}"', html)                    # 선택 모드에서 고를 수 없다
+        form_types = [v for v, _ in self.client.get("/mypage/").context["form"].fields["document_type"].choices]
+        self.assertNotIn("mock", form_types)
+        from . import views
+        self.assertFalse(views._can_resummarize(document))
+
+    def test_toolbar_wording(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn("자료를 골라 <b>속성 노트</b>나 <b>모의고사</b>를 만들 수 있어요.", html)
+        self.assertNotIn("시험 5분 전 속성 노트</b>(손글씨 이미지)", html)
+        self.assertIn("오답노트", html)
 
     def test_take_and_grade_on_server(self):
-        credits.grant(self.user, 5, "test")
-        with patch("core.ai.complete_json", return_value=self.QUESTIONS):
-            self.client.post("/mypage/mock/create/", {"ids": [self.doc.pk]})
+        self.build()
         mock = MockExam.objects.get()
         page = self.client.get(mock.get_absolute_url())
         self.assertContains(page, "제출하고 채점하기")
@@ -356,8 +436,11 @@ class MockExamTests(TestCase):
         ExamStyle.objects.create(key="p:이", label="이교수 교수님", guidelines="- 서술형 위주", source_hash="h2", doc_count=1)
         lee = make_doc(self.user, "이교수 자료", LECTURE, "이교수", ["운영체제"], summary="스케줄링", course_name="운영체제")
         credits.grant(self.user, 10, "test")
+        _, started = self.post_create([lee.pk])
+        from . import exam as exam_module
+
         with patch("core.ai.complete_json", return_value=self.QUESTIONS) as ai:
-            self.client.post("/mypage/mock/create/", {"ids": [lee.pk]})
+            exam_module.build_mock_document(*started[0][1])
         self.assertEqual(MockExam.objects.get().style_label, "이교수 교수님")
         self.assertIn("- 서술형 위주", ai.call_args.args[1][1]["content"])
         self.assertNotIn("- 객관식 위주", ai.call_args.args[1][1]["content"])
