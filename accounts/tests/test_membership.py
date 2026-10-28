@@ -181,12 +181,12 @@ class ProfileAiUsageTestCase(TestCase):
         with override_settings(AI_WEEKLY_LIMIT_POINTS=100):
             use_up(u, 42)
             res = self.client.get("/accounts/profile/")
-        self.assertContains(res, "AI 사용량 (주간)")
+        self.assertContains(res, "AI 사용")
         self.assertContains(res, "42%")
-        self.assertContains(res, "0시 초기화")
+        self.assertContains(res, "(월요일)에 초기화")                      # 초기화 시각은 말풍선(title)으로만 알려 타일을 단정하게 둔다
         self.assertNotContains(res, "AI 크레딧")
 
     def test_lecturers_see_no_limit(self):
         lecturer = User.objects.create_user(username="pl", password="pw", is_lecturer=True)
         self.client.force_login(lecturer)
-        self.assertContains(self.client.get("/accounts/profile/"), "제한 없음")
+        self.assertContains(self.client.get("/accounts/profile/"), "fa-infinity")
