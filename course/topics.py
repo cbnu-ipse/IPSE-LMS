@@ -5,10 +5,10 @@
   1. classify_document: 자료 제목과 요약 앞부분, 기존 주제 목록(이름 + 설명)을 보고 AI가 어느 주제인지
      (기존 주제 중 하나 이상 + 필요하면 새 주제, 최대 3개)를 정한다. 그래서 한 자료가 새 강의를 만들면서 기존 강의에도 추가될 수 있다. 자료는 걸러내지 않는다 — 어떤 자료든 강의에 쓰인다.
      결과는 PersonalDocument.topics(다대다)와 대표 주제 subject_code, 새 주제는 Subject에 남는다.
-  2. 강의는 항상 만든다: 자료가 한 주제에 들어올 때마다 그 주제의 강의 초안을 (자료가 바뀌었을 때만) 만들거나 갱신한다
-     (course/studio.build_draft, 근거가 그대로인 챕터는 재사용하므로 바뀐 챕터만 AI가 다시 쓴다).
-     "충분한가"를 AI가 미리 판단해 막지 않는다. 초안은 강의자가 judge > 강의 생성에서 언제든 보고, 개설할 수 있다고
-     판단될 때 승인(개설)한다.
+  2. 강의 초안은 업로드할 때마다 만들지 않는다 (자료 하나마다 개요·챕터를 다시 쓰면 토큰이 너무 든다). 초안은
+     - 매일 새벽 한 번 `manage.py build_course_drafts`(docker/crontab)가 자료가 바뀐 주제만 한꺼번에 만들고,
+     - 강의자가 judge > 강의 생성에서 '지금 초안 만들기'를 눌러 바로 만들 수 있다 (course/studio.build_draft, 근거가 그대로인 챕터는
+       재사용하므로 바뀐 챕터만 AI가 다시 쓴다). 초안은 강의자가 보고 개설할 수 있다고 판단될 때 승인(개설)한다.
 
 토큰: 분류는 요약 앞부분만 넣는 짧은 호출이고, 같은 파일을 다시 올리면 분류를 재사용한다.
 """
@@ -115,25 +115,18 @@ def _tag_ontology(document):
 
 
 def after_summary(document_id, force=False):
-    """요약이 끝난 자료 하나를 분류하고, 수업 자료면 강의 초안까지, 족보면 출제 스타일을 새로 뽑아 관련 강의 초안에 반영한다
-    (백그라운드 스레드에서 호출)."""
-    from mypage.exam import professor_key, professor_topics, refresh_for
+    """요약이 끝난 자료 하나를 분류하고 개념을 붙이며, 족보면 출제 스타일을 새로 뽑는다 (백그라운드 스레드에서 호출).
+    강의 초안은 여기서 만들지 않는다 (하루 한 번 일괄 또는 강의자 버튼). 분류된 주제 이름 목록을 돌려준다."""
+    from mypage.exam import professor_key, refresh_for
     from mypage.models import PersonalDocument
 
-    from .studio import build_draft
 
     document = PersonalDocument.objects.select_related("user").get(pk=document_id)
     if not document.summary.strip():
         return None
     names = classify_document(document, force=force)
     _tag_ontology(document)
-    extra = {"force": True} if force else {}
     if document.document_type == PersonalDocument.DocumentType.EXAM:
         has_professor = bool(professor_key(document.professor))
-        refresh_for(professors=[document.professor], subjects=[] if has_professor else names)
-        # 새 출제 스타일은 그 교수님의 모든 강의(과목이 달라도)의 확인 문제에 반영된다
-        topics = set(names) | (professor_topics(document.professor) if has_professor else set())
-        drafts = [build_draft(name, **extra) for name in sorted(topics)]
-    else:
-        drafts = [build_draft(name, **extra) for name in names]  # 주제마다 강의 초안 생성/갱신
-    return next((d for d in drafts if d), None)  # 같은 자료로 이미 만든 초안이 있으면 AI를 부르지 않는다
+        refresh_for(professors=[document.professor], subjects=[] if has_professor else names)    # 새 출제 스타일(내 자료 문제·모의 출제에 쓰임)
+    return names

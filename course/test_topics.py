@@ -48,22 +48,53 @@ class TopicsTestCase(TestCase):
             self.assertEqual(topics.classify_document(again), ["운영체제"])
         ai.assert_not_called()
 
-    def test_after_summary_always_builds_draft_without_readiness_judgement(self):
+    def test_after_summary_classifies_but_does_not_build_a_course_draft(self):
         d = self.doc()
         with patch.object(topics, "classify_document", return_value=["운영체제"]), \
                 patch("course.studio.build_draft") as build, patch("core.ai.complete_json") as ai:
-            topics.after_summary(d.pk)
-        build.assert_called_once_with("운영체제")
-        ai.assert_not_called()  # 자료가 충분한지 AI에게 미리 묻지 않는다
+            self.assertEqual(topics.after_summary(d.pk), ["운영체제"])
+        build.assert_not_called()          # 업로드마다 강의 초안을 다시 쓰지 않는다 (하루 한 번 일괄 또는 강의자 버튼)
+        ai.assert_not_called()
 
-    def test_existing_course_gets_update_draft(self):
-        category = CourseCategory.objects.create(title="AI 자동 생성")
-        Course.objects.create(code="운영체제", title="운영체제", category=category, instructor=self.user)
-        d = self.doc()
-        with patch.object(topics, "classify_document", return_value=["운영체제"]), \
-                patch("course.studio.build_draft") as build:
-            topics.after_summary(d.pk)
+    def test_daily_batch_builds_drafts_for_every_topic_and_survives_a_failure(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from mypage.models import Subject
+
+        for name in ("데이터베이스", "운영체제", "네트워크"):
+            Subject.objects.get_or_create(name=name)
+        calls = []
+
+        def fake(name, **kwargs):
+            calls.append(name)
+            if name == "운영체제":
+                raise RuntimeError("api down")
+            return type("D", (), {"pk": 7})() if name == "데이터베이스" else None
+
+        out = StringIO()
+        with patch("course.studio.build_draft", side_effect=fake):
+            call_command("build_course_drafts", stdout=out, stderr=StringIO())
+        self.assertEqual(sorted(calls), sorted(Subject.objects.values_list("name", flat=True)))
+        skipped = len(calls) - 2
+        self.assertIn(f"만듦 1 · 건너뜀(자료 없음/그대로) {skipped} · 실패 1", out.getvalue())
+
+    def test_daily_batch_can_target_one_topic(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        with patch("course.studio.build_draft", return_value=None) as build:
+            call_command("build_course_drafts", "--topic", "운영체제", stdout=StringIO())
         build.assert_called_once_with("운영체제")
+
+    def test_daily_batch_is_scheduled_in_the_container_crontab(self):
+        import os
+
+        from django.conf import settings
+
+        text = open(os.path.join(settings.BASE_DIR, "docker", "crontab"), encoding="utf-8").read()
+        self.assertIn("python manage.py build_course_drafts", text)
 
     def test_one_material_can_create_a_new_course_and_join_an_existing_one(self):
         d = self.doc()
@@ -77,5 +108,5 @@ class TopicsTestCase(TestCase):
         self.assertEqual(d.subject_code, "운영체제")                      # 대표 주제 = 첫 번째
         with patch.object(topics, "classify_document", return_value=names), \
                 patch("course.studio.build_draft") as build:
-            topics.after_summary(d.pk)
-        self.assertEqual([c.args[0] for c in build.call_args_list], names)  # 주제마다 초안 생성/갱신
+            self.assertEqual(topics.after_summary(d.pk), names)
+        build.assert_not_called()
