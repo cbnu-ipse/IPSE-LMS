@@ -23,7 +23,7 @@
         <div class="min-w-0">
             <h1 class="text-2xl font-bold text-slate-800">{{ exam.title }}</h1>
             <p class="text-xs text-slate-400 mt-1 mb-6">
-                {{ rows|length }}문항{% if score is not None %} · <b class="text-slate-700">{{ score }} / {{ total }}점</b>{% endif %}
+                <span id="exam-count">{{ rows|length }}</span>문항{% if score is not None %} · <b class="text-slate-700">{{ score }} / {{ total }}점</b>{% endif %}
             </p>
         </div>
         <div class="no-print shrink-0 flex gap-2">
@@ -39,7 +39,7 @@
     </div>
     {% endif %}
     {% if score is None and essays %}
-    <p class="no-print text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>서술형 {{ essays }}문항은 AI가 채점해서, 답을 쓴 문항만큼 이번 주 AI 사용량이 늘어요. 채점은 한 번만 하고 결과는 저장돼요. 틀린 문제와 "모르겠음"으로 넘긴 문제는 오답노트에 담겨 다시 풀 수 있어요.</p>
+    <p class="essay-note no-print text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 mb-4"><i class="fa-solid fa-gauge-high text-sky-500 mr-1"></i>서술형 {{ essays }}문항은 AI가 채점해서, 답을 쓴 문항만큼 이번 주 AI 사용량이 늘어요. 채점은 한 번만 하고 결과는 저장돼요. 틀린 문제와 "모르겠음"으로 넘긴 문제는 오답노트에 담겨 다시 풀 수 있어요.</p>
     {% endif %}
     {% if score is None %}
     <div id="scan-panel" class="no-print mb-4 rounded-2xl border border-sky-100 bg-sky-50/60 p-4" data-url="{% url 'mypage:mock_read_answers' exam.pk %}" data-max="{{ scan_max_images }}">
@@ -56,10 +56,10 @@
         <p id="scan-status" role="status" aria-live="polite" class="hidden text-xs mt-2 font-medium"></p>
     </div>
     {% endif %}
-    <form method="post" class="space-y-4" id="exam-form">
+    <form method="post" class="space-y-4" id="exam-form" data-discard-url="{% url 'mypage:mock_discard' exam.pk 0 %}">
         {% csrf_token %}
         {% for row in rows %}
-        <div class="mq-card bg-white rounded-2xl border {% if score is not None %}{% if row.correct %}border-emerald-200{% else %}border-rose-200{% endif %}{% else %}border-slate-200{% endif %} p-5 shadow-sm">
+        <div data-index="{{ row.index }}" data-fp="{{ row.fp }}" data-type="{{ row.q.type }}" class="mq-card bg-white rounded-2xl border {% if score is not None %}{% if row.correct %}border-emerald-200{% else %}border-rose-200{% endif %}{% else %}border-slate-200{% endif %} p-5 shadow-sm">
             <div class="flex items-center gap-2 mb-2.5">
                 <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold">{{ forloop.counter }}</span>
                 <span class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{% if row.q.type == 'ox' %}O/X{% elif row.q.type == 'mc' %}객관식{% elif row.q.type == 'essay' %}서술형{% else %}단답형{% endif %}</span>
@@ -86,6 +86,14 @@
                 <input type="text" name="a_{{ row.index }}" value="{{ row.value }}" autocomplete="off" placeholder="답을 입력하세요" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
                 {% endif %}
                 <label class="no-print inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-slate-400 hover:text-amber-600 cursor-pointer select-none"><input type="checkbox" name="u_{{ row.index }}" value="1" class="unsure-box"> 모르겠음 <span class="font-normal text-slate-300">(찍지 않고 넘어가면 오답노트에 담겨요)</span></label>
+                <details class="no-print discard-box mt-2 text-xs">
+                    <summary class="cursor-pointer inline-flex items-center gap-1 font-bold text-slate-400 hover:text-rose-600 select-none"><i class="fa-regular fa-trash-can"></i>이 문제 버리기</summary>
+                    <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span class="text-slate-400">이유:</span>
+                        {% for value, label in discard_reasons %}<button type="button" class="discard-btn px-2.5 py-1 rounded-lg border border-slate-200 bg-white font-bold text-slate-600 hover:border-rose-300 hover:text-rose-600" data-reason="{{ value }}">{{ label }}</button>{% endfor %}
+                    </div>
+                    <p class="text-slate-400 mt-1.5">버린 문제는 시험에서 빠지고, 다음에 이 과목 모의고사를 만들 때 이런 문제를 덜 내도록 반영돼요.</p>
+                </details>
             {% else %}
                 {% if row.q.type == 'mc' %}
                 <ul class="text-sm text-slate-600 mb-3 space-y-0.5">{% for option in row.q.options %}<li><b>{{ forloop.counter }}.</b> <span data-md-inline>{{ option }}</span></li>{% endfor %}</ul>
@@ -102,7 +110,7 @@
         {% endfor %}
         {% if score is None %}
         <button type="submit" class="no-print w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-3 rounded-xl transition">제출하고 채점하기{% if grade_cost %}{% include 'includes/credit_cost.html' with cost=grade_cost %}{% endif %}</button>
-        {% if essays %}<p class="no-print text-center text-[11px] text-slate-400 -mt-3">서술형 {{ essays }}문항은 AI가 채점해요 (답을 쓴 문항만, 최대 위 예상 사용량). 나머지는 AI 없이 채점돼요.</p>{% endif %}
+        {% if essays %}<p class="essay-note no-print text-center text-[11px] text-slate-400 -mt-3">서술형 {{ essays }}문항은 AI가 채점해요 (답을 쓴 문항만, 최대 위 예상 사용량). 나머지는 AI 없이 채점돼요.</p>{% endif %}
         {% endif %}
     </form>
     <a href="{% url 'mypage:document_list' %}" class="no-print inline-block mt-6 text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료로 돌아가기</a>
@@ -200,6 +208,54 @@ document.querySelectorAll('.unsure-box').forEach(function (box) {
     }
     camera.addEventListener('change', function () { send(camera.files); });
     library.addEventListener('change', function () { send(library.files); });
+})();
+
+// 문제 버리기: 시험에서 빼고 번호를 당긴다 (서버가 기록해 다음 출제에 반영)
+(function () {
+    var form = document.getElementById('exam-form');
+    if (!form || !form.dataset.discardUrl) return;
+    var csrf = form.querySelector('input[name=csrfmiddlewaretoken]').value, busy = false;
+
+    function renumber() {
+        var cards = form.querySelectorAll('.mq-card');
+        cards.forEach(function (card, i) {
+            card.dataset.index = i;
+            var badge = card.querySelector('.inline-flex.w-7');
+            if (badge) badge.textContent = i + 1;
+            card.querySelectorAll('[name]').forEach(function (el) { el.name = el.name.replace(/^([au])_\d+$/, '$1_' + i); });
+        });
+        var count = document.getElementById('exam-count');
+        if (count) count.textContent = cards.length;
+        var essays = form.querySelectorAll('.mq-card[data-type=essay]').length;
+        document.querySelectorAll('.essay-note').forEach(function (el) {
+            var node = Array.prototype.find.call(el.childNodes, function (n) { return n.nodeType === 3 && /서술형 \d+문항/.test(n.textContent); });
+            if (node) node.textContent = node.textContent.replace(/서술형 \d+문항/, '서술형 ' + essays + '문항');
+            if (!essays) el.style.display = 'none';
+        });
+    }
+    form.addEventListener('click', async function (e) {
+        var btn = e.target.closest('.discard-btn');
+        if (!btn || busy) return;
+        var card = btn.closest('.mq-card');
+        if (form.querySelectorAll('.mq-card').length <= 1) { window.alert('마지막 문제는 버릴 수 없어요.'); return; }
+        busy = true;
+        var body = new FormData();
+        body.append('reason', btn.dataset.reason);
+        body.append('fp', card.dataset.fp);
+        try {
+            var res = await fetch(form.dataset.discardUrl.replace(/\/0\/$/, '/' + card.dataset.index + '/'),
+                                  { method: 'POST', body: body, credentials: 'same-origin', headers: { 'X-CSRFToken': csrf } });
+            var d = await res.json().catch(function () { return {}; });
+            if (!res.ok || !d.ok) { window.alert(d.error || '문제를 버리지 못했어요. 새로고침한 뒤 다시 시도해주세요.'); return; }
+            card.remove();
+            renumber();
+            if (window.showToast) window.showToast('문제를 버렸어요. 다음 모의고사에 반영돼요.', 'success');
+        } catch (err) {
+            window.alert('문제를 버리지 못했어요. 네트워크를 확인하고 다시 시도해주세요.');
+        } finally {
+            busy = false;
+        }
+    });
 })();
 </script>
 {% endblock %}

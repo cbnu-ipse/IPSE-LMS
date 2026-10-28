@@ -3,6 +3,7 @@ import json
 import io
 import logging
 import os
+import re
 import threading
 from datetime import timedelta
 
@@ -31,7 +32,7 @@ from .ai import (
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
 from . import answer_scan, doctype, focus
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
-from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
+from .models import DiscardedQuestion, GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .stream import SummaryPublisher
 from .ontology import professor_choices, resolve_professor, resolve_subject, subject_choices
 
@@ -853,7 +854,7 @@ def mock_exam(request, pk):
     essays = essay_count(exam)
     return render(request, "mypage/mock_exam.html", {
         "exam": exam, "rows": rows, "score": score, "total": len(exam.questions),
-        "essays": essays, "grade_cost": essays * cost_for("grading"), "scan_cost": cost_for("answer_scan"),
+        "essays": essays, "grade_cost": essays * cost_for("grading"), "scan_cost": cost_for("answer_scan"), "discard_reasons": DiscardedQuestion.Reason.choices,
         "scan_max_images": answer_scan.MAX_IMAGES,
     })
 
@@ -1010,3 +1011,34 @@ def mock_exam_read_answers(request, pk):
         return fail("사진을 읽지 못했어요. 잠시 후 다시 시도해주세요.", 502)
     return JsonResponse({"ok": True, "answers": {str(i): v for i, v in result["answers"].items()}, "recognized": len(result["answers"]),
                          "unreadable": [i + 1 for i in result["unreadable"]]})
+
+
+@login_required
+@require_POST
+def mock_exam_discard(request, pk, index):
+    """풀기 전 모의고사에서 문제 하나를 버린다. 시험에서 빠지고(번호가 당겨진다) 버린 문제가 기록돼 다음 출제에 반영된다 (mypage/discards.py)."""
+    from . import discards
+    from .exam import question_fingerprint
+
+    def fail(message, status):
+        return JsonResponse({"ok": False, "error": message}, status=status)
+
+    with transaction.atomic():
+        exam = get_object_or_404(MockExam.objects.select_for_update(), pk=pk, user=request.user)
+        if exam.submitted_at:
+            return fail("이미 제출한 시험이에요.", 400)
+        questions = list(exam.questions)
+        if not 0 <= index < len(questions):
+            return fail("문제를 찾을 수 없어요. 새로고침해주세요.", 404)
+        if len(questions) <= 1:
+            return fail("마지막 문제는 버릴 수 없어요.", 400)
+        if request.POST.get("fp") and request.POST["fp"] != question_fingerprint(questions[index]):
+            return fail("화면이 오래돼서 문제가 어긋났어요. 새로고침해주세요.", 409)
+        question = questions.pop(index)
+        exam.questions = questions
+        exam.save(update_fields=["questions"])
+        document = exam.document
+        if document and document.summary:
+            PersonalDocument.objects.filter(pk=document.pk).update(summary=re.sub(r"^\d+문항", f"{len(questions)}문항", document.summary, count=1))
+        discards.record(request.user, exam, question, request.POST.get("reason", ""), professor=document.professor if document else "")
+    return JsonResponse({"ok": True, "remaining": len(questions)})

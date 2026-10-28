@@ -362,3 +362,28 @@ class SharedImport(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["material", "user"], name="shared_import_unique_user")]
+
+
+class DiscardedQuestion(models.Model):
+    """사용자가 모의고사에서 버린 문제. 같은 사용자가 같은 과목의 모의고사를 다시 만들 때 '이런 문제는 내지 않는다'로 쓴다 (mypage/discards.py)."""
+
+    class Reason(models.TextChoices):
+        OUT_OF_SCOPE = "out_of_scope", "범위 밖 내용"
+        TOO_HARD = "too_hard", "너무 어려움"
+        TOO_EASY = "too_easy", "너무 쉬움"
+        WEIRD = "weird", "문제가 이상함"
+        OTHER = "other", "그냥 버림"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="discarded_questions")
+    course_code = models.CharField(max_length=50, blank=True, default="", verbose_name="과목")
+    professor = models.CharField(max_length=50, blank=True, default="", verbose_name="교수")
+    qtype = models.CharField(max_length=10, verbose_name="유형")
+    question = models.JSONField(default=dict, verbose_name="버린 문제 (스냅샷)")
+    reason = models.CharField(max_length=20, choices=Reason.choices, default=Reason.OTHER)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["user", "course_code", "-created_at"], name="discard_user_course")]
+        verbose_name = "버린 문제"
+        verbose_name_plural = "버린 문제"
