@@ -253,6 +253,24 @@
             </div>
             {% endif %}
 
+            {% with shared=post.shared_material %}{% if shared %}
+            <div class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 mt-4 flex flex-wrap items-center gap-3">
+                <div class="min-w-0 mr-auto">
+                    <p class="text-sm font-bold text-emerald-800"><i class="fa-solid fa-book-open mr-1.5"></i>{{ shared.get_kind_display }} · 내 자료로 불러올 수 있어요</p>
+                    <p class="text-xs text-slate-500 mt-0.5">{{ shared.author.display_author }}님이 올렸어요{% if shared.import_count %} · {{ shared.import_count }}명이 불러감{% endif %}. 불러오면 내 개인 탭에 복사본이 생겨요 (AI 사용량은 들지 않아요).</p>
+                </div>
+                {% if user.is_authenticated %}
+                {% if shared.author_id != user.pk %}
+                <form method="post" action="{% url 'mypage:shared_import' shared.pk %}">{% csrf_token %}
+                    <button type="submit" class="text-xs font-bold px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition"><i class="fa-solid fa-download mr-1.5"></i>내 자료로 불러오기</button>
+                </form>
+                {% endif %}
+                {% else %}
+                <a href="{% url 'login' %}?next={{ request.path }}" class="text-xs font-bold px-4 py-2.5 rounded-xl border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition">로그인하고 불러오기</a>
+                {% endif %}
+            </div>
+            {% endif %}{% endwith %}
+
             <!-- 📎 첨부파일 목록 영역 -->
             {% if post.attachments.all %}
             <div id="attachments-wrapper" class="border-t border-slate-100 pt-6 mt-4">

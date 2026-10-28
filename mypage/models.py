@@ -327,3 +327,38 @@ class DocTypeRules(models.Model):
         ordering = ["-id"]
         verbose_name = "자료 구분 규칙"
         verbose_name_plural = "자료 구분 규칙"
+
+
+class SharedMaterial(models.Model):
+    """자유게시판에 올린 속성 노트·모의고사. 게시글과 1:1이고, 보는 사람이 '내 자료로 불러오기'로 복사해 간다 (mypage/sharing.py).
+    내용은 올릴 때의 스냅샷이다: 모의고사는 문제·정답·해설·그림(푼 답과 결과는 제외), 노트는 마크다운과 손글씨 이미지 첨부(게시글 첨부파일) 번호."""
+
+    class Kind(models.TextChoices):
+        NOTE = "note", "속성 노트"
+        MOCK = "mock", "모의고사"
+
+    post = models.OneToOneField("community.CommunityPost", on_delete=models.CASCADE, related_name="shared_material")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_materials")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    title = models.CharField(max_length=200)
+    course_name = models.CharField(max_length=50, blank=True, default="")
+    payload = models.JSONField(default=dict)
+    source_key = models.CharField(max_length=40, verbose_name="올린 원본 (같은 자료를 다시 올리지 않게)")
+    import_count = models.PositiveIntegerField(default=0, verbose_name="불러간 횟수")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["author", "source_key"], name="shared_material_unique_source")]
+        verbose_name = "게시판에 올린 자료"
+        verbose_name_plural = "게시판에 올린 자료"
+
+
+class SharedImport(models.Model):
+    """누가 어떤 게시 자료를 불러왔는지 (한 사람이 같은 글을 여러 번 불러와도 복사본은 하나)."""
+    material = models.ForeignKey(SharedMaterial, on_delete=models.CASCADE, related_name="imports")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_imports")
+    document = models.ForeignKey(PersonalDocument, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["material", "user"], name="shared_import_unique_user")]
