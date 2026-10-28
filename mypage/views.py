@@ -702,7 +702,7 @@ def document_status(request, pk):
 
 # ── 시험 5분 전 속성 노트 ────────────────────────────────────────────────────
 
-def _cram_note_bg(note_id, source_ids, focus=()):
+def _cram_note_bg(note_id, source_ids, focus=None):
     from .cram import build_note_document
 
     try:
@@ -732,8 +732,8 @@ def cram_note_create(request):
         return back
     from .cram import note_material
 
-    try:       # 추가 요청: 사용자의 글은 AI에 보내지 않고, 자료에 실제로 나오는 용어만 뽑아 쓴다 (mypage/focus.py)
-        focus_terms = focus.parse(request.POST.get("focus"), note_material(sources))
+    try:       # 추가 요청: 검사를 통과한 글을 격리 구역에 붙여 전달한다 (mypage/focus.py)
+        focus_req = focus.parse(request.POST.get("focus"), note_material(sources))
     except focus.FocusError as exc:
         messages.error(request, str(exc))
         return back
@@ -756,16 +756,16 @@ def cram_note_create(request):
         document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
         course_name=courses[0] if len(courses) == 1 else "", professor=professors[0] if len(professors) == 1 else "",
         is_course_material=False)
-    extra = {"kwargs": {"focus": focus_terms}} if focus_terms else {}
+    extra = {"kwargs": {"focus": focus_req}} if focus_req else {}
     threading.Thread(target=_cram_note_bg, args=(note.pk, [d.pk for d in sources]), daemon=True, **extra).start()
     messages.success(request, "속성 노트를 손글씨로 쓰고 있습니다. 잠시 후 개인 탭에 나타납니다."
-                              + (f" (꼭 넣을 내용: {', '.join(focus_terms)})" if focus_terms else ""))
+                              + (f" (추가 요청 반영: {focus_req['text']})" if focus_req else ""))
     return back
 
 
 # ── 모의 출제 ────────────────────────────────────────────────────────────────
 
-def _mock_exam_bg(document_id, source_ids, focus=()):
+def _mock_exam_bg(document_id, source_ids, focus=None):
     from .exam import build_mock_document
 
     try:
@@ -804,8 +804,8 @@ def mock_exam_create(request):
         return back
     from .exam import build_material
 
-    try:       # 추가 요청: 사용자의 글은 AI에 보내지 않고, 자료에 실제로 나오는 용어만 뽑아 쓴다 (mypage/focus.py)
-        focus_terms = focus.parse(request.POST.get("focus"), build_material(sources))
+    try:       # 추가 요청: 검사를 통과한 글을 격리 구역에 붙여 전달한다 (mypage/focus.py)
+        focus_req = focus.parse(request.POST.get("focus"), build_material(sources))
     except focus.FocusError as exc:
         messages.error(request, str(exc))
         return back
@@ -822,10 +822,10 @@ def mock_exam_create(request):
         user=request.user, folder=folder, title=title[:200], file="", document_type=PersonalDocument.DocumentType.MOCK,
         summary_status=ProcessingStatus.PROCESSING, is_course_material=False,
         course_name=courses[0] if len(courses) == 1 else "", professor=professors[0] if len(professors) == 1 else "")
-    extra = {"kwargs": {"focus": focus_terms}} if focus_terms else {}
+    extra = {"kwargs": {"focus": focus_req}} if focus_req else {}
     threading.Thread(target=_mock_exam_bg, args=(document.pk, [d.pk for d in sources]), daemon=True, **extra).start()
     messages.success(request, "모의고사를 만들고 있습니다. 잠시 후 개인 탭에 나타나고, 끝나면 눌러서 풀 수 있어요."
-                              + (f" (꼭 넣을 내용: {', '.join(focus_terms)})" if focus_terms else ""))
+                              + (f" (추가 요청 반영: {focus_req['text']})" if focus_req else ""))
     return back
 
 

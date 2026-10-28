@@ -190,8 +190,8 @@
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
         {% if current_folder %}<input type="hidden" name="folder" value="{{ current_folder.pk }}">{% endif %}
-        <input type="text" name="focus" maxlength="100" autocomplete="off" placeholder="추가 요청 (선택, 100자 이내) 예: 프림 알고리즘은 꼭 나온대요"
-               title="교수님이 나온다고 한 내용 등을 간단히 적어요. 선택한 자료에 실제로 나오는 용어만 찾아서 반영하고, 적은 글은 AI에 그대로 전달되지 않아요."
+        <input type="text" name="focus" maxlength="100" autocomplete="off" placeholder="추가 요청 (선택, 100자 이내) 예: 6장은 6.2절까지만 나옴"
+               title="예: 6장은 6.2절까지만 나옴 / 교수님이 ○○는 꼭 나온다고 했어요. 적은 글이 AI에 요청으로 전달돼요. 선택한 자료에 있는 내용만 반영되고, 문항 수·형식 같은 규칙은 바꿀 수 없어요."
                class="w-64 max-w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400">
         <button type="button" id="cram-cancel" class="text-xs font-bold text-slate-500 px-3 py-2">취소</button>
         <button type="submit" id="cram-submit" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition">만들기</button>
