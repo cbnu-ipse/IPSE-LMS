@@ -18,6 +18,7 @@ from collections import Counter
 from core import ai as core_ai
 
 from .ai import unescape_newlines
+from . import scope
 from .figure import normalize_figure
 from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument, WrongNote
 from .naming import professor_key  # noqa: F401 (다른 모듈이 mypage.exam에서 가져다 쓴다)
@@ -310,8 +311,10 @@ def _most_common(values):
     return counts.most_common(1)[0][0] if counts else ""
 
 
-def build_material(documents):
-    """모의 출제 프롬프트에 넣는 수업 자료 본문 (고른 자료의 요약을 길이에 맞춰 이어 붙인다). 용어 검사도 같은 글로 한다."""
+def build_material(documents, limit=True):
+    """모의 출제 프롬프트에 넣는 수업 자료 본문 (고른 자료의 요약을 길이에 맞춰 이어 붙인다). limit=False면 자르지 않는다(범위 선택용, mypage/scope.py)."""
+    if not limit:
+        return "\n\n".join(f"## {d.title}\n{(d.summary.strip() or d.extracted_text.strip())}" for d in documents)
     per = max(MATERIAL_CHARS // len(documents), 1500)
     return "\n\n".join(f"## {d.title}\n{(d.summary.strip() or d.extracted_text.strip())[:per]}" for d in documents)[:MATERIAL_CHARS]
 
@@ -395,6 +398,10 @@ def generate_mock_exam(user, documents, document=None, focus=None):
                 if in_scope & {c.name.casefold() for c in q.concepts.all()}][:12]
         examples = "\n".join(f"- [{labels.get(q.qtype, q.qtype)}] {q.text}" for q in rows)
     material = build_material(documents)
+    if focus_text:      # 요청이 범위를 정하면(예: 6.2절까지만) 그 범위의 소제목만 모델에 보여 준다 (mypage/scope.py)
+        scoped = scope.apply(user, focus_text, build_material(documents, limit=False))
+        if scoped:
+            material = scoped[:MATERIAL_CHARS]
     request = f"과목: {subject or documents[0].title}\n"
     if style:
         request += f"출제 스타일({style.label}):\n{style.guidelines}\n"

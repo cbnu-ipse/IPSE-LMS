@@ -303,6 +303,7 @@ _AI_TASK_DEFAULTS = {
     "exam_analysis": ("gemini", "gemini-3.5-flash-lite"),   # 족보를 문제 단위로 분석(유형·개념)
     "cram_note": ("gemini", "gemini-3.5-flash-lite"),       # 시험 5분 전 속성 노트 내용
     "doctype_rules": ("gemini", "gemini-3.5-flash-lite"),   # 자료 구분(족보/수업 자료) 판단 규칙값 정리 (mypage/doctype.py)
+    "scope": ("gemini", "gemini-3.5-flash-lite"),            # 추가 요청이 정한 범위에 맞는 소제목 고르기 (mypage/scope.py)
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 

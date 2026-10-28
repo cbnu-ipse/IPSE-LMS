@@ -14,7 +14,7 @@ from django.core.files.base import ContentFile
 
 from core import ai as core_ai
 
-from . import handnote
+from . import handnote, scope
 from .models import PersonalDocument, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -72,9 +72,9 @@ def normalize_note(data, fallback_title="시험 5분 전 노트"):
     return {"title": _clean(data.get("title"))[:60] or fallback_title, "sections": sections, "memo": memo}
 
 
-def note_material(documents):
-    """노트 프롬프트에 넣는 자료 본문. 추가 요청의 용어 검사도 같은 글로 한다."""
-    per = max(SOURCE_CHARS // max(len(documents), 1), 1500)
+def note_material(documents, limit=True):
+    """노트 프롬프트에 넣는 자료 본문. limit=False면 자르지 않는다(범위 선택용, mypage/scope.py)."""
+    per = max(SOURCE_CHARS // max(len(documents), 1), 1500) if limit else None
     parts = []
     for d in documents:
         body = (d.summary.strip() or d.extracted_text.strip())[:per]
@@ -82,14 +82,14 @@ def note_material(documents):
     return "\n\n".join(parts)
 
 
-def build_request(documents, focus=None):
+def build_request(documents, focus=None, material=None):
     focus = focus or {}
     request = ""
     if focus.get("text"):      # 믿을 수 없는 글이라 데이터 구역에만 넣는다 (mypage/focus.py)
         request += "사용자 요청(범위·강조 힌트): " + core_ai.untrusted("사용자요청", focus["text"]) + "\n\n"
     if focus.get("terms"):
         request += "꼭 포함할 주제어: " + core_ai.untrusted("주제어", ", ".join(focus["terms"])) + "\n\n"
-    return request + core_ai.untrusted("자료", note_material(documents))
+    return request + core_ai.untrusted("자료", material if material is not None else note_material(documents))
 
 
 def _snippet(term, material):
@@ -142,10 +142,18 @@ class NoteError(Exception):
 def generate_note(user, documents, focus=None):
     """자료로 노트 dict를 만든다. 실패하면 이유를 담은 NoteError."""
     cost = note_cost(len(documents))
+    material = None
+    if focus and focus.get("text"):      # 요청이 범위를 정하면(예: 6.2절까지만) 그 범위의 소제목만 모델에 보여 준다 (mypage/scope.py)
+        try:
+            scoped = scope.apply(user, focus["text"], note_material(documents, limit=False))
+        except core_ai.AIQuotaExceeded:
+            raise NoteError("이번 주 AI 사용 한도가 모자라 노트를 만들지 못했습니다. 월요일 0시에 초기화된 뒤 다시 만들어주세요.")
+        if scoped:
+            material = scoped[:SOURCE_CHARS]
     try:
         response = core_ai.chat("cram_note", [
             {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": build_request(documents, focus)},
+            {"role": "user", "content": build_request(documents, focus, material)},
         ], user=user, json_mode=True, cost=cost)
     except core_ai.AIQuotaExceeded:
         raise NoteError("이번 주 AI 사용 한도가 모자라 노트를 만들지 못했습니다. 월요일 0시에 초기화된 뒤 다시 만들어주세요.")
@@ -159,7 +167,7 @@ def generate_note(user, documents, focus=None):
         raise NoteError("AI의 답을 읽을 수 없었습니다. 다시 시도해주세요.")
     note = normalize_note(data, fallback_title=note_title(documents).removesuffix(" 속성 노트") + " 5분 전 노트")
     if focus and focus.get("terms"):
-        note = _ensure_focus(note, focus["terms"], note_material(documents))
+        note = _ensure_focus(note, focus["terms"], material if material is not None else note_material(documents))
     points = sum(len(s["points"]) for s in note["sections"])
     if not note["sections"] or points < MIN_POINTS:
         core_ai.refund(user, "cram_note", cost)

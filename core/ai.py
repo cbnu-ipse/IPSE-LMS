@@ -44,6 +44,7 @@ MAX_OUTPUT_TOKENS = {
     "exam_analysis": 6000,
     "cram_note": 2500,
     "doctype_rules": 2500,
+    "scope": 800,
 }
 
 
