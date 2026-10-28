@@ -435,7 +435,7 @@ def build_mock_document(document_id, source_ids):
         subject = " · ".join(dict.fromkeys(d.course_name for d in sources if d.course_name))
         PersonalDocument.objects.filter(pk=document_id).update(
             title=exam.title[:200], summary_status=ProcessingStatus.DONE,
-            summary=f"{len(exam.questions)}문항" + (f" · {exam.style_label}" if exam.style_label else "") + (f" · {subject}" if subject else ""))
+            summary=f"{len(exam.questions)}문항" + (f" · {subject}" if subject else ""))      # 적용한 출제 스타일은 화면에 드러내지 않는다
     except Exception as exc:
         reason = str(exc) if isinstance(exc, ExamError) else "모의고사를 만드는 중 알 수 없는 문제가 생겼습니다. 다시 시도해주세요."
         if not isinstance(exc, ExamError):
