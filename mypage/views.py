@@ -29,7 +29,7 @@ from .ai import (
     pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
-from . import doctype, focus
+from . import answer_scan, doctype, focus
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .stream import SummaryPublisher
@@ -853,7 +853,8 @@ def mock_exam(request, pk):
     essays = essay_count(exam)
     return render(request, "mypage/mock_exam.html", {
         "exam": exam, "rows": rows, "score": score, "total": len(exam.questions),
-        "essays": essays, "grade_cost": essays * cost_for("grading"),
+        "essays": essays, "grade_cost": essays * cost_for("grading"), "scan_cost": cost_for("answer_scan"),
+        "scan_max_images": answer_scan.MAX_IMAGES,
     })
 
 
@@ -964,3 +965,48 @@ def review_decide(request, pk):
                  "자료 확인: 맞음" if approved else "자료 확인: 잘못됨", document=document, actor=request.user)
     messages.success(request, f"「{document.title}」을(를) {'맞음' if approved else '잘못됨'}으로 처리했습니다.")
     return redirect("mypage:review_list")
+
+
+ANSWER_SCAN_PER_HOUR = 20
+
+
+@login_required
+@require_POST
+def mock_exam_read_answers(request, pk):
+    """손으로 푼 답안 사진(최대 3장)을 읽어 문항별 답을 돌려준다. 시험을 제출하지 않고 화면이 입력란만 채운다. 사진은 저장하지 않는다."""
+    exam = get_object_or_404(MockExam, pk=pk, user=request.user)
+
+    def fail(message, status):
+        return JsonResponse({"ok": False, "error": message}, status=status)
+
+    if exam.submitted_at:
+        return fail("이미 제출한 시험이에요.", 400)
+    files = request.FILES.getlist("images")
+    if not files:
+        return fail("사진을 선택해주세요.", 400)
+    if len(files) > answer_scan.MAX_IMAGES:
+        return fail(f"사진은 한 번에 {answer_scan.MAX_IMAGES}장까지 올릴 수 있어요.", 400)
+    bucket = f"answer-scan:{request.user.pk}"
+    cache.add(bucket, 0, 3600)
+    if cache.incr(bucket) > ANSWER_SCAN_PER_HOUR:
+        return fail("답안 사진을 너무 자주 올렸어요. 잠시 후 다시 시도해주세요.", 429)
+    images = []
+    for f in files:
+        if f.size > answer_scan.MAX_IMAGE_BYTES:
+            return fail(f"사진은 한 장에 {answer_scan.MAX_IMAGE_BYTES // (1024 * 1024)}MB를 넘을 수 없어요.", 413)
+        raw = f.read()
+        try:
+            answer_scan.check_image(raw)
+        except answer_scan.ScanError as exc:
+            return fail(str(exc), 400)
+        images.append((raw, f.name or "answer.jpg"))
+    try:
+        require_quota(request.user, cost_for("answer_scan") * len(images))
+        result = answer_scan.scan(request.user, exam, images)
+    except AIQuotaExceeded as exc:
+        return fail(str(exc), 429)
+    except Exception:
+        logger.exception("답안 사진 읽기 실패: exam=%s", exam.pk)
+        return fail("사진을 읽지 못했어요. 잠시 후 다시 시도해주세요.", 502)
+    return JsonResponse({"ok": True, "answers": {str(i): v for i, v in result["answers"].items()}, "recognized": len(result["answers"]),
+                         "unreadable": [i + 1 for i in result["unreadable"]]})

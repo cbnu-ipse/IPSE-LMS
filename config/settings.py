@@ -304,6 +304,7 @@ _AI_TASK_DEFAULTS = {
     "cram_note": ("gemini", "gemini-3.5-flash-lite"),       # 시험 5분 전 속성 노트 내용
     "doctype_rules": ("gemini", "gemini-3.5-flash-lite"),   # 자료 구분(족보/수업 자료) 판단 규칙값 정리 (mypage/doctype.py)
     "scope": ("gemini", "gemini-3.5-flash-lite"),            # 추가 요청이 정한 범위에 맞는 소제목 고르기 (mypage/scope.py)
+    "answer_scan": ("gemini", "gemini-3.5-flash-lite"),      # 손으로 푼 답안 사진 읽기 (mypage/answer_scan.py) — 손글씨가 잘 안 읽히면 AI_MODEL_ANSWER_SCAN으로 상위 모델 지정
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 
@@ -324,7 +325,8 @@ AI_CREDIT_COSTS = {
     "grading": config("AI_COST_GRADING", default=3, cast=int),
     "ocr": config("AI_COST_OCR_PER_MB", default=1, cast=int),      # 이미지 글자 읽기: 파일 크기 1MB(올림)당
     "mock_exam": config("AI_COST_MOCK_EXAM", default=25, cast=int),  # 모의 출제 1회 (고른 수업 자료 요약 + 문항 10개)
-    "cram_note": config("AI_COST_CRAM_NOTE", default=3, cast=int),  # 시험 5분 전 속성 노트 1장(고른 자료 수와 무관)
+    "cram_note": config("AI_COST_CRAM_NOTE", default=3, cast=int),
+    "answer_scan": config("AI_COST_ANSWER_SCAN", default=5, cast=int),   # 손으로 푼 답안 사진 한 장을 읽는 예상 사용량  # 시험 5분 전 속성 노트 1장(고른 자료 수와 무관)
 }
 if _TESTING:   # 테스트의 일반 사용자는 크레딧이 0이다 — 크레딧을 보는 테스트가 override_settings로 비용을 직접 정한다
     AI_CREDIT_COSTS = {task: 0 for task in AI_CREDIT_COSTS}
