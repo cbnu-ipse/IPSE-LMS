@@ -11,6 +11,6 @@ class ChatMessageInline(admin.TabularInline):
 
 @admin.register(ChatSession)
 class ChatSessionAdmin(admin.ModelAdmin):
-    list_display = ["user", "updated_at"]
+    list_display = ["user", "title", "updated_at"]
     search_fields = ["user__username"]
     inlines = [ChatMessageInline]
