@@ -170,23 +170,12 @@ class ProfileAccountCardTestCase(TestCase):
         self.assertContains(self.client.get("/accounts/profile/"), "대기 1건 보기")
 
 
-class ProfileAiUsageTestCase(TestCase):
-    def test_profile_shows_weekly_ai_usage_instead_of_credits(self):
-        from django.test import override_settings
-
-        from core.testing import use_up
-
+class ProfileTilesTestCase(TestCase):
+    def test_profile_has_three_stat_tiles_and_no_ai_usage_or_credits(self):
         u = User.objects.create_user(username="pu", password="pw")
         self.client.force_login(u)
-        with override_settings(AI_WEEKLY_LIMIT_POINTS=100):
-            use_up(u, 42)
-            res = self.client.get("/accounts/profile/")
-        self.assertContains(res, "AI 사용")
-        self.assertContains(res, "42%")
-        self.assertContains(res, "(월요일)에 초기화")                      # 초기화 시각은 말풍선(title)으로만 알려 타일을 단정하게 둔다
+        res = self.client.get("/accounts/profile/")
+        for label in ("등급", "낙엽", "연속"):
+            self.assertContains(res, label)
         self.assertNotContains(res, "AI 크레딧")
-
-    def test_lecturers_see_no_limit(self):
-        lecturer = User.objects.create_user(username="pl", password="pw", is_lecturer=True)
-        self.client.force_login(lecturer)
-        self.assertContains(self.client.get("/accounts/profile/"), "fa-infinity")
+        self.assertNotContains(res, "AI 사용")

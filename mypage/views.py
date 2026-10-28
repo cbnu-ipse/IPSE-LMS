@@ -476,7 +476,6 @@ def document_preview(request, pk):
         "has_pending_question": any(q.status == ProcessingStatus.PROCESSING for q in current_questions),
         "can_resummarize": _can_resummarize(document),
         "resummary_cost": _summary_cost(document),
-        "usage": _usage_context(request.user),
         "initial_state": _document_state(document),
     })
 
@@ -677,10 +676,6 @@ def _summary_cost(document):
     """이 자료를 요약할 때의 예상 사용량 점수: 읽어 둔 본문이 있으면 조각 수 × 조각당 비용, 아직 없으면 최소(1조각) 비용."""
     chunks = summary_chunk_count(document.extracted_text) if document.extracted_text.strip() else 1
     return max(chunks, 1) * cost_for("summary")
-
-
-def _usage_context(user):
-    return usage.info(user)
 
 
 def _document_state(document):

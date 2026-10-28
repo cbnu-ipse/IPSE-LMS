@@ -33,7 +33,7 @@
                     </span>
                     
                     <!-- 낙엽 및 레벨 카드 추가 (시각적 개선) -->
-                    <div class="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div class="mt-6 grid grid-cols-3 gap-2">
                         <div class="bg-emerald-50/50 border border-emerald-100 rounded-2xl px-3 py-3 text-center shadow-sm">
                             <span class="text-[9px] text-emerald-600 font-bold uppercase tracking-wider block mb-0.5">등급</span>
                             <span class="text-base font-bold text-emerald-800">LV.{{ level.level|default:"1" }}</span>
@@ -44,17 +44,6 @@
                                 <i class="fa-solid fa-leaf text-amber-600 text-xs"></i>
                                 <span id="user-leaves-count">{{ user.leaves }}</span>
                             </span>
-                        </div>
-                        <div class="bg-sky-50/50 border border-sky-100 rounded-2xl px-3 py-3 text-center shadow-sm" title="이번 주 AI 사용량{% if ai_usage %} {{ ai_usage.label }}% · {{ ai_usage.reset_at|date:'n월 j일' }} 0시(월요일)에 초기화{% endif %}">
-                            <span class="text-[9px] text-sky-600 font-bold uppercase tracking-wider block mb-0.5">AI 사용</span>
-                            {% if ai_usage %}
-                            <span class="text-base font-bold {% if ai_usage.percent >= 100 %}text-rose-700{% elif ai_usage.percent >= 80 %}text-amber-700{% else %}text-sky-800{% endif %} flex items-center justify-center gap-0.5">
-                                <i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>
-                                <span id="user-ai-usage">{{ ai_usage.label }}%</span>
-                            </span>
-                            {% else %}
-                            <span class="text-base font-bold text-sky-800 flex items-center justify-center gap-0.5"><i class="fa-solid fa-infinity text-sky-500 text-xs"></i></span>
-                            {% endif %}
                         </div>
                         <div class="bg-orange-50/50 border border-orange-100 rounded-2xl px-3 py-3 text-center shadow-sm">
                             <span class="text-[9px] text-orange-600 font-bold uppercase tracking-wider block mb-0.5">연속</span>
