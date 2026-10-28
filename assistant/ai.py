@@ -102,13 +102,43 @@ def _build_system_prompt(summary, current_path, canary="", page_context=None):
     return prompt
 
 
-def answer(user, user_message, current_path="", page_context=None):
+MAX_SESSIONS = 30       # 사용자당 보관하는 대화 수 (넘으면 가장 오래 안 쓴 것부터 지운다)
+TITLE_CHARS = 30
+
+
+def latest_session(user):
+    return ChatSession.objects.filter(user=user).order_by("-updated_at", "-id").first()
+
+
+def new_session(user):
+    """새 대화를 만든다. 가장 최근 대화가 아직 비어 있으면 그것을 그대로 쓴다 (빈 대화가 쌓이지 않게)."""
+    last = latest_session(user)
+    if last and not last.messages.exists():
+        return last
+    session = ChatSession.objects.create(user=user)
+    stale = list(ChatSession.objects.filter(user=user).order_by("-updated_at", "-id").values_list("pk", flat=True)[MAX_SESSIONS:])
+    if stale:
+        ChatSession.objects.filter(pk__in=stale).delete()
+    return session
+
+
+def auto_title(text):
+    return " ".join(str(text or "").split())[:TITLE_CHARS]
+
+
+def answer(user, user_message, current_path="", page_context=None, session=None):
     """사용자 메시지를 저장하고 LLM 응답(필요 시 tool 호출 포함)을 생성해 저장 후 반환한다.
-    오늘 사용량을 넘었으면 core.ai.AIQuotaExceeded."""
+    session을 주면 그 대화에, 아니면 가장 최근 대화(없으면 새 대화)에 이어서 쓴다.
+    이번 주 사용 한도를 넘었으면 core.ai.AIQuotaExceeded."""
     user_message = user_message[:MAX_MESSAGE_CHARS]
     core_ai.check_quota(user, "chat")
-    session, _ = ChatSession.objects.get_or_create(user=user)
+    session = session or latest_session(user) or new_session(user)
     ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content=user_message)
+    if not session.title:
+        session.title = auto_title(user_message)
+        session.save(update_fields=["title", "updated_at"])
+    else:
+        session.save(update_fields=["updated_at"])             # 최근에 쓴 대화가 목록 맨 위로
 
     if detect_prompt_injection(user_message):
         ChatMessage.objects.create(session=session, role=ChatMessage.Role.ASSISTANT, content=REFUSAL_MESSAGE)

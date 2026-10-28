@@ -6,9 +6,20 @@
             <span id="assistant-fab-badge" class="hidden absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
         </button>
         <div id="assistant-chat-panel" class="hidden fixed inset-0 md:inset-auto md:bottom-6 md:right-6 md:w-[50vw] md:h-[50vh] bg-white md:rounded-2xl shadow-xl border-0 md:border border-slate-200 flex flex-col overflow-hidden z-[60]">
-            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-emerald-600 text-white">
-                <span class="font-bold text-sm">AI 어시스턴트</span>
-                <button id="assistant-chat-close" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            <div class="px-3 py-3 border-b border-slate-100 flex items-center gap-2 bg-emerald-600 text-white">
+                <button type="button" id="assistant-session-list-btn" class="shrink-0 w-8 h-8 rounded-lg hover:bg-white/15 text-white/90 hover:text-white transition" title="대화 목록" aria-label="대화 목록"><i class="fa-solid fa-bars"></i></button>
+                <span id="assistant-session-title" class="flex-1 min-w-0 font-bold text-sm truncate cursor-default" title="더블클릭하면 이름을 바꿀 수 있어요">AI 어시스턴트</span>
+                <button type="button" id="assistant-new-session-btn" class="shrink-0 inline-flex items-center gap-1 px-2.5 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-bold transition" title="새 대화"><i class="fa-solid fa-plus text-[10px]"></i>새 대화</button>
+                <button id="assistant-chat-close" class="shrink-0 w-8 h-8 text-white/80 hover:text-white" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <!-- 대화 목록: 패널 안에 덮어 씌운다 -->
+            <div id="assistant-session-panel" class="hidden absolute inset-0 z-10 bg-white flex flex-col">
+                <div class="px-3 py-3 border-b border-slate-100 flex items-center gap-2 bg-emerald-600 text-white">
+                    <button type="button" id="assistant-session-back" class="shrink-0 w-8 h-8 rounded-lg hover:bg-white/15 transition" aria-label="돌아가기"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="flex-1 font-bold text-sm">대화 목록</span>
+                    <button type="button" id="assistant-session-new" class="shrink-0 inline-flex items-center gap-1 px-2.5 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-bold transition"><i class="fa-solid fa-plus text-[10px]"></i>새 대화</button>
+                </div>
+                <ul id="assistant-session-items" class="flex-1 overflow-y-auto divide-y divide-slate-100 text-sm"></ul>
             </div>
             <div id="assistant-chat-messages" class="flex-grow overflow-y-auto px-4 py-3 space-y-3 text-sm"></div>
             <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
@@ -19,4 +30,4 @@
     </div>
     <link rel="stylesheet" href="{% static 'css/markdown-lite.css' %}?v={{ static_version }}">
     <script src="{% static 'js/markdown-lite.js' %}?v={{ static_version }}"></script>
-    <script src="{% static 'js/assistant-chat.js' %}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-csrf-token="{{ csrf_token }}"></script>
+    <script src="{% static 'js/assistant-chat.js' %}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-sessions-url="{% url 'assistant:sessions' %}" data-csrf-token="{{ csrf_token }}"></script>

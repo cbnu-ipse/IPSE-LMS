@@ -2,6 +2,7 @@
     const script = document.currentScript;
     const historyUrl = script.dataset.historyUrl;
     const messageUrl = script.dataset.messageUrl;
+    const sessionsUrl = script.dataset.sessionsUrl;     // /assistant/sessions/ (+ new/, <id>/rename/, <id>/delete/)
     const csrfToken = script.dataset.csrfToken;
 
     const fabBtn = document.getElementById('assistant-fab-btn');
@@ -11,11 +12,32 @@
     const messagesEl = document.getElementById('assistant-chat-messages');
     const form = document.getElementById('assistant-chat-form');
     const input = document.getElementById('assistant-chat-input');
+    const titleEl = document.getElementById('assistant-session-title');
+    const listBtn = document.getElementById('assistant-session-list-btn');
+    const newBtn = document.getElementById('assistant-new-session-btn');
+    const listPanel = document.getElementById('assistant-session-panel');
+    const listItems = document.getElementById('assistant-session-items');
 
     const LAST_SEEN_KEY = 'assistant_last_seen_id';
-    let historyPromise = null;
+    const SESSION_KEY = 'assistant_session_id';
+    const DEFAULT_TITLE = 'AI 어시스턴트';
+    let currentSessionId = readStoredSession();
+    let loaded = false;
     let typingBubble = null;
     let isWaiting = false;
+    let initialHistory = null;           // 첫 불러오기는 뱃지 확인과 화면 그리기가 함께 쓴다
+
+    function readStoredSession() {
+        try { const v = parseInt(localStorage.getItem(SESSION_KEY) || '', 10); return Number.isFinite(v) ? v : null; } catch (e) { return null; }
+    }
+    function storeSession(id) {
+        currentSessionId = id;
+        try { if (id) localStorage.setItem(SESSION_KEY, String(id)); else localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    }
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }, body: JSON.stringify(body || {}) });
+    }
+    function setTitle(title) { titleEl.textContent = title || DEFAULT_TITLE; }
 
     function appendMessage(role, content) {
         const bubble = document.createElement('div');
@@ -35,66 +57,134 @@
         messagesEl.scrollTop = messagesEl.scrollHeight;
         if (fabBadge) fabBadge.classList.remove('hidden');
     }
+    function hideTyping() { if (typingBubble) { typingBubble.remove(); typingBubble = null; } }
 
-    function hideTyping() {
-        if (typingBubble) {
-            typingBubble.remove();
-            typingBubble = null;
-        }
-    }
-
-    function getLastSeenId() {
-        return parseInt(localStorage.getItem(LAST_SEEN_KEY) || '0', 10);
-    }
-
+    function getLastSeenId() { try { return parseInt(localStorage.getItem(LAST_SEEN_KEY) || '0', 10); } catch (e) { return 0; } }
     function markSeen(id) {
-        localStorage.setItem(LAST_SEEN_KEY, String(id || 0));
+        try { localStorage.setItem(LAST_SEEN_KEY, String(id || 0)); } catch (e) {}
         if (fabBadge) fabBadge.classList.add('hidden');
     }
 
-    // 패널이 닫혀 있어도(다른 페이지로 이동했다 돌아와도) 답변이 도착했는지 확인할 수 있도록
-    // 대화 기록은 한 번만 fetch해서 캐시해두고 렌더링/뱃지 판단 양쪽에서 재사용한다.
-    function fetchHistory() {
-        if (!historyPromise) {
-            historyPromise = fetch(historyUrl).then((res) => res.json()).catch(() => ({ messages: [] }));
-        }
-        return historyPromise;
+    // ── 대화 불러오기 ─────────────────────────────────────────────
+    function fetchSession(id) {
+        const url = id ? historyUrl + '?session=' + encodeURIComponent(id) : historyUrl;
+        return fetch(url).then((res) => (res.ok ? res.json() : Promise.reject(res.status)));
+    }
+    function showSession(data) {
+        messagesEl.innerHTML = '';
+        (data.messages || []).forEach((m) => appendMessage(m.role, m.content));
+        const session = data.session;
+        storeSession(session ? session.id : null);
+        setTitle(session ? session.title : '');
+        const last = (data.messages || [])[data.messages.length - 1];
+        markSeen(last ? last.id : 0);
+        loaded = true;
+    }
+    // id가 없어졌거나(삭제됨) 내 것이 아니면 가장 최근 대화로 돌아간다
+    function loadSession(id) {
+        return fetchSession(id).catch(() => fetchSession(null)).then(showSession).catch(() => { loaded = true; });
     }
 
-    let historyRendered = false;
-    function renderHistory() {
-        if (historyRendered) return;
-        historyRendered = true;
-        fetchHistory().then((data) => {
-            (data.messages || []).forEach((m) => appendMessage(m.role, m.content));
-        });
-    }
-
+    // 패널이 닫혀 있어도(다른 페이지로 이동했다 돌아와도) 답변이 도착했는지 뱃지로 알린다.
     function checkUnread() {
-        fetchHistory().then((data) => {
+        initialHistory = fetchSession(currentSessionId).catch(() => fetchSession(null)).catch(() => ({ messages: [], session: null }));
+        initialHistory.then((data) => {
             const messages = data.messages || [];
             const last = messages[messages.length - 1];
-            if (last && last.role === 'assistant' && last.id > getLastSeenId()) {
-                if (fabBadge) fabBadge.classList.remove('hidden');
-            }
+            if (last && last.role === 'assistant' && last.id > getLastSeenId() && fabBadge) fabBadge.classList.remove('hidden');
         });
     }
-
     checkUnread();
 
     fabBtn.addEventListener('click', () => {
         panel.classList.toggle('hidden');
-        if (!panel.classList.contains('hidden')) {
-            renderHistory();
-            fetchHistory().then((data) => {
-                const messages = data.messages || [];
-                const last = messages[messages.length - 1];
-                markSeen(last ? last.id : 0);
-            });
-        }
+        if (panel.classList.contains('hidden') || loaded) return;
+        (initialHistory || fetchSession(currentSessionId)).then(showSession).catch(() => { loaded = true; });
     });
+    closeBtn.addEventListener('click', () => { panel.classList.add('hidden'); listPanel.classList.add('hidden'); });
 
-    closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
+    // ── 새 대화 / 목록 / 이름 바꾸기 / 삭제 ─────────────────────────
+    function startNewSession() {
+        if (isWaiting) return;
+        post(sessionsUrl + 'new/').then((res) => res.json()).then((data) => {
+            storeSession(data.session.id);
+            messagesEl.innerHTML = '';
+            setTitle(data.session.title === '새 대화' ? '새 대화' : data.session.title);
+            loaded = true;
+            listPanel.classList.add('hidden');
+            input.focus();
+        });
+    }
+    newBtn.addEventListener('click', startNewSession);
+    document.getElementById('assistant-session-new').addEventListener('click', startNewSession);
+
+    function relativeTime(iso) {
+        const diff = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+        if (diff < 60) return '방금';
+        if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+        if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+        if (diff < 86400 * 7) return Math.floor(diff / 86400) + '일 전';
+        const d = new Date(iso);
+        return (d.getMonth() + 1) + '/' + d.getDate();
+    }
+
+    function renderList(sessions) {
+        listItems.innerHTML = '';
+        if (!sessions.length) {
+            const empty = document.createElement('li');
+            empty.className = 'px-4 py-8 text-center text-slate-400 text-xs';
+            empty.textContent = '아직 대화가 없어요. 새 대화를 시작해 보세요.';
+            listItems.appendChild(empty);
+            return;
+        }
+        sessions.forEach((s) => {
+            const li = document.createElement('li');
+            li.className = 'flex items-center gap-2 px-4 py-3 hover:bg-slate-50 cursor-pointer' + (s.id === currentSessionId ? ' bg-emerald-50' : '');
+            const text = document.createElement('div');
+            text.className = 'flex-1 min-w-0';
+            const name = document.createElement('p');
+            name.className = 'font-semibold text-slate-700 truncate';
+            name.textContent = s.title;
+            const time = document.createElement('p');
+            time.className = 'text-[11px] text-slate-400';
+            time.textContent = relativeTime(s.updated_at);
+            text.append(name, time);
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'shrink-0 w-8 h-8 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition';
+            del.title = '대화 삭제';
+            del.setAttribute('aria-label', '대화 삭제');
+            del.innerHTML = '<i class="fa-solid fa-trash-can text-xs"></i>';
+            del.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!window.confirm('이 대화를 삭제할까요? 되돌릴 수 없어요.')) return;
+                post(sessionsUrl + s.id + '/delete/').then(() => {
+                    const wasCurrent = s.id === currentSessionId;
+                    return (wasCurrent ? loadSession(null) : Promise.resolve()).then(openList);
+                });
+            });
+            li.append(text, del);
+            li.addEventListener('click', () => {
+                if (isWaiting) return;
+                loadSession(s.id).then(() => listPanel.classList.add('hidden'));
+            });
+            listItems.appendChild(li);
+        });
+    }
+    function openList() {
+        listPanel.classList.remove('hidden');
+        return fetch(sessionsUrl).then((res) => res.json()).then((data) => renderList(data.sessions || [])).catch(() => renderList([]));
+    }
+    listBtn.addEventListener('click', openList);
+    document.getElementById('assistant-session-back').addEventListener('click', () => listPanel.classList.add('hidden'));
+
+    titleEl.addEventListener('dblclick', () => {
+        if (!currentSessionId) return;
+        const next = window.prompt('대화 이름', titleEl.textContent === DEFAULT_TITLE ? '' : titleEl.textContent);
+        if (next === null || !next.trim()) return;
+        post(sessionsUrl + currentSessionId + '/rename/', { title: next.trim() })
+            .then((res) => res.json()).then((data) => { if (data.session) setTitle(data.session.title); });
+    });
 
     // 학습 화면처럼 '지금 보고 있는 내용'을 알려 줄 수 있는 화면은 window.assistantContext()를 정의한다.
     // 그러면 "이게 이해가 안 돼"처럼 화면 속 내용을 가리키는 질문에 그 내용을 바탕으로 더 쉽게 설명한다.
@@ -125,22 +215,17 @@
         isWaiting = true;
         input.disabled = true;
         showTyping();
+        const sentTo = currentSessionId;                 // 답을 기다리는 동안 다른 대화로 바꿔도 이 대화에 저장된다
 
-        fetch(messageUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            body: JSON.stringify({ message: message, current_path: window.location.pathname, page_context: getPageContext() }),
-        })
+        post(messageUrl, { message: message, session_id: sentTo, current_path: window.location.pathname, page_context: getPageContext() })
             .then((res) => res.json())
             .then((data) => {
-                appendMessage('assistant', data.reply || data.error || '오류가 발생했습니다.');
+                if (currentSessionId === sentTo || sentTo === null) {
+                    appendMessage('assistant', data.reply || data.error || '오류가 발생했습니다.');
+                    if (data.session) { storeSession(data.session.id); setTitle(data.session.title); }
+                }
             })
-            .catch(() => {
-                appendMessage('assistant', '오류가 발생했습니다.');
-            })
+            .catch(() => { appendMessage('assistant', '오류가 발생했습니다.'); })
             .finally(() => {
                 hideTyping();
                 isWaiting = false;

@@ -138,6 +138,7 @@ class AssistantViewTests(TestCase):
         user = _make_user("student3")
         self.client.force_login(user)
 
+        ChatSession.objects.create(user=user)                       # 대화가 하나는 있어야 응답에 대화 정보가 실린다
         with patch("assistant.views.answer", return_value="답변입니다.") as mocked_answer:
             response = self.client.post(
                 reverse("assistant:chat_message"),
@@ -147,4 +148,4 @@ class AssistantViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["reply"], "답변입니다.")
-        mocked_answer.assert_called_once_with(user, "안녕", current_path="/mypage/1/", page_context=None)
+        mocked_answer.assert_called_once_with(user, "안녕", current_path="/mypage/1/", page_context=None, session=None)
