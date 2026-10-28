@@ -86,9 +86,8 @@ def _course_after_upload_bg(document_id):
 
 
 def _classify_and_build(document_id):
-    """AI가 자료의 주제를 정하고, 그 주제에 강의를 만들 만큼 자료가 모였다고 판단하면 강의 초안을 만든다
-    (course/topics.py). 강의는 바로 바뀌지 않고 강의자가 judge > 강의 생성 탭에서 승인해야 게시된다.
-    여기서 실패해도 요약은 그대로 남는다."""
+    """AI가 자료의 주제를 정하고 개념을 붙인다 (course/topics.py). 강의 초안은 여기서 만들지 않고 하루 한 번 일괄(build_course_drafts)
+    또는 강의자가 judge > 강의 생성 탭에서 만든다. 여기서 실패해도 요약은 그대로 남는다."""
     try:
         from course.topics import after_summary
 

@@ -361,7 +361,7 @@ class PipelineTests(TestCase):
         with patch.object(topics, "classify_document", return_value=["운영체제"]), patch("course.studio.build_draft") as build, \
                 patch("mypage.ontology.tag_document", side_effect=RuntimeError("api down")):
             topics.after_summary(lecture.pk)
-        build.assert_called_once_with("운영체제")                                  # 태그가 실패해도 강의 초안은 진행
+        build.assert_not_called()                                                  # 태그가 실패해도 분류는 끝나고, 강의 초안은 업로드 때 만들지 않는다
 
 
 class StudioConceptViewTests(TestCase):

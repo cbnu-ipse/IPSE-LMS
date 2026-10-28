@@ -95,14 +95,14 @@ class CourseUsesExamStyleTests(TestCase):
             ExamStyle.objects.update(source_hash="h2")
             self.assertIsNone(studio.build_draft("데이터베이스"))        # 스타일이 바뀌어도 강의는 다시 만들지 않는다
 
-    def test_exam_upload_refreshes_style_and_rebuilds_related_courses(self):
+    def test_exam_upload_refreshes_style_without_rebuilding_courses(self):
         self.exam.summary = "요약"
         self.exam.save()
         with patch.object(topics, "classify_document", return_value=["데이터베이스"]), \
                 patch("mypage.exam.refresh_style") as refresh, patch("course.studio.build_draft") as build:
             topics.after_summary(self.exam.pk)
         refresh.assert_called_once_with(professor="김교수")
-        build.assert_called_once_with("데이터베이스")
+        build.assert_not_called()                              # 강의 초안은 업로드마다 만들지 않는다
 
 
 class ClassifyWithTypedInfoTests(TestCase):
