@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}오답노트 | IPSE LMS{% endblock %}
+
+{% block content %}
+<style>
+    .wn-body { font-size: .92rem; line-height: 1.8; color: #1e293b; overflow-wrap: anywhere; }
+    .wn-body .md-p { margin: 0 0 .7em; }
+    .wn-body .md-p:last-child, .wn-body .md-pre:last-child { margin-bottom: 0; }
+    .wn-body .md-pre { font-size: .8rem; }
+    .wn-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+<section class="max-w-3xl mx-auto px-4 py-10">
+    <div class="flex items-center justify-between gap-3 mb-2">
+        <h1 class="text-2xl font-bold text-slate-800"><i class="fa-solid fa-book-bookmark text-rose-500 mr-2"></i>오답노트</h1>
+        <a href="{% url 'mypage:document_list' %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료</a>
+    </div>
+    <p class="text-sm text-slate-500 mb-5">모의고사와 자료 퀴즈에서 틀린 문제가 자동으로 모여요. 채점 결과는 이미 저장돼 있어서 여기서는 AI를 다시 부르지 않아요.</p>
+
+    {% if subjects %}
+    <div class="flex flex-wrap gap-2 mb-5">
+        <a href="{% url 'mypage:wrong_notes' %}" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if not subject %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">전체 {{ total }}</a>
+        {% for s in subjects %}<a href="?subject={{ s|urlencode }}" class="text-xs font-bold px-3 py-1.5 rounded-full border {% if s == subject %}bg-slate-800 text-white border-slate-800{% else %}bg-white text-slate-600 border-slate-200 hover:bg-slate-50{% endif %}">{{ s }}</a>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="space-y-4">
+        {% for it in items %}
+        <div class="bg-white rounded-2xl border border-rose-100 p-5 shadow-sm">
+            <div class="flex flex-wrap items-center gap-2 mb-2.5 text-[11px]">
+                <span class="font-bold px-2 py-0.5 rounded-md {% if it.source == '모의고사' %}bg-sky-50 text-sky-700{% else %}bg-emerald-50 text-emerald-700{% endif %}">{{ it.source }}</span>
+                <span class="font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{% if it.type == 'ox' %}O/X{% elif it.type == 'mc' %}객관식{% elif it.type == 'essay' %}서술형{% else %}단답형{% endif %}</span>
+                <a href="{{ it.link }}" class="text-slate-400 hover:text-slate-600 truncate">{{ it.source_title }}</a>
+                <span class="ml-auto text-slate-300">{{ it.when|date:"Y-m-d" }}</span>
+            </div>
+            <div class="wn-body wn-plain" data-md>{{ it.question }}</div>
+            {% if it.options %}
+            <ul class="mt-2 text-sm text-slate-600 space-y-0.5">{% for option in it.options %}<li><b>{{ forloop.counter }}.</b> <span data-md-inline>{{ option }}</span></li>{% endfor %}</ul>
+            {% endif %}
+            <p class="mt-3 text-sm text-rose-600"><b>내 답</b> · <span class="wn-plain">{{ it.my_answer }}</span></p>
+            <details class="mt-2 group">
+                <summary class="cursor-pointer text-xs font-bold text-emerald-700 hover:text-emerald-800 select-none">정답·해설 보기</summary>
+                <div class="mt-2 text-sm text-slate-700"><b class="text-slate-500">{% if it.type == 'essay' %}모범답안{% else %}정답{% endif %}</b> · <span class="wn-body" data-md-inline>{{ it.correct }}</span></div>
+                {% if it.note %}<p class="mt-2 text-sm text-slate-600 wn-plain">{{ it.note }}</p>{% endif %}
+                {% if it.explanation %}<div class="mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2"><span class="wn-body" data-md-inline>{{ it.explanation }}</span></div>{% endif %}
+            </details>
+        </div>
+        {% empty %}
+        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl py-16 text-center text-sm text-slate-400">
+            {% if total %}이 과목에는 틀린 문제가 없어요.{% else %}아직 틀린 문제가 없어요. 모의고사를 풀거나 자료 퀴즈를 풀면 틀린 문제가 여기에 모여요.{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function draw() {
+        if (typeof window.renderMarkdown !== 'function') return;
+        document.querySelectorAll('[data-md]').forEach(function (el) {
+            try { el.innerHTML = window.renderMarkdown(el.textContent); el.classList.remove('wn-plain'); } catch (e) {}
+        });
+        document.querySelectorAll('[data-md-inline]').forEach(function (el) {
+            try { el.innerHTML = window.renderMarkdown(el.textContent).replace(/^<p class="md-p">([\s\S]*)<\/p>$/, '$1'); } catch (e) {}
+        });
+        if (typeof window.renderMath === 'function') { try { window.renderMath(document); } catch (e) {} }
+    }
+    if (typeof window.renderMarkdown === 'function') draw(); else window.addEventListener('load', draw);
+});
+</script>
+{% endblock %}

@@ -15,6 +15,7 @@ urlpatterns = [
     path("cram/create/", views.cram_note_create, name="cram_note_create"),
     path("mock/create/", views.mock_exam_create, name="mock_exam_create"),
     path("mock/<int:pk>/", views.mock_exam, name="mock_exam"),
+    path("wrong/", views.wrong_notes, name="wrong_notes"),
     path("<int:pk>/", views.document_preview, name="document_preview"),
     path("<int:pk>/status/", views.document_status, name="document_status"),
     path("<int:pk>/generate/", views.generate_question_view, name="generate_question"),

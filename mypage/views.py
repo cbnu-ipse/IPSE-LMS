@@ -270,8 +270,8 @@ def document_list(request, folder_id=None):
         form = PersonalDocumentUploadForm(user=request.user)
 
     PersonalDocument.objects.filter(      # 서버가 다시 켜지는 등으로 멈춘 노트는 실패로 돌려 목록이 계속 새로고침되지 않게 한다
-        user=request.user, document_type=PersonalDocument.DocumentType.NOTE, summary_status=ProcessingStatus.PROCESSING,
-        uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(
+        user=request.user, document_type__in=(PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK),
+        summary_status=ProcessingStatus.PROCESSING, uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(
         summary_status=ProcessingStatus.FAILED,
         summary="노트를 만드는 도중 서버가 다시 시작되는 등으로 작업이 중단됐습니다. 다시 만들어주세요. ")
     folders = PersonalFolder.objects.filter(user=request.user).annotate(
@@ -444,6 +444,11 @@ def document_preview(request, pk):
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
     if document.document_type == PersonalDocument.DocumentType.NOTE:
         return render(request, "mypage/note.html", {"document": document})
+    if document.document_type == PersonalDocument.DocumentType.MOCK:
+        exam = MockExam.objects.filter(document=document).first()
+        if exam and document.summary_status == ProcessingStatus.DONE:
+            return redirect(exam.get_absolute_url())          # 완성된 모의고사는 바로 시험 화면으로
+        return render(request, "mypage/note.html", {"document": document})   # 생성 중·실패 안내
 
     is_pdf = document.file.name.lower().endswith(".pdf")
     source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
@@ -615,8 +620,8 @@ def learning_overview(request):
 def _can_resummarize(document):
     """요약이 실패했거나(또는 비어 있거나) 오래 '생성 중'에 멈춰 있으면 다시 만들 수 있다.
     본문이 긴 자료는 요약이 있어도 다시 만들 수 있다 — 예전 요약은 앞 12,000자만 반영했을 수 있어서다."""
-    if document.document_type == PersonalDocument.DocumentType.NOTE:
-        return False        # 노트는 요약이 아니라 새로 만든다
+    if document.document_type in (PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK):
+        return False        # 노트·모의고사는 요약이 아니라 새로 만든다
     if document.summary_status == ProcessingStatus.FAILED:
         return True
     if document.summary_status == ProcessingStatus.PROCESSING:
@@ -752,45 +757,64 @@ def cram_note_create(request):
 
 # ── 모의 출제 ────────────────────────────────────────────────────────────────
 
+def _mock_exam_bg(document_id, source_ids):
+    from .exam import build_mock_document
+
+    try:
+        with background_slot():
+            build_mock_document(document_id, source_ids)
+    finally:
+        connection.close()
+
+
 @login_required
 @require_POST
 def mock_exam_create(request):
-    """고른 수업 자료들로 모의 출제를 만든다 (교수님 족보 스타일 적용)."""
+    """고른 수업 자료들로 모의고사를 만든다 (교수님 족보 스타일 적용). 개인 탭에 '생성 중' 모의고사가 바로 생기고,
+    출제는 백그라운드에서 한다 (속성 노트와 같은 방식)."""
     from .cram import MAX_SOURCES
-    from .exam import generate_mock_exam, usable_for_mock
+    from .exam import usable_for_mock
 
-    back = redirect("mypage:document_list")
+    back = redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
     try:
         ids = [int(v) for v in request.POST.getlist("ids")]
     except ValueError:
         ids = []
-    documents = [d for d in PersonalDocument.objects.filter(pk__in=ids, user=request.user, is_deleted=False).order_by("id")
-                 if usable_for_mock(d)]
-    if not documents:
+    sources = [d for d in PersonalDocument.objects.filter(pk__in=ids, user=request.user, is_deleted=False).order_by("id")
+               if usable_for_mock(d)]
+    if not sources:
         messages.error(request, "모의 출제에 쓸 수업 자료를 하나 이상 골라주세요. (요약이 끝난 수업 자료만 고를 수 있습니다.)")
         return back
-    if len(documents) > MAX_SOURCES:
+    if len(sources) > MAX_SOURCES:
         messages.error(request, f"한 번에 최대 {MAX_SOURCES}개 자료까지 고를 수 있습니다.")
+        return back
+    in_flight = PersonalDocument.objects.filter(
+        user=request.user, summary_status=ProcessingStatus.PROCESSING, uploaded_at__gte=timezone.now() - STALE_AFTER).count()
+    if in_flight >= settings.MAX_PROCESSING_PER_USER:
+        messages.error(request, f"처리 중인 자료가 {in_flight}개 있습니다. 몇 개가 끝난 뒤에 만들어주세요 "
+                                f"(동시에 최대 {settings.MAX_PROCESSING_PER_USER}개).")
         return back
     try:
         check_quota(request.user, "mock_exam")
-        exam = generate_mock_exam(request.user, documents)
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back
-    except ValueError as exc:
-        messages.error(request, str(exc))
-        return back
-    except Exception:
-        logger.exception("모의 출제 생성 실패")
-        messages.error(request, "모의 출제를 만들지 못했습니다. 잠시 후 다시 시도해주세요.")
-        return back
-    return redirect(exam.get_absolute_url())
+    folder = PersonalFolder.objects.filter(pk=request.POST.get("folder") or None, user=request.user).first()
+    courses = list(dict.fromkeys(d.course_name for d in sources if d.course_name))
+    professors = list(dict.fromkeys(d.professor for d in sources if d.professor))
+    title = f"{courses[0] if len(courses) == 1 else (sources[0].title if len(sources) == 1 else '여러 자료')} 모의고사"
+    document = PersonalDocument.objects.create(
+        user=request.user, folder=folder, title=title[:200], file="", document_type=PersonalDocument.DocumentType.MOCK,
+        summary_status=ProcessingStatus.PROCESSING, is_course_material=False,
+        course_name=courses[0] if len(courses) == 1 else "", professor=professors[0] if len(professors) == 1 else "")
+    threading.Thread(target=_mock_exam_bg, args=(document.pk, [d.pk for d in sources]), daemon=True).start()
+    messages.success(request, "모의고사를 만들고 있습니다. 잠시 후 개인 탭에 나타나고, 끝나면 눌러서 풀 수 있어요.")
+    return back
 
 
 @login_required
 def mock_exam(request, pk):
-    from .exam import essay_count, grade_mock_exam
+    from .exam import essay_count, exam_rows, grade_mock_exam
 
     exam = get_object_or_404(MockExam, pk=pk)
     if exam.user != request.user:
@@ -805,30 +829,22 @@ def mock_exam(request, pk):
         else:
             grade_mock_exam(exam, posted)
             return redirect(exam.get_absolute_url())
-    rows = []
-    for i, q in enumerate(exam.questions):
-        row = {"index": i, "q": q, "value": posted.get(str(i), "")}
-        if exam.submitted_at:
-            row.update(answer=exam.answers[i] if i < len(exam.answers) else None,
-                       correct=exam.results[i] if i < len(exam.results) else False)
-            if q["type"] == "ox":
-                row["correct_text"] = "O" if q["answer"] else "X"
-                row["answer_text"] = {True: "O", False: "X"}.get(row["answer"], "무응답")
-            elif q["type"] == "mc":
-                row["correct_text"] = f"{q['answer'] + 1}. {q['options'][q['answer']]}"
-                a = row["answer"]
-                row["answer_text"] = f"{a + 1}. {q['options'][a]}" if isinstance(a, int) and 0 <= a < len(q["options"]) else "무응답"
-            elif q["type"] == "essay":
-                row["correct_text"] = q["answer"]
-                row["answer_text"] = row["answer"] or "무응답"
-                row["note"] = exam.feedback[i] if i < len(exam.feedback) else ""
-            else:
-                row["correct_text"] = " / ".join(q["answers"])
-                row["answer_text"] = row["answer"] or "무응답"
-        rows.append(row)
+    rows = exam_rows(exam, posted)
     score = sum(exam.results) if exam.submitted_at else None
     essays = essay_count(exam)
     return render(request, "mypage/mock_exam.html", {
         "exam": exam, "rows": rows, "score": score, "total": len(exam.questions),
         "essays": essays,
     })
+
+
+@login_required
+def wrong_notes(request):
+    """오답노트: 내가 틀린 문제(모의고사·자료 퀴즈)를 모아 다시 본다. 이미 저장된 채점 결과를 읽을 뿐이라 AI를 부르지 않는다."""
+    from .exam import wrong_answers
+
+    subject = request.GET.get("subject", "").strip()
+    everything = wrong_answers(request.user)
+    subjects = sorted({it["subject"] for it in everything if it["subject"]})
+    items = [it for it in everything if not subject or it["subject"] == subject]
+    return render(request, "mypage/wrong_notes.html", {"items": items, "subjects": subjects, "subject": subject, "total": len(everything)})

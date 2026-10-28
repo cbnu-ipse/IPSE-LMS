@@ -46,6 +46,9 @@ MOCK_SYSTEM = (
     "- 출제 스타일이 주어지면 유형 비율·문제 문장·보기 구성·난이도를 그에 맞춥니다. 예시 족보의 문제는 베끼지 말고 방식만 따릅니다. "
     "스타일이 없으면 OX 2, 객관식 4, 단답 2, 서술형 2개 정도로 섞습니다.\n"
     "- 정답이 한쪽으로 쏠리지 않게 합니다 (OX는 O/X를 섞고, 객관식 정답 번호도 골고루).\n"
+    "- 문제 문장(q)은 마크다운으로 읽기 좋게 씁니다: 긴 지문은 문단(빈 줄)으로 나누고, 코드·의사코드·메시지 흐름은 ``` 블록에 줄마다 넣고, "
+    "수식은 $...$ 로 쓰되 \\frac 같은 LaTeX 명령 없이 $Q_i \\cap Q_j$ 정도로 간단히, 빈칸은 (1)_____ 처럼, (1)(2)(3) 소문항은 줄을 바꿔 나열합니다. "
+    "문제 전체를 **굵게** 감싸지 말고 핵심 용어에만 씁니다. 문제 하나는 1200자 안으로 끝냅니다.\n"
     "- 형식:\n"
     '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
     '  객관식: {"type": "mc", "q": "...", "options": ["...", "...", "...", "..."], "answer": 2, "explanation": "..."} (answer는 0부터)\n'
@@ -185,16 +188,41 @@ def refresh_for(professors=(), subjects=()):
             refresh_style(subject=subject)
 
 
-def _normalize_mock_question(q):
-    """ox/mc/short는 강의 문제와 같은 규칙, essay는 모범답안이 있어야 한다."""
-    from course import ai as course_ai
+def _block(value, limit):
+    """줄바꿈은 살리고(코드 블록·소문항이 한 줄로 뭉개지지 않게) 양끝 공백·세 줄 이상의 빈 줄만 정리한다."""
+    text = re.sub(r"[ \t]+\n", "\n", str(value or "").replace("\r\n", "\n")).strip()
+    return re.sub(r"\n{3,}", "\n\n", text)[:limit]
 
-    if isinstance(q, dict) and q.get("type") == "essay":
-        text, answer = str(q.get("q") or "").strip()[:500], str(q.get("answer") or "").strip()[:1500]
-        if not text or not answer:
+
+QUESTION_CHARS = 1500       # 문제 하나의 글자 수 상한 (예전 500자는 긴 시나리오 문제가 중간에서 잘렸다)
+
+
+def _normalize_mock_question(q):
+    """ox/mc/short/essay 문제를 정리·검증한다. 잘못된 문제는 None. (줄바꿈과 긴 문장을 살린다)"""
+    if not isinstance(q, dict):
+        return None
+    kind, text = q.get("type"), _block(q.get("q"), QUESTION_CHARS)
+    explanation = _block(q.get("explanation"), 600)
+    if not text:
+        return None
+    if kind == "essay":
+        answer = _block(q.get("answer"), 2000)
+        return {"type": "essay", "q": text, "answer": answer, "explanation": explanation} if answer else None
+    if kind == "ox":
+        answer = q.get("answer")
+        if isinstance(answer, str):
+            answer = answer.strip().upper() in ("O", "TRUE", "참", "T", "YES")
+        return {"type": "ox", "q": text, "answer": bool(answer), "explanation": explanation}
+    if kind == "mc":
+        options = [_block(o, 300) for o in (q.get("options") or []) if _block(o, 300)][:6]
+        answer = q.get("answer")
+        if len(options) < 2 or not isinstance(answer, int) or isinstance(answer, bool) or not 0 <= answer < len(options):
             return None
-        return {"type": "essay", "q": text, "answer": answer, "explanation": str(q.get("explanation") or "").strip()[:400]}
-    return course_ai.normalize_question(q)
+        return {"type": "mc", "q": text, "options": options, "answer": answer, "explanation": explanation}
+    if kind == "short":
+        answers = [_block(a, 150) for a in (q.get("answers") or []) if _block(a, 150)][:6]
+        return {"type": "short", "q": text, "answers": answers, "explanation": explanation} if answers else None
+    return None
 
 
 def essay_count(exam, raw_answers=None):
@@ -236,9 +264,9 @@ def _most_common(values):
     return counts.most_common(1)[0][0] if counts else ""
 
 
-def generate_mock_exam(user, documents):
+def generate_mock_exam(user, documents, document=None):
     """고른 수업 자료들로 모의 출제를 만든다 (쓸 만한 문제가 모자라면 ValueError). MockExam을 돌려준다.
-    출제 스타일은 고른 자료에 적힌 교수님(없으면 과목)의 족보에서 배운 것을 쓴다."""
+    출제 스타일은 고른 자료에 적힌 교수님(없으면 과목)의 족보에서 배운 것을 쓴다. document는 개인 탭의 모의고사 자료(있으면 시험과 이어 둔다)."""
     from course import ai as course_ai
 
     documents = [d for d in documents if usable_for_mock(d)]
@@ -285,7 +313,7 @@ def generate_mock_exam(user, documents):
     course_ai.shuffle_choices([{"questions": questions}])
     title = documents[0].title if len(documents) == 1 else (subject or "여러 자료")
     return MockExam.objects.create(
-        user=user, course_code=subject, title=str(data.get("title") or f"{title} 모의고사")[:200],
+        user=user, document=document, course_code=subject, title=str(data.get("title") or f"{title} 모의고사")[:200],
         style_label=style.label if style else "", questions=questions)
 
 
@@ -329,3 +357,97 @@ def grade_mock_exam(exam, raw_answers):
     exam.answers, exam.results, exam.feedback, exam.submitted_at = answers, results, feedback, timezone.now()
     exam.save(update_fields=["answers", "results", "feedback", "submitted_at"])
     return results
+
+
+# ── 개인 탭의 모의고사 자료(백그라운드 생성), 문제 화면용 행, 오답노트 ──────────────────────────
+
+class ExamError(Exception):
+    """사용자에게 그대로 보여 줄 수 있는 모의고사 생성 실패 이유 (모의고사 자료의 summary에 저장된다)."""
+
+
+def build_mock_document(document_id, source_ids):
+    """백그라운드에서 호출: '생성 중'인 모의고사 자료를 AI 출제로 채운다. 실패하면 FAILED로 두고 이유를 summary에 남긴다."""
+    from . import cram
+    from .models import ProcessingStatus
+
+    doc = PersonalDocument.objects.select_related("user").get(pk=document_id)
+    sources = [d for d in PersonalDocument.objects.filter(pk__in=source_ids, user=doc.user, is_deleted=False).order_by("id")
+               if usable_for_mock(d)]
+    try:
+        if not sources:
+            raise ExamError("고른 수업 자료를 읽을 수 없었습니다. 삭제됐거나 요약·본문이 비어 있는 자료입니다.")
+        try:
+            exam = generate_mock_exam(doc.user, sources, document=doc)
+        except core_ai.AIQuotaExceeded:
+            raise ExamError("이번 주 AI 사용 한도가 모자라 모의고사를 만들지 못했습니다. 월요일 0시에 초기화된 뒤 다시 만들어주세요.")
+        except ValueError as exc:                      # 쓸 만한 문제가 모자란 경우 등 (메시지가 사용자용)
+            raise ExamError(str(exc))
+        except Exception:
+            logger.exception("모의고사 %s AI 출제 실패", document_id)
+            raise ExamError("AI 서버가 응답하지 않았거나 답을 읽을 수 없어 모의고사를 만들지 못했습니다. 잠시 후 다시 시도해주세요.")
+        subject = " · ".join(dict.fromkeys(d.course_name for d in sources if d.course_name))
+        PersonalDocument.objects.filter(pk=document_id).update(
+            title=exam.title[:200], summary_status=ProcessingStatus.DONE,
+            summary=f"{len(exam.questions)}문항" + (f" · {exam.style_label}" if exam.style_label else "") + (f" · {subject}" if subject else ""))
+    except Exception as exc:
+        reason = str(exc) if isinstance(exc, ExamError) else "모의고사를 만드는 중 알 수 없는 문제가 생겼습니다. 다시 시도해주세요."
+        if not isinstance(exc, ExamError):
+            logger.exception("모의고사 %s 생성 실패", document_id)
+        PersonalDocument.objects.filter(pk=document_id).update(summary_status=ProcessingStatus.FAILED, summary=reason)
+
+
+def exam_rows(exam, posted=None):
+    """문제 화면이 그릴 행: 문항·(제출했다면) 내 답·정답·해설. posted는 아직 제출 전에 입력해 둔 값({인덱스: 문자열})."""
+    posted = posted or {}
+    rows = []
+    for i, q in enumerate(exam.questions):
+        row = {"index": i, "q": q, "value": posted.get(str(i), "")}
+        if exam.submitted_at:
+            row.update(answer=exam.answers[i] if i < len(exam.answers) else None,
+                       correct=exam.results[i] if i < len(exam.results) else False)
+            if q["type"] == "ox":
+                row["correct_text"] = "O" if q["answer"] else "X"
+                row["answer_text"] = {True: "O", False: "X"}.get(row["answer"], "무응답")
+            elif q["type"] == "mc":
+                row["correct_text"] = f"{q['answer'] + 1}. {q['options'][q['answer']]}"
+                a = row["answer"]
+                row["answer_text"] = f"{a + 1}. {q['options'][a]}" if isinstance(a, int) and 0 <= a < len(q["options"]) else "무응답"
+            elif q["type"] == "essay":
+                row["correct_text"] = q["answer"]
+                row["answer_text"] = row["answer"] or "무응답"
+                row["note"] = exam.feedback[i] if i < len(exam.feedback) else ""
+            else:
+                row["correct_text"] = " / ".join(q["answers"])
+                row["answer_text"] = row["answer"] or "무응답"
+        rows.append(row)
+    return rows
+
+
+def wrong_answers(user, subject=""):
+    """내가 틀린 문제 모음(오답노트): 채점이 끝난 모의고사의 오답 + 자료별 퀴즈의 오답, 최근 것부터.
+    이미 저장된 채점 결과를 읽을 뿐이라 AI를 부르지 않는다. subject를 주면 그 과목만."""
+    from .models import GeneratedQuestion
+
+    items = []
+    for exam in MockExam.objects.filter(user=user, submitted_at__isnull=False).order_by("-submitted_at"):
+        if subject and exam.course_code != subject:
+            continue
+        for row in exam_rows(exam):
+            if row["correct"]:
+                continue
+            items.append({"source": "모의고사", "source_title": exam.title, "subject": exam.course_code, "when": exam.submitted_at,
+                          "type": row["q"]["type"], "question": row["q"]["q"], "options": row["q"].get("options") or [],
+                          "my_answer": row["answer_text"], "correct": row["correct_text"],
+                          "explanation": row["q"].get("explanation") or "", "note": row.get("note", ""),
+                          "link": exam.get_absolute_url()})
+    quiz = (GeneratedQuestion.objects.filter(document__user=user, document__is_deleted=False, is_correct=False)
+            .select_related("document").order_by("-created_at"))
+    for q in quiz:
+        if subject and q.document.course_name != subject:
+            continue
+        items.append({"source": "자료 퀴즈", "source_title": q.document.title, "subject": q.document.course_name, "when": q.created_at,
+                      "type": q.question_type, "question": q.question_text, "options": q.options or [],
+                      "my_answer": q.display_user_answer, "correct": q.display_answer, "explanation": q.feedback, "note": "",
+                      "link": q.document.get_absolute_url() + "?panel=quiz"})
+    items.sort(key=lambda it: it["when"], reverse=True)
+    return items

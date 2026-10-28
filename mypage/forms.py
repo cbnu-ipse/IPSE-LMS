@@ -32,7 +32,7 @@ class PersonalDocumentUploadForm(forms.ModelForm):
     )
     # 자료 정보는 올릴 때 모두 입력한다 — 올린 뒤에는 고칠 수 없다 (분류·강의·출제 스타일이 이 정보로 정해지므로)
     document_type = forms.ChoiceField(
-        choices=[c for c in PersonalDocument.DocumentType.choices if c[0] != PersonalDocument.DocumentType.NOTE],   # 속성 노트는 올리지 않고 만든다
+        choices=[c for c in PersonalDocument.DocumentType.choices if c[0] not in (PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK)],   # 속성 노트는 올리지 않고 만든다
         initial=PersonalDocument.DocumentType.LECTURE, label="자료 구분",
         widget=forms.Select(attrs={"class": INPUT_CLASS}))
     course_name = forms.CharField(
