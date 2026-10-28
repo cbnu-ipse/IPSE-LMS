@@ -355,7 +355,7 @@ def upload_estimate(request):
         need = chunks * unit
     current = usage.info(request.user)                              # 한도가 없는 사용자(강의자 등)는 None
     info["used_label"] = current["label"] if current else None
-    info["enough"] = True if current is None or current["unlimited"] else current["remaining"] >= need      # 강의자는 한도가 없다
+    info["enough"] = True if current is None or current["unlimited"] else current["available"] >= need      # 강의자는 한도가 없다. 한도를 넘는 만큼은 크레딧으로 낼 수 있다
     return JsonResponse(info)
 
 

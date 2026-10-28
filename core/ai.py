@@ -3,8 +3,8 @@ AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 AI를 직�
 
 - 작업(task)마다 공급자(OpenAI·Gemini·Claude)와 모델을 따로 고른다 (settings.AI_TASK_PROVIDERS·AI_MODELS,
   환경변수 AI_PROVIDER_<작업>·AI_MODEL_<작업>). 지정한 공급자의 키가 없으면 OpenAI로 대신 부른다.
-- 사용은 크레딧으로 낸다 (settings.AI_CREDIT_COSTS, User.credits). 호출 전에 차감하고 호출이 실패하면 돌려준다.
-  강의자와 시스템 작업(user=None)만 크레딧 없이 쓴다.
+- 사용은 주간 한도 안에서 하고(core/usage.py), 한도를 넘은 만큼은 크레딧(User.credits)으로 낸다. 호출이 끝나 토큰이 기록되면 초과분을 차감한다.
+  강의자와 시스템 작업(user=None)은 한도도 크레딧도 쓰지 않는다. 이미 시작된 백그라운드 작업은 도중에 끊지 않는다.
 - 호출마다 토큰 사용량을 AIUsage에 남긴다.
 - 출력 길이 상한(max_completion_tokens)을 작업마다 둔다.
 
@@ -150,19 +150,23 @@ def cost_for(task):
 
 def _limit_message(info):
     reset = info["reset_at"]
-    return (f"이번 주 AI 사용 한도를 다 썼어요 (사용량 {info['label']}%). "
-            f"월요일 0시에 초기화돼요 (다음 초기화 {reset.month}월 {reset.day}일 0시).")
+    return (f"이번 주 AI 사용 한도를 다 썼고 남은 크레딧도 없어요 (사용량 {info['label']}%). "
+            f"월요일 0시에 한도가 초기화돼요 (다음 초기화 {reset.month}월 {reset.day}일 0시).")
 
 
 def require_quota(user, points=0):
-    """이번 주 한도 안에서 쓸 수 있어야 한다 (이미 다 썼거나, 시작하려는 작업의 예상 점수가 남은 한도를 넘으면 AIQuotaExceeded).
-    강의자·시스템 작업은 통과. 점수는 core/usage.py 참고."""
+    """쓸 수 있어야 한다: 이번 주 한도 + 크레딧 잔액이 남아 있어야 하고, 시작하려는 작업의 예상 점수(points)가 그 합을 넘지 않아야 한다
+    (아니면 AIQuotaExceeded). 이미 시작된 백그라운드 작업 안의 호출(points=0)은 도중에 바닥나도 끊지 않는다.
+    강의자·시스템 작업은 통과. 점수·크레딧은 core/usage.py 참고."""
     if _is_exempt(user):
         return
     from . import usage
+    from .concurrency import in_background_job
 
+    if not points and in_background_job():
+        return
     info = usage.info(user)
-    if info["remaining"] <= 0 or (points and points > info["remaining"]):
+    if info["available"] <= 0 or (points and points > info["available"]):
         raise AIQuotaExceeded(_limit_message(info))
 
 
@@ -178,17 +182,17 @@ def ocr_cost(size_bytes):
 
 
 def affordable_units(user, task):
-    """남은 한도로 이 작업을 몇 번(단위) 더 할 수 있는지. 제한이 없으면 None."""
+    """남은 한도와 크레딧으로 이 작업을 몇 번(단위) 더 할 수 있는지. 제한이 없으면 None."""
     cost = cost_for(task)
     if _is_exempt(user) or not cost:
         return None
     from . import usage
 
-    return int(usage.info(user)["remaining"] // cost)
+    return int(usage.info(user)["available"] // cost)
 
 
 def _charge(user, task, cost=None):
-    """호출 전에 한도를 확인한다 (크레딧은 더 이상 차감하지 않는다). 사용량은 호출이 끝난 뒤 토큰으로 기록된다. 항상 0을 돌려준다."""
+    """호출 전에 한도·크레딧이 남았는지 확인한다. 사용량은 호출이 끝난 뒤 토큰으로 기록되고, 그때 한도 초과분의 크레딧이 차감된다. 항상 0을 돌려준다."""
     if _is_exempt(user):
         return 0
     require_quota(user)
@@ -216,6 +220,14 @@ def _record(user, task, model, response, counts_as_request):
         )
     except Exception:  # 기록 실패가 사용자 요청을 깨뜨리지 않게
         logger.exception("AI usage record failed: task=%s", task)
+        return
+    if getattr(user, "pk", None) and not _is_exempt(user):
+        try:
+            from . import usage as usage_mod
+
+            usage_mod.settle_overage(user)      # 한도를 넘은 만큼 크레딧 차감 (잔액이 모자라도 이미 끝난 호출은 그대로 둔다)
+        except Exception:
+            logger.exception("AI credit settlement failed: task=%s", task)
 
 
 RETRY_DELAYS = (1.0, 3.0)    # 일시적 오류(요청 폭주 429·서버 오류 5xx·연결 끊김)는 이만큼 쉬었다가 최대 2번 다시 시도한다

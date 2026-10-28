@@ -118,7 +118,7 @@
                         <div id="document-summary-content" class="ms-sum-center flex-1 min-h-0 overflow-y-auto pr-1 text-sm text-slate-600 leading-relaxed space-y-2"></div>
                         <div id="document-summary-nav" class="shrink-0 flex gap-2 mt-4"></div>
                         {% if ai_usage %}
-                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">이번 주 AI 사용량 {{ ai_usage.label }}%{% if ai_usage.unlimited %} (제한 없음){% endif %} · 월요일 0시에 초기화</p>
+                        <p class="shrink-0 mt-3 text-center text-[11px] text-slate-400">이번 주 AI 사용량 {{ ai_usage.label }}%{% if ai_usage.unlimited %} (제한 없음){% endif %}{% if ai_usage.credits %} · 크레딧 {{ ai_usage.credits }}{% endif %} · 월요일 0시에 초기화</p>
                         {% endif %}
                         {% if can_resummarize %}
                         <form method="post" action="{% url 'mypage:document_resummarize' document.pk %}" class="shrink-0 mt-3 text-center" onsubmit="return confirm('자료 전체를 다시 요약합니다. 기존 요약은 새 요약으로 바뀝니다.');">

@@ -7,12 +7,19 @@
 상한은 설정(BACKGROUND_AI_CONCURRENCY, EXTRACT_CONCURRENCY)으로 바꾼다.
 """
 import contextlib
+import contextvars
 import threading
 
 from django.conf import settings
 
 _slots = {}
 _lock = threading.Lock()
+_in_job = contextvars.ContextVar("background_ai_job", default=False)
+
+
+def in_background_job():
+    """이미 시작된 백그라운드 AI 작업 안인가 (core.ai가 작업 도중 한도·크레딧이 바닥나도 끊지 않으려고 쓴다)."""
+    return _in_job.get()
 
 
 def _semaphore(name, setting, default):
@@ -26,7 +33,11 @@ def _semaphore(name, setting, default):
 def background_slot():
     sem = _semaphore("background", "BACKGROUND_AI_CONCURRENCY", 4)
     with sem:
-        yield
+        token = _in_job.set(True)       # 시작 전 확인(뷰)은 끝났으니 이 작업은 도중에 끊기지 않는다
+        try:
+            yield
+        finally:
+            _in_job.reset(token)
 
 
 @contextlib.contextmanager
