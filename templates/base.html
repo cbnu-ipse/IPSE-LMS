@@ -252,7 +252,7 @@
             </div>
 
             <div class="flex items-center gap-3 shrink-0 whitespace-nowrap">
-                <div class="hidden lg:flex h-full items-end gap-4 text-base font-medium text-slate-700">
+                <div class="hidden lg:flex h-full items-end gap-4 ml-3 text-base font-medium text-slate-700 whitespace-nowrap">
                     <a href="{% url 'introduce' %}"
                        class="h-full flex items-end pb-[18px] border-b-2 border-transparent hover:border-emerald-600 hover:text-emerald-700 transition">
                         소개
@@ -260,6 +260,7 @@
                     <span class="self-center text-slate-300 text-[22px] leading-none -translate-y-[1px]">|</span>
                 </div>
                 
+                {% if not user.is_authenticated %}
                 {% if site_section == 'judge' %}
                 <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
@@ -306,6 +307,7 @@
                     </a>
                 </div>
                 {% endif %}
+                {% endif %}
                 {% if user.is_authenticated %}
                 <div class="hidden md:flex items-center gap-2 shrink-0 whitespace-nowrap">
                     <!-- 알림 종 및 미니 드롭다운 (데스크톱) -->
@@ -328,42 +330,61 @@
                         </div>
                     </div>
 
-                    <a href="{% url 'profile' %}" class="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition duration-200">
-                        <span class="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-[10px] text-white font-medium shadow-sm">
-                            LV.{{ user.student.level|default:"1" }}
-                        </span>
-                        <span class="pr-2 text-sm font-medium text-slate-700 hover:text-emerald-600 transition hidden xl:inline whitespace-nowrap">
-                            {{ user.display_name }}님
-                        </span>
-                    </a>
-                    <!-- 낙엽 재화 표시 -->
-                    <div class="inline-flex items-center gap-1.5 bg-emerald-50/50 px-3 py-1.5 rounded-full border border-emerald-200 text-emerald-800 text-sm font-medium shadow-sm" title="낙엽 잔액">
-                        <i class="fa-solid fa-leaf text-emerald-600"></i>
-                        <span>{{ user.leaves }}</span>
-                    </div>
-                    {% if can_grant_currency %}
-                    <button type="button" onclick="openGrantModal()" class="shrink-0 w-9 h-9 inline-flex items-center justify-center bg-violet-50 rounded-full border border-violet-200 text-violet-700 text-sm shadow-sm hover:bg-violet-100 transition" title="재화 지급 (낙엽·크레딧)" aria-label="재화 지급">
-                        <i class="fa-solid fa-hand-holding-heart"></i>
-                    </button>
-                    {% endif %}
-                    {% if site_section == 'judge' %}
-                    {% if ai_usage %}
+                    {% if site_section == 'judge' and ai_usage %}
                     <!-- 이번 주 AI 사용량 (학습 모듈, 매주 월요일 0시 초기화) -->
-                    <span class="inline-flex items-center gap-1.5 bg-sky-50/60 px-3 py-1.5 rounded-full border text-sm font-medium shadow-sm {% if ai_usage.percent >= 100 %}border-rose-300 text-rose-700{% elif ai_usage.percent >= 80 %}border-amber-300 text-amber-700{% else %}border-sky-200 text-sky-800{% endif %}" title="이번 주 AI 사용량 {{ ai_usage.label }}% · 매주 월요일 0시에 초기화돼요">
-                        <i class="fa-solid fa-gauge-high text-sky-500"></i>
+                    <span class="inline-flex items-center gap-1.5 h-10 px-3 rounded-full border bg-white text-sm font-semibold {% if ai_usage.percent >= 100 %}border-rose-300 text-rose-700{% elif ai_usage.percent >= 80 %}border-amber-300 text-amber-700{% else %}border-slate-200 text-slate-700{% endif %}" title="이번 주 AI 사용량 {{ ai_usage.label }}% · 매주 월요일 0시에 초기화돼요">
+                        <i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>
                         <span>AI {{ ai_usage.label }}%</span>
                     </span>
                     {% endif %}
-                    {% endif %}
                     {% if treat_event_active or user.treats %}
-                    <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때) -->
-                    <a href="/game/trick-or-treat/" class="inline-flex items-center gap-1 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200 text-orange-700 text-sm font-bold shadow-sm transition" title="할로윈 사탕">
+                    <!-- 할로윈 사탕 (이벤트 기간 또는 남은 사탕이 있을 때만 밖에 보인다) -->
+                    <a href="/game/trick-or-treat/" class="inline-flex items-center gap-1 h-10 px-3 rounded-full border border-slate-200 bg-white text-sm font-bold text-orange-700 hover:bg-orange-50 transition" title="할로윈 사탕">
                         🍬 <span>{{ user.treats }}</span>
                     </a>
                     {% endif %}
-                    <button type="button" onclick="doLogout()" class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition" title="로그아웃" aria-label="로그아웃">
-                            <i class="fa-solid fa-right-from-bracket text-xs"></i>
+
+                    <!-- 사용자 메뉴: 프로필·재화·사이트 이동·로그아웃을 한곳에 모은다 -->
+                    <div class="relative" id="user-menu-container">
+                        <button type="button" id="user-menu-btn" aria-haspopup="menu" aria-expanded="false" class="flex items-center gap-2 h-10 pl-1 pr-3 rounded-full border border-slate-200 bg-white hover:bg-slate-50 transition" title="내 메뉴">
+                            <img src="{{ request.user.get_picture }}" alt="" class="w-8 h-8 rounded-full object-cover border border-slate-100">
+                            <span class="hidden xl:inline text-sm font-medium text-slate-700 truncate" style="max-width: 7rem;">{{ user.display_name }}</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
                         </button>
+                        <div id="user-menu" role="menu" class="hidden absolute right-0 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-50" style="top: calc(100% + 8px); width: 18rem;">
+                            <a href="{% url 'profile' %}" class="flex items-center gap-3 px-4 py-3.5 bg-slate-50/70 border-b border-slate-100 hover:bg-slate-100 transition">
+                                <img src="{{ request.user.get_picture }}" alt="" class="w-11 h-11 rounded-full object-cover border-2 border-white shadow">
+                                <span class="min-w-0">
+                                    <span class="block text-sm font-bold text-slate-800 truncate">{{ user.display_name }}님</span>
+                                    <span class="inline-block mt-0.5 text-[10px] font-bold text-white bg-emerald-600 rounded-md px-1.5 py-0.5">LV.{{ user.student.level|default:"1" }}</span>
+                                </span>
+                            </a>
+                            <div class="px-4 py-3 grid grid-cols-2 gap-2 text-sm border-b border-slate-100">
+                                <span class="flex items-center gap-1.5 text-slate-600" title="낙엽 잔액"><i class="fa-solid fa-leaf text-emerald-600 text-xs"></i>낙엽 <b class="ml-auto text-slate-800">{{ user.leaves }}</b></span>
+                                {% if treat_event_active or user.treats %}<span class="flex items-center gap-1.5 text-slate-600" title="할로윈 사탕">🍬 사탕 <b class="ml-auto text-slate-800">{{ user.treats }}</b></span>{% endif %}
+                                {% if ai_usage %}
+                                <span class="col-span-2 block" title="매주 월요일 0시에 초기화돼요">
+                                    <span class="flex items-center gap-1.5 text-slate-600"><i class="fa-solid fa-gauge-high text-sky-500 text-xs"></i>이번 주 AI 사용량 <b class="ml-auto {% if ai_usage.percent >= 100 %}text-rose-700{% elif ai_usage.percent >= 80 %}text-amber-700{% else %}text-slate-800{% endif %}">{{ ai_usage.label }}%</b></span>
+                                    <span class="block mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span class="block h-full rounded-full {% if ai_usage.percent >= 100 %}bg-rose-500{% elif ai_usage.percent >= 80 %}bg-amber-500{% else %}bg-sky-500{% endif %}" style="width: {{ ai_usage.percent }}%"></span></span>
+                                </span>
+                                {% endif %}
+                            </div>
+                            <div class="py-1.5 text-sm font-medium text-slate-700">
+                                <a href="{% url 'profile' %}" role="menuitem" class="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition"><i class="fa-solid fa-user w-4 text-center text-slate-400"></i>프로필</a>
+                                {% if can_grant_currency %}
+                                <button type="button" role="menuitem" onclick="openGrantModal()" class="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition text-left"><i class="fa-solid fa-hand-holding-heart w-4 text-center text-violet-500"></i>재화 지급</button>
+                                {% endif %}
+                            </div>
+                            <div class="py-1.5 border-t border-slate-100 text-sm font-medium text-slate-700">
+                                {% if site_section != 'game' %}<a href="{% url 'game_lobby' %}" role="menuitem" class="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition"><i class="fa-solid fa-gamepad w-4 text-center text-amber-500"></i>IPSE 놀이터</a>{% endif %}
+                                {% if site_section != 'community' %}<a href="{% url 'community_main' %}" role="menuitem" class="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition"><i class="fa-solid fa-leaf w-4 text-center text-green-500"></i>잎새 커뮤니티</a>{% endif %}
+                                {% if site_section != 'judge' %}<a href="{% url 'mypage:document_list' %}" role="menuitem" class="flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition"><i class="fa-solid fa-square-terminal w-4 text-center text-sky-500"></i>IPSE Judge (학습)</a>{% endif %}
+                            </div>
+                            <div class="py-1.5 border-t border-slate-100 text-sm font-medium">
+                                <button type="button" role="menuitem" onclick="doLogout()" class="w-full flex items-center gap-2.5 px-4 py-2 text-slate-600 hover:bg-red-50 hover:text-red-500 transition text-left"><i class="fa-solid fa-right-from-bracket w-4 text-center"></i>로그아웃</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 {% else %}
                 <a href="{% url 'login' %}"
@@ -1542,6 +1563,21 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
         });
       })();
     </script>
+<script>
+// 사용자 메뉴: 눌러서 열고, 바깥을 누르거나 Esc를 누르면 닫는다
+(function () {
+    const btn = document.getElementById('user-menu-btn'), menu = document.getElementById('user-menu');
+    if (!btn || !menu) return;
+    const close = () => { menu.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false'); };
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = menu.classList.toggle('hidden') === false;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+})();
+</script>
 </body>
 
 </html>
