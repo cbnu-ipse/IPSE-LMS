@@ -103,3 +103,18 @@
   #doc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   [data-ml=upload].ml-open { left: 50%; right: auto; transform: translateX(-50%); width: min(560px, 100%); border-radius: 22px 22px 0 0; }
 }
+
+/* ── 폰(≤639px): 데스크톱 기준으로 넉넉하게 잡힌 카드 여백과 큰 제목을 줄인다 ─────────────────── */
+@media (max-width: 639px) {
+  [class~="p-10"], [class~="p-8"] { padding: 18px !important; }
+  [class~="p-6"] { padding: 16px !important; }
+  [class~="px-8"], [class~="px-10"] { padding-left: 18px !important; padding-right: 18px !important; }
+  [class~="py-10"], [class~="py-12"], [class~="py-14"], [class~="py-16"], [class~="py-20"] { padding-top: 22px !important; padding-bottom: 22px !important; }
+  [class~="pt-16"], [class~="pt-20"] { padding-top: 24px !important; }
+  [class~="mb-12"], [class~="mb-14"], [class~="mb-16"] { margin-bottom: 24px !important; }
+  [class~="gap-10"], [class~="gap-12"], [class~="gap-14"] { gap: 20px !important; }
+  [class~="text-6xl"], [class~="text-5xl"] { font-size: 2.1rem !important; line-height: 1.15 !important; }
+  [class~="text-4xl"] { font-size: 1.75rem !important; line-height: 1.2 !important; }
+  [class~="text-3xl"] { font-size: 1.5rem !important; line-height: 1.25 !important; }
+  [class~="rounded-3xl"] { border-radius: 20px !important; }
+}
