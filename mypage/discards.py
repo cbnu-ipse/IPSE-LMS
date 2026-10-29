@@ -2,21 +2,16 @@
 모의고사에서 사용자가 버린 문제를 기록하고, 같은 사용자가 같은 과목의 모의고사를 다시 만들 때 '이런 문제는 내지 않는다'로 쓴다.
 
 - 버릴 때 이유(범위 밖·너무 어려움·너무 쉬움·문제가 이상함·그냥 버림)를 고를 수 있다. 시험에서는 문제가 빠지고(번호가 당겨진다) 여기에 스냅샷이 남는다.
-- 다음 출제 때 서버가 버린 기록을 보고 판단한다 (guidance):
-  · 최근에 버린 문제들을 '이런 문제는 내지 마세요'로 보여 주고(데이터 구역에 격리),
+- 다음 출제 때 서버가 버린 기록을 보고 판단한다 (guidance). **버린 문제의 글은 프롬프트에 넣지 않는다** (토큰을 아끼려고 서버가 센 결과만 짧게 보낸다):
   · 이유별로 같은 이유가 2번 이상 쌓이면 그에 맞는 주의(범위 밖 → 자료 밖 금지 강화, 너무 어려움 → 난이도·개념 수 낮춤 …)를,
   · 한 유형이 버린 문제의 절반 이상(3개 이상)이면 그 유형을 신중히 내라는 주의를 덧붙인다.
 - 새로 나온 문제가 버린 문제와 같은 문제(이미 만든 문제 중복 판정과 같은 기준)이면 서버가 그 문항을 걸러 낸다 (exclude_discarded).
 - 기록은 사용자·과목별이다 (다른 사용자의 출제에는 영향이 없다 — 한 사람의 취향이나 장난이 모두의 시험을 바꾸지 않게).
 """
-from core import ai as core_ai
-
 from .ai import is_duplicate_question
 from .models import DiscardedQuestion
 
-RECENT = 8
 LOOKBACK = 40
-STEM_CHARS = 90
 KEEP_PER_USER = 300
 
 REASON_ADVICE = {
@@ -26,10 +21,6 @@ REASON_ADVICE = {
     DiscardedQuestion.Reason.WEIRD: "문장이 모호하거나 보기가 부실하거나 정답이 둘 이상으로 읽힐 수 있는 문제를 피하세요. 문장을 명확하게 쓰세요.",
 }
 TYPE_NAMES = {"ox": "OX", "mc": "객관식", "short": "단답", "essay": "서술형"}
-
-
-def stem(question):
-    return " ".join(str(question.get("q") or "").split())[:STEM_CHARS]
 
 
 def record(user, exam, question, reason, professor=""):
@@ -49,7 +40,7 @@ def recent(user, subject):
 
 
 def guidance(user, subject):
-    """이번 출제 프롬프트에 붙일 '사용자가 버린 문제' 안내. 기록이 없으면 빈 문자열."""
+    """이번 출제 프롬프트에 붙일 짧은 주의 (서버가 버린 기록을 센 결과). 경향이 없으면 빈 문자열 — 버린 문제의 글은 보내지 않는다."""
     rows = recent(user, subject)
     if not rows:
         return ""
@@ -59,19 +50,16 @@ def guidance(user, subject):
         reasons[row.reason] = reasons.get(row.reason, 0) + 1
     for reason, advice in REASON_ADVICE.items():
         if reasons.get(reason, 0) >= 2:
-            lines.append(f"- {advice} (이 이유로 버린 문제 {reasons[reason]}개)")
+            lines.append(f"- {advice}")
     types = {}
     for row in rows:
         types[row.qtype] = types.get(row.qtype, 0) + 1
     for qtype, count in types.items():
         if count >= 3 and count * 2 >= len(rows) and qtype in TYPE_NAMES:
             lines.append(f"- {TYPE_NAMES[qtype]} 문제를 자주 버렸습니다. 이 유형은 더 신중하게, 잘 만든 문제만 내세요.")
-    examples = "\n".join(f"- [{TYPE_NAMES.get(r.qtype, r.qtype)} · {r.get_reason_display()}] {stem(r.question)}" for r in rows[:RECENT])
-    text = "사용자가 이 과목의 모의고사에서 버린 문제입니다. 같은 주제·형식·표현의 문제는 내지 마세요 (수업자료 범위와 다른 규칙은 그대로 지킵니다):\n"
-    text += core_ai.untrusted("버린문제", examples)
-    if lines:
-        text += "\n버린 문제에서 읽은 경향:\n" + "\n".join(lines)
-    return text
+    if not lines:
+        return ""
+    return "이 사용자가 이 과목의 모의고사에서 문제를 버린 경향입니다 (수업자료 범위와 다른 규칙은 그대로 지킵니다):\n" + "\n".join(lines)
 
 
 def exclude_discarded(pairs, user, subject):

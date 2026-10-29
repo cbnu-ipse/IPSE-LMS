@@ -176,3 +176,31 @@ class PageTransitionTests(TestCase):
         rules = json.loads(html[start:html.index("</script>", start)])
         patterns = rules["prefetch"][0]["where"]["href_matches"]
         self.assertEqual(patterns, ["/mypage/", "/community/"])                                         # 게시글 상세(조회수 증가)는 넣지 않는다
+
+
+class HeaderShortcutTests(TestCase):
+    """상단의 놀이터·Judge·잎새 바로가기 원형 버튼은 로그인한 사용자에게도 보인다 (지금 있는 곳은 뺀다)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="sc", password="pw")
+        self.client.force_login(self.user)
+
+    def test_judge_pages_link_to_the_playground_and_the_community(self):
+        html = self.client.get("/mypage/").content.decode()
+        self.assertIn('title="IPSE 놀이터 바로가기"', html)
+        self.assertIn('title="잎새 커뮤니티 바로가기"', html)
+        self.assertIn('aria-label="IPSE 놀이터"', html)                              # 모바일 상단
+        self.assertIn('aria-label="잎새 커뮤니티"', html)
+        self.assertNotIn('aria-label="IPSE Judge"', html)                             # 지금 있는 곳(Judge)은 뺀다
+
+    def test_community_pages_link_to_the_playground_and_judge(self):
+        html = self.client.get("/community/home/").content.decode()
+        self.assertIn('title="IPSE 놀이터 바로가기"', html)
+        self.assertIn('title="대회 및 채점 사이트 바로가기"', html)
+        self.assertIn('aria-label="IPSE 놀이터"', html)
+        self.assertIn('aria-label="IPSE Judge"', html)
+        self.assertNotIn('aria-label="잎새 커뮤니티"', html)
+
+    def test_logged_out_visitors_still_see_the_desktop_shortcuts(self):
+        self.client.logout()
+        self.assertIn('title="IPSE 놀이터 바로가기"', self.client.get("/introduce/").content.decode())
