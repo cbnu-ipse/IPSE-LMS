@@ -45,7 +45,7 @@ def chat_message_view(request):
 
     try:
         reply = answer(request.user, user_message, current_path=body.get("current_path", ""),
-                       page_context=body.get("page_context"), session=session)
+                       page_context=body.get("page_context"), session=session, screenshot=body.get("screenshot"))
     except AIQuotaExceeded as exc:
         return JsonResponse({"error": str(exc)}, status=429)
     except Exception:

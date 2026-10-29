@@ -9,6 +9,7 @@
             <div class="px-3 py-3 border-b border-slate-100 flex items-center gap-2 bg-emerald-600 text-white">
                 <button type="button" id="assistant-session-list-btn" class="shrink-0 w-8 h-8 rounded-lg hover:bg-white/15 text-white/90 hover:text-white transition" title="대화 목록" aria-label="대화 목록"><i class="fa-solid fa-bars"></i></button>
                 <span id="assistant-session-title" class="flex-1 min-w-0 font-bold text-sm truncate cursor-default" title="더블클릭하면 이름을 바꿀 수 있어요">AI 어시스턴트</span>
+                <button type="button" id="assistant-dock-btn" class="hidden md:inline-block shrink-0 w-8 h-8 rounded-lg hover:bg-white/15 text-white/90 hover:text-white transition" title="왼쪽/오른쪽으로 옮기기 (제목 줄을 끌어서 자유롭게 옮길 수도 있어요)" aria-label="채팅 위치 옮기기"><i class="fa-solid fa-left-right"></i></button>
                 <button type="button" id="assistant-new-session-btn" class="shrink-0 inline-flex items-center gap-1 px-2.5 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-bold transition" title="새 대화"><i class="fa-solid fa-plus text-[10px]"></i>새 대화</button>
                 <button id="assistant-chat-close" class="shrink-0 w-8 h-8 text-white/80 hover:text-white" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
             </div>
@@ -27,6 +28,10 @@
                 <span id="assistant-context-text" class="shrink-0 font-bold"></span>
             </div>
             <div id="assistant-chat-messages" class="flex-grow overflow-y-auto px-4 py-3 space-y-3 text-sm"></div>
+            <div class="px-3 pt-1.5 flex flex-wrap items-center gap-1.5 border-t border-slate-100 text-[11px]">
+                <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 cursor-pointer select-none" title="지금 보고 있는 화면의 글을 함께 보내 '이거 이해가 안 돼'처럼 물어도 알아들어요"><input type="checkbox" id="assistant-screen-text" checked class="accent-emerald-600">화면 내용 함께 보내기</label>
+                <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 cursor-pointer select-none" title="이번 질문에만 화면 스크린샷을 붙여요 (그림·표처럼 글로 안 읽히는 것이 있을 때). 사용량이 더 들어요"><input type="checkbox" id="assistant-screenshot" class="accent-emerald-600"><i class="fa-solid fa-camera"></i>스크린샷도 첨부</label>
+            </div>
             <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
                 <input id="assistant-chat-input" type="text" autocomplete="off" placeholder="무엇이든 물어보세요" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
                 <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">전송{% include 'includes/credit_cost.html' with cost=ai_cost.chat %}</button>
