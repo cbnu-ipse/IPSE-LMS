@@ -16,6 +16,7 @@ urlpatterns = [
     path("mock/create/", views.mock_exam_create, name="mock_exam_create"),
     path("mock/<int:pk>/", views.mock_exam, name="mock_exam"),
     path("mock/<int:pk>/discard/<int:index>/", views.mock_exam_discard, name="mock_discard"),
+    path("mock/<int:pk>/mark/<int:index>/", views.mock_exam_mark, name="mock_mark"),
     path("mock/<int:pk>/read-answers/", views.mock_exam_read_answers, name="mock_read_answers"),
     path("share/note/<int:pk>/", share_views.share_note, name="share_note"),
     path("share/mock/<int:pk>/", share_views.share_mock, name="share_mock"),

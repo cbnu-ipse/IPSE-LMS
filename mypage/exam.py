@@ -512,6 +512,32 @@ def grade_mock_exam(exam, raw_answers, unsure=()):
     return results
 
 
+SELF_MARK = "직접 {}로 바꿨어요."
+
+
+def set_result(exam, index, correct):
+    """제출한 모의고사의 한 문항 정오를 사용자가 직접 바꾼다 (AI·서버 채점이 틀렸을 때). 점수·오답노트가 함께 맞춰진다.
+    돌려주는 값: 바꾼 뒤의 맞은 문항 수. 제출 전이거나 번호가 없으면 ValueError."""
+    from . import wrongnotes
+
+    if not exam.submitted_at or not 0 <= index < len(exam.questions):
+        raise ValueError("채점이 끝난 문항만 바꿀 수 있어요.")
+    results = list(exam.results) + [False] * (len(exam.questions) - len(exam.results))
+    feedback = list(exam.feedback) + [""] * (len(exam.questions) - len(exam.feedback))
+    correct = bool(correct)
+    note = re.sub(r"\s*직접 (맞아요|틀렸어요)로 바꿨어요\.", "", feedback[index] or "").strip()
+    if correct != results[index]:
+        note = (note + " " + SELF_MARK.format("맞아요" if correct else "틀렸어요")).strip()
+    results[index], feedback[index] = correct, note
+    exam.results, exam.feedback = results, feedback
+    exam.save(update_fields=["results", "feedback"])
+    if correct:                                         # 맞은 것으로 바꾸면 이 시험에서 담긴 오답노트를 걷는다
+        WrongNote.objects.filter(user=exam.user, source=WrongNote.Source.MOCK, source_id=exam.pk, index=index).delete()
+    else:
+        wrongnotes.record(exam.user, WrongNote.Source.MOCK, exam.pk, index, exam.title, exam.course_code, exam.questions[index])
+    return sum(1 for r in results if r)
+
+
 # ── 개인 탭의 모의고사 자료(백그라운드 생성), 문제 화면용 행, 오답노트 ──────────────────────────
 
 class ExamError(Exception):

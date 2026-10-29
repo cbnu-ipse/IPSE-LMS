@@ -23,7 +23,7 @@
         <div class="min-w-0">
             <h1 class="text-2xl font-bold text-slate-800">{{ exam.title }}</h1>
             <p class="text-xs text-slate-400 mt-1 mb-6">
-                <span id="exam-count">{{ rows|length }}</span>문항{% if score is not None %} · <b class="text-slate-700">{{ score }} / {{ total }}점</b>{% endif %}
+                <span id="exam-count">{{ rows|length }}</span>문항{% if score is not None %} · <b id="exam-score" class="text-slate-700">{{ score }} / {{ total }}점</b>{% endif %}
             </p>
         </div>
         <div class="no-print shrink-0 flex gap-2">
@@ -56,14 +56,14 @@
         <p id="scan-status" role="status" aria-live="polite" class="hidden text-xs mt-2 font-medium"></p>
     </div>
     {% endif %}
-    <form method="post" class="space-y-4" id="exam-form" data-discard-url="{% url 'mypage:mock_discard' exam.pk 0 %}">
+    <form method="post" class="space-y-4" id="exam-form" data-discard-url="{% url 'mypage:mock_discard' exam.pk 0 %}" data-mark-url="{% url 'mypage:mock_mark' exam.pk 0 %}">
         {% csrf_token %}
         {% for row in rows %}
         <div data-index="{{ row.index }}" data-fp="{{ row.fp }}" data-type="{{ row.q.type }}" class="mq-card bg-white rounded-2xl border {% if score is not None %}{% if row.correct %}border-emerald-200{% else %}border-rose-200{% endif %}{% else %}border-slate-200{% endif %} p-5 shadow-sm">
             <div class="flex items-center gap-2 mb-2.5">
                 <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold">{{ forloop.counter }}</span>
                 <span class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{% if row.q.type == 'ox' %}O/X{% elif row.q.type == 'mc' %}객관식{% elif row.q.type == 'essay' %}서술형{% else %}단답형{% endif %}</span>
-                {% if score is not None %}<span class="ml-auto text-xs font-bold {% if row.correct %}text-emerald-600{% else %}text-rose-600{% endif %}">{% if row.correct %}정답{% else %}오답{% endif %}</span>{% endif %}
+                {% if score is not None %}<span class="verdict ml-auto text-xs font-bold {% if row.correct %}text-emerald-600{% else %}text-rose-600{% endif %}">{% if row.correct %}정답{% else %}오답{% endif %}</span>{% endif %}
             </div>
             <div class="mq-body mq-plain" data-md>{{ row.q.q }}</div>
             {% with fig=row.q|figure_src %}{% if fig %}<figure class="my-3"><img src="{{ fig }}" alt="{{ row.q.figure.alt }}" class="max-w-full mx-auto rounded-lg border border-slate-200 bg-white p-2" style="max-height:340px"></figure>{% endif %}{% endwith %}
@@ -82,9 +82,12 @@
                 </div>
                 {% elif row.q.type == 'essay' %}
                 <textarea name="a_{{ row.index }}" rows="6" placeholder="자유롭게 서술하세요 (비워 두면 오답 처리, 채점도 하지 않아요)" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">{{ row.value }}</textarea>
+                <div class="math-preview mq-body hidden mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100"></div>
                 {% else %}
                 <input type="text" name="a_{{ row.index }}" value="{{ row.value }}" autocomplete="off" placeholder="답을 입력하세요" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
+                <div class="math-preview mq-body hidden mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100"></div>
                 {% endif %}
+                {% if row.q.type == 'essay' or row.q.type == 'short' %}<p class="no-print text-[11px] text-slate-400 mt-1.5">수식은 <code>$x^2 + 1$</code>처럼 $로 감싸 쓰면 아래에 바로 수식으로 보여요.</p>{% endif %}
                 <label class="no-print inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-slate-400 hover:text-amber-600 cursor-pointer select-none"><input type="checkbox" name="u_{{ row.index }}" value="1" class="unsure-box"> 모르겠음 <span class="font-normal text-slate-300">(찍지 않고 넘어가면 오답노트에 담겨요)</span></label>
                 <details class="no-print discard-box mt-2 text-xs">
                     <summary class="cursor-pointer inline-flex items-center gap-1 font-bold text-slate-400 hover:text-rose-600 select-none"><i class="fa-regular fa-trash-can"></i>이 문제 버리기</summary>
@@ -98,12 +101,15 @@
                 {% if row.q.type == 'mc' %}
                 <ul class="text-sm text-slate-600 mb-3 space-y-0.5">{% for option in row.q.options %}<li><b>{{ forloop.counter }}.</b> <span data-md-inline>{{ option }}</span></li>{% endfor %}</ul>
                 {% endif %}
-                <p class="text-sm text-slate-600"><b class="text-slate-500">내 답</b> · <span class="mq-plain">{{ row.answer_text }}</span></p>
+                <div class="text-sm text-slate-600"><b class="text-slate-500">내 답</b>{% if row.q.type == 'short' or row.q.type == 'essay' %}<div class="mq-body mq-plain mt-0.5" data-md data-wrap>{{ row.answer_text }}</div>{% else %} · <span class="mq-plain">{{ row.answer_text }}</span>{% endif %}</div>
                 {% if row.note %}<p class="text-sm text-slate-700 mt-2 mq-plain">{{ row.note }}</p>{% endif %}
-                {% if not row.correct %}
-                <div class="mt-2 text-sm text-slate-700"><b class="text-slate-500">{% if row.q.type == 'essay' %}모범답안{% else %}정답{% endif %}</b> · <span class="mq-body" data-md-inline>{{ row.correct_text }}</span></div>
-                {% endif %}
+                <div class="correct-ans mt-2 text-sm text-slate-700{% if row.correct %} hidden{% endif %}"><b class="text-slate-500">{% if row.q.type == 'essay' %}모범답안{% else %}정답{% endif %}</b> · <span class="mq-body" data-md-inline>{{ row.correct_text }}</span></div>
                 {% if row.q.explanation %}<div class="mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2"><span class="mq-body" data-md-inline>{{ row.q.explanation }}</span></div>{% endif %}
+                <div class="mark-box no-print mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+                    <span class="text-slate-400">채점이 달라요?</span>
+                    <button type="button" class="mark-btn px-2.5 py-1 rounded-lg border font-bold {% if row.correct %}border-emerald-300 bg-emerald-50 text-emerald-700{% else %}border-slate-200 bg-white text-slate-500 hover:border-emerald-300 hover:text-emerald-700{% endif %}" data-correct="1" aria-pressed="{{ row.correct|yesno:'true,false' }}">맞아요</button>
+                    <button type="button" class="mark-btn px-2.5 py-1 rounded-lg border font-bold {% if not row.correct %}border-rose-300 bg-rose-50 text-rose-700{% else %}border-slate-200 bg-white text-slate-500 hover:border-rose-300 hover:text-rose-700{% endif %}" data-correct="0" aria-pressed="{{ row.correct|yesno:'false,true' }}">틀렸어요</button>
+                </div>
             {% endif %}
             </div>
         </div>
@@ -162,7 +168,7 @@ document.querySelectorAll('.unsure-box').forEach(function (box) {
                 radios.forEach(function (r) { r.checked = (r.value === value); });
             } else {
                 var field = card.querySelector('input[type=text], textarea');
-                if (field) field.value = value;
+                if (field) { field.value = value; field.dispatchEvent(new Event('input')); }
             }
             card.style.boxShadow = '0 0 0 3px #fbbf24';
             badge(card, '사진에서 인식 · 확인해주세요');
@@ -208,6 +214,53 @@ document.querySelectorAll('.unsure-box').forEach(function (box) {
     }
     camera.addEventListener('change', function () { send(camera.files); });
     library.addEventListener('change', function () { send(library.files); });
+})();
+
+// 채점이 달라요: 맞아요/틀렸어요를 직접 골라 점수·오답노트를 바꾼다 (AI 호출 없음)
+(function () {
+    var form = document.getElementById('exam-form');
+    if (!form || !form.dataset.markUrl) return;
+    var csrf = form.querySelector('input[name=csrfmiddlewaretoken]').value, busy = false;
+    var ON = {1: ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'], 0: ['border-rose-300', 'bg-rose-50', 'text-rose-700']};
+    var OFF = ['border-slate-200', 'bg-white', 'text-slate-500'];
+    form.addEventListener('click', async function (e) {
+        var btn = e.target.closest('.mark-btn');
+        if (!btn || busy) return;
+        var card = btn.closest('.mq-card'), want = btn.dataset.correct === '1';
+        if (btn.getAttribute('aria-pressed') === 'true') return;
+        busy = true;
+        var body = new FormData();
+        body.append('correct', want ? '1' : '0');
+        try {
+            var res = await fetch(form.dataset.markUrl.replace(/\/0\/$/, '/' + card.dataset.index + '/'),
+                                  { method: 'POST', body: body, credentials: 'same-origin', headers: { 'X-CSRFToken': csrf } });
+            var d = await res.json().catch(function () { return {}; });
+            if (!res.ok || !d.ok) { window.alert(d.error || '바꾸지 못했어요. 새로고침한 뒤 다시 시도해주세요.'); return; }
+            card.querySelectorAll('.mark-btn').forEach(function (b) {
+                var on = (b.dataset.correct === '1') === want;
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                b.classList.remove.apply(b.classList, ON[1].concat(ON[0], OFF));
+                b.classList.add.apply(b.classList, on ? ON[want ? 1 : 0] : OFF);
+            });
+            card.classList.toggle('border-emerald-200', want);
+            card.classList.toggle('border-rose-200', !want);
+            var verdict = card.querySelector('.verdict');
+            if (verdict) {
+                verdict.textContent = want ? '정답' : '오답';
+                verdict.classList.toggle('text-emerald-600', want);
+                verdict.classList.toggle('text-rose-600', !want);
+            }
+            var ans = card.querySelector('.correct-ans');
+            if (ans) ans.classList.toggle('hidden', want);
+            var score = document.getElementById('exam-score');
+            if (score) score.textContent = d.score + ' / ' + d.total + '점';
+            if (window.showToast) window.showToast(want ? '맞은 문제로 바꿨어요. 오답노트에서 뺐어요.' : '틀린 문제로 바꿨어요. 오답노트에 담았어요.', 'success');
+        } catch (err) {
+            window.alert('바꾸지 못했어요. 네트워크를 확인하고 다시 시도해주세요.');
+        } finally {
+            busy = false;
+        }
+    });
 })();
 
 // 문제 버리기: 시험에서 빼고 번호를 당긴다 (서버가 기록해 다음 출제에 반영)
