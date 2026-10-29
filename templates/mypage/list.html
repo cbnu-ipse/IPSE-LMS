@@ -3,7 +3,7 @@
 {% block title %}개인 자료 | IPSE LMS{% endblock %}
 
 {% block content %}
-<section class="max-w-7xl mx-auto px-4 py-10">
+<section class="max-w-7xl mx-auto px-4 py-10" data-ml="page">
     <h1 class="text-2xl font-bold text-slate-800 mb-6">내 학습 자료</h1>
 
     {% if messages %}
@@ -18,7 +18,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <!-- 좌측: 폴더 사이드바 -->
-        <aside class="lg:col-span-3 space-y-6">
+        <aside class="lg:col-span-3 space-y-6" data-ml="aside">
             <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                 <div class="flex items-center gap-3">
                     <div class="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
@@ -53,7 +53,7 @@
                     {% endfor %}
                 </ul>
 
-                <div class="border-t border-slate-100 pt-4">
+                <div data-ml="newfolder" class="border-t border-slate-100 pt-4">
                     <form method="post" action="{% url 'mypage:folder_create' %}" class="flex gap-2">
                         {% csrf_token %}
                         {{ folder_form.name }}
@@ -73,9 +73,15 @@
         </aside>
 
         <!-- 우측: 업로드 + 파일/폴더 그리드 -->
-        <main class="lg:col-span-9 space-y-6">
-            <div class="bg-white rounded-2xl border border-slate-100 p-6">
+        <main class="lg:col-span-9 space-y-6" data-ml="main">
+            <div class="ml-actions" data-ml="actions">
+                <button type="button" id="ml-upload-open" class="ml-btn ml-btn-primary"><i class="fa-solid fa-plus"></i>자료 올리기</button>
+                <button type="button" id="ml-folder-toggle" class="ml-btn"><i class="fa-solid fa-folder-plus"></i>폴더 만들기</button>
+            </div>
+            <div class="ml-backdrop" id="ml-backdrop"></div>
+            <div data-ml="upload" class="bg-white rounded-2xl border border-slate-100 p-6">
                 <h2 class="text-sm font-bold text-slate-700 mb-4">자료 업로드{% if current_folder %} · {{ current_folder.name }}{% endif %}</h2>
+                <button type="button" id="ml-upload-close" class="ml-close" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
                 <form method="post" enctype="multipart/form-data" class="space-y-3" id="upload-form">
                     {% csrf_token %}
                     <div class="flex flex-col sm:flex-row gap-3">
@@ -477,6 +483,31 @@ document.addEventListener('click', (e) => {
     input.value = next.trim();
     form.submit();
 });
+</script>
+<script>
+// 모바일: 자료 올리기는 하단 시트로 열고, 폴더 만들기는 눌렀을 때만 입력칸이 보인다 (static/css/mobile.css)
+(function () {
+    var sheet = document.querySelector('[data-ml=upload]'), backdrop = document.getElementById('ml-backdrop');
+    var openBtn = document.getElementById('ml-upload-open'), closeBtn = document.getElementById('ml-upload-close');
+    var folderBtn = document.getElementById('ml-folder-toggle'), folderBox = document.querySelector('[data-ml=newfolder]');
+    if (!sheet || !openBtn) return;
+    function setSheet(on) {
+        sheet.classList.toggle('ml-open', on); backdrop.classList.toggle('ml-open', on);
+        document.body.style.overflow = on ? 'hidden' : '';
+    }
+    openBtn.addEventListener('click', function () { setSheet(true); });
+    closeBtn.addEventListener('click', function () { setSheet(false); });
+    backdrop.addEventListener('click', function () { setSheet(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setSheet(false); });
+    window.addEventListener('resize', function () { if (window.innerWidth >= 1024) setSheet(false); });
+    if (folderBtn && folderBox) {
+        folderBtn.addEventListener('click', function () {
+            var on = !folderBox.classList.contains('ml-open');
+            folderBox.classList.toggle('ml-open', on);
+            if (on) { var input = folderBox.querySelector('input'); if (input) { input.scrollIntoView({ block: 'center' }); input.focus(); } }
+        });
+    }
+})();
 </script>
 {% endblock %}
 
