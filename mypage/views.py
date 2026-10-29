@@ -973,6 +973,23 @@ ANSWER_SCAN_PER_HOUR = 20
 
 @login_required
 @require_POST
+def mock_exam_mark(request, pk, index):
+    """채점한 모의고사의 한 문항을 사용자가 '맞아요/틀렸어요'로 직접 바꾼다 (AI 호출 없음)."""
+    from .exam import set_result
+
+    exam = get_object_or_404(MockExam, pk=pk, user=request.user)
+    value = request.POST.get("correct")
+    if value not in ("1", "0"):
+        return JsonResponse({"ok": False, "error": "맞아요/틀렸어요 중에서 골라주세요."}, status=400)
+    try:
+        score = set_result(exam, index, value == "1")
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "correct": value == "1", "score": score, "total": len(exam.questions)})
+
+
+@login_required
+@require_POST
 def mock_exam_read_answers(request, pk):
     """손으로 푼 답안 사진(최대 3장)을 읽어 문항별 답을 돌려준다. 시험을 제출하지 않고 화면이 입력란만 채운다. 사진은 저장하지 않는다."""
     exam = get_object_or_404(MockExam, pk=pk, user=request.user)
