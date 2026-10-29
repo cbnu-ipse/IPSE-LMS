@@ -2,20 +2,22 @@ import json
 import logging
 
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from core.ai import AIQuotaExceeded
 
-from .ai import MAX_SESSIONS, TITLE_CHARS, answer, auto_title, latest_session, new_session
+from .ai import MAX_SESSIONS, TITLE_CHARS, answer, auto_title, context_status, latest_session, new_session
 from .models import ChatSession
 
 logger = logging.getLogger(__name__)
 
 
-def _session_payload(session):
-    return {"id": session.pk, "title": session.title or "새 대화", "updated_at": session.updated_at.isoformat()}
+def _session_payload(session, used=None):
+    return {"id": session.pk, "title": session.title or "새 대화", "updated_at": session.updated_at.isoformat(),
+            "context": context_status(session, used)}
 
 
 def _owned_session(request, session_id):
@@ -76,8 +78,8 @@ def chat_history_view(request):
 @login_required
 @require_GET
 def session_list_view(request):
-    sessions = ChatSession.objects.filter(user=request.user).order_by("-updated_at", "-id")[:MAX_SESSIONS]
-    return JsonResponse({"sessions": [_session_payload(s) for s in sessions]})
+    sessions = ChatSession.objects.filter(user=request.user).annotate(used=Count("messages")).order_by("-updated_at", "-id")[:MAX_SESSIONS]
+    return JsonResponse({"sessions": [_session_payload(s, s.used) for s in sessions]})
 
 
 @login_required

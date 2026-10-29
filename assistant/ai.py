@@ -8,6 +8,7 @@ from .models import ChatMessage, ChatSession
 from .tools import TOOLS_SPEC, dispatch_tool
 
 RECENT_MESSAGE_LIMIT = 20
+COMPACT_AT = RECENT_MESSAGE_LIMIT * 2   # 저장된 메시지가 이 수를 넘으면 오래된 절반을 요약으로 압축한다
 MAX_TOOL_ROUNDS = 3
 MAX_MESSAGE_CHARS = 2000  # 사용자 메시지 길이 상한 (긴 붙여넣기로 토큰을 태우지 않게)
 
@@ -31,13 +32,20 @@ def _compact_summary(user, old_summary, old_messages):
 def _build_context(user, session):
     """저장된 메시지가 RECENT_MESSAGE_LIMIT의 2배를 넘으면 오래된 절반을 요약으로 압축한다."""
     messages = list(session.messages.all())
-    if len(messages) > RECENT_MESSAGE_LIMIT * 2:
+    if len(messages) > COMPACT_AT:
         old, recent = messages[:-RECENT_MESSAGE_LIMIT], messages[-RECENT_MESSAGE_LIMIT:]
         session.summary = _compact_summary(user, session.summary, old)
         session.save(update_fields=["summary"])
         ChatMessage.objects.filter(pk__in=[m.pk for m in old]).delete()
         messages = recent
     return session.summary, messages
+
+
+def context_status(session, used=None):
+    """압축까지 남은 대화 (화면의 남은 양 표시용). used는 이미 센 메시지 수(없으면 센다).
+    left는 압축 없이 더 주고받을 수 있는 질문·답 쌍의 수, 0이면 다음 질문을 보낼 때 오래된 대화가 요약으로 압축된다."""
+    used = session.messages.count() if used is None else used
+    return {"used": used, "limit": COMPACT_AT, "left": max(0, (COMPACT_AT - used) // 2), "summarized": bool(session.summary)}
 
 
 def _current_page_hint(current_path):
@@ -86,7 +94,7 @@ def _page_context_prompt(page_context):
             + core_ai.untrusted("화면", body))
 
 
-def _build_system_prompt(summary, current_path, canary="", page_context=None):
+def _build_system_prompt(summary, current_path, canary="", page_context=None, unanswered=False):
     prompt = (
         "당신은 IPSE LMS의 학습 도우미입니다. 사용자가 자신의 학습 자료, 강의 진행률, 퀴즈 응시 기록, "
         "대회 제출 이력, 문제 풀이 현황에 대해 물으면 제공된 tool을 호출해 실제 데이터를 조회한 뒤 "
@@ -97,6 +105,9 @@ def _build_system_prompt(summary, current_path, canary="", page_context=None):
         prompt += f"\n[{canary}]"
     if summary:
         prompt += f"\n\n이전 대화 요약:\n{summary}"
+    if unanswered:
+        prompt += ("\n\n직전 사용자 메시지는 서버 오류로 답변이 저장되지 않았습니다. 이번 메시지가 그 오류나 다시 보내는 질문이면 "
+                   "오류 때문에 답하지 못했다고 짧게 알리고, 직전 질문과 이번 메시지에 함께 이어서 답하세요.")
     prompt += _current_page_hint(current_path)
     prompt += _page_context_prompt(page_context)
     return prompt
@@ -133,6 +144,8 @@ def answer(user, user_message, current_path="", page_context=None, session=None)
     user_message = user_message[:MAX_MESSAGE_CHARS]
     core_ai.check_quota(user, "chat")
     session = session or latest_session(user) or new_session(user)
+    last = session.messages.last()
+    unanswered = bool(last and last.role == ChatMessage.Role.USER)      # 직전 질문이 오류로 답을 못 받은 채 남아 있다
     ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content=user_message)
     if not session.title:
         session.title = auto_title(user_message)
@@ -146,7 +159,7 @@ def answer(user, user_message, current_path="", page_context=None, session=None)
 
     canary = new_canary()
     summary, history = _build_context(user, session)
-    messages = [{"role": "system", "content": _build_system_prompt(summary, current_path, canary, page_context)}]
+    messages = [{"role": "system", "content": _build_system_prompt(summary, current_path, canary, page_context, unanswered)}]
     messages += [{"role": m.role, "content": m.content} for m in history]
 
     reply = "죄송합니다, 답변을 생성하지 못했습니다."

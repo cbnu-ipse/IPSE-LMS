@@ -21,6 +21,11 @@
                 </div>
                 <ul id="assistant-session-items" class="flex-1 overflow-y-auto divide-y divide-slate-100 text-sm"></ul>
             </div>
+            <div id="assistant-context" class="px-4 py-1.5 border-b border-slate-100 text-[11px] text-slate-400 flex items-center gap-2" title="대화가 길어지면 오래된 내용은 요약으로 압축돼요. 압축 뒤에도 맥락은 이어져요.">
+                <span class="shrink-0">압축까지</span>
+                <span class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span id="assistant-context-bar" class="block h-full rounded-full transition-all" style="width:0%;background:#34d399"></span></span>
+                <span id="assistant-context-text" class="shrink-0 font-bold"></span>
+            </div>
             <div id="assistant-chat-messages" class="flex-grow overflow-y-auto px-4 py-3 space-y-3 text-sm"></div>
             <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
                 <input id="assistant-chat-input" type="text" autocomplete="off" placeholder="무엇이든 물어보세요" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">

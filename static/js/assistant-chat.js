@@ -39,6 +39,20 @@
     }
     function setTitle(title) { titleEl.textContent = title || DEFAULT_TITLE; }
 
+    // 압축까지 남은 대화 (질문·답 한 쌍 = 1회). 다 차면 다음 질문 때 오래된 대화가 요약으로 압축된다
+    const ctxBar = document.getElementById('assistant-context-bar');
+    const ctxText = document.getElementById('assistant-context-text');
+    function contextLabel(c) {
+        if (!c) return '';
+        return c.left > 0 ? '약 ' + c.left + '회 남음' : '다음 질문에 압축돼요';
+    }
+    function setContext(c) {
+        const used = c ? Math.min(100, Math.round(c.used / c.limit * 100)) : 0;
+        ctxBar.style.width = used + '%';
+        ctxBar.style.background = used >= 90 ? '#fbbf24' : '#34d399';
+        ctxText.textContent = contextLabel(c);
+    }
+
     function appendMessage(role, content) {
         const bubble = document.createElement('div');
         bubble.className = role === 'user'
@@ -76,6 +90,7 @@
         const session = data.session;
         storeSession(session ? session.id : null);
         setTitle(session ? session.title : '');
+        setContext(session ? session.context : null);
         const last = (data.messages || [])[data.messages.length - 1];
         markSeen(last ? last.id : 0);
         loaded = true;
@@ -110,6 +125,7 @@
             storeSession(data.session.id);
             messagesEl.innerHTML = '';
             setTitle(data.session.title === '새 대화' ? '새 대화' : data.session.title);
+            setContext(data.session.context);
             loaded = true;
             listPanel.classList.add('hidden');
             input.focus();
@@ -147,7 +163,7 @@
             name.textContent = s.title;
             const time = document.createElement('p');
             time.className = 'text-[11px] text-slate-400';
-            time.textContent = relativeTime(s.updated_at);
+            time.textContent = relativeTime(s.updated_at) + ' · 압축까지 ' + (s.context.left > 0 ? '약 ' + s.context.left + '회' : '다음 질문');
             text.append(name, time);
             const del = document.createElement('button');
             del.type = 'button';
@@ -218,14 +234,14 @@
         const sentTo = currentSessionId;                 // 답을 기다리는 동안 다른 대화로 바꿔도 이 대화에 저장된다
 
         post(messageUrl, { message: message, session_id: sentTo, current_path: window.location.pathname, page_context: getPageContext() })
-            .then((res) => res.json())
+            .then((res) => res.json().catch(() => ({ error: '서버 응답이 끊겼어요 (오래 걸렸을 수 있어요). 같은 질문을 다시 보내면 이어서 답해요.' })))
             .then((data) => {
                 if (currentSessionId === sentTo || sentTo === null) {
                     appendMessage('assistant', data.reply || data.error || '오류가 발생했습니다.');
-                    if (data.session) { storeSession(data.session.id); setTitle(data.session.title); }
+                    if (data.session) { storeSession(data.session.id); setTitle(data.session.title); setContext(data.session.context); }
                 }
             })
-            .catch(() => { appendMessage('assistant', '오류가 발생했습니다.'); })
+            .catch(() => { appendMessage('assistant', '네트워크 오류로 답을 받지 못했어요. 같은 질문을 다시 보내면 이어서 답해요.'); })
             .finally(() => {
                 hideTyping();
                 isWaiting = false;
