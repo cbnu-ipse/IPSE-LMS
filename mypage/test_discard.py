@@ -119,20 +119,26 @@ class GuidanceTests(TestCase):
         self.assertEqual(discards.guidance(self.user, "선형대수"), "")
         self.assertEqual(discards.guidance(self.user, ""), "")
 
-    def test_recent_discards_are_listed_as_data_and_repeated_reasons_and_types_add_advice(self):
+    def test_guidance_is_only_short_advice_from_counts_and_never_contains_the_discarded_question_text(self):
         for i in range(3):
             self.drop(self.user, "선형대수", "essay", "too_hard", f"어려운 서술형 문제 {i}")
         self.drop(self.user, "선형대수", "ox", "weird", "이상한 OX")
         self.drop(self.user, "다른과목", "mc", "too_easy", "다른 과목 문제")
         self.drop(self.other, "선형대수", "mc", "out_of_scope", "다른 사용자의 문제")
         text = discards.guidance(self.user, "선형대수")
-        self.assertIn("<버린문제>", text)
-        self.assertIn("[서술형 · 너무 어려움] 어려운 서술형 문제 2", text)
-        self.assertNotIn("다른 과목 문제", text)                                    # 다른 과목은 섞이지 않는다
-        self.assertNotIn("다른 사용자의 문제", text)                                  # 다른 사용자의 기록도
         self.assertIn("난이도를 낮추세요", text)                                      # too_hard 3개
         self.assertIn("서술형 문제를 자주 버렸습니다", text)                           # essay 3/4
         self.assertNotIn("문장이 모호하거나", text)                                    # weird는 1개라 아직 경향이 아니다
+        self.assertNotIn("정의를 그대로 묻는 쉬운 문제를 줄이고", text)                  # 다른 과목의 too_easy는 섞이지 않는다
+        self.assertNotIn("수업자료에 없는 개념", text)                                   # 다른 사용자의 기록도
+        for leaked in ("어려운 서술형 문제", "이상한 OX", "다른 과목 문제", "다른 사용자의 문제", "<버린문제>"):
+            self.assertNotIn(leaked, text)                                           # 버린 문제의 글은 프롬프트에 가지 않는다 (토큰 절약)
+        self.assertLess(len(text), 400)
+
+    def test_a_few_scattered_discards_give_no_guidance_at_all(self):
+        self.drop(self.user, "선형대수", "ox", "weird", "이상한 OX")
+        self.drop(self.user, "선형대수", "mc", "too_easy", "쉬운 문제")
+        self.assertEqual(discards.guidance(self.user, "선형대수"), "")
 
     def test_a_question_like_a_discarded_one_is_filtered_from_new_results(self):
         self.drop(self.user, "선형대수", "ox", "weird", "행렬의 곱셈에서 교환법칙이 항상 성립한다는 명제는 참인가?")
@@ -157,47 +163,48 @@ class GenerationUsesDiscardsTests(TestCase):
     def ox(self, q, source="행렬의 곱셈은 교환법칙이 일반적으로 성립하지 않는다"):
         return {"type": "ox", "q": q, "answer": True, "explanation": "e", "source": source}
 
-    def test_the_prompt_carries_the_discard_guidance_and_new_duplicates_are_dropped(self):
-        DiscardedQuestion.objects.create(user=self.user, course_code="선형대수", qtype="ox", reason="out_of_scope",
-                                         question={"type": "ox", "q": "버렸던 문제: 행렬의 곱셈에서 교환법칙은 항상 성립한다."})
+    def test_the_prompt_carries_only_short_advice_and_new_duplicates_are_dropped(self):
+        for i in range(2):
+            DiscardedQuestion.objects.create(user=self.user, course_code="선형대수", qtype="ox", reason="out_of_scope",
+                                             question={"type": "ox", "q": "버렸던 문제: 행렬의 곱셈에서 교환법칙은 항상 성립한다."})
         questions = [self.ox(f"새 문제 {i} 대각합과 행렬식") for i in range(6)] + [self.ox("버렸던 문제: 행렬의 곱셈에서 교환법칙은 항상 성립한다.")]
         with patch("core.ai.complete_json", return_value={"title": "t", "questions": questions}) as ai:
             mock = exam.generate_mock_exam(self.user, [self.doc])
         prompt, system = ai.call_args.args[1][1]["content"], ai.call_args.args[1][0]["content"]
-        self.assertIn("사용자가 이 과목의 모의고사에서 버린 문제", prompt)
-        self.assertIn("버렸던 문제: 행렬의 곱셈", prompt)
-        self.assertIn("'사용자가 버린 문제'가 주어지면", system)
+        self.assertIn("문제를 버린 경향입니다", prompt)
+        self.assertIn("수업자료에 없는 개념·용어를 묻는 문제를 특히 조심하세요", prompt)
+        self.assertNotIn("버렸던 문제", prompt)                                         # 버린 문제의 글은 보내지 않는다
+        self.assertIn("'문제를 버린 경향'이 주어지면", system)
         self.assertEqual(len(mock.questions), 6)
-        self.assertNotIn("버렸던 문제", " ".join(q["q"] for q in mock.questions))             # 같은 문제는 서버가 걸러 낸다
+        self.assertNotIn("버렸던 문제", " ".join(q["q"] for q in mock.questions))             # 같은 문제는 서버가 걸러 낸다 (토큰 없이)
 
     def test_without_discards_the_prompt_has_no_such_block(self):
         with patch("core.ai.complete_json", return_value={"title": "t", "questions": [self.ox(f"문제 {i} 다른 말") for i in range(6)]}) as ai:
             exam.generate_mock_exam(self.user, [self.doc])
-        self.assertNotIn("버린 문제입니다", ai.call_args.args[1][1]["content"])
+        self.assertNotIn("버린 경향", ai.call_args.args[1][1]["content"])
 
 
 class StyleLengthTests(TestCase):
-    def test_long_style_guidelines_are_kept_up_to_the_setting_and_the_prompt_asks_for_detail(self):
+    def test_style_guidelines_are_capped_at_the_default_2000_chars_and_the_setting_can_change_it(self):
         from django.test import override_settings
 
         from .models import ExamStyle
 
         long = "\n".join(f"- 아주 자세한 지시 {i}: " + "상세 " * 40 for i in range(40))
-        self.assertGreater(len(long), 2000)
         user = User.objects.create_user(username="s", password="pw")
         PersonalDocument.objects.create(user=user, title="족보", file="a.txt", extracted_text="1. 문제입니다", document_type="exam", professor="김교수",
                                         course_name="선형대수", summary_status=ProcessingStatus.DONE)
         with patch("core.ai.complete_json", return_value={"mix": {"mc": 1}, "difficulty": "어렵다", "traits": [f"특징{i}" for i in range(12)], "guidelines": long}) as ai:
             style = exam.refresh_style("김교수", "선형대수")
-        self.assertEqual(len(style.guidelines), len(long.strip()))                              # 예전 2000자 제한에 잘리지 않는다
-        self.assertEqual(len(style.profile["traits"]), 12)
-        self.assertIn("길어도 좋으니", ai.call_args.args[1][0]["content"])
+        self.assertEqual(len(style.guidelines), 2000)
+        self.assertEqual(len(style.profile["traits"]), 6)
+        self.assertNotIn("길어도 좋으니", ai.call_args.args[1][0]["content"])
         with override_settings(AI_STYLE_MAX_CHARS=500):
             with patch("core.ai.complete_json", return_value={"mix": {}, "guidelines": long}):
                 ExamStyle.objects.all().delete()
-                self.assertEqual(len(exam.refresh_style("김교수", "선형대수").guidelines), 500)       # 설정으로 조절
+                self.assertEqual(len(exam.refresh_style("김교수", "선형대수").guidelines), 500)
 
-    def test_the_style_output_budget_is_larger(self):
+    def test_the_style_output_budget_is_back_to_the_small_default(self):
         from core.ai import MAX_OUTPUT_TOKENS
 
-        self.assertGreaterEqual(MAX_OUTPUT_TOKENS["exam_style"], 4000)
+        self.assertEqual(MAX_OUTPUT_TOKENS["exam_style"], 1800)

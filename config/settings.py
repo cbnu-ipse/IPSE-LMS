@@ -448,5 +448,5 @@ STORAGES = {
 # 이 신뢰도(0~100) 미만인 사용자의 족보는 출제 스타일·통계 학습에 쓰지 않는다 (accounts/trust.py). 강의자는 항상 100
 TRUST_MIN_TO_LEARN = config("TRUST_MIN_TO_LEARN", default=40, cast=int)
 
-# 족보에서 뽑는 출제 스타일 지시문(ExamStyle.guidelines)의 최대 글자 수. 길수록 문제 출제 프롬프트도 길어져 AI 사용량이 늘어난다 (mypage/exam.py)
-AI_STYLE_MAX_CHARS = config("AI_STYLE_MAX_CHARS", default=8000, cast=int)
+# 족보에서 뽑는 출제 스타일 지시문(ExamStyle.guidelines)의 최대 글자 수. 길수록 문제 출제 프롬프트마다 토큰이 늘어난다 (mypage/exam.py)
+AI_STYLE_MAX_CHARS = config("AI_STYLE_MAX_CHARS", default=2000, cast=int)

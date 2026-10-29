@@ -255,7 +255,6 @@
                     <span class="self-center text-slate-300 text-[22px] leading-none -translate-y-[1px]">|</span>
                 </div>
                 
-                {% if not user.is_authenticated %}
                 {% if site_section == 'judge' %}
                 <!-- 🎮 IPSE 놀이터 게임 사이트 원형 버튼 (데스크톱) -->
                 <div class="hidden md:flex items-center mr-1" title="IPSE 놀이터 바로가기">
@@ -301,7 +300,6 @@
                         <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
                     </a>
                 </div>
-                {% endif %}
                 {% endif %}
                 {% if user.is_authenticated %}
                 <div class="hidden md:flex items-center gap-2 shrink-0 whitespace-nowrap">
@@ -374,14 +372,30 @@
                          class="hidden md:inline bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition">로그인</a>
                 {% endif %}
 
-                {% if user.is_authenticated and site_section == 'community' %}
-                <!-- 모바일 게임/저지 바로가기 버튼 (메인 도메인 전용) -->
-                <a href="{% url 'game_lobby' %}" class="md:hidden w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition duration-200 shadow-sm mr-1" title="게임 놀이터" aria-label="게임 놀이터">
+                {% if user.is_authenticated %}
+                <!-- 모바일 상단 바로가기 원형 버튼: 지금 있는 곳을 뺀 나머지 (놀이터 / Judge / 잎새) -->
+                {% if site_section == 'judge' %}
+                <a href="{% url 'game_lobby' %}" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center border bg-amber-50 border-amber-200 text-amber-600 hover:opacity-80 transition duration-200 shadow-sm mr-1" title="IPSE 놀이터" aria-label="IPSE 놀이터">
                     <i class="fa-solid fa-gamepad text-sm"></i>
                 </a>
-                <a href="{% url 'contest:list' %}" class="md:hidden w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition duration-200 shadow-sm mr-1" title="저지" aria-label="저지">
+                <a href="{% url 'community_main' %}" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center border bg-green-50 border-green-200 text-green-600 hover:opacity-80 transition duration-200 shadow-sm mr-1" title="잎새 커뮤니티" aria-label="잎새 커뮤니티">
+                    <i class="fa-solid fa-leaf text-sm"></i>
+                </a>
+                {% elif site_section == 'game' %}
+                <a href="{% url 'community_main' %}" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center border bg-green-50 border-green-200 text-green-600 hover:opacity-80 transition duration-200 shadow-sm mr-1" title="잎새 커뮤니티" aria-label="잎새 커뮤니티">
+                    <i class="fa-solid fa-leaf text-sm"></i>
+                </a>
+                <a href="{% url 'contest:list' %}" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center border bg-sky-50 border-sky-200 text-sky-600 hover:opacity-80 transition duration-200 shadow-sm mr-1" title="IPSE Judge" aria-label="IPSE Judge">
                     <i class="fa-solid fa-code text-sm"></i>
                 </a>
+                {% else %}
+                <a href="{% url 'game_lobby' %}" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center border bg-amber-50 border-amber-200 text-amber-600 hover:opacity-80 transition duration-200 shadow-sm mr-1" title="IPSE 놀이터" aria-label="IPSE 놀이터">
+                    <i class="fa-solid fa-gamepad text-sm"></i>
+                </a>
+                <a href="{% url 'contest:list' %}" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center border bg-sky-50 border-sky-200 text-sky-600 hover:opacity-80 transition duration-200 shadow-sm mr-1" title="IPSE Judge" aria-label="IPSE Judge">
+                    <i class="fa-solid fa-code text-sm"></i>
+                </a>
+                {% endif %}
                 {% endif %}
 
                 {% if user.is_authenticated %}
