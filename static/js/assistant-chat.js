@@ -130,10 +130,74 @@
     function place(left, top, right, bottom) {
         panel.style.left = left; panel.style.top = top; panel.style.right = right; panel.style.bottom = bottom;
     }
+    // 크기: 붙어 있는 모서리의 반대쪽 모서리 손잡이를 끌어 조절한다 (오른쪽 아래에 붙어 있으면 왼쪽 위, 왼쪽 아래면 오른쪽 위, 자유 위치면 오른쪽 아래)
+    const SIZE_KEY = 'assistant_panel_size';
+    const MIN_W = 320, MIN_H = 300;
+    const handle = document.createElement('div');
+    handle.id = 'assistant-resize-handle';
+    handle.setAttribute('aria-label', '채팅 창 크기 조절');
+    handle.title = '끌어서 크기 조절';
+    handle.style.cssText = 'position:absolute;width:18px;height:18px;z-index:20;touch-action:none;display:none';
+    panel.appendChild(handle);
+    function readSize() { try { return JSON.parse(localStorage.getItem(SIZE_KEY) || 'null'); } catch (e) { return null; } }
+    function applySize() {
+        const size = wide() ? readSize() : null;
+        if (!size) { panel.style.width = ''; panel.style.height = ''; return; }
+        panel.style.width = Math.min(Math.max(MIN_W, size.w), window.innerWidth - 16) + 'px';
+        panel.style.height = Math.min(Math.max(MIN_H, size.h), window.innerHeight - 16) + 'px';
+    }
+    function placeHandle(corner) {         // corner: 'tl' | 'tr' | 'br'
+        handle.dataset.corner = corner;
+        handle.style.display = wide() ? 'block' : 'none';
+        handle.style.left = corner === 'tl' ? '0' : 'auto';
+        handle.style.right = corner === 'tl' ? 'auto' : '0';
+        handle.style.top = corner === 'br' ? 'auto' : '0';
+        handle.style.bottom = corner === 'br' ? '0' : 'auto';
+        handle.style.cursor = corner === 'tr' ? 'nesw-resize' : 'nwse-resize';
+        const grip = {tl: 'linear-gradient(135deg,rgba(255,255,255,.85) 0 2px,transparent 2px 5px,rgba(255,255,255,.85) 5px 7px,transparent 7px)',
+                      tr: 'linear-gradient(225deg,rgba(255,255,255,.85) 0 2px,transparent 2px 5px,rgba(255,255,255,.85) 5px 7px,transparent 7px)',
+                      br: 'linear-gradient(315deg,rgba(100,116,139,.6) 0 2px,transparent 2px 5px,rgba(100,116,139,.6) 5px 7px,transparent 7px)'};
+        handle.style.background = grip[corner];
+    }
+    handle.addEventListener('pointerdown', (e) => {
+        if (!wide() || e.button !== 0) return;
+        e.preventDefault();
+        const rect = panel.getBoundingClientRect(), corner = handle.dataset.corner;
+        const startX = e.clientX, startY = e.clientY;
+        handle.setPointerCapture(e.pointerId);
+        let size = null;
+        function move(ev) {
+            const dx = ev.clientX - startX, dy = ev.clientY - startY;
+            const maxW = corner === 'tr' || corner === 'br' ? window.innerWidth - rect.left : rect.right;
+            const maxH = corner === 'br' ? window.innerHeight - rect.top : rect.bottom;
+            size = {
+                w: Math.min(Math.max(MIN_W, rect.width + (corner === 'tl' ? -dx : dx)), maxW),
+                h: Math.min(Math.max(MIN_H, rect.height + (corner === 'br' ? dy : -dy)), maxH),
+            };
+            panel.style.width = size.w + 'px';
+            panel.style.height = size.h + 'px';
+        }
+        function up() {
+            handle.removeEventListener('pointermove', move);
+            handle.removeEventListener('pointerup', up);
+            handle.removeEventListener('pointercancel', up);
+            if (size) { try { localStorage.setItem(SIZE_KEY, JSON.stringify(size)); } catch (err) {} }
+        }
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', up);
+        handle.addEventListener('pointercancel', up);
+    });
+    handle.addEventListener('dblclick', () => {            // 더블클릭하면 기본 크기로
+        try { localStorage.removeItem(SIZE_KEY); } catch (e) {}
+        applyPos();
+    });
+
     function applyPos() {
+        applySize();
         const pos = wide() ? readPos() : null;
-        if (!pos) { place('', '', '', ''); return; }
-        if (pos.dock === 'left') { place('1.5rem', 'auto', 'auto', '1.5rem'); return; }
+        if (!pos) { place('', '', '', ''); placeHandle('tl'); return; }
+        if (pos.dock === 'left') { place('1.5rem', 'auto', 'auto', '1.5rem'); placeHandle('tr'); return; }
+        placeHandle('br');
         const rect = panel.getBoundingClientRect();
         const x = Math.min(Math.max(0, pos.x), Math.max(0, window.innerWidth - rect.width));
         const y = Math.min(Math.max(0, pos.y), Math.max(0, window.innerHeight - rect.height));
