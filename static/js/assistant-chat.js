@@ -165,6 +165,8 @@
         header.addEventListener('pointercancel', up);
     });
     header.style.cursor = 'move';
+    header.style.touchAction = 'none';                 // 태블릿에서 끌 때 화면이 같이 스크롤되지 않게
+    header.style.userSelect = 'none';
     window.addEventListener('resize', applyPos);
 
     // ── 새 대화 / 목록 / 이름 바꾸기 / 삭제 ─────────────────────────

@@ -85,3 +85,16 @@ class ScreenContextTests(TestCase):
         with reply_with("답") as chat:
             ai.answer(self.user, "다음", session=self.session, screenshot="data:image/png;base64,AAAA")
         self.assertIsInstance(chat.call_args.args[1][-1]["content"], str)
+
+    def test_screen_prompt_tells_the_model_it_can_see_the_screen(self):
+        prompt = ai._page_context_prompt({"kind": "screen", "title": "모의고사", "text": "3번 문제 내용"})
+        self.assertIn("화면을 볼 수 없다고 답하지 말고", prompt)
+        self.assertNotIn("화면을 볼 수 없다고 답하지 말고", ai._page_context_prompt({"kind": "summary", "title": "t", "text": "요약"}))
+
+
+class ScriptVersionTests(TestCase):
+    def test_chat_script_is_versioned_so_browsers_do_not_keep_an_old_copy(self):
+        user = User.objects.create_user(username="v", password="pw")
+        self.client.force_login(user)
+        html = self.client.get(reverse("mypage:document_list")).content.decode()
+        self.assertRegex(html, r"js/assistant-chat\.js\?v=\d+")
