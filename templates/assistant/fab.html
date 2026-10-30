@@ -40,4 +40,4 @@
     </div>
     <link rel="stylesheet" href="{% static 'css/markdown-lite.css' %}?v={{ static_version }}">
     <script src="{% static 'js/markdown-lite.js' %}?v={{ static_version }}"></script>
-    <script src="{% static 'js/assistant-chat.js' %}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-sessions-url="{% url 'assistant:sessions' %}" data-csrf-token="{{ csrf_token }}"></script>
+    <script src="{% static 'js/assistant-chat.js' %}?v={{ static_version }}" data-history-url="{% url 'assistant:chat_history' %}" data-message-url="{% url 'assistant:chat_message' %}" data-sessions-url="{% url 'assistant:sessions' %}" data-csrf-token="{{ csrf_token }}"></script>
