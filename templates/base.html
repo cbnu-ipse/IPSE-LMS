@@ -37,13 +37,14 @@
     <link rel="alternate icon" type="image/png" href="{% static 'img/IPSE-LOGO.png' %}">
     <link rel="apple-touch-icon" href="{% static 'img/icons/apple-touch-icon.png' %}">
     <link rel="manifest" href="{% url 'manifest_json' %}">
-    <meta name="theme-color" content="{% if site_section == 'judge' %}#0284c7{% else %}#059669{% endif %}">
+    <meta name="theme-color" content="{% if site_section == 'judge' %}#0284c7{% else %}#ea580c{% endif %}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="IPSE">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={% now 'U' %}">
     <link rel="stylesheet" href="{% static 'css/mobile.css' %}?v={% now 'U' %}">
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}?v={{ static_version }}">
     {% if treat_event_active %}<link rel="stylesheet" href="{% static 'css/halloween.css' %}?v={{ static_version }}">{% endif %}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
