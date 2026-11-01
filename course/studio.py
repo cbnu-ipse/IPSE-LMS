@@ -506,6 +506,19 @@ def changed_chapters(draft):
 
 # ── 학습 화면 ───────────────────────────────────────────────────────────────
 
+def player_pages(sets):
+    """학습 화면의 페이지 순서. sets: [(키, 세트)]. 카드와 문제가 함께 있는 세트(챕터 마지막 세트)는 카드 페이지와
+    '마무리 퀴즈' 페이지 둘로 나눈다 (문제가 마지막 카드 밑에 붙지 않고 챕터를 마무리하는 별도 페이지가 되게). [(키, 퀴즈 페이지인가)]."""
+    pages = []
+    for key, s in sets:
+        cards, questions = s.get("cards"), s.get("questions")
+        if cards and questions:
+            pages += [(key, False), (key, True)]
+        else:
+            pages.append((key, not cards and bool(questions)))
+    return pages
+
+
 def render_cards(cards):
     out = []
     for c in cards:
