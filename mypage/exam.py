@@ -20,7 +20,7 @@ from django.conf import settings
 from core import ai as core_ai
 
 from .ai import REASON_REQUEST, strip_reason_request, unescape_newlines
-from . import discards, scope
+from . import discards, retrieval, scope
 from .figure import normalize_figure
 from .models import Concept, ExamQuestion, ExamStyle, MockExam, PersonalDocument, WrongNote
 from .titles import clean_title
@@ -33,6 +33,8 @@ EXAM_DOC_CHARS = 6000       # 족보 하나에서 읽는 길이
 EXAM_TOTAL_CHARS = 24000    # 스타일을 뽑을 때 읽는 족보 전체 길이
 EXAMPLE_CHARS = 3600        # 모의 출제에 예시로 보여 주는 족보 길이
 MATERIAL_CHARS = 14000      # 모의 출제에 넣는 수업 자료 요약 길이
+ORIGINAL_CHARS = settings.AI_EXAM_ORIGINAL_CHARS   # 자료가 이 길이 안이면 요약 대신 원문을 넣는다 (0이면 항상 요약)
+PASSAGE_CHARS = 3000        # 꼭 낼 주제어 주변 원문 발췌 길이
 MOCK_QUESTIONS = 10
 MIN_VALID_QUESTIONS = 5
 
@@ -325,8 +327,13 @@ def _most_common(values):
     return counts.most_common(1)[0][0] if counts else ""
 
 
-def build_material(documents, limit=True):
-    """모의 출제 프롬프트에 넣는 수업 자료 본문 (고른 자료의 요약을 길이에 맞춰 이어 붙인다). limit=False면 자르지 않는다(범위 선택용, mypage/scope.py)."""
+def build_material(documents, limit=True, original=False):
+    """모의 출제 프롬프트에 넣는 수업 자료 본문 (고른 자료의 요약을 길이에 맞춰 이어 붙인다). limit=False면 자르지 않는다(범위 선택용, mypage/scope.py).
+    original=True면 고른 자료의 원문 합이 ORIGINAL_CHARS 안일 때 요약 대신 원문을 쓴다 (요약에서 빠진 예시·수치까지 보고 출제하게)."""
+    if original and ORIGINAL_CHARS:
+        texts = [d.extracted_text.strip() for d in documents]
+        if all(texts) and sum(len(t) for t in texts) <= ORIGINAL_CHARS:
+            return "\n\n".join(f"## {d.title}\n{t}" for d, t in zip(documents, texts))
     if not limit:
         return "\n\n".join(f"## {d.title}\n{(d.summary.strip() or d.extracted_text.strip())}" for d in documents)
     per = max(MATERIAL_CHARS // len(documents), 1500)
@@ -411,11 +418,15 @@ def generate_mock_exam(user, documents, document=None, focus=None):
         rows = [q for q in exam_questions_for(professor, subject).prefetch_related("concepts")
                 if in_scope & {c.name.casefold() for c in q.concepts.all()}][:12]
         examples = "\n".join(f"- [{labels.get(q.qtype, q.qtype)}] {q.text}" for q in rows)
-    material = build_material(documents)
+    material = build_material(documents, original=True)
     if focus_text:      # 요청이 범위를 정하면(예: 6.2절까지만) 그 범위의 소제목만 모델에 보여 준다 (mypage/scope.py)
         scoped = scope.apply(user, focus_text, build_material(documents, limit=False))
         if scoped:
             material = scoped[:MATERIAL_CHARS]
+    if focus_terms:      # 꼭 낼 주제어는 요약에 없어도 원문에서 찾아 근거 문단을 더해 준다
+        extra = retrieval.format_passages(retrieval.search(documents, " ".join(focus_terms), k=4), PASSAGE_CHARS)
+        if extra and extra not in material:
+            material += "\n\n## 주제어 관련 원문 발췌\n" + extra
     request = f"과목: {subject or documents[0].title}\n"
     if style:
         request += f"출제 스타일:\n{style.guidelines}\n"       # 교수님 이름은 프롬프트에 넣지 않는다 (제목 등에 새지 않게)

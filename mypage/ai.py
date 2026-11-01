@@ -353,7 +353,8 @@ def generate_summary(extracted_text, user=None, kind="lecture", on_text=None):
         try:
             if on_text and parts:
                 on_text("\n\n")                                   # 앞 부분 요약과 이어 붙이는 빈 줄
-            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind, cost=units * core_ai.cost_for("summary"), on_text=on_text))
+            covered = [h for part in parts for h in re.findall(r"^#{2,3}\s+(.+?)\s*$", part, re.M)]
+            parts.append(_summarize_chunk(chunk, i, len(chunks), user, kind, cost=units * core_ai.cost_for("summary"), on_text=on_text, covered=covered))
         except Exception:
             core_ai.refund(user, "summary", paid * core_ai.cost_for("summary"))   # 앞 조각에 낸 크레딧도 돌려준다
             raise
@@ -361,11 +362,14 @@ def generate_summary(extracted_text, user=None, kind="lecture", on_text=None):
     return "\n\n".join(p for p in parts if p.strip())
 
 
-def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None, on_text=None):
+def _summarize_chunk(chunk, i, total, user, kind="lecture", cost=None, on_text=None, covered=()):
     system = EXAM_SUMMARY_INSTRUCTIONS if kind == "exam" else SUMMARY_INSTRUCTIONS
     if total > 1:
         system += (f"\n\n이 자료는 길어서 {total}조각으로 나눈 {i + 1}번째 조각입니다. 이 조각에 있는 내용만 빠짐없이 요약하고, "
                    "전체 요약인 것처럼 서두나 맺음말을 쓰지 마세요.")
+        if covered:   # 앞 조각에서 다룬 제목: 같은 개념이 이어지면 정의를 되풀이하지 않고 앞 내용과 이어지게 쓴다
+            system += ("\n앞 조각에서 이미 다룬 제목: " + ", ".join(covered[-25:]) + ". 이 개념이 다시 나오면 정의를 되풀이하지 말고 "
+                       "'앞의 ○○에 이어' 식으로 연결해 이 조각에서 새로 나온 내용만 정리하세요.")
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": core_ai.untrusted("자료", chunk)},

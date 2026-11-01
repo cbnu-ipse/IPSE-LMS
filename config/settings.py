@@ -449,4 +449,5 @@ STORAGES = {
 TRUST_MIN_TO_LEARN = config("TRUST_MIN_TO_LEARN", default=40, cast=int)
 
 # 족보에서 뽑는 출제 스타일 지시문(ExamStyle.guidelines)의 최대 글자 수. 길수록 문제 출제 프롬프트마다 토큰이 늘어난다 (mypage/exam.py)
+AI_EXAM_ORIGINAL_CHARS = config("AI_EXAM_ORIGINAL_CHARS", default=24000, cast=int)   # 모의 출제: 고른 자료의 원문 합이 이 글자 수 안이면 요약 대신 원문으로 출제 (0이면 항상 요약, 클수록 정확하지만 토큰이 더 든다)
 AI_STYLE_MAX_CHARS = config("AI_STYLE_MAX_CHARS", default=2000, cast=int)
