@@ -9,7 +9,7 @@ from mypage.models import PersonalDocument, ProcessingStatus, Subject
 
 from . import ai as course_ai
 from . import markup, studio
-from .models import Course, CourseDraft, Lesson, LessonQuizResult, UserCourseProgress
+from .models import Course, CourseCategory, CourseDraft, Lesson, LessonQuizResult, Unit, UserCourseProgress
 
 User = get_user_model()
 
@@ -454,3 +454,37 @@ class ChoiceBalanceTestCase(TestCase):
 
     def test_format_version_bumped_so_chapters_regenerate_in_the_new_shape(self):
         self.assertGreaterEqual(course_ai.FORMAT_VERSION, 4)
+
+
+class CardKindTests(TestCase):
+    databases = {"default", "beta_judge"}
+
+    def test_normalize_keeps_known_kinds_and_drops_default_or_unknown(self):
+        data = [{"title": "s", "cards": [
+            {"title": "a", "body": "b", "kind": "definition"}, {"title": "a", "body": "b", "kind": "concept"},
+            {"title": "a", "body": "b", "kind": "weird"}]}]
+        cards = course_ai.normalize_sets(data)[0]["cards"]
+        self.assertEqual([c.get("kind") for c in cards], ["definition", None, None])
+        self.assertEqual(cards[1], {"title": "a", "body": "b"})            # 기본 종류는 옛 모양 그대로
+
+    def test_render_cards_defaults_to_concept_and_labels_kinds(self):
+        rendered = studio.render_cards([{"title": "t", "body": "x"}, {"title": "t", "body": "x", "kind": "steps"}, {"title": "t", "body": "x", "kind": "zzz"}])
+        self.assertEqual([c["kind"] for c in rendered], ["concept", "steps", "concept"])
+        self.assertIn("단계", rendered[1]["kind_label"])
+
+    def test_prompt_describes_every_kind(self):
+        for kind in course_ai.CARD_KINDS:
+            self.assertIn(f'"{kind}"', course_ai.CHAPTER_SYSTEM)
+
+    def test_player_page_uses_kind_classes(self):
+        user = User.objects.create_user(username="ck", password="pw", is_staff=True)
+        self.client.force_login(user)
+        category = CourseCategory.objects.create(title="AI")
+        course = Course.objects.create(code="CK", title="CK", category=category, instructor=user, slug="ck")
+        unit = Unit.objects.create(course=course, title="U", order=0)
+        lesson = Lesson.objects.create(course=course, unit=unit, title="L", order=0, content="x",
+                                       cards=[{"title": "a", "body": "정의다", "kind": "definition"}, {"title": "b", "body": "- 하나", "kind": "summary"}])
+        html = self.client.get(f"/course/ck/lesson/{lesson.pk}/").content.decode()
+        self.assertIn("card k-definition", html)
+        self.assertIn("card k-summary", html)
+        self.assertIn("카드 2장", html)

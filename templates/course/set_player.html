@@ -8,14 +8,14 @@
 <style>
 /* 학습 세트 화면: 상단 바 + 개념 카드 + 확인 문제 + 하단 이동 바. 한 손으로 쓰는 폰 화면이 기준 */
 :root{
-  /* 잎새 사이트와 같은 팔레트 (slate + emerald), 다크 모드 없음 */
-  --bg:#f8fafc; --surface:#ffffff; --ink:#1e293b; --muted:#64748b; --line:#e2e8f0;
-  --accent:#059669; --accent-dark:#047857; --accent-ink:#ffffff; --accent-soft:#ecfdf5;
+  /* 잎새 사이트의 기본 테마와 같은 팔레트 (slate + 주황·보라), 다크 모드 없음 */
+  --bg:#faf5ff; --surface:#ffffff; --ink:#1e293b; --muted:#64748b; --line:#e8e1f2;
+  --accent:#ea580c; --accent-dark:#c2410c; --accent-ink:#ffffff; --accent-soft:#fff7ed;
   --ok:#059669; --ok-soft:#ecfdf5; --bad:#e11d48; --bad-soft:#fff1f2; --code:#f1f5f9; --mark:#fef3c7;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink)}
-body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:15px;line-height:1.7;
+html,body{margin:0;background:linear-gradient(180deg,#faf5ff 0,#fff7ed 55%,#ffffff 100%) fixed;color:var(--ink)}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:16px;line-height:1.75;
   word-break:keep-all;overflow-wrap:anywhere;-webkit-text-size-adjust:100%}
 button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
@@ -31,14 +31,38 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(-
   text-decoration:none;color:var(--ink)}
 .prog{height:4px;background:var(--line)}.prog i{display:block;height:100%;background:var(--accent)}
 .banner{background:#fffbeb;border-bottom:1px solid #fde68a;color:var(--ink);font-size:13px;font-weight:700;padding:8px 16px;text-align:center}
-main{max-width:720px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-left)) 120px;display:flex;flex-direction:column;gap:14px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px 20px 12px;box-shadow:0 1px 2px rgba(15,23,42,.03)}
-.card h3{margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:800;color:var(--ink)}
-.card .n{display:inline-block;font-size:11px;color:var(--accent-dark);background:var(--accent-soft);font-weight:800;margin-bottom:6px;padding:2px 8px;border-radius:999px}
+main{max-width:760px;margin:0 auto;padding:22px max(16px,env(safe-area-inset-left)) 120px;display:flex;flex-direction:column;gap:16px}
+.hero{padding:6px 4px 2px}
+.hero .k{font-size:12px;font-weight:800;color:var(--accent-dark);letter-spacing:.02em}
+.hero h1{margin:2px 0 6px;font-size:26px;line-height:1.3;font-weight:900;color:var(--ink)}
+.hero .meta{display:flex;gap:6px;flex-wrap:wrap}
+.hero .meta span{font-size:12px;font-weight:700;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+/* 카드 종류마다 색(--k, --ks)과 모양이 다르다 */
+.card{--k:#475569;--ks:#f1f5f9;position:relative;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--k);border-radius:20px;padding:20px 22px 14px;
+  box-shadow:0 2px 10px rgba(76,29,149,.06);animation:rise .45s ease both}
+.card:nth-of-type(2){animation-delay:.08s}.card:nth-of-type(3){animation-delay:.16s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card h3{margin:0 0 10px;font-size:20px;line-height:1.4;font-weight:800;color:var(--ink)}
+.card .n{display:inline-block;font-size:12px;color:var(--k);background:var(--ks);font-weight:800;margin-bottom:8px;padding:3px 10px;border-radius:999px}
+.k-definition{--k:#7c3aed;--ks:#f5f3ff}.k-compare{--k:#0284c7;--ks:#f0f9ff}.k-steps{--k:#ea580c;--ks:#fff7ed}
+.k-example{--k:#0d9488;--ks:#f0fdfa}.k-caution{--k:#d97706;--ks:#fffbeb;background:#fffdf5}.k-summary{--k:#4f46e5;--ks:#eef2ff}
+.card strong{color:var(--k)}
+.k-definition .lc-body>p:first-child{font-size:19px;line-height:1.6;font-weight:700;background:var(--ks);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.card.k-steps ol{list-style:none;counter-reset:s;padding-left:0;margin:0 0 10px}
+.card.k-steps ol li{counter-increment:s;position:relative;padding:2px 0 12px 44px;margin:0}
+.card.k-steps ol li::before{content:counter(s);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;background:var(--k);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+.card.k-steps ol li:not(:last-child)::after{content:"";position:absolute;left:14px;top:32px;bottom:2px;width:2px;background:var(--ks);background:color-mix(in srgb,var(--k) 25%,white)}
+.k-compare .lc-table table{width:100%;table-layout:fixed}
+.k-compare .lc-table th,.k-compare .lc-table td{white-space:normal;vertical-align:top;font-size:14.5px;line-height:1.5;padding:8px 10px}
+.k-compare .lc-table th{background:var(--ks);color:var(--k);font-weight:800}.k-compare .lc-table td:first-child{font-weight:700;background:#fafafa}
+.k-example .lc-body{border-left:3px dashed color-mix(in srgb,var(--k) 45%,white);padding-left:14px}
+.k-caution .lc-body{font-weight:600}
+.card.k-summary ul{list-style:none;padding-left:0}.card.k-summary li{position:relative;padding-left:28px;margin-bottom:8px;font-weight:600}
+.card.k-summary li::before{content:"✓";position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;background:var(--k);color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;line-height:1}
 .card p{margin:0 0 10px}.card ul,.card ol{margin:0 0 10px;padding-left:1.2em}.card li{margin:0 0 4px}
 .card li.lc-sub{margin-left:1.1em;list-style:circle}
 .card h4{margin:12px 0 6px;font-size:15px}
-.card strong{color:var(--accent-dark);font-weight:800}
+.card strong{color:var(--k,var(--accent-dark));font-weight:800}
 code{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:.88em;background:var(--code);padding:.05em .35em;border-radius:4px}
 .lc-pre{margin:0 0 12px;padding:10px 12px;background:var(--code);border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.55}
 .lc-pre code{background:none;padding:0;white-space:pre}
@@ -93,11 +117,16 @@ button[disabled]{cursor:default}
 {% if mode == 'preview' %}<div class="banner">미리보기 — 학생에게 보이는 화면 그대로입니다. 확인 문제 결과는 저장되지 않습니다.</div>{% endif %}
 
 <main>
+  <div class="hero">
+    <div class="k">{{ chapter_no }}강 · {{ chapter_title }}</div>
+    <h1>{{ set_title }}</h1>
+    <div class="meta"><span>카드 {{ cards|length }}장</span>{% if questions %}<span>확인 문제 {{ questions|length }}개</span>{% endif %}</div>
+  </div>
   {% for card in cards %}
-  <section class="card">
-    <div class="n">개념 {{ forloop.counter }}</div>
+  <section class="card k-{{ card.kind }}">
+    <div class="n">{% if card.kind == 'concept' %}💡 개념 {{ forloop.counter }}{% else %}{{ card.kind_label }}{% endif %}</div>
     {% if card.title %}<h3>{{ card.title }}</h3>{% endif %}
-    {{ card.html|safe }}
+    <div class="lc-body">{{ card.html|safe }}</div>
   </section>
   {% endfor %}
 

@@ -271,13 +271,14 @@ def _set_at(content, ci, si):
         raise ValueError("없는 학습 세트입니다.")
 
 
-def update_card(draft_id, ci, si, ki, title, body):
+def update_card(draft_id, ci, si, ki, title, body, kind=None):
     with transaction.atomic():
         draft = _locked_pending(draft_id)
         cards = _set_at(draft.content, ci, si)["cards"]
         if not 0 <= ki < len(cards) or not body.strip():
             raise ValueError("카드 내용을 확인해주세요.")
-        cards[ki] = {"title": title.strip()[:120], "body": body.strip()[:4000]}
+        kind = cards[ki].get("kind") if kind is None else kind       # 종류를 안 보냈으면 그대로 둔다
+        cards[ki] = {"title": title.strip()[:120], "body": body.strip()[:4000], **course_ai.card_kind_field(kind)}
         draft.save(update_fields=["content"])
 
 
@@ -506,7 +507,11 @@ def changed_chapters(draft):
 # ── 학습 화면 ───────────────────────────────────────────────────────────────
 
 def render_cards(cards):
-    return [{"title": c.get("title", ""), "html": markup.render(c.get("body", ""))} for c in cards]
+    out = []
+    for c in cards:
+        kind = c.get("kind") if c.get("kind") in course_ai.CARD_KINDS else "concept"
+        out.append({"title": c.get("title", ""), "html": markup.render(c.get("body", "")), "kind": kind, "kind_label": course_ai.CARD_KINDS[kind]})
+    return out
 
 
 def _norm(text):

@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from . import ai as course_ai
 from . import studio
 from .models import Course, CourseDraft
 
@@ -64,7 +65,7 @@ def studio_detail(request, pk):
         "draft": draft, "chapters": chapters, "can_review": studio.can_review(request.user, draft),
         "editable": draft.status == CourseDraft.Status.PENDING and studio.can_review(request.user, draft),
         "has_changes": diff is None or bool(diff["counts"]["total"]),
-        "diff": diff,
+        "diff": diff, "card_kinds": list(course_ai.CARD_KINDS.items()),
     })
 
 
@@ -125,7 +126,7 @@ def studio_action(request, pk, action):
         ci, si = _int(request, "chapter"), _int(request, "set")
         if action == "edit_card":
             studio.update_card(draft.pk, ci, si, _int(request, "item"), request.POST.get("title", ""),
-                               request.POST.get("body", ""))
+                               request.POST.get("body", ""), request.POST.get("kind"))
         elif action == "edit_question":
             studio.update_question(draft.pk, ci, si, _int(request, "item"), request.POST)
         elif action == "delete_question":
