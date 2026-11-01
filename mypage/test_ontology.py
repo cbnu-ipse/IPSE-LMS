@@ -230,6 +230,7 @@ class ExamAnalysisTests(TestCase):
 
 class MockExamUsesAnalysisTests(TestCase):
     def test_prompt_has_plan_concept_weights_coverage_and_question_examples(self):
+        self.enterContext(patch.object(exam, "ORIGINAL_CHARS", 0))      # 요약 모드로 고정 (원문 모드는 test_retrieval에서)
         user = User.objects.create_user(username="m", password="pw")
         os_ = Subject.objects.get_or_create(name="운영체제")[0]
         category = CourseCategory.objects.create(title="AI")

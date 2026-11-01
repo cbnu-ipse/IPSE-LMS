@@ -203,6 +203,7 @@ class UploadAndEditTests(TestCase):
 @override_settings(AI_CREDIT_COSTS={"mock_exam": 5})
 class MockExamTests(TestCase):
     def setUp(self):
+        self.enterContext(patch.object(exam, "ORIGINAL_CHARS", 0))      # 이 클래스의 가짜 모델은 요약 문장을 인용한다 (원문 모드는 test_retrieval에서)
         self.user = User.objects.create_user(username="taker", password="pw")
         self.client.force_login(self.user)
         category = CourseCategory.objects.create(title="AI 자동 생성")

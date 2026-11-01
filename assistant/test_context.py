@@ -98,3 +98,31 @@ class ScriptVersionTests(TestCase):
         self.client.force_login(user)
         html = self.client.get(reverse("mypage:document_list")).content.decode()
         self.assertRegex(html, r"js/assistant-chat\.js\?v=\d+")
+
+
+class SearchToolTests(TestCase):
+    def test_tool_finds_original_passages_for_the_user_only(self):
+        from mypage.models import PersonalDocument
+
+        from . import tools
+
+        mine = User.objects.create_user(username="t1", password="pw")
+        other = User.objects.create_user(username="t2", password="pw")
+        PersonalDocument.objects.create(user=mine, title="내 노트", file="", extracted_text="행렬식은 ad - bc 로 계산한다.")
+        PersonalDocument.objects.create(user=other, title="남의 노트", file="", extracted_text="행렬식 비밀 내용")
+        result = tools.dispatch_tool(mine, "search_my_documents", {"query": "행렬식 계산"})
+        self.assertEqual(len(result["results"]), 1)
+        self.assertIn("내 노트", result["results"][0]["source"])
+        self.assertEqual(tools.dispatch_tool(mine, "search_my_documents", {"query": "없는말qqq"})["results"], [])
+
+    def test_system_prompt_asks_to_cite_sources(self):
+        self.assertIn("search_my_documents", ai._build_system_prompt("", "", ""))
+
+
+class ScreenTextDefaultTests(TestCase):
+    def test_screen_text_checkbox_is_off_by_default(self):
+        user = User.objects.create_user(username="d", password="pw")
+        self.client.force_login(user)
+        html = self.client.get(reverse("mypage:document_list")).content.decode()
+        tag = html[html.index('id="assistant-screen-text"'):].split(">")[0]
+        self.assertNotIn("checked", tag)

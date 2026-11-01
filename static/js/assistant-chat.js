@@ -356,7 +356,7 @@
             return { kind: 'screen', title: document.title, text: text, selection: String(window.getSelection() || '').slice(0, 600) };
         } catch (e) { return null; }
     }
-    try { if (localStorage.getItem('assistant_screen_text') === '0') screenToggle.checked = false; } catch (e) {}
+    try { if (localStorage.getItem('assistant_screen_text') === '1') screenToggle.checked = true; } catch (e) {}      // 기본은 꺼짐, 켠 사람만 기억
     screenToggle.addEventListener('change', () => { try { localStorage.setItem('assistant_screen_text', screenToggle.checked ? '1' : '0'); } catch (e) {} });
 
     // 스크린샷: 그림·표처럼 글로 안 읽히는 것이 있을 때 이번 질문에만 붙인다 (html2canvas-pro(oklch 색 지원)는 처음 쓸 때만 불러온다)

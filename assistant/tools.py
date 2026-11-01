@@ -94,7 +94,26 @@ def get_my_learning_overview(user, **_kwargs):
     return overview_for_assistant(user)
 
 
+def search_my_documents(user, query="", document_id=None, **_kwargs):
+    """사용자 자료의 원문에서 질문과 관련된 부분을 찾는다 (요약에서 빠진 예시·수치·풀이까지 볼 수 있다)."""
+    from mypage import retrieval
+    from mypage.models import PersonalDocument
+
+    documents = PersonalDocument.objects.filter(user=user, is_deleted=False).exclude(extracted_text="")
+    if document_id not in (None, ""):
+        try:
+            documents = documents.filter(pk=int(document_id))
+        except (TypeError, ValueError):
+            return {"error": "자료 id가 올바르지 않습니다."}
+    documents = list(documents.order_by("-uploaded_at")[:60])
+    results = retrieval.search(documents, query, k=5)
+    if not results:
+        return {"results": [], "message": "자료 원문에서 관련 내용을 찾지 못했습니다. 찾지 못했다고 답하고 추측하지 마세요."}
+    return {"results": [{"document_id": r["document_id"], "source": f"{r['title']} · {r['part']}/{r['parts']}번째 부분", "text": r["text"]} for r in results]}
+
+
 TOOL_FUNCTIONS = {
+    "search_my_documents": search_my_documents,
     "get_my_learning_overview": get_my_learning_overview,
     "list_my_documents": list_my_documents,
     "get_document_detail": get_document_detail,
@@ -105,6 +124,20 @@ TOOL_FUNCTIONS = {
 }
 
 TOOLS_SPEC = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_my_documents",
+            "description": "사용자가 올린 자료의 원문에서 질문과 관련된 부분을 찾아 돌려준다. 자료의 내용·개념·예시·수치·풀이를 물으면 요약보다 먼저 이것을 쓴다. "
+                           "query에는 찾을 핵심 용어·개념을 넣는다(질문 전체가 아니라 핵심어 위주). 특정 자료만 볼 때는 document_id를 준다.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "찾을 핵심 용어나 문장"},
+                               "document_id": {"type": "integer", "description": "특정 자료만 찾을 때의 자료 id (선택)"}},
+                "required": ["query"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
