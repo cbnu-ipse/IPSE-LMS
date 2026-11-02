@@ -1,76 +1,52 @@
-"""분식 대작전: 1~4명이 함께 라면 가게를 운영하는 협동 요리 게임의 규칙 (서버가 모든 것을 판정한다).
+"""분식 대작전: 마우스(클릭)로만 하는 협동 라면 가게 게임의 규칙 (서버가 모든 것을 판정한다).
 
-DB를 쓰지 않는 순수 파이썬이라 틱(step)을 직접 돌려 테스트할 수 있다. 방·시간·주문·재료·조리 상태가 전부 이 객체 안에 있다.
+DB를 쓰지 않는 순수 파이썬이라 시간(step)과 클릭(click)을 직접 넣어 테스트할 수 있다.
 
 규칙 요약
-- 맨 위 줄의 창고에서 재료(면·달걀·파)와 접시를 집는다. 면과 달걀은 화구에서 익히고(오래 두면 탄다), 파는 도마에서 썬다(썰기 키를 누르고 있어야 진행).
-- 익힌/썬 재료를 접시에 담아 주문과 똑같이 맞춰 서빙 창구에 낸다. 제한 시간 안에 번 점수로 별을 받는다.
-- 혼자서도 모든 일을 할 수 있고, 사람이 늘면 주문이 더 자주 들어와 역할을 나눠야 한다.
+- 손님이 와서 메뉴를 주문하고, 인내심이 다 닳기 전에 만들어 주면 점수(빨리 줄수록 보너스)를 받는다. 못 만들어 주면 손님이 떠나고 감점.
+- 손(hand)에 물건을 집고 → 놓을 곳을 누르는 식이다. 면·달걀은 냄비에서 익히고(오래 두면 탄다), 그릇 자리에 올린 그릇에 익힌 재료와 파를 담아
+  주문과 똑같이 맞춰 손님에게 준다.
+- 한 가게를 여러 명이 함께 쓴다. 사람마다 자기 손이 따로 있어 한 명은 조리, 한 명은 서빙처럼 역할을 나눌 수 있다.
 """
 import random
 
-W, H = 13, 9
-# N 면 상자 · E 달걀 상자 · G 파 상자 · D 접시 · X 쓰레기통 · W 서빙 창구 · T 조리대 · B 도마 · S 화구 · # 벽 · . 바닥
-MAP = [
-    "#NNEEGGDDTXW#",
-    "#...........#",
-    "#...........#",
-    "#.BBT.SS.SS.#",
-    "#...........#",
-    "#...........#",
-    "#...........#",
-    "#...........#",
-    "#TTTTTTTTTTT#",
-]
-CRATES = {"N": "noodle", "E": "egg", "G": "scallion"}
-SPAWNS = [(3, 6), (5, 6), (7, 6), (9, 6)]
-MAX_PLAYERS = 4
-
 GAME_SECONDS = 180
-MOVE_COOLDOWN = 0.18        # 한 칸 이동에 걸리는 시간
-CHOP_SECONDS = 3.0
+MAX_PLAYERS = 4
+POTS = 3                    # 냄비 수
+SLOTS = 4                   # 그릇 자리 수
+SEATS = 4                   # 손님 자리 수
 COOK_SECONDS = {"noodle": 6.0, "egg": 4.0}
 BURN_AFTER = 8.0            # 다 익은 뒤 이만큼 두면 탄다
-ORDER_TTL = 75.0
-MAX_ACTIVE_ORDERS = 5
-EXPIRE_PENALTY = 5
-STAR_TARGETS = (50, 100, 160)   # 1인 기준, 사람 수만큼 곱한다
-PLATE_ITEMS = ("noodle_cooked", "egg_cooked", "scallion_chopped")
+PATIENCE = 55.0             # 손님 인내심(초)
+LEAVE_PENALTY = 5
+SPEED_BONUS = 0.5           # 남은 인내심 비율만큼 더하는 최대 보너스 (점수의 50%)
+STAR_TARGETS = (60, 120, 200)   # 1인 기준, 사람 수만큼 곱한다
 
-# (이름, 접시에 올릴 재료, 점수, 뽑힐 가중치)
+SOURCES = {"noodle": "면", "egg": "달걀", "scallion": "파"}
+BOWL_CODES = ("noodle", "egg", "scallion")     # 그릇에 담을 수 있는 재료 (면·달걀은 익혀서, 파는 그대로)
+
+# (이름, 그릇에 담을 재료, 점수, 뽑힐 가중치)
 RECIPES = [
-    ("라면", ("noodle_cooked",), 20, 4),
-    ("계란라면", ("noodle_cooked", "egg_cooked"), 35, 3),
-    ("파송송라면", ("noodle_cooked", "scallion_chopped"), 35, 3),
-    ("풀세트라면", ("noodle_cooked", "egg_cooked", "scallion_chopped"), 55, 2),
+    ("라면", ("noodle",), 20, 4),
+    ("계란라면", ("noodle", "egg"), 35, 3),
+    ("파송송라면", ("noodle", "scallion"), 35, 3),
+    ("풀세트라면", ("noodle", "egg", "scallion"), 55, 2),
 ]
 
 
-def tile_at(x, y):
-    if 0 <= y < H and 0 <= x < W:
-        return MAP[y][x]
-    return "#"
-
-
-def order_interval(players):
-    """새 주문이 들어오는 간격: 사람이 늘수록 더 자주."""
-    return max(7.0, 18.0 / (1 + 0.4 * (players - 1)))
+def customer_interval(players):
+    """새 손님이 오는 간격: 사람이 늘수록 더 자주."""
+    return max(6.0, 14.0 / (1 + 0.45 * (players - 1)))
 
 
 class Player:
     def __init__(self, uid, name, index):
         self.uid, self.name, self.index = uid, name, index
-        self.x, self.y = SPAWNS[index % len(SPAWNS)]
-        self.fx, self.fy = 0, 1          # 바라보는 방향
-        self.dx = self.dy = 0            # 누르고 있는 방향
-        self.cooldown = 0.0
-        self.held = None
-        self.chopping = False
+        self.hand = None
         self.connected = True
 
     def public(self):
-        return {"id": self.uid, "name": self.name, "x": self.x, "y": self.y, "fx": self.fx, "fy": self.fy,
-                "held": self.held, "chop": self.chopping, "color": self.index, "online": self.connected}
+        return {"id": self.uid, "name": self.name, "color": self.index, "hand": self.hand, "online": self.connected}
 
 
 class Room:
@@ -79,15 +55,19 @@ class Room:
         self.rng = rng or random.Random()
         self.players = {}
         self.phase = "lobby"             # lobby → playing → done
-        self.items = {}                  # (x, y) → 조리대·도마·화구 위의 물건
-        self.orders = []
         self.events = []
+        self.idle_since = None           # 아무도 접속해 있지 않게 된 시각(방 정리용, hub가 채운다)
+        self.targets = list(STAR_TARGETS)
+        self._clear()
+
+    def _clear(self):
+        self.pots = [None] * POTS
+        self.slots = [None] * SLOTS
+        self.seats = [None] * SEATS
         self.time_left = float(GAME_SECONDS)
         self.score = 0
-        self.targets = list(STAR_TARGETS)
-        self.next_order_in = 0.0
-        self.order_seq = 0
-        self.idle_since = None           # 아무도 접속해 있지 않게 된 시각(방 정리용, hub가 채운다)
+        self.next_customer_in = 0.0
+        self.customer_seq = 0
 
     # ── 방 관리 ────────────────────────────────────────────────
     def add_player(self, uid, name):
@@ -117,21 +97,19 @@ class Room:
         self.phase = "playing"
         self.targets = [t * len(self.players) for t in STAR_TARGETS]
         for _ in range(2):
-            self._spawn_order()
-        self.next_order_in = order_interval(len(self.players))
+            self._spawn_customer()
+        self.next_customer_in = customer_interval(len(self.players))
         return True, ""
 
     def reset(self):
-        """다시 하기: 시간·점수·주문·재료를 처음으로 되돌린다 (접속해 있는 사람만 남긴다)."""
+        """대기실로 되돌린다: 가게와 점수를 처음으로 (접속해 있는 사람만 남긴다)."""
         self.players = {uid: p for uid, p in self.players.items() if p.connected}
         for i, p in enumerate(self.players.values()):
-            p.index = i
-            p.x, p.y = SPAWNS[i % len(SPAWNS)]
-            p.fx, p.fy, p.dx, p.dy, p.cooldown, p.held, p.chopping = 0, 1, 0, 0, 0.0, None, False
+            p.index, p.hand = i, None
         if self.host_id not in self.players and self.players:
             self.host_id = next(iter(self.players))
-        self.items, self.orders, self.events = {}, [], []
-        self.time_left, self.score, self.order_seq = float(GAME_SECONDS), 0, 0
+        self.events = []
+        self._clear()
         self.phase = "lobby"
 
     def back_to_lobby(self, uid):
@@ -142,172 +120,127 @@ class Room:
         self.reset()
         return True, ""
 
-    # ── 입력 ───────────────────────────────────────────────────
-    def set_input(self, uid, dx, dy):
+    # ── 클릭 ───────────────────────────────────────────────────
+    def click(self, uid, target):
+        """target: crate:noodle|egg|scallion · bowls · trash · pot:N · slot:N · seat:N. 손에 든 것과 누른 곳에 따라 하는 일이 정해진다."""
         p = self.players.get(uid)
         if p is None or self.phase != "playing":
             return
-        dx, dy = _axis(dx), _axis(dy)
-        if dx and dy:
-            dy = 0                                   # 대각선은 가로 우선
-        p.dx, p.dy = dx, dy
-
-    def set_chop(self, uid, on):
-        p = self.players.get(uid)
-        if p is not None and self.phase == "playing":
-            p.chopping = bool(on)
-
-    def interact(self, uid):
-        p = self.players.get(uid)
-        if p is None or self.phase != "playing":
-            return
-        tx, ty = p.x + p.fx, p.y + p.fy
-        kind = tile_at(tx, ty)
-        if kind in CRATES:
-            if p.held is None:
-                p.held = {"k": CRATES[kind], "s": "raw"}
-        elif kind == "D":
-            if p.held is None:
-                p.held = {"k": "plate", "c": []}
-        elif kind == "X":
-            if p.held is not None:
-                p.held = None
+        kind, _, arg = str(target).partition(":")
+        if kind == "crate" and arg in SOURCES:
+            self._crate(p, arg)
+        elif kind == "bowls":
+            if p.hand is None:
+                p.hand = {"k": "bowl", "c": []}
+        elif kind == "trash":
+            if p.hand is not None:
+                p.hand = None
                 self.events.append({"t": "trash", "uid": uid})
-        elif kind == "W":
-            self._serve(p)
-        elif kind in "TBS":
-            self._station(p, kind, (tx, ty))
+        elif kind == "pot" and _index(arg, POTS) is not None:
+            self._pot(p, _index(arg, POTS))
+        elif kind == "slot" and _index(arg, SLOTS) is not None:
+            self._slot(p, _index(arg, SLOTS))
+        elif kind == "seat" and _index(arg, SEATS) is not None:
+            self._serve(p, _index(arg, SEATS))
 
-    # ── 상호작용 규칙 ──────────────────────────────────────────
-    def _station(self, p, kind, pos):
-        slot, held = self.items.get(pos), p.held
-        if held is not None and held["k"] == "plate":
-            if slot is not None and slot["k"] != "plate" and self._can_add(held, slot):        # 접시에 담기
-                held["c"].append(_code(slot))
-                del self.items[pos]
-            elif slot is None and kind == "T":
-                self.items[pos], p.held = held, None
-            return
-        if held is not None and slot is not None and slot["k"] == "plate" and kind == "T" and self._can_add(slot, held):
-            slot["c"].append(_code(held))                                                      # 조리대의 접시에 담기
-            p.held = None
-            return
-        if held is None:
-            if slot is not None:
-                p.held = self._pick_from(slot, kind)
-                del self.items[pos]
-            return
-        if slot is not None:
-            return
-        if kind == "T":
-            self.items[pos], p.held = held, None
-        elif kind == "B" and held["k"] == "scallion" and held["s"] == "raw":
-            self.items[pos] = {"k": "scallion", "s": "raw", "p": 0.0}
-            p.held = None
-        elif kind == "S" and held["k"] in COOK_SECONDS and held["s"] == "raw":
-            self.items[pos] = {"k": held["k"], "s": "cooking", "p": 0.0}
-            p.held = None
+    def _crate(self, p, source):
+        hand = p.hand
+        if hand is None:
+            p.hand = {"k": source, "s": "raw"}
+        elif hand["k"] == "bowl" and source == "scallion" and "scallion" not in hand["c"]:
+            hand["c"].append("scallion")                 # 파는 손에 든 그릇에 바로 올린다
 
-    @staticmethod
-    def _pick_from(slot, kind):
-        item = {"k": slot["k"], "s": slot["s"]} if slot["k"] != "plate" else slot
-        if slot["k"] != "plate" and slot["s"] == "cooking":
-            item["s"] = "raw"                                   # 익는 중에 집으면 날것으로 돌아간다
-        return item
+    def _pot(self, p, i):
+        pot, hand = self.pots[i], p.hand
+        if pot is None:
+            if hand is not None and hand["k"] in COOK_SECONDS and hand["s"] == "raw":
+                self.pots[i] = {"k": hand["k"], "s": "cooking", "p": 0.0}
+                p.hand = None
+        elif hand is None:
+            p.hand = {"k": pot["k"], "s": "raw" if pot["s"] == "cooking" else pot["s"]}      # 익는 중에 집으면 날것으로 돌아간다
+            self.pots[i] = None
+        elif hand["k"] == "bowl" and pot["s"] == "cooked" and pot["k"] not in hand["c"]:
+            hand["c"].append(pot["k"])                   # 손에 든 그릇에 바로 담는다
+            self.pots[i] = None
 
-    @staticmethod
-    def _can_add(plate, item):
-        code = _code(item)
-        return code in PLATE_ITEMS and code not in plate["c"]
+    def _slot(self, p, i):
+        bowl, hand = self.slots[i], p.hand
+        if bowl is None:
+            if hand is not None and hand["k"] == "bowl":
+                self.slots[i], p.hand = hand, None
+        elif hand is None:
+            p.hand, self.slots[i] = bowl, None
+        elif hand["k"] != "bowl" and _addable(bowl, hand):
+            bowl["c"].append(hand["k"])
+            p.hand = None
 
-    def _serve(self, p):
-        held = p.held
-        if held is None or held["k"] != "plate" or not held["c"]:
+    def _serve(self, p, i):
+        customer, hand = self.seats[i], p.hand
+        if customer is None or hand is None or hand["k"] != "bowl" or not hand["c"]:
             return
-        want = sorted(held["c"])
-        for order in sorted(self.orders, key=lambda o: o["ttl"]):
-            if sorted(order["items"]) == want:
-                self.orders.remove(order)
-                self.score += order["pts"]
-                p.held = None
-                self.events.append({"t": "serve", "uid": p.uid, "name": order["name"], "pts": order["pts"], "by": p.name})
-                return
-        self.events.append({"t": "reject", "uid": p.uid})
+        if sorted(hand["c"]) != sorted(customer["items"]):
+            self.events.append({"t": "reject", "uid": p.uid})
+            return
+        bonus = round(customer["pts"] * SPEED_BONUS * max(0.0, customer["patience"]) / customer["max"])
+        gained = customer["pts"] + bonus
+        self.score += gained
+        self.seats[i], p.hand = None, None
+        self.events.append({"t": "serve", "uid": p.uid, "name": customer["name"], "pts": gained, "bonus": bonus, "by": p.name, "seat": i})
 
     # ── 시간 ───────────────────────────────────────────────────
     def step(self, dt):
         """dt초만큼 게임을 진행하고 이번 틱에 생긴 이벤트 목록을 돌려준다."""
         if self.phase != "playing":
             return []
-        self._move_players(dt)
-        self._work(dt)
-        self._orders(dt)
+        self._cook(dt)
+        self._customers(dt)
         self.time_left = max(0.0, self.time_left - dt)
         if self.time_left <= 0:
             self.phase = "done"
-            for p in self.players.values():
-                p.dx = p.dy = 0
-                p.chopping = False
             self.events.append({"t": "end", "score": self.score, "stars": self.stars()})
+        return self.take_events()
+
+    def take_events(self):
         events, self.events = self.events, []
         return events
 
     def stars(self):
         return sum(1 for t in self.targets if self.score >= t)
 
-    def _move_players(self, dt):
-        for p in self.players.values():
-            p.cooldown = max(0.0, p.cooldown - dt)
-            if not (p.dx or p.dy):
+    def _cook(self, dt):
+        for pot in self.pots:
+            if pot is None:
                 continue
-            p.fx, p.fy = p.dx, p.dy
-            if p.cooldown > 0:
+            pot["p"] += dt
+            if pot["s"] == "cooking" and pot["p"] >= COOK_SECONDS[pot["k"]]:
+                pot["s"], pot["p"] = "cooked", 0.0
+                self.events.append({"t": "ding"})
+            elif pot["s"] == "cooked" and pot["p"] >= BURN_AFTER:
+                pot["s"], pot["p"] = "burnt", 0.0
+                self.events.append({"t": "burnt"})
+
+    def _customers(self, dt):
+        for i, customer in enumerate(self.seats):
+            if customer is None:
                 continue
-            nx, ny = p.x + p.dx, p.y + p.dy
-            if tile_at(nx, ny) == "." and not any(o is not p and (o.x, o.y) == (nx, ny) for o in self.players.values()):
-                p.x, p.y = nx, ny
-                p.cooldown = MOVE_COOLDOWN
+            customer["patience"] -= dt
+            if customer["patience"] <= 0:
+                self.seats[i] = None
+                self.score = max(0, self.score - LEAVE_PENALTY)
+                self.events.append({"t": "leave", "name": customer["name"], "seat": i})
+        self.next_customer_in -= dt
+        if self.next_customer_in <= 0:
+            self._spawn_customer()
+            self.next_customer_in = customer_interval(len(self.players))
 
-    def _work(self, dt):
-        for p in self.players.values():            # 썰기: 도마를 바라보고 키를 누르고 있는 동안
-            if p.chopping:
-                slot = self.items.get((p.x + p.fx, p.y + p.fy))
-                if slot and slot["k"] == "scallion" and slot["s"] == "raw" and tile_at(p.x + p.fx, p.y + p.fy) == "B":
-                    slot["p"] += dt
-                    if slot["p"] >= CHOP_SECONDS:
-                        slot["s"], slot["p"] = "chopped", 0.0
-                        self.events.append({"t": "ding"})
-        for pos, slot in self.items.items():       # 조리: 화구 위 재료
-            if tile_at(*pos) != "S" or slot["k"] not in COOK_SECONDS:
-                continue
-            if slot["s"] == "cooking":
-                slot["p"] += dt
-                if slot["p"] >= COOK_SECONDS[slot["k"]]:
-                    slot["s"], slot["p"] = "cooked", 0.0
-                    self.events.append({"t": "ding"})
-            elif slot["s"] == "cooked":
-                slot["p"] += dt
-                if slot["p"] >= BURN_AFTER:
-                    slot["s"], slot["p"] = "burnt", 0.0
-                    self.events.append({"t": "burnt"})
-
-    def _orders(self, dt):
-        for order in list(self.orders):
-            order["ttl"] -= dt
-            if order["ttl"] <= 0:
-                self.orders.remove(order)
-                self.score = max(0, self.score - EXPIRE_PENALTY)
-                self.events.append({"t": "expire", "name": order["name"]})
-        self.next_order_in -= dt
-        if self.next_order_in <= 0:
-            if len(self.orders) < MAX_ACTIVE_ORDERS:
-                self._spawn_order()
-            self.next_order_in = order_interval(len(self.players))
-
-    def _spawn_order(self):
+    def _spawn_customer(self):
+        free = [i for i, c in enumerate(self.seats) if c is None]
+        if not free:
+            return
         name, items, pts, _ = self.rng.choices(RECIPES, weights=[r[3] for r in RECIPES])[0]
-        self.order_seq += 1
-        self.orders.append({"id": self.order_seq, "name": name, "items": list(items), "pts": pts, "ttl": ORDER_TTL, "max": ORDER_TTL})
+        self.customer_seq += 1
+        self.seats[self.rng.choice(free)] = {"id": self.customer_seq, "name": name, "items": list(items), "pts": pts,
+                                             "patience": PATIENCE, "max": PATIENCE}
 
     # ── 화면에 보낼 상태 ───────────────────────────────────────
     def snapshot(self):
@@ -315,23 +248,27 @@ class Room:
             "code": self.code, "phase": self.phase, "host": self.host_id,
             "time": round(self.time_left, 1), "score": self.score, "targets": self.targets, "stars": self.stars(),
             "players": [p.public() for p in self.players.values()],
-            "items": [{"x": x, "y": y, "item": _view(item)} for (x, y), item in self.items.items()],
-            "orders": [{"id": o["id"], "name": o["name"], "items": o["items"], "ttl": round(o["ttl"], 1), "max": o["max"], "pts": o["pts"]}
-                       for o in self.orders],
+            "pots": [_pot_view(pot) for pot in self.pots],
+            "slots": self.slots,
+            "seats": [None if c is None else {**c, "patience": round(c["patience"], 1)} for c in self.seats],
         }
 
 
-def _axis(value):
-    return value if value in (-1, 0, 1) else 0
+def _index(text, size):
+    return int(text) if text.isdigit() and int(text) < size else None
 
 
-def _code(item):
-    return f"{item['k']}_{item['s']}"
+def _addable(bowl, item):
+    """그릇에 담을 수 있는 재료인가: 익힌 면·달걀, 파. 같은 재료는 한 번만."""
+    if item["k"] in COOK_SECONDS:
+        ok = item["s"] == "cooked"
+    else:
+        ok = item["k"] == "scallion"
+    return ok and item["k"] not in bowl["c"]
 
 
-def _view(item):
-    out = dict(item)
-    if "p" in out:
-        need = CHOP_SECONDS if out["k"] == "scallion" else (COOK_SECONDS[out["k"]] if out["s"] == "cooking" else BURN_AFTER)
-        out["p"] = round(min(1.0, out["p"] / need), 2)
-    return out
+def _pot_view(pot):
+    if pot is None:
+        return None
+    need = COOK_SECONDS[pot["k"]] if pot["s"] == "cooking" else BURN_AFTER
+    return {"k": pot["k"], "s": pot["s"], "p": 1.0 if pot["s"] == "burnt" else round(min(1.0, pot["p"] / need), 2)}

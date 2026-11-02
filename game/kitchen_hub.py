@@ -14,7 +14,7 @@ from . import kitchen_engine as engine
 
 logger = logging.getLogger(__name__)
 
-TICK_SECONDS = 0.1
+TICK_SECONDS = 0.2
 ABANDONED_ROOM_KEEP_SECONDS = 30     # 모두 나간 방을 남겨 두는 시간 (새로고침 복귀용)
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"      # 헷갈리는 글자(I, O, 0, 1)는 뺀다
 

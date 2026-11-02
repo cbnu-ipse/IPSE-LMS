@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gomoku_engine, gostop_engine, janggi_engine, kitchen_engine, kitchen_hub, poker_engine, yacht_engine
+from . import gomoku_engine, gostop_engine, janggi_engine, kitchen_hub, poker_engine, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -1123,7 +1123,7 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class KitchenConsumer(AsyncWebsocketConsumer):
-    """분식 대작전 (협동 요리). 방 상태는 kitchen_hub의 메모리에 있고 DB는 쓰지 않는다. 입력은 그대로 규칙 엔진에 넘긴다."""
+    """분식 대작전 (협동 라면 가게). 방 상태는 kitchen_hub의 메모리에 있고 DB는 쓰지 않는다. 클릭은 그대로 규칙 엔진에 넘긴다."""
 
     async def connect(self):
         user = self.scope["user"]
@@ -1137,7 +1137,7 @@ class KitchenConsumer(AsyncWebsocketConsumer):
             ok, room = kitchen_hub.join_room(user.id, user.username, room.code)
             await self._enter(room)
         else:
-            await self._send({"type": "hello", "room": None, "map": kitchen_engine.MAP})
+            await self._send({"type": "hello", "room": None})
 
     async def disconnect(self, close_code):
         user = self.scope.get("user")
@@ -1174,7 +1174,7 @@ class KitchenConsumer(AsyncWebsocketConsumer):
         elif kind == "leave":
             await self._leave_group()
             left = kitchen_hub.leave(user.id)
-            await self._send({"type": "hello", "room": None, "map": kitchen_engine.MAP})
+            await self._send({"type": "hello", "room": None})
             if left is not None and left.players:
                 await kitchen_hub.broadcast(left)
         elif kind in ("start", "again"):
@@ -1186,12 +1186,10 @@ class KitchenConsumer(AsyncWebsocketConsumer):
             if kind == "start":
                 kitchen_hub.ensure_loop()
             await kitchen_hub.broadcast(room)
-        elif kind == "input":
-            room.set_input(user.id, data.get("dx"), data.get("dy"))
-        elif kind == "interact":
-            room.interact(user.id)
-        elif kind == "chop":
-            room.set_chop(user.id, data.get("on"))
+        elif kind == "click":
+            room.click(user.id, data.get("target"))
+            if room.phase == "playing":
+                await kitchen_hub.broadcast(room, room.take_events())       # 클릭 결과를 시계 틱을 기다리지 않고 바로 보여 준다
 
     async def kitchen_state(self, event):
         await self._send({"type": "state", "state": event["state"]})
@@ -1200,7 +1198,7 @@ class KitchenConsumer(AsyncWebsocketConsumer):
         self.group = kitchen_hub.group_name(room.code)
         await self.channel_layer.group_add(self.group, self.channel_name)
         kitchen_hub.ensure_loop()
-        await self._send({"type": "hello", "room": room.code, "me": self.scope["user"].id, "map": kitchen_engine.MAP})
+        await self._send({"type": "hello", "room": room.code, "me": self.scope["user"].id})
         await kitchen_hub.broadcast(room)
 
     async def _leave_group(self):
