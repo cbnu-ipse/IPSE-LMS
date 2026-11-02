@@ -1,0 +1,411 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 분식 대작전{% endblock %}
+
+{% block content %}
+<style>
+    /* 분식 대작전: 모든 스타일은 kt- 접두사로 한정해 다른 화면에 영향이 없게 한다 */
+    .kt-wrap { max-width: 980px; margin: 0 auto; padding: 18px 14px 40px; }
+    .kt-head h1 { margin: 0; font-size: 26px; font-weight: 900; color: #1e293b; }
+    .kt-head p { margin: 4px 0 14px; font-size: 13px; color: #64748b; }
+    .kt-card { background: #fff; border: 1px solid #e8e1f2; border-radius: 20px; padding: 18px; box-shadow: 0 2px 10px rgba(76, 29, 149, .06); }
+    .kt-btn { border: 0; border-radius: 14px; padding: 12px 18px; font-weight: 800; font-size: 15px; cursor: pointer; color: #fff; background: #ea580c; touch-action: manipulation; }
+    .kt-btn:hover { background: #c2410c; }
+    .kt-btn.sub { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+    .kt-btn.sub:hover { background: #f8fafc; }
+    .kt-btn[disabled] { opacity: .5; cursor: default; }
+    .kt-menu { display: grid; gap: 12px; }
+    .kt-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .kt-input { flex: 1; min-width: 120px; font: inherit; font-size: 18px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; text-align: center; padding: 11px 12px; border-radius: 14px; border: 2px solid #e2e8f0; }
+    .kt-input:focus { outline: none; border-color: #ea580c; }
+    .kt-how { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.8; color: #475569; }
+    .kt-how b { color: #c2410c; }
+    .kt-code { font-size: 44px; font-weight: 900; letter-spacing: .25em; color: #c2410c; text-align: center; margin: 4px 0; }
+    .kt-players { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 10px 0 14px; }
+    .kt-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 700; font-size: 14px; }
+    .kt-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e1; }
+    .kt-hud { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: stretch; margin-bottom: 10px; }
+    .kt-stat { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid #e8e1f2; border-radius: 16px; padding: 8px 14px; font-weight: 900; }
+    .kt-stat .t { font-size: 24px; color: #1e293b; font-variant-numeric: tabular-nums; }
+    .kt-stat .t.low { color: #e11d48; }
+    .kt-stat .s { font-size: 22px; color: #c2410c; font-variant-numeric: tabular-nums; }
+    .kt-stars { font-size: 15px; letter-spacing: 1px; color: #cbd5e1; }
+    .kt-stars .on { color: #f59e0b; }
+    .kt-orders { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+    .kt-order { flex: 0 0 auto; min-width: 104px; background: #fff; border: 2px solid #fed7aa; border-radius: 14px; padding: 6px 10px 8px; }
+    .kt-order .n { font-size: 12px; font-weight: 800; color: #475569; }
+    .kt-order .i { font-size: 22px; line-height: 1.3; white-space: nowrap; }
+    .kt-order .b { height: 5px; background: #f1f5f9; border-radius: 3px; overflow: hidden; margin-top: 3px; }
+    .kt-order .b i { display: block; height: 100%; background: #22c55e; }
+    .kt-order.hurry { border-color: #fb7185; }
+    .kt-order.hurry .b i { background: #e11d48; }
+    .kt-order.none { border-style: dashed; color: #94a3b8; font-size: 12px; font-weight: 700; display: flex; align-items: center; }
+    .kt-stage { position: relative; background: #fff7ed; border: 1px solid #e8e1f2; border-radius: 20px; padding: 8px; touch-action: none; }
+    #kt-canvas { display: block; margin: 0 auto; border-radius: 14px; max-width: 100%; }
+    .kt-toasts { position: absolute; left: 0; right: 0; top: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+    .kt-toast { background: rgba(30, 41, 59, .88); color: #fff; font-weight: 800; font-size: 14px; padding: 6px 14px; border-radius: 999px; animation: kt-pop .25s ease; }
+    @keyframes kt-pop { from { opacity: 0; transform: translateY(-6px) scale(.95); } to { opacity: 1; transform: none; } }
+    .kt-over { position: absolute; inset: 0; background: rgba(255, 247, 237, .93); border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 16px; }
+    .kt-over .big { font-size: 34px; font-weight: 900; color: #c2410c; }
+    .kt-over .st { font-size: 40px; letter-spacing: 4px; color: #cbd5e1; }
+    .kt-over .st .on { color: #f59e0b; }
+    .kt-keys { font-size: 12px; color: #64748b; text-align: center; margin-top: 8px; }
+    .kt-keys kbd { background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; font: inherit; font-weight: 800; color: #334155; }
+    .kt-touch { display: none; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
+    .kt-pad { display: grid; grid-template-columns: repeat(3, 58px); grid-template-rows: repeat(3, 58px); gap: 4px; }
+    .kt-pad button, .kt-act button { border: 0; border-radius: 16px; background: #ffedd5; color: #9a3412; font-size: 22px; font-weight: 900; touch-action: none; -webkit-tap-highlight-color: transparent; }
+    .kt-pad button:active, .kt-pad button.down, .kt-act button:active, .kt-act button.down { background: #fb923c; color: #fff; }
+    .kt-act { display: grid; gap: 10px; }
+    .kt-act button { width: 104px; height: 62px; font-size: 15px; }
+    @media (pointer: coarse), (max-width: 760px) { .kt-touch { display: flex; } .kt-keys { display: none; } }
+    @media (max-width: 560px) { .kt-hud { grid-template-columns: 1fr; } .kt-code { font-size: 36px; } }
+    @media (prefers-reduced-motion: reduce) { .kt-toast { animation: none; } }
+</style>
+
+<section class="kt-wrap">
+    <div class="kt-head">
+        <h1>🍜 분식 대작전</h1>
+        <p>1~4명이 함께 라면 가게를 운영하는 협동 요리 게임이에요. 혼자서도 할 수 있어요.</p>
+    </div>
+
+    <!-- 처음 화면 -->
+    <div id="kt-menu" class="kt-card kt-menu" hidden>
+        <div class="kt-row">
+            <button type="button" class="kt-btn" id="kt-solo">🍳 혼자 하기</button>
+            <button type="button" class="kt-btn sub" id="kt-create">👥 방 만들기</button>
+        </div>
+        <form class="kt-row" id="kt-join-form">
+            <input class="kt-input" id="kt-code-input" maxlength="4" placeholder="방 코드" autocomplete="off" aria-label="방 코드">
+            <button type="submit" class="kt-btn sub">입장</button>
+        </form>
+        <ul class="kt-how">
+            <li>창고에서 <b>재료</b>를 집어 요리하고 <b>서빙 창구</b>에 주문대로 내면 점수를 얻어요.</li>
+            <li><b>면·달걀</b>은 화구에서 익혀요. 다 익은 뒤 오래 두면 타 버려요 🔥</li>
+            <li><b>파</b>는 도마에서 <b>썰기를 누르고 있어야</b> 썰려요.</li>
+            <li>익힌 재료와 썬 파를 <b>접시</b>에 담아요. 주문과 똑같이 맞춰야 서빙돼요.</li>
+            <li>사람이 많을수록 주문이 빨리 들어와요. 역할을 나눠 보세요!</li>
+        </ul>
+        <p class="kt-keys" style="display:block;margin-top:0">이동 <kbd>W A S D</kbd> 또는 방향키 · 집기/놓기 <kbd>Space</kbd> · 썰기 <kbd>F</kbd> (누르고 있기)</p>
+    </div>
+
+    <!-- 대기실 -->
+    <div id="kt-lobby" class="kt-card" hidden>
+        <div class="kt-keys" style="margin:0">친구에게 이 코드를 알려 주세요</div>
+        <div class="kt-code" id="kt-room-code">----</div>
+        <div class="kt-row" style="justify-content:center"><button type="button" class="kt-btn sub" id="kt-copy">코드 복사</button></div>
+        <div class="kt-players" id="kt-lobby-players"></div>
+        <div class="kt-row" style="justify-content:center">
+            <button type="button" class="kt-btn" id="kt-start">게임 시작</button>
+            <button type="button" class="kt-btn sub" id="kt-leave">나가기</button>
+        </div>
+        <p class="kt-keys" id="kt-lobby-note"></p>
+    </div>
+
+    <!-- 게임 -->
+    <div id="kt-play" hidden>
+        <div class="kt-hud">
+            <div class="kt-stat">
+                <span class="t" id="kt-time">3:00</span>
+                <span class="s" id="kt-score">0</span>
+                <span class="kt-stars" id="kt-stars">★★★</span>
+            </div>
+            <div class="kt-orders" id="kt-orders"></div>
+        </div>
+        <div class="kt-stage" id="kt-stage">
+            <canvas id="kt-canvas" aria-label="주방 화면"></canvas>
+            <div class="kt-toasts" id="kt-toasts"></div>
+            <div class="kt-over" id="kt-over" hidden>
+                <div class="big" id="kt-over-title">영업 종료!</div>
+                <div class="st" id="kt-over-stars">★★★</div>
+                <div style="font-size:22px;font-weight:900" id="kt-over-score"></div>
+                <div class="kt-row" style="justify-content:center">
+                    <button type="button" class="kt-btn" id="kt-again">대기실로</button>
+                    <button type="button" class="kt-btn sub" id="kt-over-leave">나가기</button>
+                </div>
+                <div class="kt-keys" id="kt-over-note"></div>
+            </div>
+        </div>
+        <div class="kt-keys">이동 <kbd>W A S D</kbd>/방향키 · 집기/놓기 <kbd>Space</kbd> · 썰기 <kbd>F</kbd> (누르고 있기)</div>
+        <div class="kt-touch" id="kt-touch">
+            <div class="kt-pad">
+                <span></span><button type="button" data-dir="0,-1" aria-label="위">▲</button><span></span>
+                <button type="button" data-dir="-1,0" aria-label="왼쪽">◀</button><span></span><button type="button" data-dir="1,0" aria-label="오른쪽">▶</button>
+                <span></span><button type="button" data-dir="0,1" aria-label="아래">▼</button><span></span>
+            </div>
+            <div class="kt-act">
+                <button type="button" id="kt-btn-chop">🔪 썰기<br><small>누르고 있기</small></button>
+                <button type="button" id="kt-btn-act">✋ 집기/놓기</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+{{ kitchen_map|json_script:"kt-map-data" }}
+<script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
+<script>
+(function () {
+    'use strict';
+    const MAP = JSON.parse(document.getElementById('kt-map-data').textContent);
+    const W = MAP[0].length, H = MAP.length;
+    const COLORS = ['#ef4444', '#3b82f6', '#16a34a', '#f59e0b'];
+    const $ = (id) => document.getElementById(id);
+    const sound = (name) => { try { window.GameSound && window.GameSound.play(name); } catch (e) {} };
+    const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+    let ws = null, me = null, roomCode = null, S = null, autoStart = false, closedByUs = false;
+    let sentDir = '0,0', chopping = false, joinedByLink = false;
+    const wantedRoom = new URLSearchParams(location.search).get('room');
+    const drawn = {};                                   // 사용자 id → 화면에 그리는 (부드럽게 따라가는) 위치
+
+    // ── 연결 ────────────────────────────────────────────────────
+    function send(payload) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(payload)); }
+    function connect() {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/kitchen/');
+        ws.onopen = () => { if (!connect.ping) connect.ping = setInterval(() => send({ type: '__ping__' }), 25000); };
+        ws.onmessage = (e) => handle(JSON.parse(e.data));
+        ws.onclose = () => { if (!closedByUs) setTimeout(connect, 1500); };
+    }
+    function handle(m) {
+        if (m.type === 'hello') {
+            roomCode = m.room;
+            if (m.me) me = m.me;
+            if (!m.room) {
+                S = null; show('menu');
+                if (wantedRoom && !joinedByLink) { joinedByLink = true; send({ type: 'join', code: wantedRoom }); }   // 주소의 ?room=코드로 들어온 경우
+                return;
+            }
+            if (autoStart) { autoStart = false; send({ type: 'start' }); }
+        } else if (m.type === 'state') {
+            S = m.state;
+            (S.events || []).forEach(onEvent);
+            renderState();
+        } else if (m.type === 'error') {
+            toast('⚠️ ' + m.message);
+            sound('error');
+        }
+    }
+
+    // ── 화면 전환 ───────────────────────────────────────────────
+    function show(view) {
+        $('kt-menu').hidden = view !== 'menu';
+        $('kt-lobby').hidden = view !== 'lobby';
+        $('kt-play').hidden = view !== 'play';
+        if (view === 'play') requestAnimationFrame(resize);
+        if (view !== 'play') releaseInputs();
+    }
+    function renderState() {
+        if (!S) return;
+        if (S.phase === 'lobby') {
+            show('lobby');
+            $('kt-room-code').textContent = S.code;
+            $('kt-lobby-players').innerHTML = S.players.map((p) =>
+                `<span class="kt-chip"><span class="kt-dot" style="background:${COLORS[p.color % 4]}"></span>${esc(p.name)}${p.id === S.host ? ' 👑' : ''}${p.online ? '' : ' (연결 끊김)'}</span>`).join('');
+            const host = S.host === me;
+            $('kt-start').hidden = !host;
+            $('kt-start').textContent = S.players.length > 1 ? `게임 시작 (${S.players.length}명)` : '혼자서 시작';
+            $('kt-lobby-note').textContent = host ? '모두 모이면 시작하세요. 최대 4명까지 들어올 수 있어요.' : '방장이 시작하길 기다리는 중이에요…';
+            return;
+        }
+        show('play');
+        renderHud();
+        const done = S.phase === 'done';
+        $('kt-over').hidden = !done;
+        if (done) {
+            const stars = S.stars;
+            $('kt-over-title').textContent = stars >= 3 ? '🎉 완벽한 영업!' : stars >= 1 ? '👏 영업 종료!' : '😅 영업 종료!';
+            $('kt-over-stars').innerHTML = [1, 2, 3].map((i) => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
+            $('kt-over-score').textContent = `${S.score}점 (목표 ${S.targets.join(' / ')})`;
+            $('kt-again').hidden = S.host !== me;
+            $('kt-over-note').textContent = S.host === me ? '대기실로 돌아가 다시 시작할 수 있어요.' : '방장이 다시 시작하길 기다려 주세요.';
+        }
+    }
+    function renderHud() {
+        const t = Math.ceil(S.time), m = Math.floor(t / 60), s = String(t % 60).padStart(2, '0');
+        const el = $('kt-time');
+        el.textContent = `${m}:${s}`;
+        el.classList.toggle('low', t <= 20);
+        $('kt-score').textContent = S.score;
+        $('kt-stars').innerHTML = S.targets.map((target) => `<span class="${S.score >= target ? 'on' : ''}" title="${target}점">★</span>`).join('');
+        $('kt-orders').innerHTML = S.orders.length ? S.orders.map((o) =>
+            `<div class="kt-order ${o.ttl < o.max * 0.25 ? 'hurry' : ''}"><div class="n">${esc(o.name)} <span style="color:#c2410c">+${o.pts}</span></div>
+             <div class="i">${o.items.map(plateEmoji).join('')}</div><div class="b"><i style="width:${Math.max(0, o.ttl / o.max * 100)}%"></i></div></div>`).join('')
+            : '<div class="kt-order none">곧 주문이 들어와요…</div>';
+    }
+    function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    // ── 이벤트(소리·안내) ───────────────────────────────────────
+    function onEvent(e) {
+        if (e.t === 'serve') { toast(`✅ ${e.name} +${e.pts} (${e.by})`); sound('success'); }
+        else if (e.t === 'reject' && e.uid === me) { toast('주문에 없는 메뉴예요'); sound('error'); }
+        else if (e.t === 'expire') { toast(`⏰ ${e.name} 주문이 사라졌어요`); sound('lose'); }
+        else if (e.t === 'burnt') { toast('🔥 탔어요! 쓰레기통에 버려요'); sound('error'); }
+        else if (e.t === 'ding') { sound('pop'); }
+        else if (e.t === 'end') { sound(e.stars >= 2 ? 'jackpot' : 'fanfare'); }
+    }
+    function toast(text) {
+        const box = $('kt-toasts'), el = document.createElement('div');
+        el.className = 'kt-toast';
+        el.textContent = text;
+        box.appendChild(el);
+        while (box.children.length > 3) box.removeChild(box.firstChild);
+        setTimeout(() => el.remove(), 2200);
+    }
+
+    // ── 그리기 ──────────────────────────────────────────────────
+    const canvas = $('kt-canvas'), ctx = canvas.getContext('2d');
+    let tile = 48;
+    function resize() {
+        const stage = $('kt-stage');
+        if (!stage || $('kt-play').hidden) return;
+        const room = stage.clientWidth - 16;
+        tile = Math.max(24, Math.min(72, Math.floor(room / W)));
+        const dpr = window.devicePixelRatio || 1;
+        canvas.style.width = W * tile + 'px';
+        canvas.style.height = H * tile + 'px';
+        canvas.width = Math.round(W * tile * dpr);
+        canvas.height = Math.round(H * tile * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+
+    const STATION = {
+        N: ['#fde68a', '🍝'], E: ['#fecaca', '🥚'], G: ['#bbf7d0', '🌿'], D: ['#e2e8f0', '🍽️'],
+        X: ['#94a3b8', '🗑️'], W: ['#c4b5fd', '🛎️'], T: ['#d6a46c', ''], B: ['#b7791f', '🔪'], S: ['#475569', '🔥'],
+    };
+    function emoji(text, x, y, size) {
+        ctx.font = `${size}px ${EMOJI_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y);
+    }
+    function itemEmoji(it) {
+        if (it.k === 'noodle') return it.s === 'cooked' ? '🍜' : it.s === 'burnt' ? '💨' : '🍝';
+        if (it.k === 'egg') return it.s === 'cooked' ? '🍳' : it.s === 'burnt' ? '💨' : '🥚';
+        if (it.k === 'scallion') return it.s === 'chopped' ? '🥬' : '🌿';
+        return '🍽️';
+    }
+    function plateEmoji(code) { return { noodle_cooked: '🍜', egg_cooked: '🍳', scallion_chopped: '🥬' }[code] || '?'; }
+    function drawItem(it, cx, cy, size) {
+        if (it.k === 'plate') {
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(cx, cy, size * 0.42, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            if (!it.c.length) return;
+            const small = size * (it.c.length > 1 ? 0.34 : 0.5), gap = small * 0.85;
+            it.c.forEach((code, i) => emoji(plateEmoji(code), cx + (i - (it.c.length - 1) / 2) * gap, cy, small));
+        } else {
+            emoji(itemEmoji(it), cx, cy, size * 0.62);
+        }
+    }
+    function bar(x, y, w, frac, color) {
+        ctx.fillStyle = 'rgba(15,23,42,.25)';
+        ctx.fillRect(x, y, w, 5);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), 5);
+    }
+    function frame() {
+        requestAnimationFrame(frame);
+        if ($('kt-play').hidden || !S) return;
+        ctx.clearRect(0, 0, W * tile, H * tile);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const c = MAP[y][x], px = x * tile, py = y * tile;
+            if (c === '.') { ctx.fillStyle = (x + y) % 2 ? '#fff7ed' : '#ffedd5'; ctx.fillRect(px, py, tile, tile); continue; }
+            if (c === '#') { ctx.fillStyle = '#64748b'; ctx.fillRect(px, py, tile, tile); continue; }
+            const st = STATION[c];
+            ctx.fillStyle = st[0]; ctx.fillRect(px, py, tile, tile);
+            ctx.strokeStyle = 'rgba(15,23,42,.18)'; ctx.lineWidth = 1; ctx.strokeRect(px + .5, py + .5, tile - 1, tile - 1);
+            if (st[1]) { ctx.globalAlpha = c === 'T' ? 1 : (c === 'S' || c === 'B' ? .55 : 1); emoji(st[1], px + tile / 2, py + tile / 2, tile * 0.5); ctx.globalAlpha = 1; }
+        }
+        S.items.forEach((o) => {
+            const px = o.x * tile, py = o.y * tile, it = o.item;
+            drawItem(it, px + tile / 2, py + tile / 2, tile);
+            if (it.p !== undefined && it.s !== 'chopped') {
+                const burn = it.s === 'cooked';
+                bar(px + 4, py + tile - 8, tile - 8, it.p, burn ? (it.p > 0.6 ? '#ef4444' : '#f59e0b') : '#22c55e');
+            }
+        });
+        S.players.forEach((p) => {
+            const d = drawn[p.id] || (drawn[p.id] = { x: p.x, y: p.y });
+            d.x += (p.x - d.x) * 0.4; d.y += (p.y - d.y) * 0.4;
+            const cx = (d.x + 0.5) * tile, cy = (d.y + 0.5) * tile, r = tile * 0.36;
+            ctx.fillStyle = 'rgba(15,23,42,.18)';
+            ctx.beginPath(); ctx.ellipse(cx, cy + r * 0.85, r * 0.9, r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = COLORS[p.color % 4];
+            ctx.strokeStyle = p.id === me ? '#fff' : 'rgba(255,255,255,.7)';
+            ctx.lineWidth = p.id === me ? 3 : 2;
+            ctx.globalAlpha = p.online ? 1 : 0.4;
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(cx + p.fx * r * 0.55 - p.fy * r * 0.3, cy + p.fy * r * 0.55 + p.fx * r * 0.3, r * 0.16, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + p.fx * r * 0.55 + p.fy * r * 0.3, cy + p.fy * r * 0.55 - p.fx * r * 0.3, r * 0.16, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+            if (p.held) drawItem(p.held, cx + r * 0.6, cy - r * 1.05, tile * 0.85);
+            if (p.chop) emoji('🔪', cx - r * 0.9, cy - r * 0.9, tile * 0.32);
+            ctx.font = `800 ${Math.max(10, tile * 0.22)}px sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(p.name, cx, cy + r + tile * 0.3);
+            ctx.fillStyle = '#1e293b'; ctx.fillText(p.name, cx, cy + r + tile * 0.3);
+        });
+    }
+    requestAnimationFrame(frame);
+
+    // ── 입력 ────────────────────────────────────────────────────
+    const DIRS = { ArrowUp: '0,-1', w: '0,-1', W: '0,-1', ArrowDown: '0,1', s: '0,1', S: '0,1', ArrowLeft: '-1,0', a: '-1,0', A: '-1,0', ArrowRight: '1,0', d: '1,0', D: '1,0' };
+    const held = [];                                   // 누르고 있는 방향 (가장 나중에 누른 것이 우선)
+    function pushDir(dir) { const i = held.indexOf(dir); if (i >= 0) held.splice(i, 1); held.push(dir); sendDir(); }
+    function dropDir(dir) { const i = held.indexOf(dir); if (i >= 0) held.splice(i, 1); sendDir(); }
+    function sendDir() {
+        const dir = held.length ? held[held.length - 1] : '0,0';
+        if (dir === sentDir) return;
+        sentDir = dir;
+        const [dx, dy] = dir.split(',').map(Number);
+        send({ type: 'input', dx: dx, dy: dy });
+    }
+    function setChop(on) { if (chopping === on) return; chopping = on; send({ type: 'chop', on: on }); $('kt-btn-chop').classList.toggle('down', on); }
+    function releaseInputs() { held.length = 0; sendDir(); setChop(false); }
+    function typing() { const t = document.activeElement && document.activeElement.tagName; return t === 'INPUT' || t === 'TEXTAREA'; }
+    function playing() { return S && S.phase === 'playing' && !$('kt-play').hidden; }
+
+    document.addEventListener('keydown', (e) => {
+        if (!playing() || typing() || e.ctrlKey || e.metaKey || e.altKey) return;
+        const key = e.key;
+        if (DIRS[key]) { e.preventDefault(); if (!e.repeat) pushDir(DIRS[key]); }
+        else if (key === ' ' || key === 'e' || key === 'E') { e.preventDefault(); if (!e.repeat) { send({ type: 'interact' }); sound('tap'); } }
+        else if (key === 'f' || key === 'F') { e.preventDefault(); setChop(true); }
+    });
+    document.addEventListener('keyup', (e) => {
+        if (DIRS[e.key]) dropDir(DIRS[e.key]);
+        else if (e.key === 'f' || e.key === 'F') setChop(false);
+    });
+    window.addEventListener('blur', releaseInputs);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseInputs(); });
+
+    document.querySelectorAll('.kt-pad button').forEach((btn) => {
+        const dir = btn.dataset.dir;
+        btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); btn.classList.add('down'); pushDir(dir); });
+        ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => btn.addEventListener(ev, () => { btn.classList.remove('down'); dropDir(dir); }));
+    });
+    $('kt-btn-act').addEventListener('pointerdown', (e) => { e.preventDefault(); send({ type: 'interact' }); sound('tap'); });
+    const chopBtn = $('kt-btn-chop');
+    chopBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); chopBtn.setPointerCapture(e.pointerId); setChop(true); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => chopBtn.addEventListener(ev, () => setChop(false)));
+
+    // ── 버튼 ────────────────────────────────────────────────────
+    $('kt-solo').addEventListener('click', () => { autoStart = true; send({ type: 'create' }); });
+    $('kt-create').addEventListener('click', () => send({ type: 'create' }));
+    $('kt-join-form').addEventListener('submit', (e) => { e.preventDefault(); const code = $('kt-code-input').value.trim(); if (code) send({ type: 'join', code: code }); });
+    $('kt-start').addEventListener('click', () => send({ type: 'start' }));
+    $('kt-again').addEventListener('click', () => send({ type: 'again' }));
+    $('kt-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('kt-over-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('kt-copy').addEventListener('click', () => {
+        const code = S ? S.code : '';
+        if (navigator.clipboard && code) navigator.clipboard.writeText(code).then(() => toast('코드를 복사했어요'), () => {});
+    });
+
+    connect();
+})();
+</script>
+{% endblock %}
