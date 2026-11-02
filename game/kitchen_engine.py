@@ -1,12 +1,12 @@
-"""분식 대작전: 마우스(클릭)로만 하는 협동 라면 가게 게임의 규칙 (서버가 모든 것을 판정한다).
+"""분식 대작전: 마우스로 재료와 음식을 끌어다 놓는 협동 라면 가게 게임의 규칙 (서버가 모든 것을 판정한다).
 
-DB를 쓰지 않는 순수 파이썬이라 시간(step)과 클릭(click)을 직접 넣어 테스트할 수 있다.
+DB를 쓰지 않는 순수 파이썬이라 시간(step)과 끌어 놓기(drag)를 직접 넣어 테스트할 수 있다.
 
 규칙 요약
 - 손님이 와서 메뉴를 주문하고, 인내심이 다 닳기 전에 만들어 주면 점수(빨리 줄수록 보너스)를 받는다. 못 만들어 주면 손님이 떠나고 감점.
-- 손(hand)에 물건을 집고 → 놓을 곳을 누르는 식이다. 면·달걀은 냄비에서 익히고(오래 두면 탄다), 그릇 자리에 올린 그릇에 익힌 재료와 파를 담아
-  주문과 똑같이 맞춰 손님에게 준다.
-- 한 가게를 여러 명이 함께 쓴다. 사람마다 자기 손이 따로 있어 한 명은 조리, 한 명은 서빙처럼 역할을 나눌 수 있다.
+- 재료·음식을 끌어서(drag) 놓는다(drop): 면·달걀은 냄비에 끌어다 넣어 익히고(오래 두면 탄다), 그릇 자리에 놓은 그릇에 익힌 재료와 파를 끌어다 담아
+  주문과 똑같이 만든 그릇을 손님에게 끌어다 준다.
+- 한 가게를 여러 명이 함께 쓴다. 각자 자기 마우스로 동시에 끌 수 있어 한 명은 조리, 한 명은 서빙처럼 역할을 나눌 수 있다.
 """
 import random
 
@@ -42,11 +42,10 @@ def customer_interval(players):
 class Player:
     def __init__(self, uid, name, index):
         self.uid, self.name, self.index = uid, name, index
-        self.hand = None
         self.connected = True
 
     def public(self):
-        return {"id": self.uid, "name": self.name, "color": self.index, "hand": self.hand, "online": self.connected}
+        return {"id": self.uid, "name": self.name, "color": self.index, "online": self.connected}
 
 
 class Room:
@@ -105,7 +104,7 @@ class Room:
         """대기실로 되돌린다: 가게와 점수를 처음으로 (접속해 있는 사람만 남긴다)."""
         self.players = {uid: p for uid, p in self.players.items() if p.connected}
         for i, p in enumerate(self.players.values()):
-            p.index, p.hand = i, None
+            p.index = i
         if self.host_id not in self.players and self.players:
             self.host_id = next(iter(self.players))
         self.events = []
@@ -120,72 +119,71 @@ class Room:
         self.reset()
         return True, ""
 
-    # ── 클릭 ───────────────────────────────────────────────────
-    def click(self, uid, target):
-        """target: crate:noodle|egg|scallion · bowls · trash · pot:N · slot:N · seat:N. 손에 든 것과 누른 곳에 따라 하는 일이 정해진다."""
+    # ── 끌어 놓기 ──────────────────────────────────────────────
+    def drag(self, uid, src, dst):
+        """src에서 집은 것을 dst에 놓는다. 성공하면 True, 놓을 수 없으면 아무것도 바뀌지 않고 False.
+        src: crate:noodle|egg|scallion(재료 상자) · bowls(그릇 더미) · pot:N(냄비 속 음식) · slot:N(그릇 자리의 그릇)
+        dst: pot:N · slot:N · seat:N(손님) · trash"""
         p = self.players.get(uid)
-        if p is None or self.phase != "playing":
-            return
-        kind, _, arg = str(target).partition(":")
+        src, dst = str(src), str(dst)
+        if p is None or self.phase != "playing" or src == dst:
+            return False
+        item, remove = self._take(src)
+        if item is None or not self._drop(p, item, dst):
+            return False
+        remove()
+        return True
+
+    def _take(self, src):
+        kind, _, arg = src.partition(":")
         if kind == "crate" and arg in SOURCES:
-            self._crate(p, arg)
-        elif kind == "bowls":
-            if p.hand is None:
-                p.hand = {"k": "bowl", "c": []}
-        elif kind == "trash":
-            if p.hand is not None:
-                p.hand = None
-                self.events.append({"t": "trash", "uid": uid})
-        elif kind == "pot" and _index(arg, POTS) is not None:
-            self._pot(p, _index(arg, POTS))
+            return {"k": arg, "s": "raw"}, _noop
+        if kind == "bowls":
+            return {"k": "bowl", "c": []}, _noop
+        if kind == "pot" and _index(arg, POTS) is not None and self.pots[_index(arg, POTS)] is not None:
+            i, pot = _index(arg, POTS), self.pots[_index(arg, POTS)]
+            return {"k": pot["k"], "s": "raw" if pot["s"] == "cooking" else pot["s"]}, lambda: self.pots.__setitem__(i, None)    # 익는 중에 꺼내면 날것으로 돌아간다
+        if kind == "slot" and _index(arg, SLOTS) is not None and self.slots[_index(arg, SLOTS)] is not None:
+            i = _index(arg, SLOTS)
+            return self.slots[i], lambda: self.slots.__setitem__(i, None)
+        return None, None
+
+    def _drop(self, p, item, dst):
+        kind, _, arg = dst.partition(":")
+        if kind == "trash":
+            self.events.append({"t": "trash", "uid": p.uid})
+            return True
+        if kind == "pot" and _index(arg, POTS) is not None:
+            i = _index(arg, POTS)
+            if self.pots[i] is None and item["k"] in COOK_SECONDS and item["s"] == "raw":
+                self.pots[i] = {"k": item["k"], "s": "cooking", "p": 0.0}
+                return True
         elif kind == "slot" and _index(arg, SLOTS) is not None:
-            self._slot(p, _index(arg, SLOTS))
+            i = _index(arg, SLOTS)
+            bowl = self.slots[i]
+            if bowl is None and item["k"] == "bowl":
+                self.slots[i] = item
+                return True
+            if bowl is not None and item["k"] != "bowl" and _addable(bowl, item):
+                bowl["c"].append(item["k"])                  # 익힌 재료·파를 그릇에 담는다
+                return True
         elif kind == "seat" and _index(arg, SEATS) is not None:
-            self._serve(p, _index(arg, SEATS))
+            return self._serve(p, item, _index(arg, SEATS))
+        return False
 
-    def _crate(self, p, source):
-        hand = p.hand
-        if hand is None:
-            p.hand = {"k": source, "s": "raw"}
-        elif hand["k"] == "bowl" and source == "scallion" and "scallion" not in hand["c"]:
-            hand["c"].append("scallion")                 # 파는 손에 든 그릇에 바로 올린다
-
-    def _pot(self, p, i):
-        pot, hand = self.pots[i], p.hand
-        if pot is None:
-            if hand is not None and hand["k"] in COOK_SECONDS and hand["s"] == "raw":
-                self.pots[i] = {"k": hand["k"], "s": "cooking", "p": 0.0}
-                p.hand = None
-        elif hand is None:
-            p.hand = {"k": pot["k"], "s": "raw" if pot["s"] == "cooking" else pot["s"]}      # 익는 중에 집으면 날것으로 돌아간다
-            self.pots[i] = None
-        elif hand["k"] == "bowl" and pot["s"] == "cooked" and pot["k"] not in hand["c"]:
-            hand["c"].append(pot["k"])                   # 손에 든 그릇에 바로 담는다
-            self.pots[i] = None
-
-    def _slot(self, p, i):
-        bowl, hand = self.slots[i], p.hand
-        if bowl is None:
-            if hand is not None and hand["k"] == "bowl":
-                self.slots[i], p.hand = hand, None
-        elif hand is None:
-            p.hand, self.slots[i] = bowl, None
-        elif hand["k"] != "bowl" and _addable(bowl, hand):
-            bowl["c"].append(hand["k"])
-            p.hand = None
-
-    def _serve(self, p, i):
-        customer, hand = self.seats[i], p.hand
-        if customer is None or hand is None or hand["k"] != "bowl" or not hand["c"]:
-            return
-        if sorted(hand["c"]) != sorted(customer["items"]):
+    def _serve(self, p, item, i):
+        customer = self.seats[i]
+        if customer is None or item["k"] != "bowl" or not item["c"]:
+            return False
+        if sorted(item["c"]) != sorted(customer["items"]):
             self.events.append({"t": "reject", "uid": p.uid})
-            return
+            return False
         bonus = round(customer["pts"] * SPEED_BONUS * max(0.0, customer["patience"]) / customer["max"])
         gained = customer["pts"] + bonus
         self.score += gained
-        self.seats[i], p.hand = None, None
+        self.seats[i] = None
         self.events.append({"t": "serve", "uid": p.uid, "name": customer["name"], "pts": gained, "bonus": bonus, "by": p.name, "seat": i})
+        return True
 
     # ── 시간 ───────────────────────────────────────────────────
     def step(self, dt):
@@ -252,6 +250,10 @@ class Room:
             "slots": self.slots,
             "seats": [None if c is None else {**c, "patience": round(c["patience"], 1)} for c in self.seats],
         }
+
+
+def _noop():
+    pass
 
 
 def _index(text, size):

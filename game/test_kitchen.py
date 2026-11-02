@@ -49,97 +49,82 @@ class RoomTests(SimpleTestCase):
         room.remove_player(1)
         self.assertEqual(room.host_id, 2)
 
-    def test_clicks_are_ignored_outside_a_running_game_and_for_strangers(self):
-        room = room_with("a")
-        room.click(1, "crate:noodle")
-        self.assertIsNone(room.players[1].hand)                  # 대기실
-        room.start(1)
-        room.click(99, "crate:noodle")
-        room.click(1, "pot:9")
-        room.click(1, "wat:1")
-        room.click(1, "crate:gold")
-        room.click(1, "slot:-1")
-        self.assertIsNone(room.players[1].hand)
-
-
-class HandTests(SimpleTestCase):
+class DragRulesTests(SimpleTestCase):
     def setUp(self):
         self.room = playing("a", "b")
-        self.a, self.b = self.room.players[1], self.room.players[2]
 
-    def test_crates_fill_an_empty_hand_only_and_each_player_has_their_own_hand(self):
-        self.room.click(1, "crate:noodle")
-        self.room.click(1, "crate:egg")
-        self.assertEqual(self.a.hand, {"k": "noodle", "s": "raw"})
-        self.assertIsNone(self.b.hand)
-        self.room.click(2, "bowls")
-        self.assertEqual(self.b.hand, {"k": "bowl", "c": []})
+    def test_invalid_drags_change_nothing(self):
+        before = self.room.snapshot()
+        self.assertFalse(self.room.drag(99, "crate:noodle", "pot:0"))          # 방에 없는 사람
+        self.assertFalse(self.room.drag(1, "crate:gold", "pot:0"))
+        self.assertFalse(self.room.drag(1, "pot:9", "trash"))
+        self.assertFalse(self.room.drag(1, "pot:0", "trash"))                  # 빈 냄비에서는 집을 것이 없다
+        self.assertFalse(self.room.drag(1, "crate:noodle", "crate:egg"))       # 상자에는 놓을 수 없다
+        self.assertFalse(self.room.drag(1, "crate:noodle", "crate:noodle"))
+        self.assertFalse(self.room.drag(1, "slot:-1", "trash"))
+        self.assertEqual(self.room.snapshot(), before)
 
-    def test_trash_empties_the_hand(self):
-        self.room.click(1, "crate:egg")
-        self.room.click(1, "trash")
-        self.assertIsNone(self.a.hand)
+    def test_drags_are_ignored_outside_a_running_game(self):
+        room = room_with("a")
+        self.assertFalse(room.drag(1, "crate:noodle", "pot:0"))                # 대기실
+        room.start(1)
+        room.phase = "done"
+        self.assertFalse(room.drag(1, "crate:noodle", "pot:0"))
+
+    def test_trash_always_takes_what_was_dragged_and_leaves_the_source(self):
+        self.room.pots[0] = {"k": "noodle", "s": "cooked", "p": 0.0}
+        self.assertTrue(self.room.drag(1, "pot:0", "trash"))
+        self.assertIsNone(self.room.pots[0])
         self.assertEqual(self.room.events[-1]["t"], "trash")
+        self.assertTrue(self.room.drag(1, "crate:egg", "trash"))               # 상자는 줄지 않는다
 
-    def test_scallion_goes_straight_onto_a_bowl_in_hand_once(self):
-        self.room.click(1, "bowls")
-        self.room.click(1, "crate:scallion")
-        self.room.click(1, "crate:scallion")
-        self.assertEqual(self.a.hand["c"], ["scallion"])
+    def test_two_players_can_drag_independently(self):
+        self.assertTrue(self.room.drag(1, "crate:noodle", "pot:0"))
+        self.assertTrue(self.room.drag(2, "crate:egg", "pot:1"))
+        self.assertFalse(self.room.drag(2, "crate:egg", "pot:0"))              # 이미 찬 냄비
+        self.assertEqual([p["k"] for p in self.room.pots if p], ["noodle", "egg"])
 
 
 class CookingTests(SimpleTestCase):
     def setUp(self):
         self.room = playing("a")
-        self.p = self.room.players[1]
+
+    def test_only_raw_noodle_or_egg_go_in_a_pot_and_scallion_does_not(self):
+        self.assertFalse(self.room.drag(1, "crate:scallion", "pot:0"))
+        self.assertFalse(self.room.drag(1, "bowls", "pot:0"))
+        self.assertIsNone(self.room.pots[0])
 
     def test_noodle_cooks_then_burns(self):
-        self.room.click(1, "crate:noodle")
-        self.room.click(1, "pot:0")
-        self.assertIsNone(self.p.hand)
+        self.assertTrue(self.room.drag(1, "crate:noodle", "pot:0"))
         self.room.step(engine.COOK_SECONDS["noodle"] + 0.1)
         self.assertEqual(self.room.pots[0]["s"], "cooked")
         self.room.step(engine.BURN_AFTER + 0.1)
         self.assertEqual(self.room.pots[0]["s"], "burnt")
 
-    def test_only_raw_noodle_or_egg_go_in_a_pot_and_scallion_does_not(self):
-        self.room.click(1, "crate:scallion")
-        self.room.click(1, "pot:0")
-        self.assertIsNone(self.room.pots[0])
-        self.assertEqual(self.p.hand["k"], "scallion")
-
-    def test_picking_a_half_cooked_item_returns_it_raw(self):
-        self.room.click(1, "crate:egg")
-        self.room.click(1, "pot:1")
+    def test_dragging_a_half_cooked_item_out_returns_it_raw(self):
+        self.room.drag(1, "crate:egg", "pot:1")
         self.room.step(1.0)
-        self.room.click(1, "pot:1")
-        self.assertEqual(self.p.hand, {"k": "egg", "s": "raw"})
+        self.assertTrue(self.room.drag(1, "pot:1", "pot:2"))                   # 다른 냄비로 옮기면 처음부터 다시
         self.assertIsNone(self.room.pots[1])
+        self.assertEqual((self.room.pots[2]["k"], self.room.pots[2]["s"], self.room.pots[2]["p"]), ("egg", "cooking", 0.0))
 
-    def test_cooked_item_cannot_go_back_into_a_pot(self):
-        self.room.click(1, "crate:noodle")
-        self.room.click(1, "pot:0")
+    def test_a_cooked_item_cannot_go_back_into_a_pot(self):
+        self.room.drag(1, "crate:noodle", "pot:0")
         self.room.step(engine.COOK_SECONDS["noodle"] + 0.1)
-        self.room.click(1, "pot:0")
-        self.assertEqual(self.p.hand, {"k": "noodle", "s": "cooked"})
-        self.room.click(1, "pot:1")
-        self.assertIsNone(self.room.pots[1])
+        self.assertFalse(self.room.drag(1, "pot:0", "pot:1"))
+        self.assertEqual(self.room.pots[0]["s"], "cooked")
 
-    def test_burnt_food_can_be_picked_up_and_thrown_away(self):
-        self.room.click(1, "crate:noodle")
-        self.room.click(1, "pot:0")
+    def test_burnt_food_only_goes_to_the_trash_not_into_a_bowl(self):
+        self.room.drag(1, "crate:noodle", "pot:0")
         for _ in range(int((engine.COOK_SECONDS["noodle"] + engine.BURN_AFTER + 1) / 0.2)):      # 실제 틱(0.2초)대로 진행
             self.room.step(0.2)
-        self.room.click(1, "pot:0")
-        self.assertEqual(self.p.hand["s"], "burnt")
-        self.room.click(1, "slot:0")                                  # 그릇에는 담기지 않는다
-        self.assertIsNone(self.room.slots[0])
-        self.room.click(1, "trash")
-        self.assertIsNone(self.p.hand)
+        self.assertEqual(self.room.pots[0]["s"], "burnt")
+        self.room.drag(1, "bowls", "slot:0")
+        self.assertFalse(self.room.drag(1, "pot:0", "slot:0"))
+        self.assertTrue(self.room.drag(1, "pot:0", "trash"))
 
     def test_ding_and_burnt_events_are_reported(self):
-        self.room.click(1, "crate:egg")
-        self.room.click(1, "pot:0")
+        self.room.drag(1, "crate:egg", "pot:0")
         events = self.room.step(engine.COOK_SECONDS["egg"] + 0.1)
         self.assertIn("ding", [e["t"] for e in events])
         events = self.room.step(engine.BURN_AFTER + 0.1)
@@ -149,81 +134,74 @@ class CookingTests(SimpleTestCase):
 class BowlAndServeTests(SimpleTestCase):
     def setUp(self):
         self.room = playing("a")
-        self.p = self.room.players[1]
 
     def cooked(self, kind, pot=0):
-        self.room.click(1, f"crate:{kind}")
-        self.room.click(1, f"pot:{pot}")
+        self.room.drag(1, f"crate:{kind}", f"pot:{pot}")
         self.room.step(engine.COOK_SECONDS[kind] + 0.1)
 
-    def test_bowl_slots_collect_each_ingredient_once(self):
-        self.room.click(1, "bowls")
-        self.room.click(1, "slot:2")
+    def test_bowls_go_on_empty_slots_and_can_be_moved(self):
+        self.assertTrue(self.room.drag(1, "bowls", "slot:2"))
         self.assertEqual(self.room.slots[2], {"k": "bowl", "c": []})
-        self.cooked("noodle")
-        self.room.click(1, "pot:0")
-        self.room.click(1, "slot:2")
-        self.assertEqual(self.room.slots[2]["c"], ["noodle"])
-        self.cooked("noodle", pot=1)
-        self.room.click(1, "pot:1")
-        self.room.click(1, "slot:2")                                   # 같은 재료는 두 번 못 담는다
-        self.assertEqual(self.room.slots[2]["c"], ["noodle"])
-        self.assertEqual(self.p.hand, {"k": "noodle", "s": "cooked"})
+        self.assertFalse(self.room.drag(1, "bowls", "slot:2"))                 # 이미 그릇이 있다
+        self.assertTrue(self.room.drag(1, "slot:2", "slot:0"))
+        self.assertEqual((self.room.slots[0], self.room.slots[2]), ({"k": "bowl", "c": []}, None))
 
-    def test_raw_ingredients_cannot_be_put_in_a_bowl_but_scallion_can(self):
-        self.room.click(1, "bowls")
-        self.room.click(1, "slot:0")
-        self.room.click(1, "crate:egg")
-        self.room.click(1, "slot:0")
-        self.assertEqual(self.room.slots[0]["c"], [])
-        self.room.click(1, "trash")
-        self.room.click(1, "crate:scallion")
-        self.room.click(1, "slot:0")
+    def test_ingredients_go_into_a_bowl_once_each(self):
+        self.room.drag(1, "bowls", "slot:0")
+        self.cooked("noodle")
+        self.assertTrue(self.room.drag(1, "pot:0", "slot:0"))
+        self.assertEqual(self.room.slots[0]["c"], ["noodle"])
+        self.assertIsNone(self.room.pots[0])
+        self.cooked("noodle", pot=1)
+        self.assertFalse(self.room.drag(1, "pot:1", "slot:0"))                 # 같은 재료는 두 번 못 담는다
+        self.assertEqual(self.room.pots[1]["s"], "cooked")                     # 거절되면 냄비에 그대로
+
+    def test_raw_noodle_or_egg_cannot_go_in_a_bowl_and_scallion_can(self):
+        self.room.drag(1, "bowls", "slot:0")
+        self.assertFalse(self.room.drag(1, "crate:noodle", "slot:0"))
+        self.assertFalse(self.room.drag(1, "crate:egg", "slot:0"))
+        self.assertTrue(self.room.drag(1, "crate:scallion", "slot:0"))
+        self.assertFalse(self.room.drag(1, "crate:scallion", "slot:0"))
         self.assertEqual(self.room.slots[0]["c"], ["scallion"])
 
-    def test_cooked_item_goes_straight_into_a_bowl_held_in_hand(self):
-        self.cooked("noodle")
-        # 한 손에는 하나만 들 수 있으므로 그릇을 들고 냄비를 눌러 바로 담는다
-        self.room.click(1, "bowls")
-        self.room.click(1, "pot:0")
-        self.assertEqual(self.p.hand["c"], ["noodle"])
-        self.assertIsNone(self.room.pots[0])
+    def test_nothing_but_a_bowl_goes_on_an_empty_slot(self):
+        self.assertFalse(self.room.drag(1, "crate:scallion", "slot:1"))
+        self.assertIsNone(self.room.slots[1])
 
     def test_serving_the_right_bowl_scores_with_a_speed_bonus(self):
         self.room.seats[1] = customer(["noodle", "egg"], pts=40, patience=55.0, maximum=55.0)
         self.room.slots[0] = {"k": "bowl", "c": ["egg", "noodle"]}
-        self.room.click(1, "slot:0")
-        self.room.click(1, "seat:1")
+        self.assertTrue(self.room.drag(1, "slot:0", "seat:1"))
         self.assertEqual(self.room.score, 40 + round(40 * engine.SPEED_BONUS))
         self.assertIsNone(self.room.seats[1])
-        self.assertIsNone(self.p.hand)
+        self.assertIsNone(self.room.slots[0])
         self.assertEqual(self.room.events[-1]["t"], "serve")
 
     def test_a_slower_service_gets_a_smaller_bonus(self):
         self.room.seats[0] = customer(["noodle"], pts=20, patience=11.0, maximum=55.0)
-        self.p.hand = {"k": "bowl", "c": ["noodle"]}
-        self.room.click(1, "seat:0")
+        self.room.slots[3] = {"k": "bowl", "c": ["noodle"]}
+        self.room.drag(1, "slot:3", "seat:0")
         self.assertEqual(self.room.score, 20 + round(20 * engine.SPEED_BONUS * 11 / 55))
 
-    def test_wrong_empty_or_missing_customer_does_not_serve(self):
+    def test_wrong_empty_or_missing_customer_does_not_serve_and_keeps_the_bowl(self):
         self.room.seats[0] = customer(["noodle", "egg"])
-        self.p.hand = {"k": "bowl", "c": ["noodle"]}
-        self.room.click(1, "seat:0")
+        self.room.slots[0] = {"k": "bowl", "c": ["noodle"]}
+        self.assertFalse(self.room.drag(1, "slot:0", "seat:0"))
         self.assertEqual((self.room.score, self.room.events[-1]["t"]), (0, "reject"))
-        self.assertIsNotNone(self.p.hand)                              # 틀려도 그릇은 손에 남는다
+        self.assertEqual(self.room.slots[0], {"k": "bowl", "c": ["noodle"]})   # 틀려도 그릇은 제자리
         self.room.events.clear()
-        self.room.click(1, "seat:3")                                    # 빈 자리
-        self.p.hand = {"k": "bowl", "c": []}
-        self.room.click(1, "seat:0")                                    # 빈 그릇
+        self.assertFalse(self.room.drag(1, "slot:0", "seat:3"))                # 손님 없는 자리
+        self.room.slots[1] = {"k": "bowl", "c": []}
+        self.assertFalse(self.room.drag(1, "slot:1", "seat:0"))                # 빈 그릇
+        self.assertFalse(self.room.drag(1, "bowls", "seat:0"))
+        self.assertFalse(self.room.drag(1, "crate:noodle", "seat:0"))
         self.assertEqual(self.room.events, [])
 
     def test_a_player_can_take_a_bowl_someone_else_prepared(self):
         room = playing("a", "b")
-        room.click(1, "bowls")
-        room.click(1, "slot:0")
-        room.click(2, "slot:0")
-        self.assertEqual(room.players[2].hand, {"k": "bowl", "c": []})
-        self.assertIsNone(room.slots[0])
+        room.drag(1, "bowls", "slot:0")
+        self.assertTrue(room.drag(2, "slot:0", "slot:1"))
+        self.assertEqual(room.slots[1], {"k": "bowl", "c": []})
 
 
 class CustomerAndTimeTests(SimpleTestCase):
@@ -260,8 +238,7 @@ class CustomerAndTimeTests(SimpleTestCase):
         self.assertEqual(len(end), 1)
         self.assertEqual(end[0]["stars"], 3)
         self.assertEqual(room.step(1.0), [])
-        room.click(1, "crate:egg")                                       # 끝난 뒤에는 클릭이 먹히지 않는다
-        self.assertIsNone(room.players[1].hand)
+        self.assertFalse(room.drag(1, "crate:egg", "pot:0"))             # 끝난 뒤에는 끌어 놓기가 먹히지 않는다
         self.assertTrue(room.back_to_lobby(1)[0])
         self.assertEqual((room.phase, room.score), ("lobby", 0))
         self.assertEqual(room.seats, [None] * engine.SEATS)
@@ -283,27 +260,29 @@ class CustomerAndTimeTests(SimpleTestCase):
         room = room_with("a")
         room.start(1)
         room.pots[0] = {"k": "noodle", "s": "cooking", "p": 3.0}
-        room.click(1, "bowls")
+        room.drag(1, "bowls", "slot:1")
         shot = room.snapshot()
         json.dumps(shot)
         self.assertEqual(shot["pots"][0]["p"], 0.5)
-        self.assertEqual(shot["players"][0]["hand"], {"k": "bowl", "c": []})
+        self.assertEqual(shot["slots"][1], {"k": "bowl", "c": []})
 
 
 class PlaythroughTests(SimpleTestCase):
-    """클릭만으로 주문을 처음부터 끝까지 만들어 본다: 규칙이 서로 맞물리고 제한시간 안에 충분히 가능한지 본다."""
+    """끌어 놓기만으로 주문을 처음부터 끝까지 만들어 본다: 규칙이 서로 맞물리고 제한시간 안에 충분히 가능한지 본다."""
 
-    def test_one_player_serves_a_full_order_with_only_clicks(self):
+    def test_one_player_serves_a_full_order_with_only_drags(self):
         room = playing("solo")
         room.seats[0] = customer(["noodle", "egg", "scallion"], name="풀세트라면", pts=55)
-        click = lambda *targets: [room.click(1, t) for t in targets]
-        click("crate:noodle", "pot:0", "crate:egg", "pot:1")           # 면과 달걀을 익히기 시작
-        click("bowls", "slot:0")                                       # 그릇을 자리에 올려 두고
+        drag = lambda src, dst: self.assertTrue(room.drag(1, src, dst), f"{src} → {dst}")
+        drag("crate:noodle", "pot:0")                                  # 면과 달걀을 냄비로
+        drag("crate:egg", "pot:1")
+        drag("bowls", "slot:0")                                        # 그릇을 자리에 올려 두고
         room.step(engine.COOK_SECONDS["noodle"] + 0.1)                 # 다 익을 때까지 기다린다
-        click("pot:0", "slot:0", "pot:1", "slot:0")                    # 익힌 면·달걀을 그릇에
-        click("crate:scallion", "slot:0")                              # 파를 얹고
+        drag("pot:0", "slot:0")                                        # 익힌 면·달걀을 그릇으로
+        drag("pot:1", "slot:0")
+        drag("crate:scallion", "slot:0")                               # 파를 얹고
         patience_left = room.seats[0]["patience"]
-        click("slot:0", "seat:0")                                      # 그릇을 들어 손님에게
+        drag("slot:0", "seat:0")                                       # 그릇을 손님에게
         self.assertIsNone(room.seats[0])
         self.assertEqual(room.score, 55 + round(55 * engine.SPEED_BONUS * patience_left / 55))
         self.assertGreater(patience_left, engine.PATIENCE / 2)         # 기다리는 시간(조리 6초)이 인내심의 절반도 안 걸린다
@@ -311,17 +290,14 @@ class PlaythroughTests(SimpleTestCase):
     def test_two_players_split_the_work(self):
         room = playing("cook", "waiter")
         room.seats[2] = customer(["noodle", "scallion"], pts=35)
-        for target in ("crate:noodle", "pot:0"):
-            room.click(1, target)
-        for target in ("bowls", "slot:1", "crate:scallion", "slot:1"):    # 서빙 담당은 그릇을 준비하고 파를 올린다
-            room.click(2, target)
+        room.drag(1, "crate:noodle", "pot:0")                          # 조리 담당이 면을 삶는 동안
+        room.drag(2, "bowls", "slot:1")                                # 서빙 담당은 그릇을 준비하고 파를 올린다
+        room.drag(2, "crate:scallion", "slot:1")
         room.step(engine.COOK_SECONDS["noodle"] + 0.1)
-        for target in ("pot:0", "slot:1"):                                # 조리 담당이 익힌 면을 그릇 자리에
-            room.click(1, target)
-        for target in ("slot:1", "seat:2"):
-            room.click(2, target)
+        self.assertTrue(room.drag(1, "pot:0", "slot:1"))               # 조리 담당이 익힌 면을 그릇에
+        self.assertTrue(room.drag(2, "slot:1", "seat:2"))              # 서빙 담당이 손님에게
         self.assertGreater(room.score, 35)
-        self.assertEqual(room.seats[2], None)
+        self.assertIsNone(room.seats[2])
 
 
 class HubTests(SimpleTestCase):
@@ -378,9 +354,9 @@ class SocketTests(TestCase):
                 return msg
         self.fail(f"{kind} 메시지를 받지 못했다")
 
-    async def test_two_players_join_start_and_click_over_the_socket(self):
-        host, a = await self.connect("kh")
-        guest, b = await self.connect("kg")
+    async def test_two_players_join_start_and_drag_over_the_socket(self):
+        _, a = await self.connect("kh")
+        _, b = await self.connect("kg")
         self.assertIsNone((await self.until(a, "hello"))["room"])
         await a.send_json_to({"type": "create"})
         code = (await self.until(a, "hello"))["room"]
@@ -397,17 +373,21 @@ class SocketTests(TestCase):
         while state["state"]["phase"] != "playing":
             state = await self.until(a, "state")
         self.assertEqual(sum(1 for c in state["state"]["seats"] if c), 2)
-        await a.send_json_to({"type": "click", "target": "crate:noodle"})
+        await a.send_json_to({"type": "drag", "src": "crate:noodle", "dst": "pot:0"})
         for _ in range(10):
             state = await self.until(a, "state")
-            mine = next(p for p in state["state"]["players"] if p["id"] == host.id)
-            if mine["hand"]:
+            if state["state"]["pots"][0]:
                 break
         else:
-            self.fail("클릭이 반영되지 않았다")
-        self.assertEqual(mine["hand"], {"k": "noodle", "s": "raw"})
-        guest_hand = next(p for p in state["state"]["players"] if p["id"] == guest.id)["hand"]
-        self.assertIsNone(guest_hand)                                          # 손은 사람마다 따로
+            self.fail("끌어 놓기가 반영되지 않았다")
+        self.assertEqual(state["state"]["pots"][0]["k"], "noodle")
+        await b.send_json_to({"type": "drag", "src": "pot:0", "dst": "trash"})        # 다른 사람이 같은 가게에서 꺼내 버릴 수 있다
+        for _ in range(10):
+            state = await self.until(a, "state")
+            if not state["state"]["pots"][0]:
+                break
+        else:
+            self.fail("다른 사람의 끌어 놓기가 반영되지 않았다")
         await a.disconnect()
         await b.disconnect()
 

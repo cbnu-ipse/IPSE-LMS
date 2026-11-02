@@ -1123,7 +1123,7 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class KitchenConsumer(AsyncWebsocketConsumer):
-    """분식 대작전 (협동 라면 가게). 방 상태는 kitchen_hub의 메모리에 있고 DB는 쓰지 않는다. 클릭은 그대로 규칙 엔진에 넘긴다."""
+    """분식 대작전 (협동 라면 가게). 방 상태는 kitchen_hub의 메모리에 있고 DB는 쓰지 않는다. 끌어 놓기는 그대로 규칙 엔진에 넘긴다."""
 
     async def connect(self):
         user = self.scope["user"]
@@ -1186,10 +1186,10 @@ class KitchenConsumer(AsyncWebsocketConsumer):
             if kind == "start":
                 kitchen_hub.ensure_loop()
             await kitchen_hub.broadcast(room)
-        elif kind == "click":
-            room.click(user.id, data.get("target"))
+        elif kind == "drag":
+            room.drag(user.id, data.get("src"), data.get("dst"))
             if room.phase == "playing":
-                await kitchen_hub.broadcast(room, room.take_events())       # 클릭 결과를 시계 틱을 기다리지 않고 바로 보여 준다
+                await kitchen_hub.broadcast(room, room.take_events())       # 결과를 시계 틱을 기다리지 않고 바로 보여 준다
 
     async def kitchen_state(self, event):
         await self._send({"type": "state", "state": event["state"]})
