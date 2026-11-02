@@ -21,6 +21,10 @@ MAX_CHAPTERS = 8
 MAX_SETS = 12
 MAX_CARDS = 3
 MAX_QUESTIONS = 3
+# 카드 종류: 모양(색·배치)이 달라 한눈에 구분된다. 본문은 모두 같은 제한된 마크다운이고, 종류는 화면(set_player)이 꾸미는 데만 쓴다.
+# concept(기본)는 저장하지 않는다 (옛 강의·옛 테스트와 같은 모양을 유지)
+CARD_KINDS = {"concept": "💡 개념", "definition": "📌 핵심 정의", "compare": "⚖️ 비교", "steps": "🔢 단계", "example": "🧪 예시",
+              "caution": "⚠️ 주의", "summary": "✅ 한 줄 정리"}
 MAX_QUIZ = 5               # 한 강(챕터) 끝의 확인 퀴즈 문제 수 상한
 QUIZ_TYPES = ("ox", "short")   # 강 퀴즈는 OX와 단답만
 FORMAT_VERSION = 4          # 강의 형식(프롬프트)이 바뀌면 올린다 — 해시에 들어가 다음 생성 때 새 형식으로 다시 만든다
@@ -58,6 +62,14 @@ CHAPTER_SYSTEM = (
     "한 카드에 한 가지 생각만 담고, 긴 설명 대신 한 줄 정의 + 짧은 예 하나로 끝냅니다.\n"
     "- 카드 body에 쓸 수 있는 서식: **굵게**, `코드`, '- ' 목록(하위 항목은 앞에 공백 2칸), "
     "'1. ' 번호 목록, '| a | b |' 표(행 사이에 빈 줄 없이), ``` 코드 블록. 그 밖의 HTML·이미지·링크는 쓰지 않습니다. 표는 작게(3열·4행 이내).\n"
+    "- 카드마다 종류(kind)를 고르고, 한 세트에서 같은 종류만 반복하지 말고 내용에 맞게 섞습니다 (예: 정의 → 예시 → 주의). 종류별 본문 모양:\n"
+    '  · "definition": 첫 줄에 한 문장 정의(핵심어는 **굵게**), 그 아래 보충 0~2줄.\n'
+    '  · "compare": 두 대상(또는 세 대상)을 비교하는 표. 머리글에 대상 이름, 행은 2~4개 (| 구분 | A | B | 꼴, 첫 열은 비교 기준).\n'
+    '  · "steps": 순서가 있는 절차를 번호 목록 3~5개 항목으로, 항목마다 한 줄.\n'
+    '  · "example": 구체적인 상황이나 계산·코드 예. 상황 한두 줄 + 필요하면 코드 블록이나 결과.\n'
+    '  · "caution": 흔한 오해나 실수 한두 줄과 왜 틀리는지.\n'
+    '  · "summary": 세트의 마지막 카드로 핵심 2~3줄을 목록으로 정리.\n'
+    '  · "concept": 위에 맞지 않는 일반 설명.\n'
     f"- 문제는 세트마다가 아니라 이 강(챕터) 전체를 마무리하는 퀴즈(quiz)로 한 번만 냅니다: 3~{MAX_QUIZ}개, 강의 핵심 개념을 골고루 묻고 "
     "카드 내용을 이해했는지 확인하는 수준으로. 유형은 OX와 단답만 씁니다 (객관식 금지):\n"
     '  OX: {"type": "ox", "q": "...", "answer": false, "explanation": "..."}\n'
@@ -65,7 +77,7 @@ CHAPTER_SYSTEM = (
     "- 정답이 한쪽으로 쏠리면 안 됩니다: OX는 정답이 O인 문제와 X인 문제를 섞고(X 문제는 자료의 사실 하나를 그럴듯하게 바꿔 거짓 진술로) "
     "퀴즈 안에서 O와 X가 고르게 나오게 하세요. 단답은 한 단어나 짧은 구로 답이 정해지는 것만 냅니다.\n"
     "- explanation은 한 문장.\n"
-    'JSON으로만 답하세요: {"sets": [{"title": "...", "cards": [{"title": "...", "body": "..."}]}], "quiz": [...]}'
+    'JSON으로만 답하세요: {"sets": [{"title": "...", "cards": [{"kind": "definition", "title": "...", "body": "..."}]}], "quiz": [...]}'
 )
 
 
@@ -203,12 +215,18 @@ def normalize_question(q):
     return None
 
 
+def card_kind_field(kind):
+    """저장할 kind 필드: 알려진 종류이고 기본(concept)이 아닐 때만 {"kind": ...}, 아니면 빈 dict."""
+    kind = str(kind or "").strip().lower()
+    return {"kind": kind} if kind in CARD_KINDS and kind != "concept" else {}
+
+
 def normalize_sets(sets):
     out = []
     for s in (sets or [])[:MAX_SETS]:
         if not isinstance(s, dict):
             continue
-        cards = [{"title": _text(c.get("title"), 120), "body": _text(c.get("body"), 4000)}
+        cards = [{"title": _text(c.get("title"), 120), "body": _text(c.get("body"), 4000), **card_kind_field(c.get("kind"))}
                  for c in (s.get("cards") or [])[:MAX_CARDS] if isinstance(c, dict) and _text(c.get("body"), 4000)]
         questions = [q for q in map(normalize_question, (s.get("questions") or [])[:MAX_QUESTIONS]) if q]
         title = _text(s.get("title"), 120)

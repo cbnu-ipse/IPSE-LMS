@@ -131,7 +131,12 @@
                         {% csrf_token %}
                         <input type="hidden" name="chapter" value="{{ chapter.index }}"><input type="hidden" name="set" value="{{ set.index }}"><input type="hidden" name="item" value="{{ forloop.counter0 }}">
                         <div class="text-xs font-bold text-slate-400">개념 카드 {{ forloop.counter }}</div>
-                        <input name="title" value="{{ card.title }}" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold" aria-label="카드 제목">
+                        <div class="flex gap-2">
+                            <select name="kind" class="px-2 py-2 rounded-lg border border-slate-200 text-sm" aria-label="카드 종류">
+                                {% for value, label in card_kinds %}<option value="{{ value }}" {% if card.kind|default:'concept' == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                            </select>
+                            <input name="title" value="{{ card.title }}" class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold" aria-label="카드 제목">
+                        </div>
                         <textarea name="body" rows="6" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono" aria-label="카드 본문">{{ card.body }}</textarea>
                         <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-white">카드 저장</button>
                     </form>

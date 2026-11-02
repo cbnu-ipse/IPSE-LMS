@@ -229,7 +229,7 @@ def lesson_detail(request, course_slug, lesson_pk):
     if lesson_newly_completed:
         sync_user_profile_metrics(request.user)
 
-    if lesson.cards:
+    if lesson.cards or lesson.questions:
         return _set_player(request, course, lesson)
 
     lessons = list(course.lessons.order_by('id'))
@@ -394,16 +394,26 @@ def lesson_edit(request, course_slug, lesson_pk):
 def _set_player(request, course, lesson):
     """AI 강의의 학습 세트 화면 (개념 카드 + 확인 문제)."""
     lessons = list(course.lessons.filter(unit__isnull=False).order_by('order'))
-    pos = lessons.index(lesson)
+    pages = studio.player_pages([(l.pk, {"cards": l.cards, "questions": l.questions}) for l in lessons])
+    by_pk = {l.pk: l for l in lessons}
+    quiz = bool(lesson.questions) and (not lesson.cards or request.GET.get('quiz') == '1')   # 마무리 퀴즈 페이지
+    pos = pages.index((lesson.pk, quiz))
+
+    def url(p):
+        if not 0 <= p < len(pages):
+            return None
+        target = by_pk[pages[p][0]]
+        return target.get_absolute_url() + ('?quiz=1' if pages[p][1] and target.cards else '')
+
     chapter_no = list(course.units.order_by('order').values_list('id', flat=True)).index(lesson.unit_id) + 1
     result = LessonQuizResult.objects.filter(user=request.user, lesson=lesson).first()
     return render(request, 'course/set_player.html', {
         'mode': 'learn', 'course_title': course.title, 'chapter_no': chapter_no,
         'chapter_title': lesson.unit.title, 'set_title': lesson.title,
-        'position': pos + 1, 'total': len(lessons),
-        'cards': studio.render_cards(lesson.cards), 'questions': lesson.questions,
-        'prev_url': lessons[pos - 1].get_absolute_url() if pos > 0 else None,
-        'next_url': lessons[pos + 1].get_absolute_url() if pos + 1 < len(lessons) else None,
+        'position': pos + 1, 'total': len(pages), 'quiz_page': quiz,
+        'cards': [] if quiz else studio.render_cards(lesson.cards), 'questions': lesson.questions if quiz else [],
+        'prev_url': url(pos - 1), 'next_url': url(pos + 1),
+        'next_label': '마무리 퀴즈 풀기' if pos + 1 < len(pages) and pages[pos + 1][1] else '',
         'exit_url': course.get_absolute_url(),
         'submit_url': f"/course/{course.slug}/lesson/{lesson.pk}/quiz/",
         'last_result': result,

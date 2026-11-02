@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from . import ai as course_ai
 from . import studio
 from .models import Course, CourseDraft
 
@@ -64,7 +65,7 @@ def studio_detail(request, pk):
         "draft": draft, "chapters": chapters, "can_review": studio.can_review(request.user, draft),
         "editable": draft.status == CourseDraft.Status.PENDING and studio.can_review(request.user, draft),
         "has_changes": diff is None or bool(diff["counts"]["total"]),
-        "diff": diff,
+        "diff": diff, "card_kinds": list(course_ai.CARD_KINDS.items()),
     })
 
 
@@ -81,18 +82,23 @@ def studio_preview(request, pk, ci, si):
     """학생이 보게 될 화면 그대로 미리 보기. 확인 문제도 풀 수 있지만 결과는 저장하지 않는다."""
     draft = get_object_or_404(CourseDraft, pk=pk)
     chapters, chapter, current = _draft_set(draft, ci, si)
-    order = [(c, s) for c, ch in enumerate(chapters) for s in range(len(ch["sets"]))]
-    pos = order.index((ci, si))
+    pages = studio.player_pages([((c, s), st) for c, ch in enumerate(chapters) for s, st in enumerate(ch["sets"])])
+    quiz = bool(current.get("questions")) and (not current.get("cards") or request.GET.get("quiz") == "1")   # 마무리 퀴즈 페이지
+    pos = pages.index(((ci, si), quiz))
 
     def url(p):
-        return f"/course/studio/{draft.pk}/preview/{order[p][0]}/{order[p][1]}/" if 0 <= p < len(order) else None
+        if not 0 <= p < len(pages):
+            return None
+        (c, s), is_quiz = pages[p]
+        return f"/course/studio/{draft.pk}/preview/{c}/{s}/" + ("?quiz=1" if is_quiz and chapters[c]["sets"][s].get("cards") else "")
 
     return render(request, "course/set_player.html", {
         "mode": "preview", "course_title": draft.content.get("title", draft.subject_code),
         "chapter_no": ci + 1, "chapter_title": chapter["title"], "set_title": current["title"],
-        "position": pos + 1, "total": len(order),
-        "cards": studio.render_cards(current["cards"]), "questions": current.get("questions", []),
+        "position": pos + 1, "total": len(pages), "quiz_page": quiz,
+        "cards": [] if quiz else studio.render_cards(current["cards"]), "questions": current.get("questions", []) if quiz else [],
         "prev_url": url(pos - 1), "next_url": url(pos + 1), "exit_url": f"/course/studio/{draft.pk}/",
+        "next_label": "마무리 퀴즈 풀기" if pos + 1 < len(pages) and pages[pos + 1][1] else "",
     })
 
 
@@ -125,7 +131,7 @@ def studio_action(request, pk, action):
         ci, si = _int(request, "chapter"), _int(request, "set")
         if action == "edit_card":
             studio.update_card(draft.pk, ci, si, _int(request, "item"), request.POST.get("title", ""),
-                               request.POST.get("body", ""))
+                               request.POST.get("body", ""), request.POST.get("kind"))
         elif action == "edit_question":
             studio.update_question(draft.pk, ci, si, _int(request, "item"), request.POST)
         elif action == "delete_question":

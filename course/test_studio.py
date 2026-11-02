@@ -9,7 +9,7 @@ from mypage.models import PersonalDocument, ProcessingStatus, Subject
 
 from . import ai as course_ai
 from . import markup, studio
-from .models import Course, CourseDraft, Lesson, LessonQuizResult, UserCourseProgress
+from .models import Course, CourseCategory, CourseDraft, Lesson, LessonQuizResult, Unit, UserCourseProgress
 
 User = get_user_model()
 
@@ -454,3 +454,77 @@ class ChoiceBalanceTestCase(TestCase):
 
     def test_format_version_bumped_so_chapters_regenerate_in_the_new_shape(self):
         self.assertGreaterEqual(course_ai.FORMAT_VERSION, 4)
+
+
+class CardKindTests(TestCase):
+    databases = {"default", "beta_judge"}
+
+    def test_normalize_keeps_known_kinds_and_drops_default_or_unknown(self):
+        data = [{"title": "s", "cards": [
+            {"title": "a", "body": "b", "kind": "definition"}, {"title": "a", "body": "b", "kind": "concept"},
+            {"title": "a", "body": "b", "kind": "weird"}]}]
+        cards = course_ai.normalize_sets(data)[0]["cards"]
+        self.assertEqual([c.get("kind") for c in cards], ["definition", None, None])
+        self.assertEqual(cards[1], {"title": "a", "body": "b"})            # 기본 종류는 옛 모양 그대로
+
+    def test_render_cards_defaults_to_concept_and_labels_kinds(self):
+        rendered = studio.render_cards([{"title": "t", "body": "x"}, {"title": "t", "body": "x", "kind": "steps"}, {"title": "t", "body": "x", "kind": "zzz"}])
+        self.assertEqual([c["kind"] for c in rendered], ["concept", "steps", "concept"])
+        self.assertIn("단계", rendered[1]["kind_label"])
+
+    def test_prompt_describes_every_kind(self):
+        for kind in course_ai.CARD_KINDS:
+            self.assertIn(f'"{kind}"', course_ai.CHAPTER_SYSTEM)
+
+    def test_player_page_uses_kind_classes(self):
+        user = User.objects.create_user(username="ck", password="pw", is_staff=True)
+        self.client.force_login(user)
+        category = CourseCategory.objects.create(title="AI")
+        course = Course.objects.create(code="CK", title="CK", category=category, instructor=user, slug="ck")
+        unit = Unit.objects.create(course=course, title="U", order=0)
+        lesson = Lesson.objects.create(course=course, unit=unit, title="L", order=0, content="x",
+                                       cards=[{"title": "a", "body": "정의다", "kind": "definition"}, {"title": "b", "body": "- 하나", "kind": "summary"}])
+        html = self.client.get(f"/course/ck/lesson/{lesson.pk}/").content.decode()
+        self.assertIn("card k-definition", html)
+        self.assertIn("card k-summary", html)
+        self.assertIn("카드 2장", html)
+
+
+class QuizPageTests(TestCase):
+    databases = {"default", "beta_judge"}
+
+    def test_player_pages_splits_a_set_that_has_cards_and_questions(self):
+        sets = [("a", {"cards": [1], "questions": []}), ("b", {"cards": [1], "questions": [1]}), ("c", {"cards": [], "questions": [1]})]
+        self.assertEqual(studio.player_pages(sets), [("a", False), ("b", False), ("b", True), ("c", True)])
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="qp", password="pw", is_staff=True)
+        self.client.force_login(self.user)
+        category = CourseCategory.objects.create(title="AI")
+        self.course = Course.objects.create(code="QP", title="QP", category=category, instructor=self.user, slug="qp")
+        unit = Unit.objects.create(course=self.course, title="U", order=0)
+        q = [{"type": "ox", "q": "참인가", "answer": True, "explanation": "e"}]
+        self.first = Lesson.objects.create(course=self.course, unit=unit, title="L1", order=0, content="x", cards=[{"title": "a", "body": "첫 카드"}])
+        self.last = Lesson.objects.create(course=self.course, unit=unit, title="L2", order=1, content="x", cards=[{"title": "b", "body": "끝 카드"}], questions=q)
+
+    def get(self, lesson, quiz=False):
+        return self.client.get(f"/course/qp/lesson/{lesson.pk}/" + ("?quiz=1" if quiz else ""))
+
+    def test_last_set_cards_page_has_no_questions_and_points_to_the_quiz_page(self):
+        res = self.get(self.last)
+        self.assertContains(res, "끝 카드")
+        self.assertContains(res, 'type="application/json">[]</script>')   # 문제 데이터가 비어 있다
+        self.assertContains(res, "마무리 퀴즈 풀기")
+        self.assertContains(res, "?quiz=1")
+        self.assertContains(res, "2 / 3")
+
+    def test_quiz_page_shows_only_the_quiz_and_is_the_last_page(self):
+        res = self.get(self.last, quiz=True)
+        self.assertContains(res, "마무리 퀴즈")
+        self.assertContains(res, "questions-data")                       # 문제 데이터는 json_script라 글자가 이스케이프된다
+        self.assertNotContains(res, "끝 카드")
+        self.assertContains(res, "3 / 3")
+        self.assertContains(res, f"/course/qp/lesson/{self.last.pk}/quiz/")          # 결과는 같은 세트 기준으로 저장된다
+
+    def test_first_set_is_unchanged(self):
+        self.assertContains(self.get(self.first), "1 / 3")

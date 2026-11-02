@@ -271,13 +271,14 @@ def _set_at(content, ci, si):
         raise ValueError("없는 학습 세트입니다.")
 
 
-def update_card(draft_id, ci, si, ki, title, body):
+def update_card(draft_id, ci, si, ki, title, body, kind=None):
     with transaction.atomic():
         draft = _locked_pending(draft_id)
         cards = _set_at(draft.content, ci, si)["cards"]
         if not 0 <= ki < len(cards) or not body.strip():
             raise ValueError("카드 내용을 확인해주세요.")
-        cards[ki] = {"title": title.strip()[:120], "body": body.strip()[:4000]}
+        kind = cards[ki].get("kind") if kind is None else kind       # 종류를 안 보냈으면 그대로 둔다
+        cards[ki] = {"title": title.strip()[:120], "body": body.strip()[:4000], **course_ai.card_kind_field(kind)}
         draft.save(update_fields=["content"])
 
 
@@ -505,8 +506,25 @@ def changed_chapters(draft):
 
 # ── 학습 화면 ───────────────────────────────────────────────────────────────
 
+def player_pages(sets):
+    """학습 화면의 페이지 순서. sets: [(키, 세트)]. 카드와 문제가 함께 있는 세트(챕터 마지막 세트)는 카드 페이지와
+    '마무리 퀴즈' 페이지 둘로 나눈다 (문제가 마지막 카드 밑에 붙지 않고 챕터를 마무리하는 별도 페이지가 되게). [(키, 퀴즈 페이지인가)]."""
+    pages = []
+    for key, s in sets:
+        cards, questions = s.get("cards"), s.get("questions")
+        if cards and questions:
+            pages += [(key, False), (key, True)]
+        else:
+            pages.append((key, not cards and bool(questions)))
+    return pages
+
+
 def render_cards(cards):
-    return [{"title": c.get("title", ""), "html": markup.render(c.get("body", ""))} for c in cards]
+    out = []
+    for c in cards:
+        kind = c.get("kind") if c.get("kind") in course_ai.CARD_KINDS else "concept"
+        out.append({"title": c.get("title", ""), "html": markup.render(c.get("body", "")), "kind": kind, "kind_label": course_ai.CARD_KINDS[kind]})
+    return out
 
 
 def _norm(text):
