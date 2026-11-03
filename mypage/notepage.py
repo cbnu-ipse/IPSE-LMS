@@ -23,7 +23,7 @@ from . import mathbox
 
 logger = logging.getLogger(__name__)
 
-from .notefont import BLACKBOARD as _BLACKBOARD, GREEK as _GREEK, LATEX_WORDS as _LATEX_WORDS, SUB as _SUB, SUP as _SUP, font, has_glyph  # noqa: F401
+from .notefont import BLACKBOARD as _BLACKBOARD, GREEK as _GREEK, LATEX_WORDS as _LATEX_WORDS, SUB as _SUB, SUP as _SUP, can_draw, draw_text, font, has_glyph, text_length  # noqa: F401
 
 WIDTH = 1240
 HEIGHT = 1754                     # A4 세로 (150dpi): 1240 x 1754
@@ -61,7 +61,7 @@ def safe_text(text):
         elif script.startswith(("<super>", "<sub>")) and len(script.split()) == 2:      # x², Aᵀ, xᵢ 같은 첨자 글자는 직접 그리는 첨자로 (글꼴에 없는 것도 있다)
             tag = "sup" if script.startswith("<super>") else "sub"
             out.append(f"<{tag}>{chr(int(script.split()[1], 16))}</{tag}>")
-        elif has_glyph(ch):
+        elif can_draw(ch):                                # 본 글꼴에 없어도 수학 글꼴에 있으면 그린다
             out.append(ch)
     return "".join(out)
 
@@ -117,7 +117,7 @@ def latex_to_markup(tex):
                 out.append(f"√({latex_to_markup(a)})")
             elif name == "mathbb":
                 a, i = _brace_arg(s, i)
-                out.append("".join(_BLACKBOARD.get(c, c) if has_glyph(_BLACKBOARD.get(c, c)) else c for c in a))
+                out.append("".join(_BLACKBOARD.get(c, c) if can_draw(_BLACKBOARD.get(c, c)) else c for c in a))
             elif name in ("hat", "tilde", "text", "mathrm", "mathbf", "mathit", "mathcal", "mathsf", "boldsymbol", "operatorname"):
                 a, i = _brace_arg(s, i)
                 out.append(latex_to_markup(a))
@@ -176,7 +176,7 @@ def to_rich(text):
             ids.append(f"\x01{count[0]}\x02")
         return "".join(ids)
 
-    text = _MATH.sub(slot, str(text or ""))
+    text = _MATH.sub(slot, mathbox.wrap_bare_math(str(text or "")))      # $ 없이 쓴 [[행렬]]·그리스 문자 이름도 수식으로
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"==(.+?)==", r"<m>\1</m>", text)
     text = text.replace("`", "")
@@ -210,10 +210,17 @@ def parse_segments(markup):
 
 # ── 배치 ────────────────────────────────────────────────────────────────────
 
+def _style_size(size, style):
+    return max(int(size * 0.64), 10) if ("sub" in style or "sup" in style) else size
+
+
 def _style_font(size, style):
-    if "sub" in style or "sup" in style:
-        size = max(int(size * 0.64), 10)
-    return font(size, bold="b" in style)
+    return font(_style_size(size, style), bold="b" in style)
+
+
+def _style_len(text, size, style):
+    """글(본 글꼴에 없는 기호는 수학 글꼴로)의 너비."""
+    return text_length(text, _style_size(size, style), bold="b" in style)
 
 
 def _words(segs):
@@ -256,19 +263,18 @@ def _wrap(segs, size, x0, x1):
             line.append((PlacedMath(text, eff), style, x, gap))
             x += w + gap
             continue
-        f = _style_font(size, style)
-        while f.getlength(text) > x1 - x0 and len(text) > 1:       # 너무 긴 단어(URL·긴 식 등)
+        while _style_len(text, size, style) > x1 - x0 and len(text) > 1:       # 너무 긴 단어(URL·긴 식 등)
             cut = len(text) - 1
-            while cut > 1 and f.getlength(text[:cut]) > x1 - x:
+            while cut > 1 and _style_len(text[:cut], size, style) > x1 - x:
                 cut -= 1
-            if line and x + f.getlength(text[:cut]) > x1:
+            if line and x + _style_len(text[:cut], size, style) > x1:
                 lines.append(line)
                 line, x = [], x0
             line.append((text[:cut], style, x, 0))
             lines.append(line)
             line, x, text = [], x0, text[cut:]
         gap = font(size).getlength(" ") if spaced else 0
-        w = f.getlength(text)
+        w = _style_len(text, size, style)
         if line and x + w > x1:
             lines.append(line)
             line, x = [], x0
@@ -342,7 +348,7 @@ def _fit_heading(markup, size):
     """소제목이 번호 칩 옆 한 줄에 들어가도록 필요하면 글씨를 줄인다."""
     avail = WIDTH - 2 * MARGIN_X - int(size * 1.6)
     segs = parse_segments(markup)
-    while size > 20 and sum(_style_font(size, st | {"b"}).getlength(t) for t, st in segs) > avail:
+    while size > 20 and sum(_style_len(t, size, st | {"b"}) for t, st in segs) > avail:
         size -= 1
     return size
 
@@ -419,16 +425,16 @@ def _baseline(y, size):
 
 def _draw_word(d, x, y, size, text, style, color, gap):
     """단어 하나를 그린다 (형광펜 띠·첨자·막대 포함). 기준선을 맞춰 크기가 다른 글자(첨자)도 한 줄에 어울린다."""
-    f = _style_font(size, style)
+    fsize = _style_size(size, style)
     base = _baseline(y, size)
     if "sub" in style:
         base += size * 0.2
     elif "sup" in style:
         base -= size * 0.34
-    width = f.getlength(text)
+    width = text_length(text, fsize, bold="b" in style)
     if "m" in style:
         d.rounded_rectangle([x - 3, base - size * 0.7, x + width + gap + 1, base + size * 0.24], radius=max(int(size * 0.12), 3), fill=MARK)
-    d.text((x, base), text, font=f, fill=RED if "b" in style else color, anchor="ls")
+    draw_text(d, x, base, text, fsize, RED if "b" in style else color, bold="b" in style)
     if "bar" in style:
         d.line([(x + 2, base - size * 0.82), (x + width - 2, base - size * 0.82)], fill=color, width=max(size // 16, 2))
 
@@ -447,11 +453,11 @@ def _paint(ops, k):
             _, y, size, line = op
             if not line:
                 continue
-            x_end = max(x + _style_font(size, frozenset({"b"})).getlength(t) for t, _, x, _ in line)
+            x_end = max(x + _style_len(t, size, frozenset({"b"})) for t, _, x, _ in line)
             base = _baseline(y, size)
             d.rounded_rectangle([MARGIN_X - 6, base - size * 0.34, x_end + 8, base + size * 0.2], radius=8, fill=MARK)       # 제목 형광펜 띠
             for text, style, x, _ in line:
-                d.text((x, base), text, font=_style_font(size, frozenset({"b"})), fill=INK, anchor="ls")
+                draw_text(d, x, base, text, size, INK, bold=True)
         elif kind == "brand":
             _, x, y, size, text = op
             d.text((x, _baseline(y, size)), text, font=font(size, bold=True), fill=ACCENT, anchor="ls")
@@ -469,7 +475,7 @@ def _paint(ops, k):
             cx = x + chip + int(size * 0.4)
             for line in _wrap([(t, st | {"b"}) for t, st in parse_segments(markup)], size, cx, WIDTH - MARGIN_X)[:1]:
                 for text, style, wx, gap in line:
-                    d.text((wx, y + chip / 2), text, font=_style_font(size, style), fill=INK, anchor="lm")
+                    draw_text(d, wx, y + chip / 2 + size * 0.3, text, _style_size(size, style), INK, bold=True)
             d.line([(x, y + chip + int(size * 0.28)), (WIDTH - MARGIN_X, y + chip + int(size * 0.28))], fill=RULE, width=2)
         elif kind == "word":
             _draw_word(d, *op[1:])

@@ -220,3 +220,196 @@ class NoteIntegrationTests(TestCase):
         image = Image.open(__import__("io").BytesIO(pages[0])).convert("RGB")
         dark = sum(1 for px in image.getdata() if px[0] < 80 and px[1] < 80 and px[2] < 80)
         self.assertGreater(dark, 2000)                                    # 글자·수식이 실제로 그려졌다
+
+
+class ItalicAndSymbolTests(TestCase):
+    def draw_pixels(self, tex):
+        atom = atoms(tex)[0]
+        image = Image.new("RGB", (400, 120), "white")
+        atom.draw(ImageDraw.Draw(image), 10, 80, 40, (0, 0, 0))
+        return sum(1 for px in image.getdata() if px[0] < 128)
+
+    def test_variables_are_italic_but_digits_function_names_and_text_are_upright(self):
+        from .notefont import italic_char
+
+        def boxes(tex):
+            return [b for b in atoms(tex)[0].box.items if isinstance(b, mathbox.Text)]
+
+        (xy,) = boxes("xy")
+        self.assertTrue(xy.italic)
+        self.assertEqual(xy._shown(), italic_char("x") + italic_char("y"))
+        self.assertFalse(boxes("12")[0].italic)
+        self.assertFalse(boxes(r"\det")[0].italic)
+        self.assertFalse(boxes(r"\text{rank}")[0].italic)
+        self.assertTrue(boxes(r"\lambda")[0].italic)                       # 소문자 그리스 문자는 기울임
+        self.assertFalse(boxes(r"\Delta")[0].italic)                       # 대문자는 세움
+        self.assertFalse(boxes("가나")[0].italic)                           # 한글은 세움
+
+    def test_italic_letters_use_real_math_italic_glyphs(self):
+        from .notefont import can_draw, italic_char
+
+        self.assertEqual(italic_char("x"), "𝑥")
+        self.assertEqual(italic_char("h"), "ℎ")
+        self.assertEqual(italic_char("μ"), "𝜇")
+        for ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZαβγδεζηθικλμνξοπρςστυφχψω":
+            self.assertTrue(can_draw(italic_char(ch)), ch)
+
+    def test_symbols_missing_from_the_text_font_still_draw_via_the_math_font(self):
+        from .notefont import has_glyph, can_draw
+
+        for ch in "∇⊕⊗∧∨≅⌊⌋⟨⟩⋮⋱∥ℝℕ∮∝⊥":
+            self.assertFalse(has_glyph(ch), ch)                           # 본 글꼴에는 없고
+            self.assertTrue(can_draw(ch), ch)                             # 수학 글꼴로 그릴 수 있다
+            self.assertGreater(self.draw_pixels(ch), 20, ch)
+
+    def test_latex_symbol_names_are_not_leaked_as_words(self):
+        for name in ("oplus", "otimes", "wedge", "vee", "cong", "parallel", "mapsto", "implies", "iff", "oint", "iint", "lfloor", "rceil", "langle",
+                     "vdots", "ddots", "hbar", "ell", "aleph", "propto", "perp", "bigoplus"):
+            self.assertGreater(self.draw_pixels("\\" + name), 10, name)
+            text = "".join(b.text for b in atoms("\\" + name)[0].box.items if isinstance(b, mathbox.Text))     # Op도 Text의 한 종류
+            self.assertTrue(text, name)
+            self.assertNotEqual(text, name, f"\\{name}이 이름 그대로 글자로 나왔다")
+
+
+class MoreLatexTests(TestCase):
+    def test_new_constructs_are_recognised(self):
+        self.assertIn("Under", kinds(r"\underline{abc}"))
+        self.assertIn("Brace", kinds(r"\overbrace{a+b}^{2}"))
+        self.assertIn("Brace", kinds(r"\underbrace{a+b}_{2}"))
+        self.assertIn("Arrow", kinds(r"A\xrightarrow[b]{a}B"))
+        self.assertIn("Slashed", kinds(r"x\not\in S"))
+        self.assertIn("Strike", kinds(r"\cancel{x}"))
+        self.assertIn("Boxed", kinds(r"\boxed{x}"))
+        self.assertIn("Fence", kinds(r"\bigl( x \bigr)"))
+        self.assertIn("Over", kinds(r"\dot{x}"))
+        self.assertIn("Over", kinds(r"\overrightarrow{AB}"))
+        self.assertIn("Limits", kinds(r"\overset{a}{=}"))
+        self.assertIn("Matrix", kinds(r"\sum_{\substack{i<n \\ i\ne j}} a"))
+
+    def test_brace_label_attaches_from_scripts(self):
+        brace = next(b for b in atoms(r"\overbrace{a+b+c}^{3}")[0].box.items if isinstance(b, mathbox.Brace))
+        self.assertIsNotNone(brace.label)
+        self.assertTrue(brace.over)
+
+    def test_infix_choose_over_and_binom_make_fractions(self):
+        self.assertIn("Frac", kinds(r"{n \choose k}"))
+        self.assertIn("Frac", kinds(r"a \over b"))
+        self.assertIn("Frac", kinds(r"\binom{n}{k}"))
+
+    def test_not_equal_is_a_single_relation_symbol(self):
+        text = "".join(b.text for atom in atoms(r"a\not=b") for b in atom.box.items if isinstance(b, mathbox.Text))
+        self.assertIn("≠", text)
+
+    def test_array_columns_alignment_and_rules(self):
+        box = atoms(r"\begin{array}{c|rl} 1 & 22 & 3 \\ \hline 4 & 5 & 666 \end{array}")[0].box
+        matrix = next(i for i in box.items if isinstance(i, mathbox.Matrix))
+        self.assertEqual(matrix.col_aligns, ["c", "r", "l"])
+        self.assertEqual(matrix.vlines, {1})
+        self.assertEqual(matrix.hlines, {1})
+        self.assertEqual([len(r) for r in matrix.rows], [3, 3])
+
+    def test_aligned_environment_pairs_right_and_left_columns(self):
+        box = atoms(r"\begin{aligned} a&=b \\ c&=d \end{aligned}")[0].box
+        matrix = next(i for i in box.items if isinstance(i, mathbox.Matrix))
+        self.assertTrue(matrix.pairs)
+        self.assertEqual((matrix._align(0), matrix._align(1)), ("r", "l"))
+
+    def test_spaces_and_ignored_commands_do_not_leak(self):
+        for tex in (r"a\hspace{1em}b", r"x\tag{1}", r"\displaystyle x", r"\phantom{abc}x", r"a\,b\;c\quad d", r"\mathop{lim}"):
+            self.assertTrue(atoms(tex), tex)
+            leaked = "".join(b.text for a in atoms(tex) for b in a.box.items if isinstance(b, mathbox.Text))
+            for word in ("hspace", "tag", "displaystyle", "phantom", "mathop"):
+                self.assertNotIn(word, leaked)
+
+    def test_every_new_box_draws_without_error(self):
+        image = Image.new("RGB", (900, 200), "white")
+        d = ImageDraw.Draw(image)
+        for tex in (r"\underbrace{a+b}_{n}", r"\overbrace{a}^{m}", r"\xrightarrow[x]{y}", r"\xleftarrow{f}", r"x\not\in S", r"\cancel{x}\bcancel{y}\xcancel{z}",
+                    r"\boxed{x^2}", r"\Bigl[\frac{a}{b}\Bigr]", r"\check{a}\breve{a}\acute{a}\grave{a}\ddot{a}", r"\overleftarrow{AB}",
+                    r"\begin{array}{c|c} a & b \\ \hline c & d \end{array}"):
+            for atom in atoms(tex):
+                atom.draw(d, 10, 100, 30, (0, 0, 0))
+
+
+class PlainNotationTests(TestCase):
+    def test_plain_notation_becomes_latex(self):
+        cases = {
+            "a/b": r"\frac{a}{b}",
+            "1/2 + x/(n-1)": r"\frac{1}{2} + \frac{x}{n-1}",
+            "sqrt(b^2-4ac)/(2a)": r"\frac{\sqrt{b^2-4ac}}{2a}",
+            "x_bar = (x_1+x_2)/n": r"\bar{x} = \frac{x_1+x_2}{n}",
+            "[[a, b], [c, d]]": r"\begin{bmatrix} a & b \\ c & d \end{bmatrix}",
+            "P(A|B) = P(B|A)P(A)/P(B)": r"P(A|B) = \frac{P(B|A)P(A)}{P(B)}",
+        }
+        for plain, latex in cases.items():
+            self.assertEqual(mathbox.to_latex(plain), latex, plain)
+
+    def test_plain_words_become_symbols_and_existing_latex_is_left_alone(self):
+        self.assertIn(r"\mu", mathbox.to_latex("mu +- 2 sigma"))
+        self.assertIn(r"\pm", mathbox.to_latex("mu +- 2 sigma"))
+        self.assertIn(r"\sum", mathbox.to_latex("sum_{i=1}^n x_i"))
+        self.assertIn(r"\to", mathbox.to_latex("n->inf"))
+        self.assertIn(r"\infty", mathbox.to_latex("n->inf"))
+        self.assertEqual(mathbox.to_latex(r"\frac{1}{2}x/y"), r"\frac{1}{2}x/y")        # 백슬래시가 있으면 LaTeX로 쓴 것
+        self.assertEqual(mathbox.to_latex("summary of x"), "summary of x")             # 단어의 일부는 바꾸지 않는다
+
+    def test_plain_forms_render_as_real_fractions_and_matrices(self):
+        self.assertIn("Frac", kinds("a/b"))
+        self.assertIn("Matrix", kinds("[[1, 2], [3, 4]]"))
+        self.assertIn("Limits", kinds("sum_{i=1}^n x_i"))
+        self.assertIn("Radical", kinds("sqrt(x)"))
+
+    def test_bare_greek_names_and_matrices_outside_dollar_signs_are_wrapped(self):
+        wrapped = mathbox.wrap_bare_math("구간은 mu ± 2 sigma 이고 $\\mu$ 와 $x_{mu}$ 그리고 [[1,2],[3,4]]")
+        self.assertIn("$\\mu$ ± 2 $\\sigma$", wrapped)
+        self.assertIn("$x_{mu}$", wrapped)                                 # 이미 수식 안에 있는 것은 건드리지 않는다
+        self.assertIn(r"$\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix}$", wrapped)
+        self.assertEqual(mathbox.wrap_bare_math("sigma가 아닌 summary와 musical"), "$\\sigma$가 아닌 summary와 musical")
+
+    def test_note_text_view_gets_latex_for_old_plain_notes(self):
+        md = "- 분산 $s^2=1/(n-1)$\n- 행렬 [[1,2],[3,4]]"
+        out = mathbox.latexify_markdown(md)
+        self.assertIn(r"\frac{1}{n-1}", out)
+        self.assertIn(r"\begin{bmatrix}", out)
+        self.assertNotIn("[[", out)
+
+    def test_fraction_operand_scan_keeps_backslash_commands_together(self):
+        self.assertEqual(mathbox.to_latex("sqrt(x)/y"), r"\frac{\sqrt{x}}{y}")
+        self.assertEqual(mathbox.to_latex("mu/sigma"), r"\frac{\mu }{\sigma }")
+
+
+class BrokenEscapeRepairTests(TestCase):
+    """AI가 JSON 이스케이프를 어긋나게 쓴 LaTeX(행 구분 \\\\가 \\ 하나로 줄거나 \\end가 깨진 것)도 행렬로 읽는다. 실제 Gemini 응답에서 나온 형태."""
+
+    CASES = {
+        "정상": (r"\begin{bmatrix} a & b \\ c & d \end{bmatrix}", 2),
+        "행 구분이 하나로 줄어듦": (r"\begin{bmatrix} a & b \ c & d \end{bmatrix}", 2),
+        "end의 백슬래시가 빠짐": (r"\begin{bmatrix} a & b \\ c & d end{bmatrix}", 2),
+        "행 구분 뒤 end가 깨짐": (r"\begin{bmatrix} a & b \\ c & d \\ end{bmatrix}", 2),
+        "begin·end 모두 빠짐": (r"begin{pmatrix} 1 & 2 \ 3 & 4 end{pmatrix}", 2),
+        "명령이 든 칸": (r"\begin{bmatrix} \alpha & \beta \ \gamma & \delta \end{bmatrix}", 2),
+        "cases": (r"\begin{cases} x & x>0 \ -x & x<0 \end{cases}", 2),
+        "세 행": (r"\begin{bmatrix} a & b \ c & d \ e & f \end{bmatrix}", 3),
+    }
+
+    def rows(self, tex):
+        return [len(m.rows) for a in atoms(tex) for m in a.box.items if isinstance(m, mathbox.Matrix)]
+
+    def test_every_broken_form_still_becomes_a_matrix_with_the_right_rows(self):
+        for label, (tex, want) in self.CASES.items():
+            self.assertEqual(self.rows(tex), [want], label)
+
+    def test_repair_leaves_correct_latex_and_non_matrix_text_alone(self):
+        for tex in (r"\begin{bmatrix} a & b \\ c & d \end{bmatrix}", r"x \cdot y \frac{1}{2}", r"a \ b", r"\alpha \beta", "plain text"):
+            self.assertEqual(mathbox.repair_latex(tex), tex, tex)
+
+    def test_the_text_view_gets_the_repaired_latex_too(self):
+        out = mathbox.latexify_markdown(r"- 행렬 $A = \begin{bmatrix} a & b \ c & d \end{bmatrix}$")
+        self.assertIn(r"a & b \\ c & d", out)
+
+    def test_a_real_gemini_style_note_round_trips_through_storage(self):
+        # 모델이 행 구분을 \로 줄여 쓴 응답 → 저장된 글 → 다시 읽어 그리기까지 행렬이 유지된다
+        note = cram.normalize_note({"title": "t", "sections": [{"heading": "h", "points": [r"행렬 $A=\begin{bmatrix} a & b \ c & d \end{bmatrix}$", "점 둘"]}], "memo": []})
+        again = cram.parse_note_markdown(cram.note_markdown(note))
+        segs = [s for p in again["sections"][0]["points"] for s, _ in notepage.parse_segments(notepage.to_rich(p)) if isinstance(s, mathbox.MathAtom)]
+        self.assertEqual([len(m.rows) for a in segs for m in a.box.items if isinstance(m, mathbox.Matrix)], [2])

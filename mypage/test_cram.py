@@ -167,7 +167,7 @@ class RenderTests(TestCase):
         self.assertNotIn("😀", out)
         self.assertIn("A<sup>T</sup>", out)
         self.assertIn("x<sub>i</sub><sup>2</sup>", out)
-        self.assertIn("R<sup>2</sup>", out)                               # ℝ가 글꼴에 없으면 R로
+        self.assertIn("ℝ<sup>2</sup>", out)                               # ℝ는 수학 글꼴에 있어 진짜 기호로
 
     def test_bold_red_and_highlight_styles_are_parsed(self):
         segs = notepage.parse_segments(notepage.to_markup("일반 **굵게** ==형광펜== 끝"))
@@ -459,3 +459,170 @@ class MultiPageNoteTests(TestCase):
         self.assertTrue(all(n.summary_status == ProcessingStatus.DONE and n.file.name.endswith(".png") for n in notes))
         self.assertTrue(notes[0].title.endswith(f"(1/{len(notes)})"))
         self.assertTrue(notes[-1].title.endswith(f"({len(notes)}/{len(notes)})"))
+
+
+OLD_MARKDOWN = (
+    "# 선형대수 속성 노트\n\n"
+    "## 역행렬\n- 2x2 역행렬 $A^{-1} = 1/(ad-bc) * [[d, -b], [-c, a]]$\n- 분산 $s^2 = 1/(n-1) sum_{i=1}^n (x_i - x_bar)^2$\n\n"
+    "## 정규분포\n- **약 95%** 가 mu ± 2 sigma 안에 있다\n- ==표준화== $z = (x - mu)/sigma$\n\n"
+    "## 마지막 체크!\n- 분모는 ad-bc\n- n-1로 나눈다")
+
+
+class OldNoteUpgradeTests(TestCase):
+    """옛 손글씨 노트(간이 표기로 쓴 글, 파일 이름 cram-note.png)를 새 디자인으로 바꾼다."""
+
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, True)
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+        self.user = User.objects.create_user(username="old", password="pw")
+
+    def old_note(self, markdown=OLD_MARKDOWN, title="선형대수 속성 노트"):
+        from django.core.files.base import ContentFile
+
+        doc = PersonalDocument.objects.create(user=self.user, title=title, file="", document_type=NOTE, summary=markdown, summary_status=ProcessingStatus.DONE)
+        doc.file.save("cram-note.png", ContentFile(b"\x89PNG old handwritten"), save=True)
+        return doc
+
+    def test_markdown_round_trips_into_a_note_dict(self):
+        note = cram.parse_note_markdown(OLD_MARKDOWN)
+        self.assertEqual(note["title"], "선형대수 속성 노트")
+        self.assertEqual([s["heading"] for s in note["sections"]], ["역행렬", "정규분포"])
+        self.assertEqual(len(note["sections"][0]["points"]), 2)
+        self.assertEqual(note["memo"], ["분모는 ad-bc", "n-1로 나눈다"])
+        again = cram.parse_note_markdown(cram.note_markdown(note))
+        self.assertEqual(again, note)                                      # 저장 → 복원이 손실 없이 돌아온다
+
+    def test_opening_an_old_note_redraws_it_with_the_new_design(self):
+        doc = self.old_note()
+        old_name = doc.file.name
+        self.client.force_login(self.user)
+        res = self.client.get(reverse("mypage:document_preview", args=[doc.pk]))
+        self.assertEqual(res.status_code, 200)
+        doc.refresh_from_db()
+        self.assertIn("cram-note-a4", doc.file.name)
+        self.assertNotEqual(doc.file.name, old_name)
+        self.assertTrue(doc.file.read(8).startswith(b"\x89PNG"))
+        image = Image.open(doc.file.path)
+        self.assertEqual(image.size, (notepage.WIDTH, notepage.HEIGHT))
+        self.assertFalse(__import__("os").path.exists(__import__("os").path.join(self.media, old_name)))       # 옛 그림 파일은 지웠다
+
+    def test_upgrade_does_not_call_ai_and_is_idempotent(self):
+        doc = self.old_note()
+        with patch("core.ai.chat") as chat, patch("core.ai.complete_json") as complete:
+            self.assertEqual(cram.upgrade_note_group(doc), 1)
+            doc.refresh_from_db()
+            first = doc.file.name
+            self.assertEqual(cram.upgrade_note_group(doc), 0)              # 이미 새 디자인이면 건드리지 않는다
+            doc.refresh_from_db()
+            self.assertEqual(doc.file.name, first)
+        chat.assert_not_called()
+        complete.assert_not_called()
+
+    def test_multi_page_old_notes_are_upgraded_as_one_group(self):
+        from django.core.files.base import ContentFile
+
+        long_md = "# 긴 노트\n\n" + "\n".join(f"## 주제{i}\n" + "\n".join(f"- 항목 {i}-{j} " + "설명 " * 25 for j in range(6)) + "\n" for i in range(7)) + "\n## 마지막 체크!\n- 확인"
+        first = self.old_note(long_md, "긴 노트 (1/2)")
+        second = PersonalDocument.objects.create(user=self.user, title="긴 노트 (2/2)", file="", document_type=NOTE, summary=long_md, summary_status=ProcessingStatus.DONE)
+        second.file.save("cram-note.png", ContentFile(b"\x89PNG old page 2"), save=True)
+        total = cram.upgrade_note_group(first)
+        group = cram.note_group(first)
+        self.assertEqual(len(group), total)                                # 쪽 수만큼 문서가 있다 (늘면 더하고 줄면 지운다)
+        self.assertTrue(all(cram.is_current_note(d) for d in group))
+        self.assertEqual([d.title for d in group], [f"긴 노트 ({n}/{total})" for n in range(1, total + 1)] if total > 1 else ["긴 노트"])
+
+    def test_notes_with_nothing_readable_or_a_render_failure_are_left_alone(self):
+        empty = self.old_note("메모만 있는 글")
+        self.assertEqual(cram.upgrade_note_group(empty), 0)
+        doc = self.old_note()
+        before = doc.file.name
+        with patch("mypage.notepage.render_notes", side_effect=OSError("boom")):
+            self.assertFalse(cram.upgrade_note_if_old(doc))                # 열람은 막지 않는다
+        doc.refresh_from_db()
+        self.assertEqual(doc.file.name, before)
+        self.client.force_login(self.user)
+        with patch("mypage.notepage.render_notes", side_effect=OSError("boom")):
+            self.assertEqual(self.client.get(reverse("mypage:document_preview", args=[doc.pk])).status_code, 200)
+
+    def test_new_notes_are_saved_under_the_new_file_name(self):
+        doc = PersonalDocument.objects.create(user=self.user, title="n", file="", document_type=NOTE, summary_status=ProcessingStatus.PROCESSING)
+        raw = json.dumps(NOTE_JSON, ensure_ascii=False)
+        message = type("M", (), {"content": raw})()
+        response = type("R", (), {"choices": [type("C", (), {"message": message})()]})()
+        src = make_doc(self.user, "자료", summary="요약 " * 40)
+        with patch("core.ai.chat", return_value=response):
+            cram.build_note_document(doc.pk, [src.pk])
+        doc.refresh_from_db()
+        self.assertTrue(cram.is_current_note(doc))
+
+    def test_management_command_upgrades_everything_and_supports_dry_run(self):
+        from django.core.management import call_command
+
+        a, b = self.old_note(), self.old_note(OLD_MARKDOWN.replace("선형대수", "통계"), "통계 속성 노트")
+        out = io.StringIO()
+        call_command("upgrade_notes", "--dry-run", stdout=out)
+        self.assertIn("바꿀 노트: 2개", out.getvalue())
+        a.refresh_from_db()
+        self.assertFalse(cram.is_current_note(a))                          # 모의 실행은 아무것도 바꾸지 않는다
+        out = io.StringIO()
+        call_command("upgrade_notes", stdout=out)
+        self.assertIn("바꾼 노트: 2개", out.getvalue())
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertTrue(cram.is_current_note(a) and cram.is_current_note(b))
+        out = io.StringIO()
+        call_command("upgrade_notes", stdout=out)
+        self.assertIn("바꾼 노트: 0개", out.getvalue())                       # 다시 돌려도 안전
+
+
+class NoteTextViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="tv", password="pw")
+        self.client.force_login(self.user)
+        self.doc = PersonalDocument.objects.create(user=self.user, title="노트", file="notes/x-a4.png", document_type=NOTE,
+                                                   summary=OLD_MARKDOWN, summary_status=ProcessingStatus.DONE)
+
+    def test_note_page_offers_a_text_view_with_latex_for_old_plain_math(self):
+        res = self.client.get(reverse("mypage:document_preview", args=[self.doc.pk]))
+        self.assertContains(res, 'data-tab="text"')
+        self.assertContains(res, "글로 보기")
+        text = res.context["note_text"]
+        self.assertIn(r"\frac{1}{n-1}", text)
+        self.assertIn(r"\begin{bmatrix}", text)
+        self.assertIn(r"\mu", text)                                        # $ 없이 쓴 mu 도 수식으로
+        self.assertContains(res, "markdown-lite.js")
+        self.assertContains(res, "math-render.js")
+
+    def test_text_view_data_is_embedded_safely(self):
+        self.doc.summary = '# 제목\n\n## 섹션\n- </script><script>alert(1)</script> "따옴표" & <b>태그</b>\n- 항목'
+        self.doc.save()
+        html = self.client.get(reverse("mypage:document_preview", args=[self.doc.pk])).content.decode()
+        self.assertNotIn("<script>alert(1)</script>", html)                # JSON으로 이스케이프돼 스크립트가 끼어들 수 없다
+        self.assertIn("note-text-source", html)
+
+    def test_only_the_owner_sees_the_note(self):
+        other = User.objects.create_user(username="other", password="pw")
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(reverse("mypage:document_preview", args=[self.doc.pk])).status_code, 403)
+
+    def test_text_view_is_empty_while_the_note_is_still_processing(self):
+        self.doc.summary_status = ProcessingStatus.PROCESSING
+        self.doc.save()
+        self.assertEqual(cram.note_text_markdown(self.doc), "")
+
+
+class UpgradeSkipsUnreadableNotesTests(OldNoteUpgradeTests):
+    def test_notes_whose_saved_text_has_no_sections_are_not_counted_or_touched(self):
+        from django.core.management import call_command
+
+        empty = self.old_note("# 노트")
+        before = empty.file.name
+        out = io.StringIO()
+        call_command("upgrade_notes", "--dry-run", stdout=out)
+        self.assertIn("바꿀 노트: 0개", out.getvalue())
+        self.assertEqual(cram.upgrade_note_group(empty), 0)
+        empty.refresh_from_db()
+        self.assertEqual(empty.file.name, before)
