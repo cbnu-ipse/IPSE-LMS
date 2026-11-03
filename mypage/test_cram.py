@@ -112,7 +112,7 @@ class RenderTests(TestCase):
                                                 for i in range(7)]})
         lay = notepage._layout(big, notepage.MIN_SCALE, None)
         self.assertGreater(len(lay.pages), 1)
-        pages = notepage.render_notes(big)
+        pages = notepage.render_notes(big, style="typed")
         self.assertEqual(len(pages), len(lay.pages))
         for png in pages:
             self.assertEqual(Image.open(io.BytesIO(png)).size, (notepage.WIDTH, notepage.HEIGHT))
@@ -489,7 +489,7 @@ class MultiPageNoteTests(TestCase):
         note = PersonalDocument.objects.create(user=user, title="n", file="", document_type=NOTE,
                                                summary_status=ProcessingStatus.PROCESSING)
         big = {"title": "큰 노트", "memo": ["확인 " * 10] * 6,
-               "sections": [{"heading": f"주제{i}", "points": ["긴 문장 " * 12] * 6} for i in range(7)]}
+               "sections": [{"heading": f"주제{i}", "points": ["긴 문장 " * 40] * 6} for i in range(7)]}
         with override_settings(MEDIA_ROOT=media), ai_returns(big):
             cram.build_note_document(note.pk, [src.pk])
         notes = list(PersonalDocument.objects.filter(document_type=NOTE).order_by("id"))

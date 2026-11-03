@@ -54,6 +54,7 @@ PAPER, GRID = (255, 255, 255), None             # 종이 색, 모눈 색 (None�
 TITLE_BAND, HEAD_BAND = MARK, None              # 제목 형광 띠 색, 소제목 형광 띠 색 (None이면 번호 칩)
 MEMO_TITLE = (194, 65, 12)
 HAND = False                                    # 손글씨 스타일을 그리는 중인가
+DENSITY, HEAD_ADV, TITLE_ADV = 1.0, 1.55, 1.3   # 세로 여백 배율, 소제목·제목 아래 간격 (손글씨는 촘촘하게)
 
 # 스타일: 지금 그리는 스타일의 값으로 위 상수들을 바꿔 쓴다 (render_notes가 잠근 채 바꿨다가 되돌린다)
 THEMES = {
@@ -61,13 +62,14 @@ THEMES = {
         MARGIN_X=MARGIN_X, TOP=TOP, BOTTOM=BOTTOM, INK=INK, TEXT=TEXT, ACCENT=ACCENT, RED=RED, MARK=MARK, CYAN=CYAN, GRAY=GRAY, RULE=RULE,
         BOX_BG=BOX_BG, BOX_LINE=BOX_LINE, OUTLINE_BG=OUTLINE_BG, TABLE_HEAD=TABLE_HEAD, TABLE_FIRST=TABLE_FIRST, TABLE_LINE=TABLE_LINE,
         TITLE_SIZE=TITLE_SIZE, HEAD_SIZE=HEAD_SIZE, BODY_SIZE=BODY_SIZE, SMALL_SIZE=SMALL_SIZE, LINE_RATIO=LINE_RATIO, PAPER=PAPER, GRID=GRID,
-        TITLE_BAND=TITLE_BAND, HEAD_BAND=HEAD_BAND, MEMO_TITLE=MEMO_TITLE, MAX_SCALE=MAX_SCALE, HAND=False).items()},
+        TITLE_BAND=TITLE_BAND, HEAD_BAND=HEAD_BAND, MEMO_TITLE=MEMO_TITLE, MAX_SCALE=MAX_SCALE, MIN_SCALE=MIN_SCALE, HAND=False,
+        DENSITY=DENSITY, HEAD_ADV=HEAD_ADV, TITLE_ADV=TITLE_ADV).items()},
     "hand": dict(
         MARGIN_X=70, TOP=84, BOTTOM=96, INK=(27, 38, 110), TEXT=(36, 38, 54), ACCENT=(59, 89, 190), RED=(190, 30, 45), MARK=(255, 238, 120),
         CYAN=(176, 226, 248), GRAY=(118, 124, 140), RULE=(214, 220, 236), BOX_BG=(255, 250, 222), BOX_LINE=(224, 170, 20),
         OUTLINE_BG=(244, 247, 255), TABLE_HEAD=(219, 234, 254), TABLE_FIRST=(240, 246, 255), TABLE_LINE=(120, 140, 190),
-        TITLE_SIZE=70, HEAD_SIZE=42, BODY_SIZE=32, SMALL_SIZE=24, LINE_RATIO=1.3, PAPER=(253, 253, 249), GRID=(207, 218, 236),
-        TITLE_BAND=(206, 224, 255), HEAD_BAND=(255, 233, 150), MEMO_TITLE=(160, 100, 0), MAX_SCALE=1.3, HAND=True),
+        TITLE_SIZE=52, HEAD_SIZE=32, BODY_SIZE=25, SMALL_SIZE=20, LINE_RATIO=1.22, PAPER=(253, 253, 249), GRID=(207, 218, 236),
+        TITLE_BAND=(206, 224, 255), HEAD_BAND=(255, 233, 150), MEMO_TITLE=(160, 100, 0), MAX_SCALE=1.15, MIN_SCALE=0.72, HAND=True, DENSITY=0.55, HEAD_ADV=1.2, TITLE_ADV=1.08),
 }
 DEFAULT_STYLE = "hand"
 _RENDER_LOCK = threading.Lock()
@@ -384,7 +386,7 @@ class _Layout:
         return len(lines)
 
     def gap(self, pixels):
-        self.y += int(pixels * self.k)
+        self.y += int(pixels * self.k * DENSITY)
 
 
 def _fit_heading(markup, size):
@@ -452,7 +454,7 @@ def _table(lay, section):
     floor = int(120 * k)
     widths = [max(int(total * w / sum(weights)), floor) for w in weights]
     widths[-1] += total - sum(widths)
-    pad_x, pad_y = int(14 * k), int(9 * k)
+    pad_x, pad_y = int(14 * k * (0.7 if HAND else 1)), int(9 * k * DENSITY)
 
     def cell_markup(text, strong):
         rich = to_rich(text)
@@ -493,6 +495,12 @@ def _outline(lay, note):
     """'한눈에 보기': 섹션이 3개 이상이면 맨 위에 차례(번호·소제목 — 강조한 핵심어 몇 개)를 상자로 둔다. 핵심어는 글 속 강조 표시에서 뽑는다."""
     sections = note.get("sections", [])
     if len(sections) < 3:
+        return
+    if HAND:                                         # 손글씨: 상자 없이 작은 글씨 한두 줄로 (공책 위쪽에 목차를 한 줄로 적어 두듯)
+        line = "<s>차례</s>   " + "    ".join(f"{n}. {to_markup(s['heading'])}" for n, s in enumerate(sections, 1))
+        lay.gap(14)
+        lay.text_block(line, lay.sz(BODY_SIZE - 3), MARGIN_X, color=GRAY)
+        lay.gap(16)
         return
     k, size, head = lay.k, lay.sz(BODY_SIZE - 1), lay.sz(HEAD_SIZE)
     pad = int(20 * k)
@@ -563,9 +571,9 @@ def _layout(note, k, today):
     title_lines = _wrap(title_segs, title_size, MARGIN_X, WIDTH - MARGIN_X)
     for line in title_lines:
         lay.ops.append(("title", lay.y, title_size, line))
-        lay.y += int(title_size * 1.3)
+        lay.y += int(title_size * TITLE_ADV)
     lay.ops.append(("rule", lay.y, 3, INK))
-    lay.y += int(26 * k)
+    lay.y += int(26 * k * DENSITY)
 
     _outline(lay, note)
     head = sz(HEAD_SIZE)
@@ -573,7 +581,7 @@ def _layout(note, k, today):
         lay.need(int(head * 1.9) + lay.lh * 2)          # 소제목만 쪽 끝에 홀로 남지 않게 첫 줄과 함께 넘긴다
         markup = to_markup(section.get("heading", ""))
         lay.ops.append(("heading", MARGIN_X, lay.y, _fit_heading(markup, head), markup, number))
-        lay.y += int(head * 1.55)
+        lay.y += int(head * HEAD_ADV)
         kind = section.get("kind", "list")
         if kind == "table":
             _table(lay, section)
@@ -587,13 +595,13 @@ def _layout(note, k, today):
 
     memo = note.get("memo") or []
     if memo:
-        pad = int(22 * k)
+        pad = int(22 * k * DENSITY)
         text_height = sum(lay.block(to_rich(item), sz(BODY_SIZE), MARGIN_X + pad, int(38 * k))[1] for item in memo)
-        lay.need(int(head * 1.5) + text_height + 2 * pad + pad // 2)          # 상자가 쪽 사이에서 갈라지지 않게 통째로 넘긴다
+        lay.need(int(head * (1.5 if not HAND else 1.2)) + text_height + 2 * pad + pad // 2)          # 상자가 쪽 사이에서 갈라지지 않게 통째로 넘긴다
         top = lay.y
         lay.y += pad
         lay.ops.append(("memo_title", MARGIN_X + pad, lay.y, head - 2, "마지막 체크!"))
-        lay.y += int(head * 1.5)
+        lay.y += int(head * (1.5 if not HAND else 1.2))
         for item in memo:
             lay.text_block(to_rich(item), sz(BODY_SIZE), MARGIN_X + pad, indent=int(38 * k), bullet="check")
         lay.y += pad // 2
