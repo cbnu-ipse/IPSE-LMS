@@ -2,7 +2,8 @@
 '시험 5분 전 속성 노트'를 타이핑한 A4 문서 모양의 PNG로 그린다 (Pillow만 사용, 새 패키지 없음).
 
 글꼴은 static/fonts/Pretendard-Regular.otf · Pretendard-Bold.otf (SIL OFL, 라이선스 파일 같은 폴더). 한글뿐 아니라 그리스 문자·화살표·수학
-기호·첨자까지 들어 있어 글자를 바꿔 쓰지 않는다. 첨자(<sub>/<sup>)와 평균 막대(x̄)만 직접 그린다.
+기호·첨자까지 들어 있어 글자를 바꿔 쓰지 않는다. $수식$은 mathbox가 분수·행렬·제곱근·합 기호 등을 실제 모양으로 조판해 본문 줄에 끼워 넣고
+(to_rich), 해석하지 못한 수식만 글자(to_markup)로 대신 쓴다. 제목·소제목은 글자로만 쓴다.
 모양: 굵은 제목(형광펜 띠) · 번호 칩이 달린 소제목 · 글머리 목록 · 굵은 빨간 글씨 · 노란 형광펜 · '마지막 체크' 상자 · 쪽 번호.
 빈 곳이 남지 않게, 같은 쪽 수로 끝나는 가장 큰 글씨 크기를 골라 한 쪽을 알차게 채운다 (짧은 노트는 글씨가 커지고, 긴 노트는 작아지다가
 그래도 넘치면 내용을 버리지 않고 다음 쪽에 이어 쓴다).
@@ -11,17 +12,18 @@
 문장 안에서 쓸 수 있는 서식: **빨간 굵은 글씨**, ==형광펜==, $수식$ (아래 latex_to_markup이 간단한 것만 바꾼다).
 """
 import io
-import os
+import logging
 import re
 import unicodedata
 from datetime import date
 
-from django.conf import settings
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-FONT_DIR = os.path.join(str(settings.BASE_DIR), "static", "fonts")
-FONT_REGULAR = os.path.join(FONT_DIR, "Pretendard-Regular.otf")
-FONT_BOLD = os.path.join(FONT_DIR, "Pretendard-Bold.otf")
+from . import mathbox
+
+logger = logging.getLogger(__name__)
+
+from .notefont import BLACKBOARD as _BLACKBOARD, GREEK as _GREEK, LATEX_WORDS as _LATEX_WORDS, SUB as _SUB, SUP as _SUP, font, has_glyph  # noqa: F401
 
 WIDTH = 1240
 HEIGHT = 1754                     # A4 세로 (150dpi): 1240 x 1754
@@ -43,44 +45,7 @@ BOX_BG, BOX_LINE = (255, 247, 237), (251, 146, 60)
 TITLE_SIZE, HEAD_SIZE, BODY_SIZE, SMALL_SIZE = 60, 36, 29, 22
 LINE_RATIO = 1.52                 # 본문 줄 간격 (글씨 크기 대비)
 
-_SUB = dict(zip("₀₁₂₃₄₅₆₇₈₉", "0123456789"))
-_SUP = dict(zip("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789"))
-# LaTeX 명령 → 글꼴에 있는 실제 기호
-_LATEX_WORDS = {
-    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "varepsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ",
-    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ", "sigma": "σ", "tau": "τ", "phi": "φ", "varphi": "φ",
-    "chi": "χ", "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Pi": "Π", "Sigma": "Σ",
-    "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω", "sum": "Σ", "prod": "Π", "int": "∫", "infty": "∞", "partial": "∂", "nabla": "∇",
-    "le": "≤", "leq": "≤", "ge": "≥", "geq": "≥", "ne": "≠", "neq": "≠", "approx": "≈", "equiv": "≡", "propto": "∝",
-    "pm": "±", "mp": "∓", "times": "×", "cdot": "·", "div": "÷", "to": "→", "rightarrow": "→", "leftarrow": "←",
-    "Rightarrow": "⇒", "Leftarrow": "⇐", "leftrightarrow": "↔", "therefore": "∴", "because": "∵",
-    "ldots": "…", "cdots": "…", "dots": "…", "in": "∈", "notin": "∉", "subset": "⊂", "supset": "⊃", "cup": "∪", "cap": "∩",
-    "forall": "∀", "exists": "∃", "prime": "′",
-    "log": "log", "ln": "ln", "exp": "exp", "min": "min", "max": "max", "det": "det", "sin": "sin", "cos": "cos", "tan": "tan",
-    "lim": "lim", "Pr": "P", "quad": " ", "qquad": " ", "left": "", "right": "", "hat": "", "tilde": "", "text": "",
-    "mathrm": "", "mathbf": "",
-}
-
-_GREEK = {"alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "zeta", "eta", "theta", "lambda", "mu", "nu", "xi", "pi", "rho",
-          "sigma", "tau", "phi", "varphi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Pi", "Sigma", "Phi", "Psi", "Omega"}
-_font_cache = {}
-_glyph_cache = {}
 _BLACKBOARD = {"R": "ℝ", "N": "ℕ", "Z": "ℤ", "Q": "ℚ", "C": "ℂ"}      # \mathbb{R} 등: 글꼴에 없으면 그냥 문자로
-
-
-def font(size, bold=False):
-    key = (size, bold)
-    if key not in _font_cache:
-        _font_cache[key] = ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, size)
-    return _font_cache[key]
-
-
-def has_glyph(ch):
-    """글꼴에 이 글자가 있는가. 없는 글자는 '없음 표시(notdef)'라는 네모로 그려지므로, 그 그림과 같으면 없는 것으로 본다."""
-    if ch not in _glyph_cache:
-        f = font(BODY_SIZE)
-        _glyph_cache[ch] = ch.isspace() or bytes(f.getmask(ch)) != bytes(f.getmask("\uFFFF"))
-    return _glyph_cache[ch]
 
 
 def safe_text(text):
@@ -186,15 +151,60 @@ def to_markup(text):
     return "".join(p if re.fullmatch(_TAGS, p) else safe_text(p) for p in parts)
 
 
+class Markup(str):
+    """태그 문자열 + 그 안에 끼워 넣은 수식 덩어리 표(math: 번호 → MathAtom). 수식 자리는 \x01번호\x02로 적혀 있다."""
+    math = {}
+
+
+_SLOT = re.compile(r"\x01(\d+)\x02")
+
+
+def to_rich(text):
+    """노트 문장 → Markup: to_markup과 같지만 $수식$을 글자로 풀지 않고 분수·행렬 등을 그릴 수 있는 수식 덩어리(mathbox)로 둔다.
+    해석하지 못한 수식은 이전처럼 글자로 쓴다."""
+    registry, count = {}, [0]
+
+    def slot(m):
+        tex = (m.group(1) or m.group(2)).strip()
+        atoms = mathbox.parse_chunks(tex)
+        if not atoms:
+            return latex_to_markup(tex)                       # 글자로 대신 쓴다
+        ids = []
+        for atom in atoms:
+            count[0] += 1
+            registry[count[0]] = atom
+            ids.append(f"\x01{count[0]}\x02")
+        return "".join(ids)
+
+    text = _MATH.sub(slot, str(text or ""))
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"==(.+?)==", r"<m>\1</m>", text)
+    text = text.replace("`", "")
+    out = []
+    for part in re.split(_TAGS, text):                      # 태그와 수식 자리는 두고 나머지 글자만 걸러낸다
+        if re.fullmatch(_TAGS, part):
+            out.append(part)
+        else:
+            out.append("".join(p if k % 2 else safe_text(p) for k, p in enumerate(re.split(r"(\x01\d+\x02)", part))))
+    markup = Markup("".join(out))
+    markup.math = registry
+    return markup
+
+
 def parse_segments(markup):
-    """태그 문자열 → [(글, {스타일})]. 스타일: b(굵은 빨간 글씨) m(형광펜) sub sup bar."""
+    """태그 문자열 → [(글 또는 수식 덩어리, {스타일})]. 스타일: b(굵은 빨간 글씨) m(형광펜) sub sup bar."""
+    registry = getattr(markup, "math", {})
     segs, active = [], set()
     for token in re.split(_TAGS, markup):
         m = re.fullmatch(r"<(/?)(b|m|sub|sup|bar)>", token)
         if m:
             (active.discard if m.group(1) else active.add)(m.group(2))
         elif token:
-            segs.append((token, frozenset(active)))
+            for k, piece in enumerate(re.split(r"\x01(\d+)\x02", token)):
+                if k % 2:
+                    segs.append((registry[int(piece)], frozenset(active)))
+                elif piece:
+                    segs.append((piece, frozenset(active)))
     return segs
 
 
@@ -210,6 +220,9 @@ def _words(segs):
     """세그먼트를 단어(공백 기준) 단위로 쪼갠다: [(글, 스타일, 뒤에 공백 있음)]."""
     out = []
     for text, style in segs:
+        if isinstance(text, mathbox.MathAtom):               # 수식 덩어리는 쪼갤 수 없는 한 단어
+            out.append((text, style, False))
+            continue
         for piece in re.split(r"(\s+)", text):
             if not piece:
                 continue
@@ -220,10 +233,29 @@ def _words(segs):
             out.append((piece, style, False))
     return out
 
+class PlacedMath:
+    """줄에 놓인 수식 덩어리와 (너무 넓으면 줄인) 글씨 크기."""
+
+    def __init__(self, atom, size):
+        self.atom, self.size = atom, size
+
+    def metrics(self):
+        return self.atom.metrics(self.size)
+
+
 def _wrap(segs, size, x0, x1):
     """너비에 맞춰 줄바꿈: 줄마다 [(글, 스타일, x, 단어 뒤 공백 너비)]. 한 줄보다 긴 단어는 글자 단위로 자른다."""
     lines, line, x = [], [], x0
     for text, style, spaced in _words(segs):
+        if isinstance(text, mathbox.MathAtom):
+            eff = text.fit(size, x1 - x0)
+            w, gap = text.metrics(eff)[0], (font(size).getlength(" ") if spaced else 0)
+            if line and x + w > x1:
+                lines.append(line)
+                line, x = [], x0
+            line.append((PlacedMath(text, eff), style, x, gap))
+            x += w + gap
+            continue
         f = _style_font(size, style)
         while f.getlength(text) > x1 - x0 and len(text) > 1:       # 너무 긴 단어(URL·긴 식 등)
             cut = len(text) - 1
@@ -271,15 +303,35 @@ class _Layout:
             self.pages.append([])
             self.y = self.top + self.lh
 
-    def text_block(self, markup, size, x0, color=TEXT, indent=0, bullet=None):
+    def block(self, markup, size, x0, indent=0):
+        """문단을 줄들로 배치하고 줄마다 위·아래로 더 필요한 높이를 계산한다 (분수·행렬처럼 키가 큰 수식이 있는 줄은 간격이 넓어진다)."""
         lines = _wrap(parse_segments(markup), size, x0 + indent, WIDTH - MARGIN_X)
-        self.need(len(lines) * self.lh)
-        for n, line in enumerate(lines):
+        ascent = font(size).getmetrics()[0]
+        free_below = self.lh - ascent - 0.10 * size
+        out = []
+        for line in lines:
+            up = down = 0.0
+            for text, _style, _x, _gap in line:
+                if isinstance(text, PlacedMath):
+                    _w, asc, dsc = text.metrics()
+                    up, down = max(up, asc + 0.05 * size - ascent), max(down, dsc - free_below)
+            out.append((line, int(up), int(down)))
+        return out, sum(self.lh + up + down for _line, up, down in out)
+
+    def text_block(self, markup, size, x0, color=TEXT, indent=0, bullet=None):
+        lines, height = self.block(markup, size, x0, indent)
+        self.need(height)
+        ascent = font(size).getmetrics()[0]
+        for n, (line, up, down) in enumerate(lines):
+            y = self.y + up
             if n == 0 and bullet:
-                self.ops.append(("bullet", x0, self.y, size, bullet))
+                self.ops.append(("bullet", x0, y, size, bullet))
             for text, style, x, gap in line:
-                self.ops.append(("word", x, self.y, size, text, style, color, gap))
-            self.y += self.lh
+                if isinstance(text, PlacedMath):
+                    self.ops.append(("math", x, y + ascent, text.size, text.atom, style, color, gap))
+                else:
+                    self.ops.append(("word", x, y, size, text, style, color, gap))
+            self.y += self.lh + up + down
         return len(lines)
 
     def gap(self, pixels):
@@ -319,21 +371,20 @@ def _layout(note, k, today):
         lay.ops.append(("heading", MARGIN_X, lay.y, _fit_heading(markup, head), markup, number))
         lay.y += int(head * 1.55)
         for point in section.get("points", []):
-            lay.text_block(to_markup(point), sz(BODY_SIZE), MARGIN_X + int(6 * k), indent=int(34 * k), bullet="dot")
+            lay.text_block(to_rich(point), sz(BODY_SIZE), MARGIN_X + int(6 * k), indent=int(34 * k), bullet="dot")
         lay.gap(20)
 
     memo = note.get("memo") or []
     if memo:
         pad = int(22 * k)
-        text_x = MARGIN_X + pad + int(38 * k)
-        lines = sum(len(_wrap(parse_segments(to_markup(item)), sz(BODY_SIZE), text_x, WIDTH - MARGIN_X)) for item in memo)
-        lay.need(int(head * 1.5) + lines * lay.lh + 2 * pad + pad // 2)          # 상자가 쪽 사이에서 갈라지지 않게 통째로 넘긴다
+        text_height = sum(lay.block(to_rich(item), sz(BODY_SIZE), MARGIN_X + pad, int(38 * k))[1] for item in memo)
+        lay.need(int(head * 1.5) + text_height + 2 * pad + pad // 2)          # 상자가 쪽 사이에서 갈라지지 않게 통째로 넘긴다
         top = lay.y
         lay.y += pad
         lay.ops.append(("memo_title", MARGIN_X + pad, lay.y, head - 2, "마지막 체크!"))
         lay.y += int(head * 1.5)
         for item in memo:
-            lay.text_block(to_markup(item), sz(BODY_SIZE), MARGIN_X + pad, indent=int(38 * k), bullet="check")
+            lay.text_block(to_rich(item), sz(BODY_SIZE), MARGIN_X + pad, indent=int(38 * k), bullet="check")
         lay.y += pad // 2
         lay.ops.append(("box", MARGIN_X, top, WIDTH - MARGIN_X, lay.y))
     return lay
@@ -386,7 +437,7 @@ def _paint(ops, k):
     canvas = Image.new("RGB", (WIDTH, HEIGHT), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
     # 형광펜 띠가 글자 뒤로 가도록 띠가 있는 단어를 먼저 그린 뒤 나머지를 그린다
-    ordered = sorted(ops, key=lambda op: 0 if op[0] == "box" or (op[0] == "title") else 1)
+    ordered = sorted(ops, key=lambda op: 0 if op[0] in ("box", "title") else 1)
     for op in ordered:
         kind = op[0]
         if kind == "box":
@@ -422,6 +473,15 @@ def _paint(ops, k):
             d.line([(x, y + chip + int(size * 0.28)), (WIDTH - MARGIN_X, y + chip + int(size * 0.28))], fill=RULE, width=2)
         elif kind == "word":
             _draw_word(d, *op[1:])
+        elif kind == "math":
+            _, x, base, size, atom, style, color, gap = op
+            width, asc, dsc = atom.metrics(size)
+            if "m" in style:
+                d.rounded_rectangle([x - 3, base - asc - 3, x + width + gap + 1, base + dsc + 3], radius=6, fill=MARK)
+            try:
+                atom.draw(d, x, base, size, RED if "b" in style else color)
+            except Exception:                                 # 그리다 실패한 수식 하나 때문에 노트 전체가 실패하지 않게
+                logger.exception("수식 그리기 실패")
         elif kind == "bullet":
             _, x, y, size, shape = op
             cy = _baseline(y, size) - size * 0.3
