@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 EXAM_DOC_CHARS = 6000       # 족보 하나에서 읽는 길이
 EXAM_TOTAL_CHARS = 24000    # 스타일을 뽑을 때 읽는 족보 전체 길이
+STYLE_VERSION = 2           # 스타일 분석 방식(프롬프트·분량)이 바뀌면 올린다 — 근거 해시에 들어가 다음에 쓸 때 새 방식으로 다시 뽑는다
 EXAMPLE_CHARS = 3600        # 모의 출제에 예시로 보여 주는 족보 길이
 MATERIAL_CHARS = 14000      # 모의 출제에 넣는 수업 자료 요약 길이
 ORIGINAL_CHARS = settings.AI_EXAM_ORIGINAL_CHARS   # 자료가 이 길이 안이면 요약 대신 원문을 넣는다 (0이면 항상 요약)
@@ -42,9 +43,10 @@ STYLE_SYSTEM = (
     "대학 시험 족보(기출문제)를 읽고 이 교수님의 출제 스타일을 분석합니다. 다른 과목에도 적용할 수 있게 "
     "과목 내용이 아니라 '출제 방식'을 뽑아내세요. 문제를 그대로 옮겨 적지 마세요.\n"
     '- mix: 문제 유형 비율 {"ox": 0~1, "mc": 0~1, "short": 0~1, "essay": 0~1} (합이 1 근처). 서술형·계산형은 essay.\n'
-    "- difficulty: 난이도와 문제 길이 특징 한 문장.\n"
-    "- traits: 문제 문장·보기·함정의 특징 3~6개 (예: '보기에 \"모두 고르시오\"가 자주 나온다', '정의를 그대로 묻기보다 예시에 적용시킨다').\n"
-    "- guidelines: 이 교수님 스타일로 문제를 만들 때 따를 지시문. 줄마다 '- '로 시작하는 6~10줄, 문제 문장 톤·유형 비중·보기 구성·난이도를 구체적으로.\n"
+    "- difficulty: 난이도와 문제 길이 특징 (문장 몇 개로 자세히).\n"
+    "- traits: 문제 문장·보기·함정의 특징 3~8개 (예: '보기에 \"모두 고르시오\"가 자주 나온다', '정의를 그대로 묻기보다 예시에 적용시킨다').\n"
+    "- guidelines: 이 교수님 스타일로 문제를 만들 때 따를 지시문. 줄마다 '- '로 시작하고, 문제 문장 톤·유형 비중·보기 구성·함정·난이도·문제 길이·서술형 요구 방식·"
+    "자주 쓰는 표현을 구체적으로 씁니다. 족보에서 읽힌 특징을 빠뜨리지 말고 충분히 자세히 적으세요 (10~18줄, 줄마다 근거가 되는 예시 표현을 짧게 곁들이기).\n"
     'JSON으로만 답하세요: {"mix": {...}, "difficulty": "...", "traits": ["..."], "guidelines": "- ...\\n- ..."}'
 )
 
@@ -136,7 +138,7 @@ def refresh_style(professor="", subject=""):
     if not docs:
         ExamStyle.objects.filter(key=key).delete()
         return None
-    source_hash = _sha([(d.pk, d.content_hash or len(d.extracted_text)) for d in docs])
+    source_hash = _sha(STYLE_VERSION, [(d.pk, d.content_hash or len(d.extracted_text)) for d in docs])
     existing = ExamStyle.objects.filter(key=key).first()
     if existing and existing.source_hash == source_hash:
         return existing
@@ -151,8 +153,8 @@ def refresh_style(professor="", subject=""):
         return existing
     label = (f"{docs[0].professor.strip()} 교수님" if professor_key(professor) else subject)[:100]
     profile = {"mix": data.get("mix") if isinstance(data.get("mix"), dict) else {},
-               "difficulty": str(data.get("difficulty") or "")[:300],
-               "traits": [str(t)[:200] for t in (data.get("traits") or [])[:6]]}
+               "difficulty": str(data.get("difficulty") or "")[:600],
+               "traits": [str(t)[:300] for t in (data.get("traits") or [])[:8]]}
     style, _ = ExamStyle.objects.update_or_create(
         key=key, defaults={"label": label, "guidelines": guidelines, "profile": profile,
                            "source_hash": source_hash, "doc_count": len(docs)})

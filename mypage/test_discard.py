@@ -185,26 +185,38 @@ class GenerationUsesDiscardsTests(TestCase):
 
 
 class StyleLengthTests(TestCase):
-    def test_style_guidelines_are_capped_at_the_default_2000_chars_and_the_setting_can_change_it(self):
+    def test_style_guidelines_are_capped_at_the_default_6000_chars_and_the_setting_can_change_it(self):
         from django.test import override_settings
 
         from .models import ExamStyle
 
-        long = "\n".join(f"- 아주 자세한 지시 {i}: " + "상세 " * 40 for i in range(40))
+        long = "\n".join(f"- 아주 자세한 지시 {i}: " + "상세 " * 40 for i in range(80))
         user = User.objects.create_user(username="s", password="pw")
         PersonalDocument.objects.create(user=user, title="족보", file="a.txt", extracted_text="1. 문제입니다", document_type="exam", professor="김교수",
                                         course_name="선형대수", summary_status=ProcessingStatus.DONE)
         with patch("core.ai.complete_json", return_value={"mix": {"mc": 1}, "difficulty": "어렵다", "traits": [f"특징{i}" for i in range(12)], "guidelines": long}) as ai:
             style = exam.refresh_style("김교수", "선형대수")
-        self.assertEqual(len(style.guidelines), 2000)
-        self.assertEqual(len(style.profile["traits"]), 6)
-        self.assertNotIn("길어도 좋으니", ai.call_args.args[1][0]["content"])
+        self.assertEqual(len(style.guidelines), 6000)
+        self.assertEqual(len(style.profile["traits"]), 8)
+        self.assertIn("충분히 자세히", ai.call_args.args[1][0]["content"])
         with override_settings(AI_STYLE_MAX_CHARS=500):
             with patch("core.ai.complete_json", return_value={"mix": {}, "guidelines": long}):
                 ExamStyle.objects.all().delete()
                 self.assertEqual(len(exam.refresh_style("김교수", "선형대수").guidelines), 500)
 
-    def test_the_style_output_budget_is_back_to_the_small_default(self):
+    def test_the_style_output_budget_fits_a_6000_char_answer(self):
         from core.ai import MAX_OUTPUT_TOKENS
 
-        self.assertEqual(MAX_OUTPUT_TOKENS["exam_style"], 1800)
+        self.assertGreaterEqual(MAX_OUTPUT_TOKENS["exam_style"], 4500)
+
+    def test_an_old_style_is_extracted_again_with_the_new_analysis_version(self):
+        from .models import ExamStyle
+
+        user = User.objects.create_user(username="s2", password="pw")
+        PersonalDocument.objects.create(user=user, title="족보", file="a.txt", extracted_text="1. 문제입니다", document_type="exam", professor="김교수",
+                                        course_name="선형대수", summary_status=ProcessingStatus.DONE)
+        ExamStyle.objects.create(key="p:김교수", label="김교수 교수님", guidelines="- 짧은 예전 지시", source_hash="old-version-hash", doc_count=1)
+        with patch("core.ai.complete_json", return_value={"mix": {}, "guidelines": "- 자세한 새 지시"}) as ai:
+            style = exam.refresh_style("김교수", "선형대수")
+        self.assertEqual(ai.call_count, 1)
+        self.assertEqual(style.guidelines, "- 자세한 새 지시")
