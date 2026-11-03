@@ -468,6 +468,115 @@ OLD_MARKDOWN = (
     "## 마지막 체크!\n- 분모는 ad-bc\n- n-1로 나눈다")
 
 
+KINDS_JSON = {
+    "title": "운영체제 5분 노트",
+    "sections": [
+        {"heading": "프로세스 vs 스레드", "kind": "table", "columns": ["", "프로세스", "스레드"],
+         "rows": [["자원", "**독립된** 주소 공간", "코드·힙 ==공유=="], ["생성", "++fork++ 비용 큼", "가벼움 → 문맥 교환 ↓"]]},
+        {"heading": "스케줄링", "kind": "tree", "points": [{"text": "**비선점**", "sub": ["FCFS → 호위 효과", "SJF"]}, {"text": "선점", "sub": ["RR"]}]},
+        {"heading": "페이지 교체", "kind": "steps", "points": ["폴트 발생", {"text": "희생 선택", "sub": ["LRU"]}, "재실행"]},
+        {"heading": "교착상태", "points": [{"text": "4조건", "sub": ["하나만 깨도 예방"]}, "회피 = 은행원"]},
+    ],
+    "memo": ["4조건 외우기"],
+}
+
+
+class SectionKindTests(TestCase):
+    def test_normalize_reads_each_kind_and_falls_back_to_list(self):
+        note = cram.normalize_note(KINDS_JSON)
+        self.assertEqual([s["kind"] for s in note["sections"]], ["table", "tree", "steps", "list"])
+        table, tree = note["sections"][0], note["sections"][1]
+        self.assertEqual((table["columns"], len(table["rows"])), (["", "프로세스", "스레드"], 2))
+        self.assertEqual((tree["points"], tree["subs"]), (["**비선점**", "선점"], [["FCFS → 호위 효과", "SJF"], ["RR"]]))
+        bad_kind = cram.normalize_note({"sections": [{"heading": "h", "kind": "mindmap", "points": ["a"]}]})
+        self.assertEqual(bad_kind["sections"][0]["kind"], "list")
+
+    def test_broken_tables_are_dropped_or_read_as_lists_and_sizes_are_limited(self):
+        one_col = {"heading": "표", "kind": "table", "columns": ["a"], "rows": [["1"]]}
+        with_points = dict(one_col, points=["대신 목록"])
+        wide = {"heading": "넓은 표", "kind": "table", "columns": ["a", "b", "c", "d", "e", "f"],
+                "rows": [["1", "2|3"]] * 10 + ["x", ["", ""]]}
+        note = cram.normalize_note({"sections": [one_col, with_points, wide]})
+        self.assertEqual([(s["heading"], s["kind"]) for s in note["sections"]], [("표", "list"), ("넓은 표", "table")])
+        table = note["sections"][1]
+        self.assertEqual((len(table["columns"]), len(table["rows"])), (cram.MAX_COLS, cram.MAX_ROWS))
+        self.assertEqual(table["rows"][0], ["1", "2/3", "", ""])               # 칸 수에 맞추고 | 는 표를 깨지 않게 바꾼다
+        many = cram.normalize_note({"sections": [{"heading": "h", "points": [{"text": "a", "sub": ["s"] * 20}]}]})
+        self.assertEqual(len(many["sections"][0]["subs"][0]), cram.MAX_SUBS)
+
+    def test_markdown_round_trip_keeps_tables_numbering_and_sub_items(self):
+        note = cram.normalize_note(KINDS_JSON)
+        markdown = cram.note_markdown(note)
+        self.assertIn("| 자원 | **독립된** 주소 공간 | 코드·힙 ==공유== |", markdown)
+        self.assertIn("1. 폴트 발생", markdown)
+        self.assertIn("  - LRU", markdown)
+        again = cram.parse_note_markdown(markdown)
+        tree = again["sections"][1]
+        self.assertEqual((tree["kind"], tree["subs"]), ("list", [["FCFS → 호위 효과", "SJF"], ["RR"]]))     # 가지치기는 글에서는 중첩 목록
+        for i in (0, 2, 3):
+            self.assertEqual(again["sections"][i], note["sections"][i])
+
+    def test_focus_terms_are_searched_in_tables_and_sub_items(self):
+        note = cram.normalize_note(KINDS_JSON)
+        note = cram._ensure_focus(note, ["스레드", "LRU"], "자료")
+        self.assertEqual(note["memo"], ["4조건 외우기"])                       # 이미 표·세부 항목에 있어 마지막 체크에 더하지 않는다
+
+    def test_prompt_asks_for_kinds_symbols_and_color_meanings(self):
+        for word in ("table", "tree", "steps", "sub", "→", "++"):
+            self.assertIn(word, cram.SYSTEM)
+
+
+class KindRenderTests(TestCase):
+    def test_every_kind_renders_inside_the_page(self):
+        note = cram.normalize_note(KINDS_JSON)
+        for k in (notepage.MIN_SCALE, 1.0, notepage.MAX_SCALE):
+            for page in notepage._layout(note, k, None).pages:
+                for op in page:
+                    if op[0] == "rect":
+                        _, x0, y0, x1, y1, _fill, _line = op
+                        self.assertGreaterEqual(x0, notepage.MARGIN_X)
+                        self.assertLessEqual(x1, notepage.WIDTH - notepage.MARGIN_X)
+                        self.assertLess(y1, notepage.HEIGHT)
+        pages = notepage.render_notes(note)
+        self.assertTrue(all(p.startswith(b"\x89PNG") for p in pages))
+
+    def test_outline_appears_only_with_three_or_more_sections_and_lists_emphasized_keywords(self):
+        note = cram.normalize_note(KINDS_JSON)
+        ops = [op for page in notepage._layout(note, 1.0, None).pages for op in page]
+        self.assertIn("한눈에 보기", [op[4] for op in ops if op[0] == "memo_title"])
+        words = [op[4] for op in ops if op[0] == "word"]
+        self.assertIn("독립된", words)                                          # 표 칸의 강조어가 차례에도 올라온다
+        short = cram.normalize_note({"sections": KINDS_JSON["sections"][:2]})
+        ops = [op for page in notepage._layout(short, 1.0, None).pages for op in page]
+        self.assertNotIn("한눈에 보기", [op[4] for op in ops if op[0] == "memo_title"])
+
+    def test_table_header_is_repeated_on_the_next_page(self):
+        rows = [[f"행{i}", "긴 설명 " * 12, "또 다른 긴 설명 " * 12] for i in range(6)]
+        note = cram.normalize_note({"sections": [{"heading": "h", "points": ["내용 " * 25] * 6}] * 2 +
+                                    [{"heading": "큰 표", "kind": "table", "columns": ["", "머리A", "머리B"], "rows": rows}]})
+        lay = notepage._layout(note, notepage.MIN_SCALE, None)
+        self.assertGreater(len(lay.pages), 1)
+        heads = [sum(1 for op in page if op[0] == "word" and op[4] == "머리A") for page in lay.pages]
+        self.assertTrue(all(h <= 1 for h in heads))
+        pages_with_rows = [i for i, page in enumerate(lay.pages) if any(op[0] == "word" and op[4].startswith("행") for op in page)]
+        for i in pages_with_rows:
+            self.assertEqual(heads[i], 1)                                      # 표의 행이 있는 쪽마다 머리글이 있다
+
+    def test_cyan_highlight_is_parsed_but_cpp_is_left_alone(self):
+        segs = notepage.parse_segments(notepage.to_markup("++정의++ 와 C++ 그리고 C++"))
+        self.assertIn(("정의", frozenset({"c"})), segs)
+        self.assertEqual("".join(t for t, _ in segs), "정의 와 C++ 그리고 C++")
+        self.assertEqual(notepage._keywords({"points": ["C++ 와 C++ 는 **포인터** 가 있다"]}), ["포인터"])
+
+    def test_legend_shows_only_the_colors_used(self):
+        def legend(note):
+            ops = [op for page in notepage._layout(cram.normalize_note(note), 1.0, None).pages for op in page if op[0] == "legend"]
+            return [name for name, _ in ops[0][4]] if ops else None
+        self.assertEqual(legend(KINDS_JSON), ["red", "mark", "cyan"])
+        self.assertEqual(legend({"sections": [{"heading": "h", "points": ["**핵심** 하나"]}]}), ["red"])
+        self.assertIsNone(legend({"sections": [{"heading": "h", "points": ["평범한 글"]}]}))
+
+
 class OldNoteUpgradeTests(TestCase):
     """옛 손글씨 노트(간이 표기로 쓴 글, 파일 이름 cram-note.png)를 새 디자인으로 바꾼다."""
 

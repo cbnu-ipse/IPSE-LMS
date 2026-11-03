@@ -1131,13 +1131,18 @@ _ENV_NAMES = "|".join(sorted(_ENV_DELIMS, key=len, reverse=True))
 _LOST_BEGIN_END = re.compile(r"(?<![A-Za-z\\])(begin|end)\{(" + _ENV_NAMES + r")\*?\}")
 
 
+_COMMAND_WORDS = sorted(set(LATEX_WORDS) | {"frac", "dfrac", "tfrac", "sqrt", "bar", "vec", "overline", "underline", "mathbb", "mathcal", "binom", "mathrm", "mathbf"},
+                        key=len, reverse=True)
+_DOUBLED_COMMAND = re.compile(r"\\\\(" + "|".join(_COMMAND_WORDS) + r")(?![A-Za-z])")
+
+
 def repair_latex(tex):
     """AI가 JSON 이스케이프를 어긋나게 쓴 LaTeX를 고친다.
     - 백슬래시가 빠진 \\begin{…}·\\end{…} (end{bmatrix} → \\end{bmatrix})
     - 행렬 환경 안에서 하나만 남은 행 구분: `a & b \\ c & d`의 `\\` 하나를 `\\\\`로 (뒤에 공백이 오고 앞뒤에 다른 백슬래시가 없는 것만)"""
     s = _LOST_BEGIN_END.sub(lambda m: "\\" + m.group(0), tex)
     if "\\begin{" not in s:
-        return s
+        return _DOUBLED_COMMAND.sub(r"\\\1", s)           # 백슬래시를 두 번 써 버린 명령 ($\\rightarrow$ → $\rightarrow$). 행렬 안의 행 구분(\\)과 헷갈리지 않게 행렬이 없을 때만
     out, depth, i = [], 0, 0
     while i < len(s):
         if s.startswith("\\begin{", i):

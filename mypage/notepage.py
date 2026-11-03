@@ -4,12 +4,13 @@
 글꼴은 static/fonts/Pretendard-Regular.otf · Pretendard-Bold.otf (SIL OFL, 라이선스 파일 같은 폴더). 한글뿐 아니라 그리스 문자·화살표·수학
 기호·첨자까지 들어 있어 글자를 바꿔 쓰지 않는다. $수식$은 mathbox가 분수·행렬·제곱근·합 기호 등을 실제 모양으로 조판해 본문 줄에 끼워 넣고
 (to_rich), 해석하지 못한 수식만 글자(to_markup)로 대신 쓴다. 제목·소제목은 글자로만 쓴다.
-모양: 굵은 제목(형광펜 띠) · 번호 칩이 달린 소제목 · 글머리 목록 · 굵은 빨간 글씨 · 노란 형광펜 · '마지막 체크' 상자 · 쪽 번호.
+모양: 굵은 제목(형광펜 띠) · '한눈에 보기' 차례 · 번호 칩이 달린 소제목 · 섹션 형식(글머리 목록 / 비교표 / 가지치기 / 번호 순서, 세부 항목) ·
+굵은 빨간 글씨 · 노란·하늘색 형광펜(맨 아래 범례) · '마지막 체크' 상자 · 쪽 번호.
 빈 곳이 남지 않게, 같은 쪽 수로 끝나는 가장 큰 글씨 크기를 골라 한 쪽을 알차게 채운다 (짧은 노트는 글씨가 커지고, 긴 노트는 작아지다가
 그래도 넘치면 내용을 버리지 않고 다음 쪽에 이어 쓴다).
 
-입력은 normalize_note()를 거친 dict: {"title", "sections": [{"heading", "points": [...]}], "memo": [...]}.
-문장 안에서 쓸 수 있는 서식: **빨간 굵은 글씨**, ==형광펜==, $수식$ (아래 latex_to_markup이 간단한 것만 바꾼다).
+입력은 normalize_note()를 거친 dict: {"title", "sections": [{"heading", "kind", "points", "subs"(+ 표는 "columns", "rows")}], "memo": [...]}.
+문장 안에서 쓸 수 있는 서식: **빨간 굵은 글씨**, ==노란 형광펜==, ++하늘색 형광펜++, $수식$ (아래 latex_to_markup이 간단한 것만 바꾼다).
 """
 import io
 import logging
@@ -37,10 +38,13 @@ INK = (17, 24, 39)                # 제목·소제목
 TEXT = (31, 41, 55)               # 본문
 ACCENT = (234, 88, 12)            # 번호 칩·글머리 (사이트 기본 주황)
 RED = (185, 28, 28)               # **굵은 빨간 글씨**
-MARK = (255, 236, 99)             # 형광펜
+MARK = (255, 236, 99)             # 노란 형광펜 (외울 용어·숫자)
+CYAN = (186, 230, 253)            # 하늘색 형광펜 (정의·공식)
 GRAY = (107, 114, 128)
 RULE = (229, 231, 235)
 BOX_BG, BOX_LINE = (255, 247, 237), (251, 146, 60)
+OUTLINE_BG = (249, 250, 251)
+TABLE_HEAD, TABLE_FIRST, TABLE_LINE = (255, 237, 213), (255, 250, 245), (214, 211, 209)
 
 TITLE_SIZE, HEAD_SIZE, BODY_SIZE, SMALL_SIZE = 60, 36, 29, 22
 LINE_RATIO = 1.52                 # 본문 줄 간격 (글씨 크기 대비)
@@ -138,7 +142,8 @@ def latex_to_markup(tex):
 
 
 _MATH = re.compile(r"\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)")
-_TAGS = r"(</?(?:b|m|sub|sup|bar)>)"
+_TAGS = r"(</?(?:b|m|c|s|sub|sup|bar)>)"
+_CYAN = re.compile(r"(?<![\w+])\+\+(?=\S)(.+?)(?<=\S)\+\+(?![\w+])")      # ++하늘색 형광펜++ ("C++ 와 C++" 같은 글은 건드리지 않는다)
 
 
 def to_markup(text):
@@ -146,6 +151,7 @@ def to_markup(text):
     text = _MATH.sub(lambda m: latex_to_markup((m.group(1) or m.group(2)).strip()), str(text or ""))
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"==(.+?)==", r"<m>\1</m>", text)
+    text = _CYAN.sub(r"<c>\1</c>", text)
     text = text.replace("`", "")
     parts = re.split(_TAGS, text)                      # 태그를 보존한 채 글자만 안전하게 걸러낸다
     return "".join(p if re.fullmatch(_TAGS, p) else safe_text(p) for p in parts)
@@ -179,6 +185,7 @@ def to_rich(text):
     text = _MATH.sub(slot, mathbox.wrap_bare_math(str(text or "")))      # $ 없이 쓴 [[행렬]]·그리스 문자 이름도 수식으로
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"==(.+?)==", r"<m>\1</m>", text)
+    text = _CYAN.sub(r"<c>\1</c>", text)
     text = text.replace("`", "")
     out = []
     for part in re.split(_TAGS, text):                      # 태그와 수식 자리는 두고 나머지 글자만 걸러낸다
@@ -192,11 +199,11 @@ def to_rich(text):
 
 
 def parse_segments(markup):
-    """태그 문자열 → [(글 또는 수식 덩어리, {스타일})]. 스타일: b(굵은 빨간 글씨) m(형광펜) sub sup bar."""
+    """태그 문자열 → [(글 또는 수식 덩어리, {스타일})]. 스타일: b(굵은 빨간 글씨) m(노란 형광펜) c(하늘색 형광펜) s(굵은 검은 글씨) sub sup bar."""
     registry = getattr(markup, "math", {})
     segs, active = [], set()
     for token in re.split(_TAGS, markup):
-        m = re.fullmatch(r"<(/?)(b|m|sub|sup|bar)>", token)
+        m = re.fullmatch(r"<(/?)(b|m|c|s|sub|sup|bar)>", token)
         if m:
             (active.discard if m.group(1) else active.add)(m.group(2))
         elif token:
@@ -214,13 +221,17 @@ def _style_size(size, style):
     return max(int(size * 0.64), 10) if ("sub" in style or "sup" in style) else size
 
 
+def _bold(style):
+    return "b" in style or "s" in style
+
+
 def _style_font(size, style):
-    return font(_style_size(size, style), bold="b" in style)
+    return font(_style_size(size, style), bold=_bold(style))
 
 
 def _style_len(text, size, style):
     """글(본 글꼴에 없는 기호는 수학 글꼴로)의 너비."""
-    return text_length(text, _style_size(size, style), bold="b" in style)
+    return text_length(text, _style_size(size, style), bold=_bold(style))
 
 
 def _words(segs):
@@ -295,6 +306,7 @@ class _Layout:
         self.y = self.top
         self.bottom = HEIGHT - int(BOTTOM * k)
         self.lh = int(BODY_SIZE * LINE_RATIO * k)
+        self.first_mid = 0
 
     def sz(self, value):
         return max(int(value * self.k), 12)
@@ -309,9 +321,9 @@ class _Layout:
             self.pages.append([])
             self.y = self.top + self.lh
 
-    def block(self, markup, size, x0, indent=0):
+    def block(self, markup, size, x0, indent=0, x1=None):
         """문단을 줄들로 배치하고 줄마다 위·아래로 더 필요한 높이를 계산한다 (분수·행렬처럼 키가 큰 수식이 있는 줄은 간격이 넓어진다)."""
-        lines = _wrap(parse_segments(markup), size, x0 + indent, WIDTH - MARGIN_X)
+        lines = _wrap(parse_segments(markup), size, x0 + indent, x1 or WIDTH - MARGIN_X)
         ascent = font(size).getmetrics()[0]
         free_below = self.lh - ascent - 0.10 * size
         out = []
@@ -324,12 +336,14 @@ class _Layout:
             out.append((line, int(up), int(down)))
         return out, sum(self.lh + up + down for _line, up, down in out)
 
-    def text_block(self, markup, size, x0, color=TEXT, indent=0, bullet=None):
-        lines, height = self.block(markup, size, x0, indent)
+    def text_block(self, markup, size, x0, color=TEXT, indent=0, bullet=None, x1=None):
+        lines, height = self.block(markup, size, x0, indent, x1)
         self.need(height)
         ascent = font(size).getmetrics()[0]
         for n, (line, up, down) in enumerate(lines):
             y = self.y + up
+            if n == 0:
+                self.first_mid = y + ascent - 0.3 * size          # 첫 줄의 가운데 높이 (글머리·가지 선이 여기에 닿는다)
             if n == 0 and bullet:
                 self.ops.append(("bullet", x0, y, size, bullet))
             for text, style, x, gap in line:
@@ -353,6 +367,160 @@ def _fit_heading(markup, size):
     return size
 
 
+def _sub_size(lay):
+    return lay.sz(BODY_SIZE - 2)
+
+
+def _bullets(lay, section):
+    """글머리 목록 (세부 항목은 한 칸 들여 쓴 짧은 줄 글머리)."""
+    k, size = lay.k, lay.sz(BODY_SIZE)
+    for point, subs in zip(section["points"], section.get("subs") or [[]] * len(section["points"])):
+        lay.text_block(to_rich(point), size, MARGIN_X + int(6 * k), indent=int(34 * k), bullet="dot")
+        for sub in subs:
+            lay.text_block(to_rich(sub), _sub_size(lay), MARGIN_X + int(44 * k), indent=int(28 * k), bullet="dash")
+
+
+def _item_height(lay, point, subs, x0, indent, sub_x0, sub_indent):
+    height = lay.block(to_rich(point), lay.sz(BODY_SIZE), x0, indent)[1]
+    return height + sum(lay.block(to_rich(t), _sub_size(lay), sub_x0, sub_indent)[1] for t in subs)
+
+
+def _branches(lay, section, steps):
+    """순서(번호 칩을 세로선으로 잇는다) 또는 가지치기(소제목에서 뻗은 가지 선). 한 항목(세부 포함)은 쪽 사이에서 갈라지지 않는다."""
+    k, size = lay.k, lay.sz(BODY_SIZE)
+    points, all_subs = section["points"], section.get("subs") or [[]] * len(section["points"])
+    r = size * 0.55
+    line_x = MARGIN_X + (int(6 * k) + r if steps else int(16 * k))
+    x0, indent = (MARGIN_X + int(6 * k), int(52 * k)) if steps else (line_x + int(34 * k), 0)
+    sub_x0, sub_indent = (MARGIN_X + int(60 * k), int(26 * k)) if steps else (x0 + int(10 * k) + int(26 * k), 0)
+    for n, (point, subs) in enumerate(zip(points, all_subs)):
+        last = n == len(points) - 1
+        lay.need(_item_height(lay, point, subs, x0, indent, sub_x0, sub_indent))
+        top = lay.y
+        lay.text_block(to_rich(point), size, x0, indent=indent, bullet=("num", n + 1) if steps else None)
+        mid = lay.first_mid
+        if not steps:
+            lay.ops.append(("hline", line_x, line_x + int(24 * k), mid, ACCENT))
+        sub_line_x = x0 + int(10 * k)
+        for j, sub in enumerate(subs):
+            sub_top = lay.y
+            lay.text_block(to_rich(sub), _sub_size(lay), sub_x0, indent=sub_indent, bullet="dash" if steps else None)
+            if not steps:
+                sub_mid = lay.first_mid
+                lay.ops.append(("hline", sub_line_x, sub_line_x + int(18 * k), sub_mid, GRAY))
+                lay.ops.append(("vline", sub_line_x, sub_top, sub_mid if j == len(subs) - 1 else lay.y, GRAY))
+        bottom = lay.y
+        start = top if (n or not steps) else mid
+        lay.ops.append(("vline", line_x, start, mid if last else bottom, ACCENT if not steps else (253, 186, 116)))
+
+
+def _table(lay, section):
+    """비교표: 머리글 칸은 연한 주황, 첫 열은 굵게. 열 너비는 글 길이에 비례하고 행은 쪽 사이에서 갈라지지 않는다 (쪽이 바뀌면 머리글을 다시 쓴다)."""
+    k, size = lay.k, lay.sz(BODY_SIZE - 3)
+    columns, rows = section["columns"], section["rows"]
+    total = WIDTH - 2 * MARGIN_X
+    weights = [min(max(max(len(str(c)) for c in [columns[i]] + [r[i] for r in rows]), 8), 34) for i in range(len(columns))]
+    floor = int(120 * k)
+    widths = [max(int(total * w / sum(weights)), floor) for w in weights]
+    widths[-1] += total - sum(widths)
+    pad_x, pad_y = int(14 * k), int(9 * k)
+
+    def cell_markup(text, strong):
+        rich = to_rich(text)
+        if not strong:
+            return rich
+        wrapped = Markup(f"<s>{rich}</s>")
+        wrapped.math = rich.math
+        return wrapped
+
+    def draw_row(cells, header=False):
+        xs = [MARGIN_X + sum(widths[:i]) for i in range(len(cells))]
+        marks = [cell_markup(c, header or i == 0) for i, c in enumerate(cells)]
+        heights = [lay.block(m, size, xs[i] + pad_x, 0, xs[i] + widths[i] - pad_x)[1] for i, m in enumerate(marks)]
+        row_h = max(max(heights), lay.lh) + 2 * pad_y
+        top = lay.y
+        for i, m in enumerate(marks):
+            fill = TABLE_HEAD if header else (TABLE_FIRST if i == 0 else (255, 255, 255))
+            lay.ops.append(("rect", xs[i], top, xs[i] + widths[i], top + row_h, fill, TABLE_LINE))
+            lay.y = top + pad_y
+            lay.text_block(m, size, xs[i] + pad_x, x1=xs[i] + widths[i] - pad_x)
+        lay.y = top + row_h
+
+    def row_height(cells):
+        xs = [MARGIN_X + sum(widths[:i]) for i in range(len(cells))]
+        return max(max(lay.block(cell_markup(c, i == 0), size, xs[i] + pad_x, 0, xs[i] + widths[i] - pad_x)[1] for i, c in enumerate(cells)), lay.lh) + 2 * pad_y
+
+    lay.need(row_height(columns) + row_height(rows[0]))          # 머리글만 쪽 끝에 홀로 남지 않게
+    draw_row(columns, header=True)
+    for row in rows:
+        before = len(lay.pages)
+        lay.need(row_height(row))
+        if len(lay.pages) > before:                              # 쪽이 바뀌었으면 새 쪽 맨 위에 머리글을 다시 쓴다
+            draw_row(columns, header=True)
+        draw_row(row)
+
+
+def _outline(lay, note):
+    """'한눈에 보기': 섹션이 3개 이상이면 맨 위에 차례(번호·소제목 — 강조한 핵심어 몇 개)를 상자로 둔다. 핵심어는 글 속 강조 표시에서 뽑는다."""
+    sections = note.get("sections", [])
+    if len(sections) < 3:
+        return
+    k, size, head = lay.k, lay.sz(BODY_SIZE - 1), lay.sz(HEAD_SIZE)
+    pad = int(20 * k)
+    rows = []
+    for n, section in enumerate(sections, 1):
+        keys = _keywords(section)
+        text = f"<s>{n}  {to_markup(section['heading'])}</s>" + (f"  —  {' · '.join(keys)}" if keys else "")
+        rows.append(text)
+    height = sum(lay.block(t, size, MARGIN_X + pad, 0, WIDTH - MARGIN_X - pad)[1] for t in rows)
+    lay.need(int(head * 1.2) + height + 2 * pad)
+    top = lay.y
+    lay.y += pad
+    lay.ops.append(("memo_title", MARGIN_X + pad, lay.y, lay.sz(HEAD_SIZE - 6), "한눈에 보기"))
+    lay.y += int(lay.sz(HEAD_SIZE - 6) * 1.35)
+    for t in rows:
+        lay.text_block(t, size, MARGIN_X + pad, x1=WIDTH - MARGIN_X - pad)
+    lay.y += pad // 2
+    lay.ops.append(("box", MARGIN_X, top, WIDTH - MARGIN_X, lay.y, OUTLINE_BG, RULE))
+    lay.gap(24)
+
+
+_EMPHASIS = re.compile(r"\*\*(.+?)\*\*|==(.+?)==|" + _CYAN.pattern)
+
+
+def _keywords(section, limit=3):
+    """섹션 글에서 강조 표시(**, ==, ++)한 짧은 말을 순서대로 뽑는다 (수식·너무 긴 말은 건너뛴다)."""
+    texts = list(section.get("points", [])) + [c for row in section.get("rows", []) for c in row]
+    found = []
+    for text in texts:
+        for m in _EMPHASIS.finditer(text):
+            word = next(g for g in m.groups() if g).strip()
+            if "$" in word or not 1 < len(word) <= 14 or word in found:
+                continue
+            found.append(word)
+    return [re.sub(_TAGS, "", to_markup(w)) for w in found[:limit]]
+
+
+def _legend(lay, note):
+    """서식 색의 뜻을 노트 맨 아래 작은 줄로 알려 준다 (실제로 쓴 색만)."""
+    text = " ".join(section_strings(note))
+    items = [(kind, label) for kind, found, label in (("red", "**" in text, "꼭 나오는 핵심"), ("mark", "==" in text, "외울 용어·숫자"), ("cyan", bool(_CYAN.search(text)), "정의·공식")) if found]
+    if not items:
+        return
+    size = max(int(SMALL_SIZE * lay.k), 14)
+    lay.need(size * 2)
+    lay.gap(10)
+    lay.ops.append(("legend", MARGIN_X, lay.y, size, items))
+    lay.y += int(size * 1.8)
+
+
+def section_strings(note):
+    out = [note.get("title") or ""] + list(note.get("memo") or [])
+    for s in note.get("sections", []):
+        out += s.get("points", []) + [t for sub in s.get("subs", []) for t in sub] + list(s.get("columns", [])) + [c for r in s.get("rows", []) for c in r]
+    return out
+
+
 def _layout(note, k, today):
     """배율 k로 노트를 배치한다 (그리기 전에 쪽 수만 알아내는 용도로도 쓴다)."""
     lay = _Layout(k)
@@ -370,14 +538,22 @@ def _layout(note, k, today):
     lay.ops.append(("rule", lay.y, 3, INK))
     lay.y += int(26 * k)
 
+    _outline(lay, note)
     head = sz(HEAD_SIZE)
     for number, section in enumerate(note.get("sections", []), 1):
         lay.need(int(head * 1.9) + lay.lh * 2)          # 소제목만 쪽 끝에 홀로 남지 않게 첫 줄과 함께 넘긴다
         markup = to_markup(section.get("heading", ""))
         lay.ops.append(("heading", MARGIN_X, lay.y, _fit_heading(markup, head), markup, number))
         lay.y += int(head * 1.55)
-        for point in section.get("points", []):
-            lay.text_block(to_rich(point), sz(BODY_SIZE), MARGIN_X + int(6 * k), indent=int(34 * k), bullet="dot")
+        kind = section.get("kind", "list")
+        if kind == "table":
+            _table(lay, section)
+        elif kind == "steps":
+            _branches(lay, section, steps=True)
+        elif kind == "tree":
+            _branches(lay, section, steps=False)
+        else:
+            _bullets(lay, section)
         lay.gap(20)
 
     memo = note.get("memo") or []
@@ -393,6 +569,7 @@ def _layout(note, k, today):
             lay.text_block(to_rich(item), sz(BODY_SIZE), MARGIN_X + pad, indent=int(38 * k), bullet="check")
         lay.y += pad // 2
         lay.ops.append(("box", MARGIN_X, top, WIDTH - MARGIN_X, lay.y))
+    _legend(lay, note)
     return lay
 
 
@@ -431,10 +608,10 @@ def _draw_word(d, x, y, size, text, style, color, gap):
         base += size * 0.2
     elif "sup" in style:
         base -= size * 0.34
-    width = text_length(text, fsize, bold="b" in style)
-    if "m" in style:
-        d.rounded_rectangle([x - 3, base - size * 0.7, x + width + gap + 1, base + size * 0.24], radius=max(int(size * 0.12), 3), fill=MARK)
-    draw_text(d, x, base, text, fsize, RED if "b" in style else color, bold="b" in style)
+    width = text_length(text, fsize, bold=_bold(style))
+    if "m" in style or "c" in style:
+        d.rounded_rectangle([x - 3, base - size * 0.7, x + width + gap + 1, base + size * 0.24], radius=max(int(size * 0.12), 3), fill=MARK if "m" in style else CYAN)
+    draw_text(d, x, base, text, fsize, RED if "b" in style else (INK if "s" in style else color), bold=_bold(style))
     if "bar" in style:
         d.line([(x + 2, base - size * 0.82), (x + width - 2, base - size * 0.82)], fill=color, width=max(size // 16, 2))
 
@@ -443,12 +620,32 @@ def _paint(ops, k):
     canvas = Image.new("RGB", (WIDTH, HEIGHT), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
     # 형광펜 띠가 글자 뒤로 가도록 띠가 있는 단어를 먼저 그린 뒤 나머지를 그린다
-    ordered = sorted(ops, key=lambda op: 0 if op[0] in ("box", "title") else 1)
+    ordered = sorted(ops, key=lambda op: 0 if op[0] in ("box", "title", "rect", "vline", "hline") else 1)
     for op in ordered:
         kind = op[0]
         if kind == "box":
-            _, x0, y0, x1, y1 = op
-            d.rounded_rectangle([x0, y0, x1, y1], radius=int(16 * k), fill=BOX_BG, outline=BOX_LINE, width=3)
+            x0, y0, x1, y1 = op[1:5]
+            fill, line = op[5:7] if len(op) > 5 else (BOX_BG, BOX_LINE)
+            d.rounded_rectangle([x0, y0, x1, y1], radius=int(16 * k), fill=fill, outline=line, width=3)
+        elif kind == "rect":
+            _, x0, y0, x1, y1, fill, line = op
+            d.rectangle([x0, y0, x1, y1], fill=fill, outline=line, width=2)
+        elif kind == "vline":
+            _, x, y0, y1, color = op
+            d.line([(x, y0), (x, y1)], fill=color, width=max(int(3 * k), 2))
+        elif kind == "hline":
+            _, x0, x1, y, color = op
+            d.line([(x0, y), (x1, y)], fill=color, width=max(int(3 * k), 2))
+        elif kind == "legend":
+            _, x, y, size, items = op
+            base = _baseline(y, size)
+            for name, label in items:
+                if name == "red":
+                    x += draw_text(d, x, base, "가나", size, RED, bold=True) + 8
+                else:
+                    d.rounded_rectangle([x, base - size * 0.78, x + size * 1.5, base + size * 0.2], radius=4, fill=MARK if name == "mark" else CYAN)
+                    x += size * 1.5 + 8
+                x += draw_text(d, x, base, label, size, GRAY) + size * 1.4
         elif kind == "title":
             _, y, size, line = op
             if not line:
@@ -482,16 +679,22 @@ def _paint(ops, k):
         elif kind == "math":
             _, x, base, size, atom, style, color, gap = op
             width, asc, dsc = atom.metrics(size)
-            if "m" in style:
-                d.rounded_rectangle([x - 3, base - asc - 3, x + width + gap + 1, base + dsc + 3], radius=6, fill=MARK)
+            if "m" in style or "c" in style:
+                d.rounded_rectangle([x - 3, base - asc - 3, x + width + gap + 1, base + dsc + 3], radius=6, fill=MARK if "m" in style else CYAN)
             try:
-                atom.draw(d, x, base, size, RED if "b" in style else color)
+                atom.draw(d, x, base, size, RED if "b" in style else (INK if "s" in style else color))
             except Exception:                                 # 그리다 실패한 수식 하나 때문에 노트 전체가 실패하지 않게
                 logger.exception("수식 그리기 실패")
         elif kind == "bullet":
             _, x, y, size, shape = op
             cy = _baseline(y, size) - size * 0.3
-            if shape == "check":
+            if isinstance(shape, tuple):                            # 순서: 번호가 든 주황 동그라미
+                r = size * 0.55
+                d.ellipse([x, cy - r, x + 2 * r, cy + r], fill=ACCENT)
+                d.text((x + r, cy), str(shape[1]), font=font(int(size * 0.7), bold=True), fill=(255, 255, 255), anchor="mm")
+            elif shape == "dash":
+                d.line([(x + 4, cy), (x + 4 + size * 0.34, cy)], fill=ACCENT, width=max(int(size * 0.09), 2))
+            elif shape == "check":
                 d.text((x, cy), "✓", font=font(int(size * 1.02), bold=True), fill=RED, anchor="lm")
             else:
                 r = max(size * 0.1, 3)
