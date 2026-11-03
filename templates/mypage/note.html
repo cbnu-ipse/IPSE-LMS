@@ -8,7 +8,11 @@
         <a href="{% if document.folder %}{% url 'mypage:document_list' folder_id=document.folder.pk %}{% else %}{% url 'mypage:document_list' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 내 자료</a>
         <h1 class="flex-1 text-lg font-bold text-slate-800 truncate">{{ document.title }}</h1>
         {% if document.file and document.summary_status == 'done' %}
+        {% if pages|length > 1 %}
+        {% for page in pages %}<a href="{{ page.url }}" download="{{ document.title }} ({{ page.number }}-{{ pages|length }}).png" class="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition"><i class="fa-solid fa-download mr-1"></i>{{ page.number }}쪽 저장</a>{% endfor %}
+        {% else %}
         <a href="{{ document.file.url }}" download="{{ document.title }}.png" class="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition"><i class="fa-solid fa-download mr-1"></i>이미지 저장</a>
+        {% endif %}
         {% if document.document_type == 'note' %}<button type="button" class="js-share-board text-xs font-bold px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-60" data-url="{% url 'mypage:share_note' document.pk %}" data-csrf="{{ csrf_token }}" title="자유게시판에 올리고 게시글 링크를 복사해요"><i class="fa-solid fa-share-nodes mr-1"></i>게시판에 올리기</button>{% endif %}
         {% endif %}
     </div>
@@ -16,13 +20,17 @@
     {% if document.file and document.summary_status == 'done' %}
         {% if document.document_type == 'note' and note_text %}
         <div class="flex gap-2 mb-3 text-xs font-bold" role="tablist" aria-label="노트 보기 방식">
-            <button type="button" role="tab" id="tab-image" class="note-tab px-3 py-1.5 rounded-lg border" data-tab="image" aria-selected="true">A4 문서</button>
+            <button type="button" role="tab" id="tab-image" class="note-tab px-3 py-1.5 rounded-lg border" data-tab="image" aria-selected="true">노트 이미지</button>
             <button type="button" role="tab" id="tab-text" class="note-tab px-3 py-1.5 rounded-lg border" data-tab="text" aria-selected="false">글로 보기 <span class="font-normal text-slate-400">(선택·검색·복사, 폰에서 읽기 편해요)</span></button>
         </div>
         {% endif %}
-        <div id="note-image">
+        <div id="note-image" class="space-y-4">
+            {% for page in pages|default:'' %}
+            <a href="{{ page.url }}" target="_blank" rel="noopener" title="새 탭에서 크게 보기" class="block"><img src="{{ page.url }}" alt="{{ document.title }}{% if pages|length > 1 %} {{ page.number }}쪽{% endif %}" class="w-full rounded-2xl border border-slate-200 shadow-sm bg-white"></a>
+            {% empty %}
             <a href="{{ document.file.url }}" target="_blank" rel="noopener" title="새 탭에서 크게 보기"><img src="{{ document.file.url }}" alt="{{ document.title }}" class="w-full rounded-2xl border border-slate-200 shadow-sm bg-white"></a>
-            <p class="text-[11px] text-slate-400 mt-3 text-center">{{ document.uploaded_at|date:"Y-m-d H:i" }}에 만든 시험 5분 전 속성 노트 · 이미지를 누르면 크게 볼 수 있어요</p>
+            {% endfor %}
+            <p class="text-[11px] text-slate-400 mt-3 text-center">{{ document.uploaded_at|date:"Y-m-d H:i" }}에 만든 요약 노트{% if pages|length > 1 %} ({{ pages|length }}쪽){% endif %} · 이미지를 누르면 크게 볼 수 있어요</p>
         </div>
         {% if document.document_type == 'note' and note_text %}
         <article id="note-text" class="note-doc bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-7" hidden aria-label="노트 본문"></article>

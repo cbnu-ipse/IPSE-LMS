@@ -241,7 +241,7 @@ class BuildNoteTests(TestCase):
         note.refresh_from_db()
         self.assertEqual(note.summary_status, ProcessingStatus.DONE)
         self.assertTrue(note.file.name.endswith(".png"))
-        self.assertEqual(note.title, "운영체제 5분 노트")
+        self.assertEqual(note.title, "운영체제 요약 노트")
         self.assertIn("프로세스 vs 스레드", note.summary)
         self.assertEqual(ai.call_args.kwargs["cost"], cram.note_cost(2))      # 정액
         request = ai.call_args[0][1][1]["content"]
@@ -301,7 +301,7 @@ class CreateViewTests(TestCase):
         note = PersonalDocument.objects.get(document_type=NOTE)
         self.assertEqual(note.summary_status, ProcessingStatus.PROCESSING)
         self.assertEqual(note.course_name, "운영체제")
-        self.assertEqual(note.title, "운영체제 속성 노트")
+        self.assertEqual(note.title, "운영체제 요약 노트")
         self.assertEqual(len(_FakeThread.started), 1)
         self.assertEqual(sorted(_FakeThread.started[0][1][1]), sorted([a.pk, b.pk]))
 
@@ -481,7 +481,7 @@ class MoveDocumentTests(TestCase):
 
 
 class MultiPageNoteTests(TestCase):
-    def test_overflow_creates_one_note_document_per_page(self):
+    def test_overflow_keeps_every_page_image_in_one_note_document(self):
         media = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, media, True)
         user = User.objects.create_user(username="u", password="pw")
@@ -490,13 +490,40 @@ class MultiPageNoteTests(TestCase):
                                                summary_status=ProcessingStatus.PROCESSING)
         big = {"title": "큰 노트", "memo": ["확인 " * 10] * 6,
                "sections": [{"heading": f"주제{i}", "points": ["긴 문장 " * 40] * 6} for i in range(7)]}
-        with override_settings(MEDIA_ROOT=media), ai_returns(big):
+        with override_settings(MEDIA_ROOT=media), ai_returns(big), patch.object(notepage, "DEFAULT_STYLE", "typed"):
             cram.build_note_document(note.pk, [src.pk])
-        notes = list(PersonalDocument.objects.filter(document_type=NOTE).order_by("id"))
-        self.assertGreater(len(notes), 1)
-        self.assertTrue(all(n.summary_status == ProcessingStatus.DONE and n.file.name.endswith(".png") for n in notes))
-        self.assertTrue(notes[0].title.endswith(f"(1/{len(notes)})"))
-        self.assertTrue(notes[-1].title.endswith(f"({len(notes)}/{len(notes)})"))
+            notes = list(PersonalDocument.objects.filter(document_type=NOTE))
+            self.assertEqual(len(notes), 1)                                           # 자료는 하나
+            doc = notes[0]
+            self.assertEqual((doc.pk, doc.title, doc.summary_status), (note.pk, "큰 노트", ProcessingStatus.DONE))
+            names = doc.page_names()
+            self.assertGreater(len(names), 1)                                         # 이미지는 여러 장
+            self.assertEqual(len(doc.extra_pages), len(names) - 1)
+            self.assertEqual(len(doc.page_urls()), len(names))
+            for name in names:
+                self.assertTrue(doc.file.storage.open(name).read(8).startswith(b"\x89PNG"))
+            self.client.force_login(user)
+            html = self.client.get(reverse("mypage:document_preview", args=[doc.pk])).content.decode()
+            for url in doc.page_urls():
+                self.assertIn(f'src="{url}"', html)                                   # 화면에 모든 쪽이 나온다
+            self.assertIn("2쪽 저장", html)
+
+
+class TitleCleanTests(TestCase):
+    def test_old_name_and_hype_are_removed_from_titles(self):
+        self.assertEqual(cram.clean_title("선형대수 속성 노트"), "선형대수 요약 노트")
+        self.assertEqual(cram.clean_title("운영체제 5분 노트"), "운영체제 요약 노트")
+        self.assertEqual(cram.clean_title("시험 5분 전 운영체제 핵심"), "운영체제 핵심")
+        self.assertEqual(cram.clean_title("운영체제 4~5장 요약"), "운영체제 4~5장 요약")
+        self.assertEqual(cram.normalize_note({"title": "시험 5분 전 속성 노트", "sections": []})["title"], "요약 노트")
+
+    def test_prompt_and_drawn_page_do_not_use_the_old_name_or_hype(self):
+        self.assertNotIn("시험 5분 전에 훑어볼", cram.SYSTEM)
+        self.assertNotIn("속성 노트", cram.SYSTEM)
+        import inspect
+        for fn in (notepage._layout, notepage._paint):
+            self.assertNotIn("속성 노트", inspect.getsource(fn))
+            self.assertNotIn("5분 전", inspect.getsource(fn))
 
 
 OLD_MARKDOWN = (
@@ -637,7 +664,7 @@ class OldNoteUpgradeTests(TestCase):
 
     def test_markdown_round_trips_into_a_note_dict(self):
         note = cram.parse_note_markdown(OLD_MARKDOWN)
-        self.assertEqual(note["title"], "선형대수 속성 노트")
+        self.assertEqual(note["title"], "선형대수 요약 노트")                      # 예전 이름은 새 이름으로 읽힌다
         self.assertEqual([s["heading"] for s in note["sections"]], ["역행렬", "정규분포"])
         self.assertEqual(len(note["sections"][0]["points"]), 2)
         self.assertEqual(note["memo"], ["분모는 ad-bc", "n-1로 나눈다"])
@@ -651,7 +678,7 @@ class OldNoteUpgradeTests(TestCase):
         res = self.client.get(reverse("mypage:document_preview", args=[doc.pk]))
         self.assertEqual(res.status_code, 200)
         doc.refresh_from_db()
-        self.assertIn("cram-note-hand", doc.file.name)
+        self.assertIn("summary-note", doc.file.name)
         self.assertNotEqual(doc.file.name, old_name)
         self.assertTrue(doc.file.read(8).startswith(b"\x89PNG"))
         image = Image.open(doc.file.path)
@@ -677,11 +704,40 @@ class OldNoteUpgradeTests(TestCase):
         first = self.old_note(long_md, "긴 노트 (1/2)")
         second = PersonalDocument.objects.create(user=self.user, title="긴 노트 (2/2)", file="", document_type=NOTE, summary=long_md, summary_status=ProcessingStatus.DONE)
         second.file.save("cram-note.png", ContentFile(b"\x89PNG old page 2"), save=True)
-        total = cram.upgrade_note_group(first)
-        group = cram.note_group(first)
-        self.assertEqual(len(group), total)                                # 쪽 수만큼 문서가 있다 (늘면 더하고 줄면 지운다)
-        self.assertTrue(all(cram.is_current_note(d) for d in group))
-        self.assertEqual([d.title for d in group], [f"긴 노트 ({n}/{total})" for n in range(1, total + 1)] if total > 1 else ["긴 노트"])
+        old_files = [first.file.name, second.file.name]
+        with patch.object(notepage, "DEFAULT_STYLE", "typed"):            # 한 장에 안 들어가는 크기로 그려 여러 쪽을 만든다
+            total = cram.upgrade_note_group(first)
+        notes = list(PersonalDocument.objects.filter(user=self.user, document_type=NOTE))
+        self.assertEqual(len(notes), 1)                                    # 쪽마다 따로였던 자료가 하나로 합쳐졌다
+        merged = notes[0]
+        self.assertEqual((merged.pk, merged.title), (first.pk, "긴 노트"))
+        self.assertTrue(cram.is_current_note(merged))
+        self.assertEqual(len(merged.page_names()), total)                  # 쪽 이미지는 모두 이 자료에
+        self.assertGreater(total, 1)
+        for name in old_files:
+            self.assertFalse(merged.file.storage.exists(name))             # 옛 그림 파일은 지웠다
+        self.assertFalse(cram.needs_upgrade([merged]))                     # 다시 돌려도 바뀌지 않는다
+
+    def test_opening_the_second_page_of_a_legacy_group_shows_the_merged_note(self):
+        from django.core.files.base import ContentFile
+
+        first = self.old_note(OLD_MARKDOWN, "선형대수 노트 (1/2)")
+        second = PersonalDocument.objects.create(user=self.user, title="선형대수 노트 (2/2)", file="", document_type=NOTE, summary=OLD_MARKDOWN,
+                                                 summary_status=ProcessingStatus.DONE)
+        second.file.save("cram-note.png", ContentFile(b"\x89PNG old page 2"), save=True)
+        self.client.force_login(self.user)
+        res = self.client.get(reverse("mypage:document_preview", args=[second.pk]))
+        self.assertEqual(res.status_code, 200)                              # 합쳐지며 사라진 쪽 주소로 열어도 노트가 보인다
+        self.assertEqual(PersonalDocument.objects.filter(user=self.user, document_type=NOTE).count(), 1)
+        self.assertContains(res, "선형대수 요약 노트")
+        first.refresh_from_db()
+        self.assertTrue(cram.is_current_note(first))
+
+    def test_same_text_without_page_labels_is_never_merged(self):
+        a, b = self.old_note(OLD_MARKDOWN, "노트 A"), self.old_note(OLD_MARKDOWN, "노트 B")
+        self.assertEqual([d.pk for d in cram.note_group(a)], [a.pk])
+        cram.upgrade_note_group(a)
+        self.assertTrue(PersonalDocument.objects.filter(pk=b.pk).exists())
 
     def test_notes_with_nothing_readable_or_a_render_failure_are_left_alone(self):
         empty = self.old_note("메모만 있는 글")
@@ -689,7 +745,7 @@ class OldNoteUpgradeTests(TestCase):
         doc = self.old_note()
         before = doc.file.name
         with patch("mypage.notepage.render_notes", side_effect=OSError("boom")):
-            self.assertFalse(cram.upgrade_note_if_old(doc))                # 열람은 막지 않는다
+            self.assertIs(cram.upgrade_note_if_old(doc), doc)                # 열람은 막지 않는다 (바꾸지 못하면 그대로)
         doc.refresh_from_db()
         self.assertEqual(doc.file.name, before)
         self.client.force_login(self.user)

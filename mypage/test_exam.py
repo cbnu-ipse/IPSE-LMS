@@ -322,8 +322,8 @@ class MockExamTests(TestCase):
 
     def test_toolbar_wording(self):
         html = self.client.get("/mypage/").content.decode()
-        self.assertIn("자료를 골라 <b>속성 노트</b>나 <b>모의고사</b>를 만들 수 있어요.", html)
-        self.assertNotIn("시험 5분 전 속성 노트</b>(손글씨 이미지)", html)
+        self.assertIn("자료를 골라 <b>요약 노트</b>나 <b>모의고사</b>를 만들 수 있어요.", html)
+        self.assertNotIn("요약 노트</b>(손글씨 이미지)", html)
         self.assertIn("오답노트", html)
 
     def test_take_and_grade_on_server(self):

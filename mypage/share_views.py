@@ -16,7 +16,7 @@ def _shared_json(request, material, created):
 @login_required
 @require_POST
 def share_note(request, pk):
-    """속성 노트를 자유게시판에 올리고 게시글 주소를 돌려준다 (이미 올렸으면 기존 글)."""
+    """요약 노트를 자유게시판에 올리고 게시글 주소를 돌려준다 (이미 올렸으면 기존 글)."""
     note = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     try:
         material, created = sharing.share_note(request.user, note)
@@ -39,7 +39,7 @@ def share_mock(request, pk):
 @login_required
 @require_POST
 def shared_import(request, pk):
-    """게시글의 속성 노트·모의고사를 내 자료로 불러온다."""
+    """게시글의 요약 노트·모의고사를 내 자료로 불러온다."""
     material = get_object_or_404(SharedMaterial.objects.select_related("post", "author"), pk=pk)
     back = redirect(sharing.post_path(material))
     try:

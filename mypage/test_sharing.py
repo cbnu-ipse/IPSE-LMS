@@ -50,7 +50,7 @@ class ShareTests(SharingTestCase):
         self.assertTrue(data["ok"] and data["created"])
         post = CommunityPost.objects.get()
         self.assertEqual((post.category, post.author), ("free", self.author))
-        self.assertTrue(post.title.startswith("[속성 노트] 운영체제 속성 노트"))
+        self.assertTrue(post.title.startswith("[요약 노트] 운영체제 요약 노트"))
         self.assertTrue(data["url"].endswith(f"/board/{post.pk}/"))
         self.assertEqual(post.attachments.count(), 2)
         material = SharedMaterial.objects.get()
@@ -128,10 +128,29 @@ class ImportTests(SharingTestCase):
         self.client.force_login(self.reader)
         self.client.post(f"/mypage/share/{material.pk}/import/")
         notes = list(PersonalDocument.objects.filter(user=self.reader, document_type="note").order_by("id"))
-        self.assertEqual([n.title for n in notes], ["운영체제 속성 노트 (1/2)", "운영체제 속성 노트 (2/2)"])
-        self.assertEqual({n.summary for n in notes}, {"# 노트\n- 핵심"})
-        self.assertEqual([n.file.read() for n in notes], [PNG + b"\x01", PNG + b"\x02"])
-        self.assertTrue(all(n.summary_status == "done" for n in notes))
+        self.assertEqual([n.title for n in notes], ["운영체제 요약 노트"])                    # 여러 쪽이어도 자료는 하나
+        note = notes[0]
+        self.assertEqual(note.summary.splitlines()[0], "# 노트")
+        names = note.page_names()
+        self.assertEqual(len(names), 2)
+        self.assertEqual([note.file.storage.open(n).read() for n in names], [PNG + b"\x01", PNG + b"\x02"])
+        self.assertEqual(note.summary_status, "done")
+
+    def test_a_note_with_several_page_images_in_one_document_is_shared_and_imported_whole(self):
+        from mypage import cram
+
+        doc = PersonalDocument.objects.create(user=self.author, title="긴 노트", file="", document_type="note", summary="# 긴 노트\n\n## 주제\n- 핵심",
+                                              summary_status=ProcessingStatus.DONE, is_course_material=False)
+        cram.save_pages(doc, [PNG + b"\x0a", PNG + b"\x0b", PNG + b"\x0c"])
+        doc.save()
+        data = self.share("note", doc.pk).json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(CommunityPost.objects.get(title__contains="긴 노트").attachments.count(), 3)
+        material = SharedMaterial.objects.get(title="긴 노트")
+        self.client.force_login(self.reader)
+        self.client.post(f"/mypage/share/{material.pk}/import/")
+        copy = PersonalDocument.objects.get(user=self.reader, document_type="note")
+        self.assertEqual([copy.file.storage.open(n).read() for n in copy.page_names()], [PNG + b"\x0a", PNG + b"\x0b", PNG + b"\x0c"])
 
     def test_the_author_cannot_import_their_own_post(self):
         self.share("mock", self.exam.pk)

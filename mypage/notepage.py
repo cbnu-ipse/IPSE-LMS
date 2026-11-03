@@ -1,5 +1,5 @@
 """
-'시험 5분 전 속성 노트'를 A4 PNG로 그린다 (Pillow만 사용, 새 패키지 없음). 스타일 두 가지: "hand"(기본, 모눈 공책에 손글씨·색 펜·형광펜) / "typed"(타이핑한 흰 A4 문서).
+'요약 노트'를 A4 PNG로 그린다 (Pillow만 사용, 새 패키지 없음). 스타일 두 가지: "hand"(기본, 모눈 공책에 손글씨·색 펜·형광펜) / "typed"(타이핑한 흰 A4 문서).
 
 글꼴은 static/fonts/ 의 Pretendard(타이핑 스타일·대신 글꼴), 나눔손글씨 펜(NanumPenScript, 손글씨 본문), Single Day(손글씨 제목·강조) (모두 SIL OFL, 라이선스 파일 같은 폴더). 한글뿐 아니라 그리스 문자·화살표·수학
 기호·첨자까지 들어 있어 글자를 바꿔 쓰지 않는다. $수식$은 mathbox가 분수·행렬·제곱근·합 기호 등을 실제 모양으로 조판해 본문 줄에 끼워 넣고
@@ -562,12 +562,12 @@ def _layout(note, k, today):
     """배율 k로 노트를 배치한다 (그리기 전에 쪽 수만 알아내는 용도로도 쓴다)."""
     lay = _Layout(k)
     sz = lay.sz
-    lay.ops.append(("brand", MARGIN_X, lay.y, sz(SMALL_SIZE), "시험 5분 전 속성 노트"))
+    lay.ops.append(("brand", MARGIN_X, lay.y, sz(SMALL_SIZE), "요약 노트"))
     lay.ops.append(("date", WIDTH - MARGIN_X, lay.y, sz(SMALL_SIZE), (today or date.today()).strftime("%Y.%m.%d")))
     lay.y += int(sz(SMALL_SIZE) * 1.9)
 
     title_size = sz(TITLE_SIZE)
-    title_segs = [(t, st | {"b"}) for t, st in parse_segments(to_markup(note.get("title") or "시험 5분 전 노트"))]      # 제목은 굵은 글씨 너비로 줄바꿈
+    title_segs = [(t, st | {"b"}) for t, st in parse_segments(to_markup(note.get("title") or "요약 노트"))]      # 제목은 굵은 글씨 너비로 줄바꿈
     title_lines = _wrap(title_segs, title_size, MARGIN_X, WIDTH - MARGIN_X)
     for line in title_lines:
         lay.ops.append(("title", lay.y, title_size, line))
@@ -773,7 +773,7 @@ def _paint(ops, k):
             _, n, total, size = op
             y = HEIGHT - int(BOTTOM * k) + int(34 * k)
             d.line([(MARGIN_X, y - 14), (WIDTH - MARGIN_X, y - 14)], fill=RULE, width=2)
-            draw_text(d, MARGIN_X, y + size * 0.35, "IPSE LMS · 속성 노트", size, GRAY)
+            draw_text(d, MARGIN_X, y + size * 0.35, "IPSE LMS · 요약 노트", size, GRAY)
             if total > 1:
                 d.text((WIDTH - MARGIN_X, y), f"{n} / {total}", font=font(size, bold=True), fill=GRAY, anchor="rm")
 

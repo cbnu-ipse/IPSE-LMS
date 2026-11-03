@@ -86,7 +86,7 @@ class PersonalDocument(models.Model):
     class DocumentType(models.TextChoices):
         LECTURE = "lecture", "수업 자료"     # 강의를 만드는 데 쓴다
         EXAM = "exam", "족보"                # 기출·모의고사: 교수님 출제 스타일을 배워 문제 만들 때 쓴다
-        NOTE = "note", "속성 노트"            # 선택한 자료로 AI가 만든 시험 5분 전 노트(손글씨 이미지). 올리는 자료가 아니라 만들어지는 것
+        NOTE = "note", "요약 노트"            # 선택한 자료로 AI가 만든 요약 노트(손글씨 이미지). 올리는 자료가 아니라 만들어지는 것
         MOCK = "mock", "모의고사"             # 선택한 자료로 AI가 출제한 모의고사. 개인 탭에 만들어지는 자료이고 시험은 MockExam에 있다
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_documents")
@@ -125,6 +125,8 @@ class PersonalDocument(models.Model):
     is_course_material = models.BooleanField(default=True, verbose_name="강의 자료로 사용 (AI 판단)")
     # 수업 자료 요약의 각 부분이 다루는 개념: [{"section": "요약 제목", "concepts": ["페이징", ...]}] (mypage/ontology.py)
     concept_tags = models.JSONField(default=list, blank=True, verbose_name="요약 부분별 개념")
+    # 요약 노트가 한 장에 다 안 들어가 둘째 쪽부터 이어지는 이미지의 저장소 파일 이름 (첫 쪽은 file). 한 노트가 여러 이미지를 한 자료로 가진다
+    extra_pages = models.JSONField(default=list, blank=True, verbose_name="노트 이미지 (둘째 쪽부터)")
     concepts = models.ManyToManyField("Concept", through="DocumentConcept", blank=True, related_name="documents",
                                       verbose_name="다루는 개념")
     is_deleted = models.BooleanField(default=False, verbose_name="삭제됨 (사용자 화면에서만 숨김, 강의 생성용으로 보존)")
@@ -153,6 +155,14 @@ class PersonalDocument(models.Model):
 
     def get_absolute_url(self):
         return reverse("mypage:document_preview", kwargs={"pk": self.pk})
+
+    def page_names(self):
+        """요약 노트의 모든 쪽 이미지의 저장소 파일 이름 (첫 쪽부터)."""
+        return ([self.file.name] if self.file else []) + [n for n in (self.extra_pages or []) if n]
+
+    def page_urls(self):
+        storage = self.file.storage
+        return [storage.url(n) for n in self.page_names()]
 
 
 class GeneratedQuestion(models.Model):
@@ -330,11 +340,11 @@ class DocTypeRules(models.Model):
 
 
 class SharedMaterial(models.Model):
-    """자유게시판에 올린 속성 노트·모의고사. 게시글과 1:1이고, 보는 사람이 '내 자료로 불러오기'로 복사해 간다 (mypage/sharing.py).
+    """자유게시판에 올린 요약 노트·모의고사. 게시글과 1:1이고, 보는 사람이 '내 자료로 불러오기'로 복사해 간다 (mypage/sharing.py).
     내용은 올릴 때의 스냅샷이다: 모의고사는 문제·정답·해설·그림(푼 답과 결과는 제외), 노트는 마크다운과 손글씨 이미지 첨부(게시글 첨부파일) 번호."""
 
     class Kind(models.TextChoices):
-        NOTE = "note", "속성 노트"
+        NOTE = "note", "요약 노트"
         MOCK = "mock", "모의고사"
 
     post = models.OneToOneField("community.CommunityPost", on_delete=models.CASCADE, related_name="shared_material")
