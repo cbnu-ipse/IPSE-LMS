@@ -580,7 +580,11 @@ class _Parser:
             raise ValueError("수식이 너무 복잡하다")
 
     def _peek(self, text):
-        return self.s.startswith(text, self.i)
+        """지금 자리가 text로 시작하는가. 글자로 된 명령(\\right, \\end …)은 뒤에 글자가 이어지지 않아야 한다 (\\rightarrow, \\endash 를 \\right, \\end로 읽지 않게)."""
+        if not self.s.startswith(text, self.i):
+            return False
+        after = self.s[self.i + len(text):self.i + len(text) + 1]
+        return not (text[-1].isalpha() and after.isalpha())
 
     def _skip_spaces(self):
         while self.i < len(self.s) and self.s[self.i].isspace():

@@ -178,11 +178,49 @@ class RenderTests(TestCase):
         note = {"title": "Σ μ → ≤ x̄ ∞", "sections": [{"heading": "α β", "points": ["x² ≥ 1 ✓ 😀 $\\bar{x}$ $a_i^2$"]}], "memo": []}
         self.assertTrue(notepage.render_notes(note)[0].startswith(b"\x89PNG"))
 
-    def test_note_is_a_white_typed_page_not_lined_notebook_paper(self):
-        png = notepage.render_notes(cram.normalize_note(NOTE_JSON))[0]
+    def test_typed_style_is_a_white_page_without_grid(self):
+        png = notepage.render_notes(cram.normalize_note(NOTE_JSON), style="typed")[0]
         image = Image.open(io.BytesIO(png)).convert("RGB")
         self.assertEqual(image.getpixel((5, 5)), (255, 255, 255))         # 종이 색·결·공책 줄 없이 흰 쪽
         self.assertEqual(image.getpixel((notepage.WIDTH - 5, notepage.HEIGHT // 2)), (255, 255, 255))
+
+
+class HandStyleTests(TestCase):
+    def test_default_style_is_a_grid_notebook_page_and_typed_state_is_restored(self):
+        note = cram.normalize_note(NOTE_JSON)
+        image = Image.open(io.BytesIO(notepage.render_notes(note)[0])).convert("RGB")
+        self.assertEqual(image.size, (notepage.WIDTH, notepage.HEIGHT))
+        colors = {c for _n, c in image.getcolors(maxcolors=1 << 20)}
+        self.assertIn(notepage.THEMES["hand"]["GRID"], colors)                                  # 모눈 공책 줄과 종이 색
+        self.assertIn(notepage.THEMES["hand"]["PAPER"], colors)
+        self.assertFalse(notepage.HAND)
+        self.assertEqual(notepage.INK, notepage.THEMES["typed"]["INK"])                        # 다 그린 뒤에는 타이핑 스타일 값으로 돌아간다
+
+    def test_state_is_restored_even_when_drawing_fails(self):
+        with patch.object(notepage, "_render", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                notepage.render_notes(cram.normalize_note(NOTE_JSON))
+        self.assertFalse(notepage.HAND)
+        from . import notefont
+        self.assertEqual(notefont._theme, "typed")
+
+    def test_handwriting_font_falls_back_per_glyph_instead_of_drawing_empty_boxes(self):
+        from . import notefont
+        notefont.set_theme("hand")
+        try:
+            face = {ch: f for t, f in notefont.runs("가·✓∑", bold=False) for ch in t}
+            self.assertEqual(face["·"], "base")                     # 손글씨 글꼴에서 안 보이는 부호는 Pretendard
+            self.assertEqual(face["가"], "main")
+            self.assertTrue(all(notefont.can_draw(ch) for ch in "가·✓∑→≠"))
+        finally:
+            notefont.set_theme("typed")
+
+    def test_every_kind_renders_in_hand_style_and_fills_more_per_page_than_typed(self):
+        note = cram.normalize_note(KINDS_JSON)
+        hand = notepage.render_notes(note)
+        typed = notepage.render_notes(note, style="typed")
+        self.assertTrue(all(p.startswith(b"\x89PNG") for p in hand + typed))
+        self.assertLessEqual(len(hand), len(typed))
 
 
 class BuildNoteTests(TestCase):
@@ -512,9 +550,11 @@ class SectionKindTests(TestCase):
         self.assertIn("  - LRU", markdown)
         again = cram.parse_note_markdown(markdown)
         tree = again["sections"][1]
-        self.assertEqual((tree["kind"], tree["subs"]), ("list", [["FCFS → 호위 효과", "SJF"], ["RR"]]))     # 가지치기는 글에서는 중첩 목록
-        for i in (0, 2, 3):
-            self.assertEqual(again["sections"][i], note["sections"][i])
+        self.assertEqual((tree["kind"], tree["subs"]), ("tree", [["FCFS → 호위 효과", "SJF"], ["RR"]]))     # 가지치기 표시도 저장 글에 남는다
+        self.assertEqual(again, note)
+        doc = PersonalDocument(summary=markdown, summary_status=ProcessingStatus.DONE)
+        self.assertNotIn(cram.TREE_MARK, cram.note_text_markdown(doc))                                  # 글로 보기에는 표시가 보이지 않는다
+        self.assertEqual(cram.normalize_note(note), note)                                               # 다듬은 노트를 다시 다듬어도 그대로
 
     def test_focus_terms_are_searched_in_tables_and_sub_items(self):
         note = cram.normalize_note(KINDS_JSON)
@@ -611,7 +651,7 @@ class OldNoteUpgradeTests(TestCase):
         res = self.client.get(reverse("mypage:document_preview", args=[doc.pk]))
         self.assertEqual(res.status_code, 200)
         doc.refresh_from_db()
-        self.assertIn("cram-note-a4", doc.file.name)
+        self.assertIn("cram-note-hand", doc.file.name)
         self.assertNotEqual(doc.file.name, old_name)
         self.assertTrue(doc.file.read(8).startswith(b"\x89PNG"))
         image = Image.open(doc.file.path)

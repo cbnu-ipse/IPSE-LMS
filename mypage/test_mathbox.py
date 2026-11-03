@@ -425,3 +425,15 @@ class DoubledBackslashTests(TestCase):
         matrix = r"\begin{bmatrix}a&b\\c&d\end{bmatrix}"
         self.assertEqual(mathbox.repair_latex(matrix), matrix)
         self.assertEqual(mathbox.repair_latex(r"x \\ y"), r"x \\ y")
+
+
+class CommandPrefixTests(TestCase):
+    def test_rightarrow_is_an_arrow_not_a_closing_delimiter_plus_letters(self):
+        for tex in (r"\rightarrow", r"a \rightarrow b", r"x \Rightarrow y \rightarrow z"):
+            text = "".join(getattr(i, "text", "") for a in mathbox.parse_chunks(tex) for i in a.box.items)
+            self.assertIn("→", text)
+            self.assertNotIn("rightarrow", text)
+
+    def test_left_right_pairs_still_close(self):
+        atoms = mathbox.parse_chunks(r"\left( \frac{a}{b} \right) \rightarrow x")
+        self.assertTrue(any(isinstance(i, mathbox.Delimited) for a in atoms for i in a.box.items))
