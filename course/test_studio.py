@@ -17,6 +17,10 @@ SETS = [{
     "title": "조인 기초",
     "cards": [{"title": "JOIN", "body": "**JOIN**은 짝이 있는 행만 남긴다.\n- 짝 없는 행은 버림\n| a | b |\n|---|---|\n| 1 | 2 |"},
               {"title": "LEFT JOIN", "body": "왼쪽 행은 모두 남긴다. `COUNT(s.id)`"}],
+    "questions": [],
+}, {
+    "title": "마무리 퀴즈",
+    "cards": [],
     "questions": [
         {"type": "ox", "q": "JOIN은 짝 없는 행도 남긴다.", "answer": False, "explanation": "버린다."},
         {"type": "mc", "q": "왼쪽을 남기는 조인은?", "options": ["LEFT JOIN", "JOIN", "CROSS"], "answer": 0, "explanation": "LEFT"},
@@ -145,9 +149,11 @@ class ReviewAndPublishTestCase(StudioBase):
         course = Course.objects.get(code="DB101")
         self.assertRedirects(res, course.get_absolute_url(), fetch_redirect_response=False)
         self.assertEqual(course.instructor, self.lecturer)
-        lesson = Lesson.objects.get(course=course)
+        lesson, quiz = Lesson.objects.filter(course=course).order_by("order")
         self.assertEqual((lesson.unit.title, lesson.title, len(lesson.cards), len(lesson.questions)),
-                         ("조인", "조인 기초", 2, 3))
+                         ("조인", "조인 기초", 2, 0))
+        self.assertEqual((quiz.unit.title, quiz.title, len(quiz.cards), len(quiz.questions)),
+                         ("조인", "마무리 퀴즈", 0, 3))                    # 문제는 챕터 끝의 별도 세트
         self.assertIn("## JOIN", lesson.content)
         with self.assertRaises(ValueError):  # 두 번 눌러도 한 번만 게시
             studio.publish_draft(draft.pk, self.lecturer)
@@ -163,12 +169,12 @@ class ReviewAndPublishTestCase(StudioBase):
     def test_update_draft_only_instructor_can_approve_and_progress_is_kept(self):
         first, _, _ = self.build()
         course = studio.publish_draft(first.pk, self.lecturer)
-        lesson = Lesson.objects.get(course=course)
+        lesson = Lesson.objects.get(course=course, title="조인 기초")
         progress = UserCourseProgress.objects.create(user=self.student, course=course)
         progress.completed_lessons.add(lesson)
 
         self.docs.append(self.doc(50, "추가 자료"))  # 이 챕터의 근거 자료가 바뀌었다 → 챕터를 다시 만든다
-        changed = [dict(SETS[0], cards=[{"title": "JOIN", "body": "고친 설명"}])]
+        changed = [dict(SETS[0], cards=[{"title": "JOIN", "body": "고친 설명"}]), SETS[1]]
         update, _, _ = self.build(sets=changed)
         self.assertTrue(update.is_update)
         self.assertFalse(studio.can_review(self.lecturer2, update))
@@ -194,22 +200,22 @@ class ReviewAndPublishTestCase(StudioBase):
         self.client.force_login(self.lecturer)
         url = lambda action: reverse("course_studio_action", args=[draft.pk, action])
         self.client.post(url("edit_card"), {"chapter": 0, "set": 0, "item": 1, "title": "왼쪽 조인", "body": "새 본문"})
-        self.client.post(url("edit_question"), {"chapter": 0, "set": 0, "item": 1, "type": "mc", "q": "고친 문제",
+        self.client.post(url("edit_question"), {"chapter": 0, "set": 1, "item": 1, "type": "mc", "q": "고친 문제",
                                                 "options": "A\nB\nC", "answer": "2", "explanation": "B"})
-        res = self.client.post(url("edit_question"), {"chapter": 0, "set": 0, "item": 0, "type": "mc", "q": "잘못",
+        res = self.client.post(url("edit_question"), {"chapter": 0, "set": 1, "item": 0, "type": "mc", "q": "잘못",
                                                       "options": "A", "answer": "3"}, follow=True)
         self.assertContains(res, "문제 형식이 올바르지 않습니다")
-        self.client.post(url("delete_question"), {"chapter": 0, "set": 0, "item": 2})
+        self.client.post(url("delete_question"), {"chapter": 0, "set": 1, "item": 2})
         draft.refresh_from_db()
-        s = draft.content["chapters"][0]["sets"][0]
+        s, quiz = draft.content["chapters"][0]["sets"]
         self.assertEqual(s["cards"][1], {"title": "왼쪽 조인", "body": "새 본문"})
-        self.assertEqual((s["questions"][1]["options"], s["questions"][1]["answer"]), (["A", "B", "C"], 1))
-        self.assertEqual(len(s["questions"]), 2)
+        self.assertEqual((quiz["questions"][1]["options"], quiz["questions"][1]["answer"]), (["A", "B", "C"], 1))
+        self.assertEqual(len(quiz["questions"]), 2)
 
     def test_direct_lesson_edit_is_blocked_and_edit_draft_flow(self):
         draft, _, _ = self.build()
         course = studio.publish_draft(draft.pk, self.lecturer)
-        lesson = Lesson.objects.get(course=course)
+        lesson = Lesson.objects.get(course=course, title="조인 기초")
         self.client.force_login(self.lecturer)
         self.client.post(reverse("lesson_edit", args=[course.slug, lesson.pk]), {"title": "몰래", "content": "몰래 고침"})
         self.assertEqual(Lesson.objects.get(pk=lesson.pk).title, "조인 기초")
@@ -230,26 +236,30 @@ class LearnerTestCase(StudioBase):
         super().setUp()
         draft, _, _ = self.build()
         self.course = studio.publish_draft(draft.pk, self.lecturer)
-        self.lesson = Lesson.objects.get(course=self.course)
+        self.lesson = Lesson.objects.get(course=self.course, title="조인 기초")
+        self.quiz_lesson = Lesson.objects.get(course=self.course, title="마무리 퀴즈")
         self.client.force_login(self.student)
 
     def test_set_player_renders_cards_and_course_shows_chapters(self):
         res = self.client.get(self.lesson.get_absolute_url())
         self.assertContains(res, "<strong>JOIN</strong>")
-        self.assertContains(res, "확인 문제")
-        self.assertContains(res, 'id="questions-data"')
+        self.assertContains(res, "마무리 퀴즈 풀기")                       # 다음 페이지가 챕터 끝의 별도 퀴즈 세트
+        quiz = self.client.get(self.quiz_lesson.get_absolute_url())
+        self.assertContains(quiz, "확인 문제")
+        self.assertContains(quiz, 'id="questions-data"')
+        self.assertNotContains(quiz, "<strong>JOIN</strong>")
         page = self.client.get(self.course.get_absolute_url())
         self.assertContains(page, "1강</span>조인")
         self.assertContains(page, "조인 기초")
 
     def test_quiz_is_graded_on_server(self):
-        url = reverse("lesson_quiz_submit", args=[self.course.slug, self.lesson.pk])
+        url = reverse("lesson_quiz_submit", args=[self.course.slug, self.quiz_lesson.pk])
         res = self.client.post(url, data=json.dumps({"answers": [False, 1, "count(열)"]}),
                                content_type="application/json").json()
         self.assertEqual((res["results"], res["correct"], res["total"]), ([True, False, True], 2, 3))
-        result = LessonQuizResult.objects.get(user=self.student, lesson=self.lesson)
+        result = LessonQuizResult.objects.get(user=self.student, lesson=self.quiz_lesson)
         self.assertEqual((result.correct, result.wrong), (2, [1]))
-        self.assertIn(self.lesson, UserCourseProgress.objects.get(user=self.student).completed_lessons.all())
+        self.assertIn(self.quiz_lesson, UserCourseProgress.objects.get(user=self.student).completed_lessons.all())
         page = self.client.get(self.course.get_absolute_url())
         self.assertContains(page, "2/3")
         bad = self.client.post(url, data=json.dumps({"answers": "nope"}), content_type="application/json")
@@ -258,8 +268,9 @@ class LearnerTestCase(StudioBase):
     def test_preview_for_lecturer_does_not_save(self):
         draft = CourseDraft.objects.get()
         self.client.force_login(self.lecturer)
-        res = self.client.get(reverse("course_studio_preview", args=[draft.pk, 0, 0]))
+        res = self.client.get(reverse("course_studio_preview", args=[draft.pk, 0, 1]))
         self.assertContains(res, "미리보기")
+        self.assertContains(res, "확인 문제")
         self.assertNotContains(res, "/quiz/")  # 저장 주소가 없다
 
     def test_studio_tab_only_for_lecturers(self):
@@ -378,17 +389,62 @@ class DraftDiffTestCase(StudioBase):
     def test_question_changes_and_detail_page_shows_them(self):
         course = self.published_course()
         edit = studio.start_edit_draft(course, self.lecturer)
-        edit.content["chapters"][0]["sets"][0]["questions"][0]["answer"] = True      # 정답 수정
-        edit.content["chapters"][0]["sets"][0]["questions"].pop()                    # 문제 삭제
+        edit.content["chapters"][0]["sets"][1]["questions"][0]["answer"] = True      # 정답 수정
+        edit.content["chapters"][0]["sets"][1]["questions"].pop()                    # 문제 삭제
         edit.save()
         diff = studio.diff_draft(edit)
-        q = diff["chapters"][0]["sets"][0]["questions"]
+        q = diff["chapters"][0]["sets"][1]["questions"]
         self.assertEqual((len(q["modified"]), len(q["removed"])), (1, 1))
         self.client.force_login(self.lecturer)
         res = self.client.get(reverse("course_studio_detail", args=[edit.pk]))
         self.assertContains(res, "게시된 강의에서 달라진 부분")
         self.assertContains(res, "문제 삭제")
         self.assertContains(self.client.get(reverse("course_studio")), "세트 수정 1")
+
+
+OLD_SETS = [{"title": "개념", "cards": [{"title": "c", "body": "b"}],
+             "questions": [{"type": "ox", "q": "참인가", "answer": True, "explanation": "e"}]}]
+
+
+class SeparateQuizSetTestCase(StudioBase):
+    """예전 형식(마지막 카드 세트에 문제가 붙음)의 초안·게시 수업도 챕터 끝의 별도 퀴즈 세트로 바뀐다."""
+
+    def test_split_quiz_moves_questions_to_their_own_set_and_leaves_new_shape_alone(self):
+        sets = course_ai.split_quiz(OLD_SETS)
+        self.assertEqual([(s["title"], len(s["cards"]), len(s["questions"])) for s in sets], [("개념", 1, 0), ("마무리 퀴즈", 0, 1)])
+        self.assertIs(course_ai.split_quiz(sets), sets)
+
+    def test_old_shape_draft_is_split_when_opened_and_publishes_two_lessons(self):
+        draft, _, _ = self.build(sets=OLD_SETS)
+        self.client.force_login(self.lecturer)
+        res = self.client.get(reverse("course_studio_detail", args=[draft.pk]))
+        self.assertContains(res, "🎯 퀴즈")
+        self.assertContains(res, "문제 고치기")
+        draft.refresh_from_db()
+        self.assertEqual([len(s["cards"]) for s in draft.content["chapters"][0]["sets"]], [1, 0])
+        studio.publish_draft(draft.pk, self.lecturer)
+        self.assertEqual([(l.title, len(l.cards), len(l.questions)) for l in Lesson.objects.order_by("order")],
+                         [("개념", 1, 0), ("마무리 퀴즈", 0, 1)])
+
+    def test_old_shape_draft_is_split_before_publish_without_being_opened(self):
+        draft, _, _ = self.build(sets=OLD_SETS)
+        studio.publish_draft(draft.pk, self.lecturer)
+        self.assertEqual(Lesson.objects.count(), 2)
+
+    def test_published_old_lesson_becomes_two_sets_in_an_edit_draft_and_stale_results_are_dropped(self):
+        course = Course.objects.create(code="OLD", title="OLD", category=CourseCategory.objects.create(title="AI"),
+                                       instructor=self.lecturer, slug="old")
+        unit = Unit.objects.create(course=course, title="U", order=0)
+        lesson = Lesson.objects.create(course=course, unit=unit, title="개념", order=0, content="x",
+                                       cards=OLD_SETS[0]["cards"], questions=OLD_SETS[0]["questions"])
+        LessonQuizResult.objects.create(user=self.student, lesson=lesson, correct=1, total=1)
+        edit = studio.start_edit_draft(course, self.lecturer)
+        self.assertEqual([s["title"] for s in edit.content["chapters"][0]["sets"]], ["개념", "마무리 퀴즈"])
+        self.assertEqual(studio.diff_draft(edit)["counts"]["total"], 0)
+        studio.publish_draft(edit.pk, self.lecturer)
+        lesson.refresh_from_db()
+        self.assertEqual((lesson.questions, Lesson.objects.filter(course=course).count()), ([], 2))
+        self.assertFalse(LessonQuizResult.objects.filter(lesson=lesson).exists())
 
 
 class ChoiceBalanceTestCase(TestCase):
@@ -422,7 +478,8 @@ class ChoiceBalanceTestCase(TestCase):
                          {"type": "mc", "q": "객관식은 버린다", "options": ["a", "b"], "answer": 0, "explanation": "e"}]}
         with patch("core.ai.complete_json", return_value=data) as ai:
             sets = course_ai.generate_chapter("과목", {"title": "챕터"}, [{"title": "d", "summary": "s"}])
-        self.assertEqual([len(s["questions"]) for s in sets], [0, 3])                  # 마지막 세트에만, 3문제
+        self.assertEqual([len(s["questions"]) for s in sets], [0, 0, 3])               # 카드 세트 둘 뒤에 따로 붙는 퀴즈 세트, 3문제
+        self.assertEqual((sets[-1]["title"], sets[-1]["cards"]), ("마무리 퀴즈", []))
         self.assertEqual([q["type"] for q in sets[-1]["questions"]], ["ox", "ox", "short"])
         self.assertIn("객관식 금지", ai.call_args.args[1][0]["content"])
 
@@ -436,7 +493,7 @@ class ChoiceBalanceTestCase(TestCase):
         with patch("core.ai.chat", return_value=response) as chat:
             sets = course_ai.generate_chapter("과목", {"title": "챕터"}, [{"title": "d", "summary": "s"}])
         self.assertEqual(chat.call_count, 1)                                          # 다시 부르지 않고 읽힌다
-        self.assertEqual(len(sets), 2)
+        self.assertEqual(len(sets), 3)                                                # 카드 세트 둘 + 마무리 퀴즈 세트
         self.assertIn("snake\\_case", sets[0]["cards"][0]["body"])
         self.assertIn("\n둘째 줄\t탭", sets[0]["cards"][0]["body"])
         self.assertIn("print(x)", sets[1]["cards"][0]["body"])
@@ -449,7 +506,7 @@ class ChoiceBalanceTestCase(TestCase):
                                                    {"type": "short", "q": "s", "answers": ["x"]}]},
                       {"title": "b", "questions": [{"type": "ox", "q": "o", "answer": True}]}]
         sets = course_ai.attach_quiz([{"title": "a", "cards": []}, {"title": "b", "cards": []}], None, legacy_raw)
-        self.assertEqual([len(s["questions"]) for s in sets], [0, 2])                  # 예전 방식 응답도 OX·단답만 모아 마지막에
+        self.assertEqual([len(s["questions"]) for s in sets], [0, 0, 2])               # 예전 방식 응답도 OX·단답만 모아 마지막 퀴즈 세트에
         self.assertEqual(course_ai.attach_quiz([], many), [])
 
     def test_format_version_bumped_so_chapters_regenerate_in_the_new_shape(self):

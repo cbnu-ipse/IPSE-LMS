@@ -47,7 +47,7 @@ def studio_list(request):
 
 @_studio_only
 def studio_detail(request, pk):
-    draft = get_object_or_404(CourseDraft.objects.select_related("course"), pk=pk)
+    draft = studio.normalize_draft(get_object_or_404(CourseDraft.objects.select_related("course"), pk=pk))
     diff = studio.diff_draft(draft) if draft.status == CourseDraft.Status.PENDING else None
     changed = {c["index"] for c in diff["chapters"] if c["status"] != "same"} if diff else None
     chapters = []
@@ -80,7 +80,7 @@ def _draft_set(draft, ci, si):
 @_studio_only
 def studio_preview(request, pk, ci, si):
     """학생이 보게 될 화면 그대로 미리 보기. 확인 문제도 풀 수 있지만 결과는 저장하지 않는다."""
-    draft = get_object_or_404(CourseDraft, pk=pk)
+    draft = studio.normalize_draft(get_object_or_404(CourseDraft, pk=pk))
     chapters, chapter, current = _draft_set(draft, ci, si)
     pages = studio.player_pages([((c, s), st) for c, ch in enumerate(chapters) for s, st in enumerate(ch["sets"])])
     quiz = bool(current.get("questions")) and (not current.get("cards") or request.GET.get("quiz") == "1")   # 마무리 퀴즈 페이지

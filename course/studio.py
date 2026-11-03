@@ -92,7 +92,7 @@ def _previous(subject_code):
     for draft in reversed(drafts):  # 최근 것이 이기도록 오래된 것부터 채운다
         for chapter in (draft.content or {}).get("chapters", []):
             if chapter.get("source_hash") and chapter.get("sets"):
-                reuse[chapter["source_hash"]] = chapter["sets"]
+                reuse[chapter["source_hash"]] = course_ai.split_quiz(chapter["sets"])
     return ((latest.content or {}).get("chapters", []) if latest else []), reuse
 
 
@@ -192,6 +192,8 @@ def topic_overview():
     for code in codes:
         mine = drafts.get(code, [])
         pending = next((d for d in reversed(mine) if d.status == CourseDraft.Status.PENDING), None)
+        if pending:
+            normalize_draft(pending)
         latest = mine[-1] if mine else None
         row = rows.get(code, {})
         topics.append({
@@ -239,8 +241,8 @@ def content_from_course(course):
     """게시된 강의를 초안 내용 형식으로 (강의자가 직접 고치는 수정 초안의 시작점)."""
     chapters = []
     for unit in course.units.order_by("order"):
-        sets = [{"title": l.title, "cards": l.cards, "questions": l.questions}
-                for l in unit.lessons.order_by("order") if l.cards]
+        sets = course_ai.split_quiz([{"title": l.title, "cards": l.cards, "questions": l.questions}
+                                     for l in unit.lessons.order_by("order") if l.cards or l.questions])
         if sets:
             chapters.append({"title": unit.title, "summary": "", "doc_ids": [], "source_hash": "", "sets": sets})
     return {"title": course.title, "description": course.summary or "", "chapters": chapters}
@@ -257,8 +259,20 @@ def start_edit_draft(course, user):
 
 # ── 검토 중 고치기 (AI 호출 없음) ───────────────────────────────────────────
 
+def normalize_draft(draft):
+    """예전 형식(마지막 카드 세트에 문제가 붙은 초안)을 마무리 퀴즈 세트가 따로 있는 형식으로 바꿔 저장한다."""
+    changed = False
+    for chapter in (draft.content or {}).get("chapters", []):
+        sets = course_ai.split_quiz(chapter.get("sets", []))
+        if sets is not chapter.get("sets", []):
+            chapter["sets"], changed = sets, True
+    if changed:
+        draft.save(update_fields=["content"])
+    return draft
+
+
 def _locked_pending(draft_id):
-    draft = CourseDraft.objects.select_for_update().get(pk=draft_id)
+    draft = normalize_draft(CourseDraft.objects.select_for_update().get(pk=draft_id))
     if draft.status != CourseDraft.Status.PENDING:
         raise ValueError("검토 대기 중인 초안만 고칠 수 있습니다.")
     return draft
@@ -339,6 +353,8 @@ def _sync_course(course, content):
         for s in chapter.get("sets", []):
             lesson = old.pop(s["title"], None) or Lesson(course=course, unit=unit, title=s["title"])
             lesson.cards, lesson.questions = s["cards"], s.get("questions", [])
+            if lesson.pk and not lesson.questions:
+                lesson.quiz_results.all().delete()      # 문제가 별도 세트로 옮겨 간 수업의 지난 결과
             lesson.content = _legacy_markdown(s["cards"])
             lesson.order = order
             lesson.save()
@@ -351,7 +367,7 @@ def _sync_course(course, content):
 def publish_draft(draft_id, user):
     """저장된 초안 내용을 그대로 게시한다 (AI 호출 없음). 이미 처리된 초안이면 ValueError."""
     with transaction.atomic():
-        draft = CourseDraft.objects.select_for_update().get(pk=draft_id)
+        draft = normalize_draft(CourseDraft.objects.select_for_update().get(pk=draft_id))
         if draft.status != CourseDraft.Status.PENDING:
             raise ValueError("이미 처리된 초안입니다.")
         if not can_review(user, draft):
@@ -377,7 +393,7 @@ def publish_draft(draft_id, user):
 
 def reject_draft(draft_id, user, note=""):
     with transaction.atomic():
-        draft = CourseDraft.objects.select_for_update().get(pk=draft_id)
+        draft = normalize_draft(CourseDraft.objects.select_for_update().get(pk=draft_id))
         if draft.status != CourseDraft.Status.PENDING:
             raise ValueError("이미 처리된 초안입니다.")
         if not can_review(user, draft):
@@ -450,6 +466,7 @@ def diff_draft(draft):
     챕터는 순서(게시할 때 단원이 순서로 이어지므로), 세트는 제목으로 짝지어 비교한다."""
     if not draft.course_id:
         return None
+    normalize_draft(draft)
     published = content_from_course(draft.course)["chapters"]
     chapters = (draft.content or {}).get("chapters", [])
     out = []
