@@ -431,7 +431,10 @@ def document_preview(request, pk):
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
     if document.document_type == PersonalDocument.DocumentType.NOTE:
-        return render(request, "mypage/note.html", {"document": document})
+        from . import cram
+
+        cram.upgrade_note_if_old(document)          # 옛 손글씨 노트는 열어 볼 때 새 디자인으로 바꾼다
+        return render(request, "mypage/note.html", {"document": document, "note_text": cram.note_text_markdown(document)})
     if document.document_type == PersonalDocument.DocumentType.MOCK:
         exam = MockExam.objects.filter(document=document).first()
         if exam and document.summary_status == ProcessingStatus.DONE:

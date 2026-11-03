@@ -14,12 +14,24 @@
     </div>
 
     {% if document.file and document.summary_status == 'done' %}
-        <img src="{{ document.file.url }}" alt="{{ document.title }}" class="w-full rounded-2xl border border-slate-200 shadow-sm bg-white">
-        <p class="text-[11px] text-slate-400 mt-3 text-center">{{ document.uploaded_at|date:"Y-m-d H:i" }}에 만든 시험 5분 전 속성 노트</p>
+        {% if document.document_type == 'note' and note_text %}
+        <div class="flex gap-2 mb-3 text-xs font-bold" role="tablist" aria-label="노트 보기 방식">
+            <button type="button" role="tab" id="tab-image" class="note-tab px-3 py-1.5 rounded-lg border" data-tab="image" aria-selected="true">A4 문서</button>
+            <button type="button" role="tab" id="tab-text" class="note-tab px-3 py-1.5 rounded-lg border" data-tab="text" aria-selected="false">글로 보기 <span class="font-normal text-slate-400">(선택·검색·복사, 폰에서 읽기 편해요)</span></button>
+        </div>
+        {% endif %}
+        <div id="note-image">
+            <a href="{{ document.file.url }}" target="_blank" rel="noopener" title="새 탭에서 크게 보기"><img src="{{ document.file.url }}" alt="{{ document.title }}" class="w-full rounded-2xl border border-slate-200 shadow-sm bg-white"></a>
+            <p class="text-[11px] text-slate-400 mt-3 text-center">{{ document.uploaded_at|date:"Y-m-d H:i" }}에 만든 시험 5분 전 속성 노트 · 이미지를 누르면 크게 볼 수 있어요</p>
+        </div>
+        {% if document.document_type == 'note' and note_text %}
+        <article id="note-text" class="note-doc bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-7" hidden aria-label="노트 본문"></article>
+        {{ note_text|json_script:"note-text-source" }}
+        {% endif %}
     {% elif document.summary_status == 'processing' %}
         <div id="note-wait" class="bg-amber-50 border border-amber-100 rounded-2xl py-20 text-center text-amber-700">
             <i class="fa-solid fa-pen-nib fa-beat text-3xl mb-3"></i>
-            <p class="text-sm font-bold">{% if document.document_type == 'mock' %}모의고사를 만들고 있어요…{% else %}손글씨로 노트를 쓰고 있어요…{% endif %}</p>
+            <p class="text-sm font-bold">{% if document.document_type == 'mock' %}모의고사를 만들고 있어요…{% else %}노트를 정리하고 있어요…{% endif %}</p>
             <p class="text-xs mt-1 text-amber-600">끝나면 이 화면이 저절로 바뀝니다.</p>
         </div>
         <script>setTimeout(function () { location.reload(); }, 4000);</script>
@@ -31,5 +43,63 @@
         </div>
     {% endif %}
 </section>
+<style>
+    .note-tab { background:#fff; color:#64748b; border-color:#e2e8f0; }
+    .note-tab[aria-selected="true"] { background:#fff7ed; color:#c2410c; border-color:#fdba74; }
+    /* 글로 보기: A4 문서와 같은 모양 (주황 번호 칩 소제목, 글머리, 굵은 빨간 글씨, 노란 형광펜) */
+    .note-doc { counter-reset: sec; font-size: 16px; line-height: 1.75; color: #1f2937; overflow-wrap: anywhere; }
+    .note-doc .md-h1 { font-size: 1.6rem; font-weight: 900; color: #111827; margin: 0 0 1rem; padding-bottom: .5rem; border-bottom: 3px solid #111827; }
+    .note-doc .md-h1 span { background: linear-gradient(180deg, transparent 55%, #ffec63 55%); }
+    .note-doc .md-h2 { counter-increment: sec; display: flex; align-items: center; gap: .6rem; font-size: 1.15rem; font-weight: 800; color: #111827; margin: 1.4rem 0 .5rem; padding-bottom: .35rem; border-bottom: 1px solid #e5e7eb; }
+    .note-doc .md-h2::before { content: counter(sec); flex: none; width: 1.7rem; height: 1.7rem; border-radius: .45rem; background: #ea580c; color: #fff; font-weight: 800; font-size: .95rem; display: inline-flex; align-items: center; justify-content: center; }
+    .note-doc .md-h2.memo { counter-increment: none; color: #c2410c; }
+    .note-doc .md-h2.memo::before { content: "✓"; background: #fb923c; }
+    .note-doc ul.md-list { list-style: none; margin: 0; padding: 0; }
+    .note-doc ul.md-list > li { list-style: none; position: relative; padding: .18rem 0 .18rem 1.3rem; }
+    .note-doc ul.md-list > li::before { content: ""; position: absolute; left: .25rem; top: .85rem; width: .42rem; height: .42rem; border-radius: 50%; background: #ea580c; }
+    .note-doc .memo-box { margin-top: 1.4rem; padding: .2rem 1.1rem 1rem; background: #fff7ed; border: 2px solid #fb923c; border-radius: 1rem; }
+    .note-doc .memo-box .md-h2 { border: 0; margin-top: .9rem; }
+    .note-doc .memo-box ul.md-list > li::before { content: "✓"; background: none; color: #b91c1c; font-weight: 900; width: auto; height: auto; top: .2rem; left: .1rem; border-radius: 0; }
+    .note-doc strong { color: #b91c1c; font-weight: 800; }
+    .note-doc mark, .note-doc .md-mark { background: #ffec63; color: inherit; padding: 0 .15em; border-radius: .25em; }
+    .note-doc .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; }
+    @media (max-width: 640px) { .note-doc { font-size: 17px; padding: 1.25rem 1rem; } }
+</style>
 <script src="{% static 'js/share-board.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/markdown-lite.js' %}?v={{ static_version }}"></script>
+<script src="{% static 'js/math-render.js' %}?v={{ static_version }}"></script>
+<script>
+(function () {
+    var source = document.getElementById('note-text-source'), box = document.getElementById('note-text');
+    if (!source || !box) return;
+    var KEY = 'note_view_tab', rendered = false;
+    function render() {
+        if (rendered) return;
+        rendered = true;
+        var md = JSON.parse(source.textContent);
+        box.innerHTML = window.renderMarkdown ? window.renderMarkdown(md) : '';
+        var title = box.querySelector('.md-h1'); if (title) title.innerHTML = '<span>' + title.innerHTML + '</span>';
+        var heads = box.querySelectorAll('.md-h2'), last = heads[heads.length - 1];
+        if (last && /마지막 체크/.test(last.textContent)) {          // 마지막 체크는 따로 상자로
+            last.classList.add('memo');
+            var wrap = document.createElement('div'); wrap.className = 'memo-box';
+            last.parentNode.insertBefore(wrap, last);
+            var node = last; while (node) { var next = node.nextSibling; wrap.appendChild(node); node = next; }
+        }
+        if (window.renderMath) window.renderMath(box);
+    }
+    function select(tab) {
+        var text = tab === 'text';
+        if (text) render();
+        document.getElementById('note-image').hidden = text;
+        box.hidden = !text;
+        document.querySelectorAll('.note-tab').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.tab === tab)); });
+        try { localStorage.setItem(KEY, tab); } catch (e) {}
+    }
+    document.querySelectorAll('.note-tab').forEach(function (b) { b.addEventListener('click', function () { select(b.dataset.tab); }); });
+    var saved = null; try { saved = localStorage.getItem(KEY); } catch (e) {}
+    // 폰처럼 좁은 화면에서는 A4를 줄여 보면 글씨가 작아서 글로 보기를 먼저 보여 준다 (직접 고른 적이 있으면 그 선택을 따른다)
+    select(saved || (window.matchMedia('(max-width: 640px)').matches ? 'text' : 'image'));
+})();
+</script>
 {% endblock %}

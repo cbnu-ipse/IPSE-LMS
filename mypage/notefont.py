@@ -1,0 +1,124 @@
+"""노트 그림에서 함께 쓰는 글꼴과 기호 표 (notepage: 문서 배치, mathbox: 수식 조판)."""
+import os
+
+from django.conf import settings
+from PIL import ImageFont
+
+FONT_DIR = os.path.join(str(settings.BASE_DIR), "static", "fonts")
+FONT_REGULAR = os.path.join(FONT_DIR, "Pretendard-Regular.otf")
+FONT_BOLD = os.path.join(FONT_DIR, "Pretendard-Bold.otf")
+FONT_MATH = os.path.join(FONT_DIR, "NotoSansMath-Regular.ttf")      # 한글 글꼴에 없는 수학 기호와 수학용 기울임꼴(𝑥 𝛼 …)
+
+SUB = dict(zip("₀₁₂₃₄₅₆₇₈₉", "0123456789"))
+SUP = dict(zip("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789"))
+# LaTeX 명령 → 글꼴에 있는 실제 기호
+LATEX_WORDS = {
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "varepsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ", "sigma": "σ", "tau": "τ", "phi": "φ", "varphi": "φ",
+    "chi": "χ", "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Pi": "Π", "Sigma": "Σ",
+    "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω", "sum": "Σ", "prod": "Π", "int": "∫", "infty": "∞", "partial": "∂", "nabla": "∇",
+    "le": "≤", "leq": "≤", "ge": "≥", "geq": "≥", "ne": "≠", "neq": "≠", "approx": "≈", "equiv": "≡", "propto": "∝",
+    "pm": "±", "mp": "∓", "times": "×", "cdot": "·", "div": "÷", "to": "→", "rightarrow": "→", "leftarrow": "←",
+    "Rightarrow": "⇒", "Leftarrow": "⇐", "leftrightarrow": "↔", "Leftrightarrow": "⇔", "therefore": "∴", "because": "∵",
+    "ldots": "…", "cdots": "…", "dots": "…", "in": "∈", "notin": "∉", "subset": "⊂", "supset": "⊃", "subseteq": "⊆",
+    "supseteq": "⊇", "cup": "∪", "cap": "∩", "forall": "∀", "exists": "∃", "prime": "′", "angle": "∠", "perp": "⊥",
+    "ni": "∋", "circ": "∘", "ll": "≪", "gg": "≫", "sim": "∼", "mid": "|", "emptyset": "∅", "setminus": "∖",
+    "oplus": "⊕", "otimes": "⊗", "ominus": "⊖", "odot": "⊙", "wedge": "∧", "land": "∧", "vee": "∨", "lor": "∨", "neg": "¬", "lnot": "¬",
+    "cong": "≅", "simeq": "≃", "prec": "≺", "succ": "≻", "preceq": "≼", "succeq": "≽", "parallel": "∥", "nparallel": "∦", "doteq": "≐",
+    "mapsto": "↦", "longrightarrow": "⟶", "longleftarrow": "⟵", "longleftrightarrow": "⟷", "implies": "⟹", "impliedby": "⟸", "iff": "⟺",
+    "hookrightarrow": "↪", "uparrow": "↑", "downarrow": "↓", "updownarrow": "↕", "gets": "←", "nearrow": "↗", "searrow": "↘",
+    "bullet": "∙", "star": "⋆", "ast": "∗", "dagger": "†", "ddagger": "‡", "oint": "∮", "iint": "∬", "iiint": "∭", "bigoplus": "⨁",
+    "bigotimes": "⨂", "bigcup": "⋃", "bigcap": "⋂", "bigvee": "⋁", "bigwedge": "⋀", "coprod": "∐", "vdots": "⋮", "ddots": "⋱",
+    "lfloor": "⌊", "rfloor": "⌋", "lceil": "⌈", "rceil": "⌉", "langle": "⟨", "rangle": "⟩", "lbrace": "{", "rbrace": "}",
+    "lbrack": "[", "rbrack": "]", "vert": "|", "Vert": "‖", "hbar": "ℏ", "ell": "ℓ", "aleph": "ℵ", "Re": "ℜ", "Im": "ℑ", "wp": "℘",
+    "nsubseteq": "⊈", "nsubset": "⊄", "nleq": "≰", "ngeq": "≱", "nequiv": "≢", "napprox": "≉", "ncong": "≇", "nsim": "≁", "triangle": "△",
+    "square": "□", "blacksquare": "■", "Box": "□", "top": "⊤", "bot": "⊥", "models": "⊨", "vdash": "⊢", "dashv": "⊣", "asymp": "≍",
+    "lesssim": "≲", "gtrsim": "≳", "varnothing": "∅", "complement": "∁", "surd": "√", "checkmark": "✓", "degree": "°", "deg": "°",
+    "log": "log", "ln": "ln", "exp": "exp", "min": "min", "max": "max", "det": "det", "sin": "sin", "cos": "cos", "tan": "tan",
+    "lim": "lim", "Pr": "P", "quad": " ", "qquad": " ", "left": "", "right": "", "hat": "", "tilde": "", "text": "",
+    "mathrm": "", "mathbf": "",
+}
+GREEK = {"alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "zeta", "eta", "theta", "lambda", "mu", "nu", "xi", "pi", "rho",
+         "sigma", "tau", "phi", "varphi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Pi", "Sigma", "Phi", "Psi", "Omega"}
+BLACKBOARD = {"R": "ℝ", "N": "ℕ", "Z": "ℤ", "Q": "ℚ", "C": "ℂ"}      # \mathbb{R} 등: 글꼴에 없으면 그냥 문자로
+
+_font_cache = {}
+_glyph_cache = {}
+_math_glyph_cache = {}
+
+
+def font(size, bold=False):
+    key = (size, bold)
+    if key not in _font_cache:
+        _font_cache[key] = ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, size)
+    return _font_cache[key]
+
+
+def math_font(size):
+    key = (size, "math")
+    if key not in _font_cache:
+        _font_cache[key] = ImageFont.truetype(FONT_MATH, size)
+    return _font_cache[key]
+
+
+def _has(fnt, ch):
+    """글꼴에 이 글자가 있는가. 없는 글자는 '없음 표시(notdef)'라는 네모로 그려지므로, 그 그림과 같으면 없는 것으로 본다."""
+    return bytes(fnt.getmask(ch)) != bytes(fnt.getmask("\uFFFF"))
+
+
+def has_glyph(ch):
+    """본 글꼴(Pretendard)에 있는 글자인가."""
+    if ch not in _glyph_cache:
+        _glyph_cache[ch] = ch.isspace() or _has(font(29), ch)
+    return _glyph_cache[ch]
+
+
+def has_math_glyph(ch):
+    if ch not in _math_glyph_cache:
+        _math_glyph_cache[ch] = _has(math_font(29), ch)
+    return _math_glyph_cache[ch]
+
+
+def can_draw(ch):
+    """어느 글꼴로든 그릴 수 있는 글자인가 (본 글꼴에 없으면 수학 글꼴로)."""
+    return has_glyph(ch) or has_math_glyph(ch)
+
+
+def italic_char(ch):
+    """영문·그리스 소문자를 수학용 기울임꼴 글자(𝑥, 𝛼 …)로 바꾼다. 해당 없으면 그대로."""
+    cp = ord(ch)
+    if ch == "h":
+        return "ℎ"                                   # 𝘩 자리는 플랑크 상수 기호 ℎ가 맡는다
+    if "a" <= ch <= "z":
+        return chr(0x1D44E + cp - 97)
+    if "A" <= ch <= "Z":
+        return chr(0x1D434 + cp - 65)
+    if 0x3B1 <= cp <= 0x3C9:                         # α … ω (ς 포함)
+        return chr(0x1D6FC + cp - 0x3B1)
+    return ch
+
+
+def runs(text, force_math=False):
+    """글자를 (조각, 수학 글꼴 여부) 묶음으로 나눈다: 본 글꼴에 있으면 본 글꼴, 없으면 수학 글꼴."""
+    out = []
+    for ch in text:
+        use_math = force_math or (not has_glyph(ch) and has_math_glyph(ch))
+        if out and out[-1][1] == use_math:
+            out[-1] = (out[-1][0] + ch, use_math)
+        else:
+            out.append((ch, use_math))
+    return out
+
+
+def text_length(text, size, bold=False, force_math=False):
+    return sum((math_font(size) if m else font(size, bold)).getlength(t) for t, m in runs(text, force_math))
+
+
+def draw_text(d, x, base, text, size, fill, bold=False, force_math=False):
+    """기준선(base)에 글을 그린다 (글자마다 알맞은 글꼴로). 그린 글의 너비를 돌려준다."""
+    start = x
+    for t, m in runs(text, force_math):
+        f = math_font(size) if m else font(size, bold)
+        d.text((x, base), t, font=f, fill=fill, anchor="ls")
+        x += f.getlength(t)
+    return x - start

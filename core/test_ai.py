@@ -297,3 +297,22 @@ class GeminiThinkingHeadroomTests(TestCase):
         self.assertEqual(len(limits), 2)
         self.assertGreater(limits[1], limits[0])
         charge.assert_called_once()
+
+
+class LatexEscapeCollisionTests(TestCase):
+    """단일 백슬래시로 쓴 LaTeX가 JSON 이스케이프(\\t \\n \\r \\b \\f)와 겹쳐 조용히 망가지지 않는다."""
+
+    def test_latex_commands_that_start_like_json_escapes_survive(self):
+        import json
+
+        for command in ("to", "ne", "tan", "top", "tag", "tfrac", "nolimits", "rfloor", "rbrace", "not", "ni", "triangle", "textbf", "nsubset",
+                        "frac", "bar", "beta", "begin", "forall", "theta", "times", "nu", "rho", "right", "neq", "notin"):
+            raw = '{"p": "x \\%s y"}' % command
+            got = json.loads(ai.repair_json_strings(raw))["p"]
+            self.assertEqual(got, "x \\%s y" % command, command)
+
+    def test_real_escapes_are_left_alone(self):
+        import json
+
+        got = json.loads(ai.repair_json_strings('{"p": "첫 줄\\n둘째 줄\\t탭\\r\\n끝 \\"인용\\" 경로 C:\\\\dir"}'))["p"]
+        self.assertEqual(got, '첫 줄\n둘째 줄\t탭\r\n끝 "인용" 경로 C:\\dir')

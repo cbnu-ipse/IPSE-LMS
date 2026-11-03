@@ -344,7 +344,10 @@ def complete(task, messages, **kwargs):
 
 # 수식 자료(LaTeX)가 들어간 답에서 모델이 백슬래시를 이스케이프 없이 쓰는 경우: \det \lambda \[ 는 JSON 오류가 되고,
 # \frac \beta \theta \times 는 우연히 올바른 이스케이프(\f \b \t)로 읽혀 글자가 조용히 망가진다
-_LATEX_RISKY = re.compile(r"(?<!\\)\\(?:[bf][A-Za-z]{2,}|theta|times|tau|text|tilde|therefore|neq|neg|nabla|notin|nu|rho|rightarrow|right|rangle)")
+_LATEX_RISKY = re.compile(
+    r"(?<!\\)\\(?:[bf][A-Za-z]{2,}|theta|times|tau|text|tilde|therefore|neq|neg|nabla|notin|nu|rho|rightarrow|right|rangle"
+    r"|(?:to|ne|ni|not|tan|top|tag|rm)(?![A-Za-z])|tfrac|triangle|textbf|textrm|textit|nolimits|nsubset|nsubseteq|nleq|ngeq|nequiv|napprox"
+    r"|ncong|nsim|nparallel|nearrow|nonumber|rbrace|rbrack|rfloor|rceil|rVert|rvert)")
 
 
 def repair_json_strings(text):
