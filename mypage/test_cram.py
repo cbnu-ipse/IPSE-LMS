@@ -13,7 +13,7 @@ from accounts import credits
 from core import ai as core_ai
 from core.testing import use_up
 
-from . import cram, handnote
+from . import cram, notepage
 from .models import PersonalDocument, ProcessingStatus
 from .test_exam import make_doc
 
@@ -90,47 +90,99 @@ class ParseNoteJsonTests(TestCase):
 
 class RenderTests(TestCase):
     def test_short_note_is_one_a4_page(self):
-        pages = handnote.render_notes(cram.normalize_note(NOTE_JSON))
+        pages = notepage.render_notes(cram.normalize_note(NOTE_JSON))
         self.assertEqual(len(pages), 1)
         image = Image.open(io.BytesIO(pages[0]))
         self.assertEqual(image.format, "PNG")
-        self.assertEqual(image.size, (handnote.WIDTH, handnote.HEIGHT))
+        self.assertEqual(image.size, (notepage.WIDTH, notepage.HEIGHT))
+
+    def test_short_note_gets_bigger_letters_to_fill_the_page_instead_of_leaving_blank_space(self):
+        note = cram.normalize_note(NOTE_JSON)
+        k = notepage._layout(note, notepage.MAX_SCALE, None).k
+        self.assertEqual(len(notepage._layout(note, k, None).pages), 1)
+        self.assertGreater(notepage.MAX_SCALE, 1.0)                       # 짧은 노트는 기본보다 크게 쓸 수 있다
+        words = [op for page in notepage._layout(note, 1.0, None).pages for op in page if op[0] == "word"]
+        self.assertTrue(words)
+        bottom = max(op[2] + op[3] for op in words)
+        self.assertLess(bottom, notepage.HEIGHT)                          # 넘치지 않는다
 
     def test_overflow_continues_on_next_page_without_dropping_content(self):
         big = cram.normalize_note({"title": "큰 노트", "memo": ["확인 " * 10] * 6,
                                    "sections": [{"heading": f"주제{i}", "points": [f"항목{i}-{j} " + "긴 문장 " * 12 for j in range(6)]}
                                                 for i in range(7)]})
-        lay = handnote._layout(big, handnote._rng_for(big), handnote.MIN_SCALE, None)
+        lay = notepage._layout(big, notepage.MIN_SCALE, None)
         self.assertGreater(len(lay.pages), 1)
-        pages = handnote.render_notes(big)
+        pages = notepage.render_notes(big)
         self.assertEqual(len(pages), len(lay.pages))
         for png in pages:
-            self.assertEqual(Image.open(io.BytesIO(png)).size, (handnote.WIDTH, handnote.HEIGHT))
+            self.assertEqual(Image.open(io.BytesIO(png)).size, (notepage.WIDTH, notepage.HEIGHT))
         words = [op[4] for page in lay.pages for op in page if op[0] == "word"]
-        for i in range(7):                                               # 모든 항목이 어느 장에든 그려진다
+        for i in range(7):                                               # 모든 항목이 어느 쪽에든 그려진다
             for j in range(6):
                 self.assertIn(f"항목{i}-{j}", words)
 
-    def test_no_op_goes_below_page_bottom(self):
-        big = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 30] * 6} for i in range(7)],
+    def test_no_op_goes_below_page_bottom_or_past_the_right_margin(self):
+        big = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 30 + "x" * 300] * 6} for i in range(7)],
                                    "memo": ["m"] * 6})
-        lay = handnote._layout(big, handnote._rng_for(big), handnote.MIN_SCALE, None)
-        for page in lay.pages:
-            for op in page:
-                if op[0] == "word":
-                    self.assertLess(op[2], handnote.HEIGHT)
+        for k in (notepage.MIN_SCALE, 1.0, notepage.MAX_SCALE):
+            lay = notepage._layout(big, k, None)
+            for page in lay.pages:
+                for op in page:
+                    if op[0] == "word":
+                        _, x, y, size, text, style, _color, _gap = op
+                        self.assertLess(y + size, notepage.HEIGHT)
+                        self.assertLessEqual(x + notepage._style_font(size, style).getlength(text), notepage.WIDTH - notepage.MARGIN_X + 1)
+
+    def test_memo_box_is_never_split_across_pages(self):
+        note = cram.normalize_note({"title": "t", "sections": [{"heading": f"h{i}", "points": ["내용 " * 18] * 6} for i in range(7)],
+                                    "memo": ["꼭 확인 " * 8] * 6})
+        for k in (notepage.MIN_SCALE, 1.0):
+            lay = notepage._layout(note, k, None)
+            boxes = [i for i, page in enumerate(lay.pages) for op in page if op[0] == "box"]
+            titles = [i for i, page in enumerate(lay.pages) for op in page if op[0] == "memo_title"]
+            self.assertEqual(boxes, titles)                                # 제목과 상자가 같은 쪽에 있다
+
+    def test_long_heading_is_shrunk_to_one_line(self):
+        size = notepage._fit_heading(notepage.to_markup("가" * 40), notepage.HEAD_SIZE)
+        self.assertLess(size, notepage.HEAD_SIZE)
+        self.assertEqual(notepage._fit_heading(notepage.to_markup("짧은 제목"), notepage.HEAD_SIZE), notepage.HEAD_SIZE)
 
     def test_latex_environments_are_flattened_not_leaked(self):
-        out = handnote.to_markup(r"$A^{-1} = \frac{1}{ad-bc}\begin{bmatrix} d & -b \\ -c & a \end{bmatrix}$")
+        out = notepage.to_markup(r"$A^{-1} = \frac{1}{ad-bc}\begin{bmatrix} d & -b \\ -c & a \end{bmatrix}$")
         self.assertNotIn("begin", out)
         self.assertNotIn("end", out)
         self.assertNotIn("&", out)
         self.assertNotIn("\\", out)
         self.assertIn("[d -b; -c a]", out)
 
+    def test_real_symbols_are_kept_not_spelled_out(self):
+        out = notepage.to_markup(r"$\mu \pm 2\sigma$ $\theta \le \pi$ $Av=\lambda v$ → ≤ ∞ ① ✓")
+        for symbol in ("μ", "±", "σ", "θ", "≤", "π", "λ", "→", "∞", "①", "✓"):
+            self.assertIn(symbol, out)
+        self.assertIn("Av=λv", out)                                       # 그리스 문자 뒤 띄어쓰기는 LaTeX처럼 무시
+        self.assertIn("θ ≤ π", out)                                       # 연산자 둘레 띄어쓰기는 그대로
+
+    def test_glyphs_missing_from_the_font_are_dropped_and_script_letters_become_sub_sup(self):
+        out = notepage.to_markup("점수 😀 A\u1d40 x\u1d62\u00b2 $\\mathbb{R}^2$")
+        self.assertNotIn("😀", out)
+        self.assertIn("A<sup>T</sup>", out)
+        self.assertIn("x<sub>i</sub><sup>2</sup>", out)
+        self.assertIn("R<sup>2</sup>", out)                               # ℝ가 글꼴에 없으면 R로
+
+    def test_bold_red_and_highlight_styles_are_parsed(self):
+        segs = notepage.parse_segments(notepage.to_markup("일반 **굵게** ==형광펜== 끝"))
+        self.assertIn(("굵게", frozenset({"b"})), segs)
+        self.assertIn(("형광펜", frozenset({"m"})), segs)
+
     def test_unsupported_glyphs_do_not_crash(self):
         note = {"title": "Σ μ → ≤ x̄ ∞", "sections": [{"heading": "α β", "points": ["x² ≥ 1 ✓ 😀 $\\bar{x}$ $a_i^2$"]}], "memo": []}
-        self.assertTrue(handnote.render_notes(note)[0].startswith(b"\x89PNG"))
+        self.assertTrue(notepage.render_notes(note)[0].startswith(b"\x89PNG"))
+
+    def test_note_is_a_white_typed_page_not_lined_notebook_paper(self):
+        png = notepage.render_notes(cram.normalize_note(NOTE_JSON))[0]
+        image = Image.open(io.BytesIO(png)).convert("RGB")
+        self.assertEqual(image.getpixel((5, 5)), (255, 255, 255))         # 종이 색·결·공책 줄 없이 흰 쪽
+        self.assertEqual(image.getpixel((notepage.WIDTH - 5, notepage.HEIGHT // 2)), (255, 255, 255))
 
 
 class BuildNoteTests(TestCase):
@@ -183,7 +235,7 @@ class BuildNoteTests(TestCase):
         doc = make_doc(self.user)
         note = self._placeholder()
         with override_settings(MEDIA_ROOT=self.media), ai_returns(NOTE_JSON), \
-                patch("mypage.handnote.render_notes", side_effect=OSError("boom")), patch("core.ai.refund") as refund:
+                patch("mypage.notepage.render_notes", side_effect=OSError("boom")), patch("core.ai.refund") as refund:
             cram.build_note_document(note.pk, [doc.pk])
         note.refresh_from_db()
         self.assertEqual(note.summary_status, ProcessingStatus.FAILED)
@@ -334,7 +386,7 @@ class FailureReasonTests(TestCase):
 
     def test_render_failure_reason(self):
         with ai_returns(NOTE_JSON):
-            reason = self._build(patch("mypage.handnote.render_notes", side_effect=OSError("font")))
+            reason = self._build(patch("mypage.notepage.render_notes", side_effect=OSError("font")))
         self.assertIn("이미지를 그리는 중", reason)
 
     def test_unreadable_sources_reason(self):

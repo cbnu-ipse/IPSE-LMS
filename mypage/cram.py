@@ -1,6 +1,6 @@
 """
 '시험 5분 전 속성 노트': 사용자가 고른 자료(하나 또는 여러 개)를 AI가 시험 직전에 훑을 한 장짜리 노트로 줄이고,
-손글씨 그림(A4 PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
+타이핑한 A4 문서 모양의 그림(PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
 
 - 읽는 내용은 자료의 요약(없으면 본문 앞부분). 자료마다 같은 몫을 나눠 읽고, 전체는 SOURCE_CHARS 안으로 줄인다.
 - 사용량은 AI를 부른 토큰으로 세어 이번 주 한도(core/usage.py)에 더해진다. 시작 전에는 한도가 남았는지만 확인한다.
@@ -14,7 +14,7 @@ from django.core.files.base import ContentFile
 
 from core import ai as core_ai
 
-from . import handnote, scope
+from . import notepage, scope
 from .models import PersonalDocument, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -190,7 +190,7 @@ def note_markdown(note):
 
 
 def build_note_document(note_id, source_ids, focus=None):
-    """백그라운드에서 호출: 노트 문서(생성 중)를 AI 내용과 손글씨 그림으로 채운다. 실패하면 FAILED로 둔다."""
+    """백그라운드에서 호출: 노트 문서(생성 중)를 AI 내용과 A4 문서 그림으로 채운다. 실패하면 FAILED로 둔다."""
     doc = PersonalDocument.objects.select_related("user").get(pk=note_id)
     sources = list(PersonalDocument.objects.filter(pk__in=source_ids, user=doc.user, is_deleted=False).order_by("id"))
     sources = [d for d in sources if usable(d)]
@@ -201,10 +201,10 @@ def build_note_document(note_id, source_ids, focus=None):
         note = generate_note(doc.user, sources, focus)
         charged = note_cost(len(sources))
         try:
-            pngs = handnote.render_notes(note)      # A4 한 장씩. 한 장에 안 들어가면 내용을 버리지 않고 다음 장에 이어 쓴다
+            pngs = notepage.render_notes(note)      # A4 한 장씩. 한 장에 안 들어가면 내용을 버리지 않고 다음 장에 이어 쓴다
         except Exception:
             logger.exception("속성 노트 %s 그리기 실패", note_id)
-            raise NoteError("손글씨 이미지를 그리는 중 문제가 생겼습니다. 잠시 후 다시 시도해주세요.")
+            raise NoteError("노트 이미지를 그리는 중 문제가 생겼습니다. 잠시 후 다시 시도해주세요.")
         total = len(pngs)
         label = (lambda n: f" ({n}/{total})" if total > 1 else "")
         markdown = note_markdown(note)
