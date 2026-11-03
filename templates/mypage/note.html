@@ -62,6 +62,17 @@
     .note-doc .memo-box ul.md-list > li::before { content: "✓"; background: none; color: #b91c1c; font-weight: 900; width: auto; height: auto; top: .2rem; left: .1rem; border-radius: 0; }
     .note-doc strong { color: #b91c1c; font-weight: 800; }
     .note-doc mark, .note-doc .md-mark { background: #ffec63; color: inherit; padding: 0 .15em; border-radius: .25em; }
+    .note-doc mark.md-cyan { background: #bae6fd; color: inherit; padding: 0 .15em; border-radius: .25em; }
+    .note-doc ul.md-list ul.md-list { margin-left: .5rem; }
+    .note-doc ul.md-list ul.md-list > li { font-size: .95em; color: #374151; }
+    .note-doc ul.md-list ul.md-list > li::before { width: .5rem; height: 2px; border-radius: 0; top: 1.05rem; }
+    .note-doc ol.md-list { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+    .note-doc ol.md-list > li { counter-increment: step; position: relative; padding: .2rem 0 .2rem 2.2rem; }
+    .note-doc ol.md-list > li::before { content: counter(step); position: absolute; left: 0; top: .3rem; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: #ea580c; color: #fff; font-weight: 800; font-size: .8rem; display: flex; align-items: center; justify-content: center; }
+    .note-doc .md-table th { background: #ffedd5; color: #111827; }
+    .note-doc .md-table td:first-child { font-weight: 700; background: #fffaf5; white-space: nowrap; }
+    .note-doc .md-table tr:nth-child(even) td { background: #fff; }
+    .note-doc .md-table tr:nth-child(even) td:first-child { background: #fffaf5; }
     .note-doc .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; }
     @media (max-width: 640px) { .note-doc { font-size: 17px; padding: 1.25rem 1rem; } }
 </style>
@@ -77,7 +88,9 @@
         if (rendered) return;
         rendered = true;
         var md = JSON.parse(source.textContent);
-        box.innerHTML = window.renderMarkdown ? window.renderMarkdown(md) : '';
+        // ++하늘색 형광펜++ 은 노트에서만 쓰는 표기라 (C++ 같은 글을 건드리지 않게) 여기서만 바꾼다
+        md = md.replace(/(^|[^\w+])\+\+(\S(?:[^+]*?\S)?)\+\+(?![\w+])/g, '$1\uE000$2\uE001');
+        box.innerHTML = window.renderMarkdown ? window.renderMarkdown(md).replace(/\uE000/g, '<mark class="md-cyan">').replace(/\uE001/g, '</mark>') : '';
         var title = box.querySelector('.md-h1'); if (title) title.innerHTML = '<span>' + title.innerHTML + '</span>';
         var heads = box.querySelectorAll('.md-h2'), last = heads[heads.length - 1];
         if (last && /마지막 체크/.test(last.textContent)) {          // 마지막 체크는 따로 상자로

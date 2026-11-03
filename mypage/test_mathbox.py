@@ -413,3 +413,15 @@ class BrokenEscapeRepairTests(TestCase):
         again = cram.parse_note_markdown(cram.note_markdown(note))
         segs = [s for p in again["sections"][0]["points"] for s, _ in notepage.parse_segments(notepage.to_rich(p)) if isinstance(s, mathbox.MathAtom)]
         self.assertEqual([len(m.rows) for a in segs for m in a.box.items if isinstance(m, mathbox.Matrix)], [2])
+
+
+class DoubledBackslashTests(TestCase):
+    def test_commands_with_a_doubled_backslash_are_read_as_commands(self):
+        self.assertEqual(mathbox.repair_latex(r"a \\rightarrow b \\frac{1}{2}"), r"a \rightarrow b \frac{1}{2}")
+        self.assertEqual(notepage.latex_to_markup(mathbox.repair_latex(r"a \\rightarrow b")), "a → b")
+        self.assertEqual(mathbox.latexify_markdown(r"- 상하이 $\\rightarrow$ 연통제"), r"- 상하이 $\rightarrow$ 연통제")
+
+    def test_matrix_row_separators_and_plain_double_backslashes_are_left_alone(self):
+        matrix = r"\begin{bmatrix}a&b\\c&d\end{bmatrix}"
+        self.assertEqual(mathbox.repair_latex(matrix), matrix)
+        self.assertEqual(mathbox.repair_latex(r"x \\ y"), r"x \\ y")
