@@ -118,13 +118,13 @@
         {% for set in chapter.sets %}
         <div id="set-{{ chapter.index }}-{{ set.index }}" class="mt-3 bg-white border border-slate-200 rounded-2xl">
             <div class="flex items-center gap-3 px-5 py-3 border-b border-slate-100">
-                <span class="font-bold text-slate-700 flex-1 min-w-0">{{ set.title }}</span>
-                <span class="text-xs text-slate-400 shrink-0">카드 {{ set.cards|length }} · 문제 {{ set.questions|length }}</span>
+                <span class="font-bold text-slate-700 flex-1 min-w-0">{% if not set.cards %}<span class="mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700">🎯 퀴즈</span>{% endif %}{{ set.title }}</span>
+                <span class="text-xs text-slate-400 shrink-0">{% if set.cards %}카드 {{ set.cards|length }}{% if set.questions %} · 문제 {{ set.questions|length }}{% endif %}{% else %}문제 {{ set.questions|length }}{% endif %}</span>
                 <a href="{% url 'course_studio_preview' draft.pk chapter.index set.index %}" class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100">미리보기·테스트</a>
             </div>
             {% if editable %}
             <details class="px-5 py-3">
-                <summary class="cursor-pointer text-sm font-semibold text-slate-600">카드·문제 고치기</summary>
+                <summary class="cursor-pointer text-sm font-semibold text-slate-600">{% if set.cards %}카드·문제 고치기{% else %}문제 고치기{% endif %}</summary>
                 <div class="mt-3 space-y-4">
                     {% for card in set.cards %}
                     <form method="post" action="{% url 'course_studio_action' draft.pk 'edit_card' %}" class="space-y-2 border border-slate-100 rounded-xl p-3">

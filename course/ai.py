@@ -25,6 +25,7 @@ MAX_QUESTIONS = 3
 # concept(기본)는 저장하지 않는다 (옛 강의·옛 테스트와 같은 모양을 유지)
 CARD_KINDS = {"concept": "💡 개념", "definition": "📌 핵심 정의", "compare": "⚖️ 비교", "steps": "🔢 단계", "example": "🧪 예시",
               "caution": "⚠️ 주의", "summary": "✅ 한 줄 정리"}
+QUIZ_SET_TITLE = "마무리 퀴즈"
 MAX_QUIZ = 5               # 한 강(챕터) 끝의 확인 퀴즈 문제 수 상한
 QUIZ_TYPES = ("ox", "short")   # 강 퀴즈는 OX와 단답만
 FORMAT_VERSION = 4          # 강의 형식(프롬프트)이 바뀌면 올린다 — 해시에 들어가 다음 생성 때 새 형식으로 다시 만든다
@@ -132,8 +133,27 @@ def attach_quiz(sets, quiz, raw_sets=None):
     for s in sets:
         s["questions"] = []
     if sets and questions:
-        sets[-1]["questions"] = questions
+        sets.append(quiz_set(questions))
     return shuffle_choices(sets)
+
+
+def quiz_set(questions):
+    """챕터 끝에 따로 붙는 마무리 퀴즈 세트 (카드 없이 문제만)."""
+    return {"title": QUIZ_SET_TITLE, "cards": [], "questions": questions}
+
+
+def split_quiz(sets):
+    """카드와 문제가 한 세트에 같이 있는 예전 형식을, 카드 세트 뒤에 마무리 퀴즈 세트가 따로 있는 형식으로 바꾼다.
+    바뀐 게 없으면 같은 목록을 그대로 돌려준다."""
+    if not any(s.get("cards") and s.get("questions") for s in sets):
+        return sets
+    out = []
+    for s in sets:
+        if s.get("cards") and s.get("questions"):
+            out += [{**s, "questions": []}, quiz_set(s["questions"])]
+        else:
+            out.append(s)
+    return out
 
 
 def shuffle_choices(sets):
