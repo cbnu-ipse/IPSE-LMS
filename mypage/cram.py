@@ -1,6 +1,6 @@
 """
 '시험 5분 전 속성 노트': 사용자가 고른 자료(하나 또는 여러 개)를 AI가 시험 직전에 훑을 한 장짜리 노트로 줄이고,
-타이핑한 A4 문서 모양의 그림(PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
+모눈 공책에 손글씨로 쓴 모양의 A4 그림(PNG, 넘치면 여러 장)으로 그려 개인 탭에 새 자료(PersonalDocument.document_type == NOTE)로 저장한다.
 
 - 읽는 내용은 자료의 요약(없으면 본문 앞부분). 자료마다 같은 몫을 나눠 읽고, 전체는 SOURCE_CHARS 안으로 줄인다.
 - 사용량은 AI를 부른 토큰으로 세어 이번 주 한도(core/usage.py)에 더해진다. 시작 전에는 한도가 남았는지만 확인한다.
@@ -78,14 +78,16 @@ def _cell(text):
     return _clean(text).replace("|", "/")[:CELL_CHARS]
 
 
-def _normalize_points(raw):
-    """points → (문장들, 문장마다의 세부 항목들). 항목은 문자열이거나 {"text", "sub": [...]}."""
+def _normalize_points(raw, raw_subs=None):
+    """points → (문장들, 문장마다의 세부 항목들). 항목은 문자열이거나 {"text", "sub": [...]}.
+    이미 다듬은 노트를 다시 다듬을 수 있도록 문자열 목록에 나란한 subs가 있으면 그것을 세부 항목으로 쓴다."""
     points, subs = [], []
-    for item in (raw or [])[:MAX_POINTS]:
+    raw_subs = raw_subs if isinstance(raw_subs, list) else []
+    for n, item in enumerate((raw or [])[:MAX_POINTS]):
         if isinstance(item, dict):
             text, sub = _clean(item.get("text")), item.get("sub")
         else:
-            text, sub = _clean(item), None
+            text, sub = _clean(item), (raw_subs[n] if n < len(raw_subs) else None)
         if not text:
             continue
         points.append(text)
@@ -105,7 +107,7 @@ def _normalize_section(raw):
         if len(columns) >= 2 and all(columns[1:]) and rows:       # 맨 왼쪽 위 칸은 비워도 된다
             return {"heading": heading, "kind": "table", "columns": columns, "rows": rows, "points": [], "subs": []}
         kind = "list"                                    # 표로 쓸 수 없는 답이면 points가 있을 때 목록으로 읽는다
-    points, subs = _normalize_points(raw.get("points"))
+    points, subs = _normalize_points(raw.get("points"), raw.get("subs"))
     if not points:
         return None
     return {"heading": heading, "kind": kind, "points": points, "subs": subs}
@@ -244,6 +246,8 @@ def note_markdown(note):
     lines = [f"# {note['title']}", ""]
     for s in note["sections"]:
         lines.append(f"## {s['heading']}")
+        if s.get("kind") == "tree":
+            lines.append(TREE_MARK)
         if s.get("kind") == "table":
             lines.append("| " + " | ".join(s["columns"]) + " |")
             lines.append("|" + "---|" * len(s["columns"]))
@@ -259,7 +263,8 @@ def note_markdown(note):
     return "\n".join(lines).strip()
 
 
-NOTE_FILE = "cram-note-a4.png"          # 새 디자인(타이핑한 A4 문서)으로 그린 노트의 파일 이름. 이 이름이 아니면 옛 손글씨 노트다
+NOTE_FILE = "cram-note-hand.png"        # 지금 디자인(손글씨 노트)으로 그린 노트의 파일 이름. 이 이름이 아니면 옛 디자인이라 열 때 다시 그린다
+TREE_MARK = "<!--tree-->"               # 저장 글에서 가지치기 섹션을 알아보는 표시 (글 화면에서는 걷어 낸다)
 MEMO_HEADING = "마지막 체크!"
 
 
@@ -285,6 +290,8 @@ def parse_note_markdown(markdown):
                 note["sections"].append(current)
         elif current is None or not line:
             continue
+        elif line == TREE_MARK and current != "memo":
+            current["kind"] = "tree"
         elif current == "memo":
             if line.startswith("- "):
                 note["memo"].append(line[2:].strip())
@@ -311,7 +318,9 @@ def parse_note_markdown(markdown):
 
 def note_text_markdown(document):
     """노트 화면의 '글로 보기'에 보여 줄 글: 저장된 노트 마크다운의 수식을 LaTeX로 정리한다 (간이 표기로 쓴 옛 노트도 분수·행렬이 보이게)."""
-    return mathbox.latexify_markdown(document.summary or "") if document.summary_status == ProcessingStatus.DONE else ""
+    if document.summary_status != ProcessingStatus.DONE:
+        return ""
+    return mathbox.latexify_markdown((document.summary or "").replace(TREE_MARK + "\n", ""))
 
 
 def note_group(document):

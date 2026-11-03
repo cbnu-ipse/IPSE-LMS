@@ -1,7 +1,7 @@
 """
-'시험 5분 전 속성 노트'를 타이핑한 A4 문서 모양의 PNG로 그린다 (Pillow만 사용, 새 패키지 없음).
+'시험 5분 전 속성 노트'를 A4 PNG로 그린다 (Pillow만 사용, 새 패키지 없음). 스타일 두 가지: "hand"(기본, 모눈 공책에 손글씨·색 펜·형광펜) / "typed"(타이핑한 흰 A4 문서).
 
-글꼴은 static/fonts/Pretendard-Regular.otf · Pretendard-Bold.otf (SIL OFL, 라이선스 파일 같은 폴더). 한글뿐 아니라 그리스 문자·화살표·수학
+글꼴은 static/fonts/ 의 Pretendard(타이핑 스타일·대신 글꼴), 나눔손글씨 펜(NanumPenScript, 손글씨 본문), Single Day(손글씨 제목·강조) (모두 SIL OFL, 라이선스 파일 같은 폴더). 한글뿐 아니라 그리스 문자·화살표·수학
 기호·첨자까지 들어 있어 글자를 바꿔 쓰지 않는다. $수식$은 mathbox가 분수·행렬·제곱근·합 기호 등을 실제 모양으로 조판해 본문 줄에 끼워 넣고
 (to_rich), 해석하지 못한 수식만 글자(to_markup)로 대신 쓴다. 제목·소제목은 글자로만 쓴다.
 모양: 굵은 제목(형광펜 띠) · '한눈에 보기' 차례 · 번호 칩이 달린 소제목 · 섹션 형식(글머리 목록 / 비교표 / 가지치기 / 번호 순서, 세부 항목) ·
@@ -15,6 +15,7 @@
 import io
 import logging
 import re
+import threading
 import unicodedata
 from datetime import date
 
@@ -24,6 +25,7 @@ from . import mathbox
 
 logger = logging.getLogger(__name__)
 
+from . import notefont
 from .notefont import BLACKBOARD as _BLACKBOARD, GREEK as _GREEK, LATEX_WORDS as _LATEX_WORDS, SUB as _SUB, SUP as _SUP, can_draw, draw_text, font, has_glyph, text_length  # noqa: F401
 
 WIDTH = 1240
@@ -48,6 +50,32 @@ TABLE_HEAD, TABLE_FIRST, TABLE_LINE = (255, 237, 213), (255, 250, 245), (214, 21
 
 TITLE_SIZE, HEAD_SIZE, BODY_SIZE, SMALL_SIZE = 60, 36, 29, 22
 LINE_RATIO = 1.52                 # 본문 줄 간격 (글씨 크기 대비)
+PAPER, GRID = (255, 255, 255), None             # 종이 색, 모눈 색 (None이면 모눈 없음)
+TITLE_BAND, HEAD_BAND = MARK, None              # 제목 형광 띠 색, 소제목 형광 띠 색 (None이면 번호 칩)
+MEMO_TITLE = (194, 65, 12)
+HAND = False                                    # 손글씨 스타일을 그리는 중인가
+
+# 스타일: 지금 그리는 스타일의 값으로 위 상수들을 바꿔 쓴다 (render_notes가 잠근 채 바꿨다가 되돌린다)
+THEMES = {
+    "typed": {k: v for k, v in dict(
+        MARGIN_X=MARGIN_X, TOP=TOP, BOTTOM=BOTTOM, INK=INK, TEXT=TEXT, ACCENT=ACCENT, RED=RED, MARK=MARK, CYAN=CYAN, GRAY=GRAY, RULE=RULE,
+        BOX_BG=BOX_BG, BOX_LINE=BOX_LINE, OUTLINE_BG=OUTLINE_BG, TABLE_HEAD=TABLE_HEAD, TABLE_FIRST=TABLE_FIRST, TABLE_LINE=TABLE_LINE,
+        TITLE_SIZE=TITLE_SIZE, HEAD_SIZE=HEAD_SIZE, BODY_SIZE=BODY_SIZE, SMALL_SIZE=SMALL_SIZE, LINE_RATIO=LINE_RATIO, PAPER=PAPER, GRID=GRID,
+        TITLE_BAND=TITLE_BAND, HEAD_BAND=HEAD_BAND, MEMO_TITLE=MEMO_TITLE, MAX_SCALE=MAX_SCALE, HAND=False).items()},
+    "hand": dict(
+        MARGIN_X=70, TOP=84, BOTTOM=96, INK=(27, 38, 110), TEXT=(36, 38, 54), ACCENT=(59, 89, 190), RED=(190, 30, 45), MARK=(255, 238, 120),
+        CYAN=(176, 226, 248), GRAY=(118, 124, 140), RULE=(214, 220, 236), BOX_BG=(255, 250, 222), BOX_LINE=(224, 170, 20),
+        OUTLINE_BG=(244, 247, 255), TABLE_HEAD=(219, 234, 254), TABLE_FIRST=(240, 246, 255), TABLE_LINE=(120, 140, 190),
+        TITLE_SIZE=70, HEAD_SIZE=42, BODY_SIZE=32, SMALL_SIZE=24, LINE_RATIO=1.3, PAPER=(253, 253, 249), GRID=(207, 218, 236),
+        TITLE_BAND=(206, 224, 255), HEAD_BAND=(255, 233, 150), MEMO_TITLE=(160, 100, 0), MAX_SCALE=1.3, HAND=True),
+}
+DEFAULT_STYLE = "hand"
+_RENDER_LOCK = threading.Lock()
+
+
+def _apply(style):
+    globals().update(THEMES[style])
+    notefont.set_theme("hand" if style == "hand" else "typed")
 
 _BLACKBOARD = {"R": "ℝ", "N": "ℕ", "Z": "ℤ", "Q": "ℚ", "C": "ℂ"}      # \mathbb{R} 등: 글꼴에 없으면 그냥 문자로
 
@@ -336,7 +364,8 @@ class _Layout:
             out.append((line, int(up), int(down)))
         return out, sum(self.lh + up + down for _line, up, down in out)
 
-    def text_block(self, markup, size, x0, color=TEXT, indent=0, bullet=None, x1=None):
+    def text_block(self, markup, size, x0, color=None, indent=0, bullet=None, x1=None):
+        color = color or TEXT
         lines, height = self.block(markup, size, x0, indent, x1)
         self.need(height)
         ascent = font(size).getmetrics()[0]
@@ -573,9 +602,18 @@ def _layout(note, k, today):
     return lay
 
 
-def render_notes(note, today=None):
+def render_notes(note, today=None, style=None):
     """노트 dict → A4(1240x1754) PNG 바이트 목록. 같은 쪽 수로 끝나는 가장 큰 글씨(MIN_SCALE~MAX_SCALE)를 쓰고,
-    그래도 넘치면 내용을 버리지 않고 다음 쪽에 이어 쓴다."""
+    그래도 넘치면 내용을 버리지 않고 다음 쪽에 이어 쓴다. style: "hand"(손글씨 노트, 기본) 또는 "typed"(타이핑한 A4 문서)."""
+    with _RENDER_LOCK:                                   # 스타일마다 상수를 바꿔 쓰므로 한 번에 하나씩 그린다
+        _apply(style or DEFAULT_STYLE)
+        try:
+            return _render(note, today)
+        finally:
+            _apply("typed")
+
+
+def _render(note, today):
     fewest = len(_layout(note, MIN_SCALE, today).pages)
     lay = None
     for cand in range(int(MAX_SCALE * 100), int(MIN_SCALE * 100) - 1, -2):
@@ -617,8 +655,14 @@ def _draw_word(d, x, y, size, text, style, color, gap):
 
 
 def _paint(ops, k):
-    canvas = Image.new("RGB", (WIDTH, HEIGHT), (255, 255, 255))
+    canvas = Image.new("RGB", (WIDTH, HEIGHT), PAPER)
     d = ImageDraw.Draw(canvas)
+    if GRID:                                                   # 모눈 공책: 칸 크기는 본문 줄 간격과 같다
+        cell = max(int(BODY_SIZE * LINE_RATIO * k), 20)
+        for x in range(MARGIN_X % cell, WIDTH, cell):
+            d.line([(x, 0), (x, HEIGHT)], fill=GRID, width=1)
+        for y in range(int(TOP * k) % cell, HEIGHT, cell):
+            d.line([(0, y), (WIDTH, y)], fill=GRID, width=1)
     # 형광펜 띠가 글자 뒤로 가도록 띠가 있는 단어를 먼저 그린 뒤 나머지를 그린다
     ordered = sorted(ops, key=lambda op: 0 if op[0] in ("box", "title", "rect", "vline", "hline") else 1)
     for op in ordered:
@@ -652,7 +696,7 @@ def _paint(ops, k):
                 continue
             x_end = max(x + _style_len(t, size, frozenset({"b"})) for t, _, x, _ in line)
             base = _baseline(y, size)
-            d.rounded_rectangle([MARGIN_X - 6, base - size * 0.34, x_end + 8, base + size * 0.2], radius=8, fill=MARK)       # 제목 형광펜 띠
+            d.rounded_rectangle([MARGIN_X - 6, base - size * 0.34, x_end + 8, base + size * 0.2], radius=8, fill=TITLE_BAND)       # 제목 형광펜 띠
             for text, style, x, _ in line:
                 draw_text(d, x, base, text, size, INK, bold=True)
         elif kind == "brand":
@@ -666,14 +710,25 @@ def _paint(ops, k):
             d.line([(MARGIN_X, y), (WIDTH - MARGIN_X, y)], fill=color, width=width)
         elif kind == "heading":
             _, x, y, size, markup, number = op
-            chip = int(size * 1.12)
-            d.rounded_rectangle([x, y, x + chip, y + chip], radius=int(chip * 0.26), fill=ACCENT)
-            d.text((x + chip / 2, y + chip / 2), str(number), font=font(int(size * 0.78), bold=True), fill=(255, 255, 255), anchor="mm")
-            cx = x + chip + int(size * 0.4)
-            for line in _wrap([(t, st | {"b"}) for t, st in parse_segments(markup)], size, cx, WIDTH - MARGIN_X)[:1]:
-                for text, style, wx, gap in line:
-                    draw_text(d, wx, y + chip / 2 + size * 0.3, text, _style_size(size, style), INK, bold=True)
-            d.line([(x, y + chip + int(size * 0.28)), (WIDTH - MARGIN_X, y + chip + int(size * 0.28))], fill=RULE, width=2)
+            if HEAD_BAND:                                      # 손글씨: 번호 + 소제목에 형광펜 띠
+                base = y + size * 0.95
+                width = text_length(f"{number}. ", size, bold=True)
+                line = _wrap([(t, st | {"b"}) for t, st in parse_segments(markup)], size, x + width, WIDTH - MARGIN_X)[:1]
+                x_end = max([wx + _style_len(t, size, frozenset({"b"})) for t, _st, wx, _g in line[0]] or [x + width]) if line else x + width
+                d.rounded_rectangle([x - 6, base - size * 0.5, x_end + 10, base + size * 0.14], radius=int(size * 0.14), fill=HEAD_BAND)
+                draw_text(d, x, base, f"{number}.", size, ACCENT, bold=True)
+                for line_ in line:
+                    for text, style, wx, gap in line_:
+                        draw_text(d, wx, base, text, _style_size(size, style), INK, bold=True)
+            else:
+                chip = int(size * 1.12)
+                d.rounded_rectangle([x, y, x + chip, y + chip], radius=int(chip * 0.26), fill=ACCENT)
+                d.text((x + chip / 2, y + chip / 2), str(number), font=font(int(size * 0.78), bold=True), fill=(255, 255, 255), anchor="mm")
+                cx = x + chip + int(size * 0.4)
+                for line in _wrap([(t, st | {"b"}) for t, st in parse_segments(markup)], size, cx, WIDTH - MARGIN_X)[:1]:
+                    for text, style, wx, gap in line:
+                        draw_text(d, wx, y + chip / 2 + size * 0.3, text, _style_size(size, style), INK, bold=True)
+                d.line([(x, y + chip + int(size * 0.28)), (WIDTH - MARGIN_X, y + chip + int(size * 0.28))], fill=RULE, width=2)
         elif kind == "word":
             _draw_word(d, *op[1:])
         elif kind == "math":
@@ -690,23 +745,27 @@ def _paint(ops, k):
             cy = _baseline(y, size) - size * 0.3
             if isinstance(shape, tuple):                            # 순서: 번호가 든 주황 동그라미
                 r = size * 0.55
-                d.ellipse([x, cy - r, x + 2 * r, cy + r], fill=ACCENT)
-                d.text((x + r, cy), str(shape[1]), font=font(int(size * 0.7), bold=True), fill=(255, 255, 255), anchor="mm")
+                if HAND:                                            # 손글씨: 펜으로 동그라미 친 번호
+                    d.ellipse([x, cy - r, x + 2 * r, cy + r], outline=ACCENT, width=3)
+                    d.text((x + r, cy), str(shape[1]), font=font(int(size * 0.8), bold=True), fill=ACCENT, anchor="mm")
+                else:
+                    d.ellipse([x, cy - r, x + 2 * r, cy + r], fill=ACCENT)
+                    d.text((x + r, cy), str(shape[1]), font=font(int(size * 0.7), bold=True), fill=(255, 255, 255), anchor="mm")
             elif shape == "dash":
                 d.line([(x + 4, cy), (x + 4 + size * 0.34, cy)], fill=ACCENT, width=max(int(size * 0.09), 2))
             elif shape == "check":
-                d.text((x, cy), "✓", font=font(int(size * 1.02), bold=True), fill=RED, anchor="lm")
+                d.text((x, cy), "✓", font=notefont.base_font(int(size * 1.02), True), fill=RED, anchor="lm")
             else:
                 r = max(size * 0.1, 3)
                 d.ellipse([x + 4, cy - r, x + 4 + 2 * r, cy + r], fill=ACCENT)
         elif kind == "memo_title":
             _, x, y, size, text = op
-            d.text((x, y + size * 0.55), text, font=font(size, bold=True), fill=(194, 65, 12), anchor="lm")
+            d.text((x, y + size * 0.55), text, font=font(size, bold=True), fill=MEMO_TITLE, anchor="lm")
         elif kind == "footer":
             _, n, total, size = op
             y = HEIGHT - int(BOTTOM * k) + int(34 * k)
             d.line([(MARGIN_X, y - 14), (WIDTH - MARGIN_X, y - 14)], fill=RULE, width=2)
-            d.text((MARGIN_X, y), "IPSE LMS · 속성 노트", font=font(size), fill=GRAY, anchor="lm")
+            draw_text(d, MARGIN_X, y + size * 0.35, "IPSE LMS · 속성 노트", size, GRAY)
             if total > 1:
                 d.text((WIDTH - MARGIN_X, y), f"{n} / {total}", font=font(size, bold=True), fill=GRAY, anchor="rm")
 

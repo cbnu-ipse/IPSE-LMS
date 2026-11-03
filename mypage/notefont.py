@@ -7,6 +7,9 @@ from PIL import ImageFont
 FONT_DIR = os.path.join(str(settings.BASE_DIR), "static", "fonts")
 FONT_REGULAR = os.path.join(FONT_DIR, "Pretendard-Regular.otf")
 FONT_BOLD = os.path.join(FONT_DIR, "Pretendard-Bold.otf")
+FONT_HAND = os.path.join(FONT_DIR, "NanumPenScript-Regular.ttf")       # 손글씨 스타일의 본문 (얇고 촘촘한 펜 글씨)
+FONT_HAND_BOLD = os.path.join(FONT_DIR, "SingleDay-Regular.ttf")       # 손글씨 스타일의 제목·강조 (굵은 마커 글씨)
+HAND_SCALE = {False: 1.3, True: 1.04}                                    # 손글씨는 같은 크기 숫자로도 작아 보여 키워서 쓴다
 FONT_MATH = os.path.join(FONT_DIR, "NotoSansMath-Regular.ttf")      # 한글 글꼴에 없는 수학 기호와 수학용 기울임꼴(𝑥 𝛼 …)
 
 SUB = dict(zip("₀₁₂₃₄₅₆₇₈₉", "0123456789"))
@@ -45,12 +48,28 @@ BLACKBOARD = {"R": "ℝ", "N": "ℕ", "Z": "ℤ", "Q": "ℚ", "C": "ℂ"}      #
 _font_cache = {}
 _glyph_cache = {}
 _math_glyph_cache = {}
+_theme = "typed"                         # 지금 그리는 스타일: typed(타이핑한 A4) / hand(손글씨 노트). notepage가 그리는 동안만 바꾼다
+
+
+def set_theme(name):
+    global _theme
+    _theme = name
+
+
+def base_font(size, bold=False):
+    """Pretendard (손글씨 글꼴에 없는 글자의 대신 글꼴이자 타이핑 스타일의 본 글꼴)."""
+    key = (size, bold, "base")
+    if key not in _font_cache:
+        _font_cache[key] = ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, size)
+    return _font_cache[key]
 
 
 def font(size, bold=False):
-    key = (size, bold)
+    if _theme != "hand":
+        return base_font(size, bold)
+    key = (size, bold, "hand")
     if key not in _font_cache:
-        _font_cache[key] = ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, size)
+        _font_cache[key] = ImageFont.truetype(FONT_HAND_BOLD if bold else FONT_HAND, max(int(size * HAND_SCALE[bold]), 8))
     return _font_cache[key]
 
 
@@ -66,11 +85,19 @@ def _has(fnt, ch):
     return bytes(fnt.getmask(ch)) != bytes(fnt.getmask("\uFFFF"))
 
 
-def has_glyph(ch):
-    """본 글꼴(Pretendard)에 있는 글자인가."""
-    if ch not in _glyph_cache:
-        _glyph_cache[ch] = ch.isspace() or _has(font(29), ch)
-    return _glyph_cache[ch]
+def has_glyph(ch, bold=False):
+    """지금 스타일의 본 글꼴에 있는 글자인가."""
+    key = (ch, _theme, bold)
+    if key not in _glyph_cache:
+        _glyph_cache[key] = ch.isspace() or _has(font(29, bold), ch)
+    return _glyph_cache[key]
+
+
+def has_base_glyph(ch):
+    key = (ch, "base")
+    if key not in _glyph_cache:
+        _glyph_cache[key] = ch.isspace() or _has(base_font(29), ch)
+    return _glyph_cache[key]
 
 
 def has_math_glyph(ch):
@@ -80,8 +107,8 @@ def has_math_glyph(ch):
 
 
 def can_draw(ch):
-    """어느 글꼴로든 그릴 수 있는 글자인가 (본 글꼴에 없으면 수학 글꼴로)."""
-    return has_glyph(ch) or has_math_glyph(ch)
+    """어느 글꼴로든 그릴 수 있는 글자인가 (본 글꼴 → Pretendard → 수학 글꼴 순)."""
+    return has_glyph(ch) or has_base_glyph(ch) or has_math_glyph(ch)
 
 
 def italic_char(ch):
@@ -98,27 +125,46 @@ def italic_char(ch):
     return ch
 
 
-def runs(text, force_math=False):
-    """글자를 (조각, 수학 글꼴 여부) 묶음으로 나눈다: 본 글꼴에 있으면 본 글꼴, 없으면 수학 글꼴."""
+_BASE_ONLY = "·•…—–"                    # 손글씨 글꼴에서는 비어 있거나 거의 안 보이는 부호는 Pretendard로 쓴다
+
+
+def _face(ch, force_math, bold):
+    if force_math:
+        return "math"
+    if ch in _BASE_ONLY and _theme == "hand" and has_base_glyph(ch):
+        return "base"
+    if has_glyph(ch, bold):
+        return "main"
+    if has_base_glyph(ch):
+        return "base"
+    return "math" if has_math_glyph(ch) else "main"
+
+
+def runs(text, force_math=False, bold=False):
+    """글자를 (조각, 글꼴 종류) 묶음으로 나눈다: 본 글꼴에 있으면 본 글꼴, 없으면 Pretendard, 그것도 없으면 수학 글꼴."""
     out = []
     for ch in text:
-        use_math = force_math or (not has_glyph(ch) and has_math_glyph(ch))
-        if out and out[-1][1] == use_math:
-            out[-1] = (out[-1][0] + ch, use_math)
+        face = _face(ch, force_math, bold)
+        if out and out[-1][1] == face:
+            out[-1] = (out[-1][0] + ch, face)
         else:
-            out.append((ch, use_math))
+            out.append((ch, face))
     return out
 
 
+def _face_font(face, size, bold):
+    return math_font(size) if face == "math" else base_font(size, bold) if face == "base" else font(size, bold)
+
+
 def text_length(text, size, bold=False, force_math=False):
-    return sum((math_font(size) if m else font(size, bold)).getlength(t) for t, m in runs(text, force_math))
+    return sum(_face_font(face, size, bold).getlength(t) for t, face in runs(text, force_math, bold))
 
 
 def draw_text(d, x, base, text, size, fill, bold=False, force_math=False):
     """기준선(base)에 글을 그린다 (글자마다 알맞은 글꼴로). 그린 글의 너비를 돌려준다."""
     start = x
-    for t, m in runs(text, force_math):
-        f = math_font(size) if m else font(size, bold)
+    for t, face in runs(text, force_math, bold):
+        f = _face_font(face, size, bold)
         d.text((x, base), t, font=f, fill=fill, anchor="ls")
         x += f.getlength(t)
     return x - start
