@@ -1,4 +1,4 @@
-// 속성 노트·모의고사를 자유게시판에 올리고, 게시글 링크를 자동으로 복사한 뒤 짧게 알려 준다.
+// 요약 노트·모의고사를 자유게시판에 올리고, 게시글 링크를 자동으로 복사한 뒤 짧게 알려 준다.
 // 버튼: <button class="js-share-board" data-url="공유 POST 주소" data-csrf="토큰">
 (function () {
     'use strict';

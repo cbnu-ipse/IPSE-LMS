@@ -433,8 +433,9 @@ def document_preview(request, pk):
     if document.document_type == PersonalDocument.DocumentType.NOTE:
         from . import cram
 
-        cram.upgrade_note_if_old(document)          # 옛 손글씨 노트는 열어 볼 때 새 디자인으로 바꾼다
-        return render(request, "mypage/note.html", {"document": document, "note_text": cram.note_text_markdown(document)})
+        document = cram.upgrade_note_if_old(document)          # 옛 형식(디자인·쪽마다 따로 만든 자료)의 노트는 열어 볼 때 새 형식으로 바꾼다
+        pages = [{"url": url, "number": n} for n, url in enumerate(document.page_urls(), 1)] if document.summary_status == ProcessingStatus.DONE else []
+        return render(request, "mypage/note.html", {"document": document, "note_text": cram.note_text_markdown(document), "pages": pages})
     if document.document_type == PersonalDocument.DocumentType.MOCK:
         exam = MockExam.objects.filter(document=document).first()
         if exam and document.summary_status == ProcessingStatus.DONE:
@@ -704,7 +705,7 @@ def document_status(request, pk):
     return JsonResponse(_document_state(document))
 
 
-# ── 시험 5분 전 속성 노트 ────────────────────────────────────────────────────
+# ── 요약 노트 ────────────────────────────────────────────────────
 
 def _cram_note_bg(note_id, source_ids, focus=None):
     from .cram import build_note_document
@@ -719,7 +720,7 @@ def _cram_note_bg(note_id, source_ids, focus=None):
 @login_required
 @require_POST
 def cram_note_create(request):
-    """고른 자료로 시험 5분 전 속성 노트를 만든다. 개인 탭에 '생성 중' 노트가 바로 생기고, 그림은 백그라운드에서 그린다."""
+    """고른 자료로 요약 노트를 만든다. 개인 탭에 '생성 중' 노트가 바로 생기고, 그림은 백그라운드에서 그린다."""
     from .cram import note_cost, note_title, usable
 
     back = redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
@@ -762,7 +763,7 @@ def cram_note_create(request):
         is_course_material=False)
     extra = {"kwargs": {"focus": focus_req}} if focus_req else {}
     threading.Thread(target=_cram_note_bg, args=(note.pk, [d.pk for d in sources]), daemon=True, **extra).start()
-    messages.success(request, "속성 노트를 손글씨로 쓰고 있습니다. 잠시 후 개인 탭에 나타납니다."
+    messages.success(request, "요약 노트를 만들고 있습니다. 잠시 후 개인 탭에 나타납니다."
                               + (f" (추가 요청 반영: {focus_req['text']})" if focus_req else ""))
     return back
 
@@ -783,7 +784,7 @@ def _mock_exam_bg(document_id, source_ids, focus=None):
 @require_POST
 def mock_exam_create(request):
     """고른 수업 자료들로 모의고사를 만든다 (교수님 족보 스타일 적용). 개인 탭에 '생성 중' 모의고사가 바로 생기고,
-    출제는 백그라운드에서 한다 (속성 노트와 같은 방식)."""
+    출제는 백그라운드에서 한다 (요약 노트와 같은 방식)."""
     from .cram import MAX_SOURCES
     from .exam import usable_for_mock
 

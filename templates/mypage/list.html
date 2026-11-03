@@ -109,9 +109,9 @@
             {% if can_review %}<a href="{% url 'mypage:review_list' %}" class="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-1.5 mb-3 hover:bg-violet-100"><i class="fa-solid fa-clipboard-check"></i>족보 검토{% if review_pending %} ({{ review_pending }}){% endif %}</a>{% endif %}
             {% if documents %}
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>속성 노트</b>나 <b>모의고사</b>를 만들 수 있어요.</p>
+                <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>요약 노트</b>나 <b>모의고사</b>를 만들 수 있어요.</p>
                 <div id="select-toolbar" class="flex flex-wrap gap-2">
-                    <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">속성 노트 만들기</button>
+                    <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">요약 노트 만들기</button>
                     <a href="{% url 'mypage:wrong_notes' %}" class="text-xs font-bold px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"><i class="fa-solid fa-book-bookmark mr-1"></i>오답노트</a>
                     <button type="button" id="mock-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition">모의고사</button>
                 </div>
@@ -204,7 +204,7 @@
     </form>
 </div>
 <script>
-// 자료를 고르는 모드(속성 노트 / 모의 출제). 선택한 자료의 id를 숨은 입력으로 보낸다. 비용은 고른 자료 수와 무관한 정액이다.
+// 자료를 고르는 모드(요약 노트 / 모의 출제). 선택한 자료의 id를 숨은 입력으로 보낸다. 비용은 고른 자료 수와 무관한 정액이다.
 (function () {
     const noteBtn = document.getElementById('cram-toggle'), mockBtn = document.getElementById('mock-toggle'), bar = document.getElementById('cram-bar');
     if (!noteBtn || !bar) return;
@@ -212,7 +212,7 @@
     const modeEl = document.getElementById('cram-mode');
     const MAX = {{ cram_max }};
     const MODES = {
-        note: { label: '속성 노트', action: "{% url 'mypage:cram_note_create' %}", submit: '노트 만들기{% with l=ai_cost.cram_note|cost_label %}{% if l %} · {{ l }}{% endif %}{% endwith %}', only: null, empty: '요약이 끝난 자료가 있어야 노트를 만들 수 있어요.' },
+        note: { label: '요약 노트', action: "{% url 'mypage:cram_note_create' %}", submit: '노트 만들기{% with l=ai_cost.cram_note|cost_label %}{% if l %} · {{ l }}{% endif %}{% endwith %}', only: null, empty: '요약이 끝난 자료가 있어야 노트를 만들 수 있어요.' },
         mock: { label: '모의고사', action: "{% url 'mypage:mock_exam_create' %}", submit: '모의고사 만들기{% with l=ai_cost.mock_exam|cost_label %}{% if l %} · {{ l }}{% endif %}{% endwith %}', only: 'lecture', empty: '요약이 끝난 수업 자료가 있어야 모의고사를 만들 수 있어요.' },
     };
     const cards = Array.from(document.querySelectorAll('[data-cram-id]'));

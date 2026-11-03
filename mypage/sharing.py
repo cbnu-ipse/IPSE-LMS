@@ -1,5 +1,5 @@
 """
-만든 속성 노트·모의고사를 자유게시판에 올리고, 다른 사람이 내 자료로 불러오게 한다. AI를 부르지 않는다 (저장된 이미지·문제를 복사할 뿐이다).
+만든 요약 노트·모의고사를 자유게시판에 올리고, 다른 사람이 내 자료로 불러오게 한다. AI를 부르지 않는다 (저장된 이미지·문제를 복사할 뿐이다).
 
 - 올리기: 게시글(자유게시판)을 만들고 SharedMaterial에 스냅샷을 둔다. 노트는 손글씨 이미지를 게시글 첨부로 올려 글에서 바로 보인다.
   모의고사는 문제·정답이 게시글 글에는 나오지 않는다 (불러온 뒤에 풀 수 있다). 같은 자료는 한 번만 올라가고, 다시 올리면 기존 글을 돌려준다.
@@ -17,7 +17,7 @@ from community.models import CommunityPost, CommunityPostAttachment
 
 from .models import MockExam, PersonalDocument, ProcessingStatus, SharedImport, SharedMaterial
 
-PAGE_LABEL = re.compile(r"\s*\(\d+/\d+\)\s*$")
+PAGE_LABEL = re.compile(r"\s*\(\d+/\d+\)\s*$")      # 예전에 쪽마다 따로 만든 노트의 '이름 (1/2)' 꼬리표
 TYPE_NAMES = {"ox": "OX", "mc": "객관식", "short": "단답", "essay": "서술형"}
 
 
@@ -38,33 +38,40 @@ def existing(author, source_key):
 # ── 올리기 ──────────────────────────────────────────────────────────────────
 
 def note_pages(note):
-    """이 노트가 속한 장들 (한 장에 다 안 들어가 둘째 장부터 따로 만들어진 같은 노트의 자료까지, 순서대로)."""
-    pages = PersonalDocument.objects.filter(
-        user=note.user, document_type=PersonalDocument.DocumentType.NOTE, is_deleted=False,
-        summary_status=ProcessingStatus.DONE, summary=note.summary).exclude(file="").order_by("id")
-    return list(pages) or [note]
+    """이 노트의 모든 쪽 이미지의 저장소 파일 이름 (첫 쪽부터). 한 자료가 모든 쪽을 담지만, 예전에 쪽마다 따로 만든 자료도 함께 모은다."""
+    from . import cram
+
+    return [name for doc in cram.note_group(note) if doc.file for name in doc.page_names()]
+
+
+def cram_first_pk(note):
+    from . import cram
+
+    return cram.note_group(note)[0].pk
 
 
 def share_note(user, note):
     """(SharedMaterial, 새로 만들었는지). 노트가 아직 만들어지지 않았으면 ShareError."""
     if (note.user_id != user.pk or note.document_type != PersonalDocument.DocumentType.NOTE or note.is_deleted):
-        raise ShareError("내 속성 노트만 올릴 수 있어요.")
+        raise ShareError("내 요약 노트만 올릴 수 있어요.")
     if note.summary_status != ProcessingStatus.DONE or not note.file:
         raise ShareError("아직 만들어지지 않은 노트예요.")
     pages = note_pages(note)
-    key = f"note:{pages[0].pk}"
+    key = f"note:{cram_first_pk(note)}"
     found = existing(user, key)
     if found:
         return found, False
-    base = PAGE_LABEL.sub("", note.title)
-    content = (f"{base}\n\n시험 5분 전에 훑어볼 수 있는 속성 노트예요 ({len(pages)}장).\n"
+    from . import cram
+
+    base = cram.clean_title(PAGE_LABEL.sub("", note.title))
+    content = (f"{base}\n\n요약 노트예요 ({len(pages)}장).\n"
                + (f"과목: {note.course_name}\n" if note.course_name else "")
                + "\n아래 이미지로 바로 볼 수 있고, '내 자료로 불러오기'를 누르면 내 개인 탭에 복사돼요.")
     with transaction.atomic():
-        post = CommunityPost.objects.create(title=f"[속성 노트] {base}"[:200], content=content, author=user, category="free")
+        post = CommunityPost.objects.create(title=f"[요약 노트] {base}"[:200], content=content, author=user, category="free")
         ids = []
-        for n, page in enumerate(pages, 1):
-            with page.file.open("rb") as fh:
+        for n, name in enumerate(pages, 1):
+            with note.file.storage.open(name, "rb") as fh:
                 data = fh.read()
             att = CommunityPostAttachment(post=post, filename=f"{base[:60]}-{n}.png")
             att.file.save(f"note-{n}.png", ContentFile(data), save=True)
@@ -149,14 +156,16 @@ def _import_note(user, material):
             continue
     if not images:
         raise ShareError("노트 이미지를 찾을 수 없어요. 올린 사람이 지웠을 수 있어요.")
-    total = len(images)
-    first = None
-    for n, data in enumerate(images, 1):
-        label = f" ({n}/{total})" if total > 1 else ""
-        doc = PersonalDocument.objects.create(
-            user=user, title=f"{material.title[:190]}{label}", file="", document_type=PersonalDocument.DocumentType.NOTE,
-            course_name=material.course_name, is_course_material=False, summary=material.payload.get("markdown") or "",
-            summary_status=ProcessingStatus.DONE)
-        doc.file.save("cram-note.png", ContentFile(data), save=True)
-        first = first or doc
-    return first
+    from . import cram
+
+    summary = material.payload.get("markdown") or ""
+    note = cram.parse_note_markdown(summary)
+    if note["sections"]:
+        summary = cram.note_markdown(note)           # 예전 이름('속성 노트')이 든 제목도 새 이름으로
+    doc = PersonalDocument.objects.create(
+        user=user, title=cram.clean_title(material.title)[:200], file="", document_type=PersonalDocument.DocumentType.NOTE,
+        course_name=material.course_name, is_course_material=False, summary=summary,
+        summary_status=ProcessingStatus.DONE)
+    cram.save_pages(doc, images)                     # 여러 쪽이어도 한 자료에 담는다
+    doc.save()
+    return doc
