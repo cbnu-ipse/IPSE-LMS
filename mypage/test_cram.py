@@ -242,6 +242,22 @@ class NoteFontTests(TestCase):
             pages = notepage.render_notes(cram.normalize_note(KINDS_JSON))
         self.assertTrue(all(p.startswith(b"\x89PNG") for p in pages))
 
+    def test_notes_drawn_in_another_font_are_redrawn_once_the_font_file_exists(self):
+        import os
+
+        path = os.path.join(self.notefont.FONT_DIR, "NanumMyeongjo-Regular.ttf")
+        user = User.objects.create_user("fontuser", password="pw")
+        doc = PersonalDocument.objects.create(user=user, title="n", file="x/summary-note_ab12.png", document_type=PersonalDocument.DocumentType.NOTE)
+        with override_settings(NOTE_FONT_PATH="/no/such/LeeSeoyun.ttf"):
+            self.assertTrue(cram.is_current_note(doc))                                # 폰트가 없으면 나눔명조로 그린 노트도 최신
+            self.assertEqual(cram.note_file(), cram.NOTE_FILE)
+        with override_settings(NOTE_FONT_PATH=path):
+            self.assertFalse(cram.is_current_note(doc))                               # 폰트가 생기면 다시 그린다
+            doc.file.name = "x/" + cram.note_file()
+            self.assertTrue(cram.is_current_note(doc))
+        with override_settings(NOTE_FONT_PATH="/no/such/LeeSeoyun.ttf"):
+            self.assertTrue(cram.is_current_note(doc))                                # 이서윤체로 그린 노트를 도로 낮추지 않는다
+
     def test_with_a_font_file_it_is_used_and_missing_syllables_fall_back_to_the_serif(self):
         import os
 
