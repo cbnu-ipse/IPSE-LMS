@@ -15,7 +15,7 @@ from django.core.files.base import ContentFile
 
 from core import ai as core_ai
 
-from . import mathbox, notepage, scope
+from . import mathbox, notefont, notepage, scope
 from .models import PersonalDocument, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -349,8 +349,17 @@ def note_group(document):
     return docs or [document]
 
 
+SEOYUN_NOTE_FILE = "summary-note-seoyun.png"   # 이서윤체로 그린 노트의 파일 이름
+
+
+def note_file():
+    """지금 환경에서 새로 그릴 노트의 파일 이름 (이서윤체를 쓸 수 있으면 그 표시가 붙는다)."""
+    return SEOYUN_NOTE_FILE if notefont.hand_family() == "seoyun" else NOTE_FILE
+
+
 def is_current_note(document):
-    return NOTE_FILE.rsplit(".", 1)[0] in (document.file.name or "")
+    """이 환경에서 지금 그렸을 모습과 같은 형식인가. 이서윤체를 쓸 수 있는 환경이면, 다른 글꼴로 그려 둔 노트는 옛 형식이다."""
+    return note_file().rsplit(".", 1)[0] in (document.file.name or "")
 
 
 def needs_upgrade(group):
@@ -364,10 +373,10 @@ def save_pages(doc, pngs):
     """그린 쪽 이미지들을 한 자료에 담는다: 첫 쪽은 file, 나머지는 extra_pages (doc.save()는 부른 쪽이 한다). 이전 이미지 파일 이름들을 돌려준다."""
     storage = doc.file.storage
     previous = doc.page_names()
-    doc.file.save(NOTE_FILE, ContentFile(pngs[0]), save=False)
+    doc.file.save(note_file(), ContentFile(pngs[0]), save=False)
     extra = []
     for n, png in enumerate(pngs[1:], 2):
-        name = doc.file.field.generate_filename(doc, f"{NOTE_FILE.rsplit('.', 1)[0]}-p{n}.png")
+        name = doc.file.field.generate_filename(doc, f"{note_file().rsplit('.', 1)[0]}-p{n}.png")
         extra.append(storage.save(name, ContentFile(png)))
     doc.extra_pages = extra
     return previous
