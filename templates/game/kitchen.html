@@ -1,0 +1,528 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 분식 대작전{% endblock %}
+
+{% block content %}
+<style>
+    /* 분식 대작전: 모든 스타일은 kt- 접두사로 한정해 다른 화면에 영향이 없게 한다 */
+    .kt-wrap { max-width: 900px; margin: 0 auto; padding: 18px 14px 40px; }
+    .kt-head h1 { margin: 0; font-size: 26px; font-weight: 900; color: #1e293b; }
+    .kt-head p { margin: 4px 0 14px; font-size: 13px; color: #64748b; }
+    .kt-card { background: #fff; border: 1px solid #e8e1f2; border-radius: 20px; padding: 18px; box-shadow: 0 2px 10px rgba(76, 29, 149, .06); }
+    .kt-btn { border: 0; border-radius: 14px; padding: 12px 18px; font-weight: 800; font-size: 15px; cursor: pointer; color: #fff; background: #ea580c; touch-action: manipulation; }
+    .kt-btn:hover { background: #c2410c; }
+    .kt-btn.sub { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+    .kt-btn.sub:hover { background: #f8fafc; }
+    .kt-menu { display: grid; gap: 12px; }
+    .kt-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .kt-input { flex: 1; min-width: 120px; font: inherit; font-size: 18px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; text-align: center; padding: 11px 12px; border-radius: 14px; border: 2px solid #e2e8f0; }
+    .kt-input:focus { outline: none; border-color: #ea580c; }
+    .kt-how { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.8; color: #475569; }
+    .kt-how b { color: #c2410c; }
+    .kt-code { font-size: 44px; font-weight: 900; letter-spacing: .25em; color: #c2410c; text-align: center; margin: 4px 0; }
+    .kt-note { font-size: 12px; color: #64748b; text-align: center; margin: 8px 0 0; }
+    .kt-players { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 10px 0 14px; }
+    .kt-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 700; font-size: 14px; }
+    .kt-chip.me { background: #fff7ed; border-color: #fdba74; }
+    .kt-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e1; }
+
+    .kt-hud { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .kt-stat { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid #e8e1f2; border-radius: 16px; padding: 8px 14px; font-weight: 900; }
+    .kt-stat .t { font-size: 24px; color: #1e293b; font-variant-numeric: tabular-nums; }
+    .kt-stat .t.low { color: #e11d48; }
+    .kt-stat .s { font-size: 22px; color: #c2410c; font-variant-numeric: tabular-nums; }
+    .kt-stars { font-size: 15px; letter-spacing: 1px; color: #cbd5e1; }
+    .kt-stars .on { color: #f59e0b; }
+    .kt-who { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
+    .kt-who .kt-chip { font-size: 13px; }
+
+    /* ── 가게 장면: 모든 물건이 퍼센트 좌표로 놓여 화면 크기에 맞춰 함께 커지고 작아진다 (--u = 가게 너비의 1%) ── */
+    .kt-scene { --u: 8px; --lab: calc(var(--u) * 2.2); position: relative; width: 100%; aspect-ratio: 100 / 68; border-radius: 22px; overflow: hidden; user-select: none; -webkit-user-select: none;
+        border: 1px solid #fed7aa; box-shadow: 0 6px 18px rgba(124, 45, 18, .12);
+        background:
+            linear-gradient(180deg, rgba(0,0,0,0) 0, rgba(0,0,0,0) 54.4%, rgba(120, 53, 15, .16) 54.4%, rgba(120, 53, 15, 0) 60%),
+            repeating-linear-gradient(90deg, rgba(255,255,255,.18) 0 1px, rgba(0,0,0,0) 1px 9%) 0 55% / 100% 45% no-repeat,
+            linear-gradient(180deg, #fde8c8 0, #fcd9a6 54.4%, #e9c79a 54.4%, #dcb27a 100%); }
+    .kt-deco { position: absolute; pointer-events: none; left: calc(var(--x) * 1%); top: calc(var(--y) / 68 * 100%); width: calc(var(--w) * 1%); height: calc(var(--h) / 68 * 100%); }
+    .kt-counter { background: linear-gradient(180deg, #c98a3b, #a8691f); border-radius: 6px; box-shadow: 0 4px 0 #7c4a12, 0 8px 12px rgba(0,0,0,.18); z-index: 1; }
+    .kt-sign { display: flex; align-items: center; justify-content: center; font-size: var(--lab); font-weight: 900; color: #fff7ed; letter-spacing: .1em; background: #c2410c; border-radius: 0 0 10px 10px; box-shadow: 0 3px 8px rgba(0,0,0,.18); z-index: 0; }
+    .kt-stove { background: linear-gradient(180deg, #475569, #1e293b); border-radius: 14px; box-shadow: 0 5px 0 #0f172a, 0 10px 14px rgba(0,0,0,.25); z-index: 1; }
+    .kt-stove::after { content: ''; position: absolute; left: 6%; right: 6%; bottom: 8%; height: 6%; background: repeating-linear-gradient(90deg, #94a3b8 0 6%, #0000 6% 14%); opacity: .5; border-radius: 4px; }
+
+    .kt-el { position: absolute; z-index: 3; left: calc(var(--x) * 1%); top: calc(var(--y) / 68 * 100%); width: calc(var(--w) * 1%); font-size: calc(var(--u) * var(--f)); line-height: 1; touch-action: manipulation; }
+    .kt-el.sq { aspect-ratio: 1; }
+    .kt-el:not(.sq) { height: calc(var(--h) / 68 * 100%); }
+    .kt-el[data-src] { cursor: grab; touch-action: none; }
+    .kt-el[data-src]:active { cursor: grabbing; }
+    .kt-el .spr { pointer-events: none; }
+    .kt-el .lbl { position: absolute; left: 0; right: 0; bottom: -2%; text-align: center; font-size: var(--lab); font-weight: 900; color: #fff7ed; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
+
+    /* 재료 바구니 · 그릇 더미 · 쓰레기통 */
+    .kt-el.crate .basket, .kt-el.trash .basket { position: absolute; inset: 0; border-radius: 18%; display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(180deg, #e0b274, #b7791f); box-shadow: inset 0 -5px 0 rgba(0,0,0,.18), 0 3px 6px rgba(0,0,0,.25); transition: transform .12s; }
+    .kt-el.crate:hover .basket { transform: translateY(-2%) rotate(-2deg); }
+    .kt-el.trash .basket { background: linear-gradient(180deg, #94a3b8, #64748b); }
+    .kt-el.crate.bowls .basket { background: linear-gradient(180deg, #f8fafc, #cbd5e1); }
+    .kt-el.crate.bowls .lbl, .kt-el.trash .lbl { color: #334155; text-shadow: none; }
+
+    /* 냄비 */
+    .kt-el.pot .ring { position: absolute; inset: -4%; border-radius: 50%; --c: #22c55e; background: conic-gradient(var(--c) calc(var(--p, 0) * 360deg), rgba(255,255,255,0) 0); -webkit-mask: radial-gradient(circle, #0000 61%, #000 63%); mask: radial-gradient(circle, #0000 61%, #000 63%); opacity: 0; transition: opacity .2s; }
+    .kt-el.pot.cooking .ring, .kt-el.pot.cooked .ring { opacity: 1; }
+    .kt-el.pot.cooked .ring { --c: #f59e0b; }
+    .kt-el.pot .body { position: absolute; inset: 6%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #94a3b8, #475569 55%, #1e293b); box-shadow: 0 4px 0 #0f172a, inset 0 0 0 4px rgba(255,255,255,.12); }
+    .kt-el.pot .body::before { content: ''; position: absolute; inset: 14%; border-radius: 50%; background: radial-gradient(circle, #fde68a, #f59e0b 80%); opacity: .9; }
+    .kt-el.pot.empty .body::before { background: radial-gradient(circle, #bfdbfe, #60a5fa 80%); opacity: .55; }
+    .kt-el.pot.burnt .body::before { background: radial-gradient(circle, #57534e, #1c1917 80%); opacity: 1; }
+    .kt-el.pot .spr { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .62em; }
+    .kt-el.pot .flame { position: absolute; left: 0; right: 0; bottom: -14%; text-align: center; font-size: .38em; opacity: 0; }
+    .kt-el.pot.cooking .flame, .kt-el.pot.cooked .flame { opacity: 1; animation: kt-flick .5s ease-in-out infinite alternate; }
+    .kt-el.pot .steam { position: absolute; left: 0; right: 0; top: -22%; text-align: center; font-size: .4em; opacity: 0; }
+    .kt-el.pot.cooking .steam { opacity: .75; animation: kt-steam 1.4s ease-out infinite; }
+    .kt-el.pot.cooked .steam { opacity: 1; animation: kt-steam .9s ease-out infinite; }
+    @keyframes kt-flick { from { transform: scale(.9); } to { transform: scale(1.12); } }
+    @keyframes kt-steam { from { transform: translateY(8%); opacity: .9; } to { transform: translateY(-30%); opacity: 0; } }
+
+    /* 그릇 자리(상 위 받침) */
+    .kt-el.slot .mat { position: absolute; inset: 4%; border-radius: 50%; border: 3px dashed rgba(120, 53, 15, .35); background: rgba(255, 255, 255, .32); }
+    .kt-el.slot.full .mat { border: 3px solid rgba(255,255,255,.9); background: rgba(255,255,255,.55); box-shadow: 0 4px 8px rgba(0,0,0,.18); }
+    .kt-el.slot .spr { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .78em; }
+    .kt-el.slot .tops { position: absolute; left: 0; right: 0; bottom: 8%; text-align: center; font-size: .36em; letter-spacing: 0; text-shadow: 0 1px 0 #fff; }
+
+    /* 손님 */
+    .kt-el.seat { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2%; }
+    .kt-el.seat .bubble { position: relative; background: #fff; border: 2px solid #fb923c; border-radius: calc(var(--u) * 2.2); padding: calc(var(--u) * .7) calc(var(--u) * 1.4); text-align: center; font-size: var(--lab); font-weight: 800; color: #475569; box-shadow: 0 3px 6px rgba(0,0,0,.12); max-width: 100%; }
+    .kt-el.seat .bubble::after { content: ''; position: absolute; left: 50%; bottom: calc(var(--u) * -1.2); width: calc(var(--u) * 1.4); height: calc(var(--u) * 1.4); background: #fff; border-right: 2px solid #fb923c; border-bottom: 2px solid #fb923c; transform: translateX(-50%) rotate(45deg); }
+    .kt-el.seat .items { display: block; font-size: calc(var(--u) * var(--it)); line-height: 1.15; }
+    .kt-el.seat .face { font-size: calc(var(--u) * var(--ff)); line-height: 1; margin-top: calc(var(--u) * 1); transition: transform .2s; }
+    .kt-el.seat .bar { width: 72%; height: calc(var(--u) * 1.2); border-radius: 99px; background: rgba(255,255,255,.7); overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .kt-el.seat .bar i { display: block; height: 100%; background: #22c55e; transition: width .25s linear; }
+    .kt-el.seat .bar.warn i { background: #f59e0b; }
+    .kt-el.seat .bar.bad i { background: #e11d48; }
+    .kt-el.seat.empty .bubble, .kt-el.seat.empty .bar { visibility: hidden; }
+    .kt-el.seat.empty .face { opacity: .28; filter: grayscale(1); }
+    .kt-el.seat.enter .face { animation: kt-hop .4s ease; }
+    @keyframes kt-hop { 30% { transform: translateY(-14%); } 60% { transform: translateY(0) scaleY(.92); } }
+
+    /* 끌어 놓는 동안: 놓을 수 있는 곳은 빛나고, 위에 올리면 더 크게 */
+    .kt-el[data-drop].ok { filter: drop-shadow(0 0 calc(var(--u) * .9) rgba(34, 197, 94, .95)); }
+    .kt-el[data-drop].ok.over { filter: drop-shadow(0 0 calc(var(--u) * 1.4) rgba(34, 197, 94, 1)); transform: scale(1.07); }
+    .kt-el[data-drop].bad { animation: kt-shake .3s; }
+    .kt-el.dragging .spr, .kt-el.dragging .basket { opacity: .45; }
+    @keyframes kt-shake { 25% { transform: translateX(-4%); } 75% { transform: translateX(4%); } }
+    .kt-drag { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; line-height: 1; filter: drop-shadow(0 6px 6px rgba(0,0,0,.35)); transform-origin: center; white-space: nowrap; }
+
+    .kt-toasts { position: absolute; left: 0; right: 0; top: 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 20; }
+    .kt-toast { background: rgba(30, 41, 59, .9); color: #fff; font-weight: 800; font-size: 14px; padding: 6px 14px; border-radius: 999px; animation: kt-pop .25s ease; }
+    @keyframes kt-pop { from { opacity: 0; transform: translateY(-6px) scale(.95); } to { opacity: 1; transform: none; } }
+    .kt-over { position: absolute; inset: 0; background: rgba(255, 247, 237, .95); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 16px; z-index: 30; }
+    .kt-over .big { font-size: 34px; font-weight: 900; color: #c2410c; }
+    .kt-over .st { font-size: 40px; letter-spacing: 4px; color: #cbd5e1; }
+    .kt-over .st .on { color: #f59e0b; }
+    .kt-tip { font-size: 12px; color: #64748b; text-align: center; margin-top: 10px; }
+
+    /* 폰 화면: 장면을 세로로 더 길게 다시 배치한다 */
+    @media (max-width: 560px) {
+        .kt-code { font-size: 36px; }
+        .kt-scene { aspect-ratio: 100 / 122; --lab: calc(var(--u) * 3.2); }
+        .kt-deco { left: calc(var(--mx) * 1%); top: calc(var(--my) / 122 * 100%); width: calc(var(--mw) * 1%); height: calc(var(--mh) / 122 * 100%); }
+        .kt-el { left: calc(var(--mx) * 1%); top: calc(var(--my) / 122 * 100%); width: calc(var(--mw) * 1%); font-size: calc(var(--u) * var(--mf)); }
+        .kt-el:not(.sq) { height: calc(var(--mh) / 122 * 100%); }
+        .kt-el.seat .items { font-size: calc(var(--u) * var(--mit)); }
+        .kt-el.seat .face { font-size: calc(var(--u) * var(--mff)); }
+        .kt-scene { background:
+            repeating-linear-gradient(90deg, rgba(255,255,255,.18) 0 1px, rgba(0,0,0,0) 1px 9%) 0 30% / 100% 70% no-repeat,
+            linear-gradient(180deg, #fde8c8 0, #fcd9a6 30%, #e9c79a 30%, #dcb27a 100%); }
+    }
+    @media (prefers-reduced-motion: reduce) { .kt-toast, .kt-el.pot .flame, .kt-el.pot .steam, .kt-el.seat.enter .face, .kt-el[data-drop].bad { animation: none; } }
+</style>
+
+<section class="kt-wrap">
+    <div class="kt-head">
+        <h1>🍜 분식 대작전</h1>
+        <p>재료와 음식을 마우스로 끌어다 놓는 라면 가게 게임이에요. 혼자 하거나, 최대 4명이 한 가게를 함께 운영해요.</p>
+    </div>
+
+    <!-- 처음 화면 -->
+    <div id="kt-menu" class="kt-card kt-menu" hidden>
+        <div class="kt-row">
+            <button type="button" class="kt-btn" id="kt-solo">🍳 혼자 하기</button>
+            <button type="button" class="kt-btn sub" id="kt-create">👥 방 만들기</button>
+        </div>
+        <form class="kt-row" id="kt-join-form">
+            <input class="kt-input" id="kt-code-input" maxlength="4" placeholder="방 코드" autocomplete="off" aria-label="방 코드">
+            <button type="submit" class="kt-btn sub">입장</button>
+        </form>
+        <ul class="kt-how">
+            <li><b>손님</b>이 와서 라면을 주문해요(말풍선). 머리 아래 막대가 다 닳기 전에 만들어 주세요.</li>
+            <li><b>면·달걀</b>을 바구니에서 <b>끌어다 냄비에</b> 넣어요. 다 익은 뒤 오래 두면 타 버려요 🔥</li>
+            <li><b>그릇</b>을 끌어다 상 위에 놓고, <b>익은 요리와 파를 끌어다 그릇에</b> 담아요.</li>
+            <li>주문과 똑같이 담았으면 <b>그릇을 끌어다 손님에게</b> 주면 서빙! 잘못 만든 건 쓰레기통으로 버려요.</li>
+            <li>여럿이 하면 손님이 더 자주 와요. 한 명은 조리, 한 명은 서빙처럼 나눠 보세요.</li>
+        </ul>
+    </div>
+
+    <!-- 대기실 -->
+    <div id="kt-lobby" class="kt-card" hidden>
+        <div class="kt-note" style="margin:0">친구에게 이 코드를 알려 주세요</div>
+        <div class="kt-code" id="kt-room-code">----</div>
+        <div class="kt-row" style="justify-content:center"><button type="button" class="kt-btn sub" id="kt-copy">코드 복사</button></div>
+        <div class="kt-players" id="kt-lobby-players"></div>
+        <div class="kt-row" style="justify-content:center">
+            <button type="button" class="kt-btn" id="kt-start">게임 시작</button>
+            <button type="button" class="kt-btn sub" id="kt-leave">나가기</button>
+        </div>
+        <p class="kt-note" id="kt-lobby-note"></p>
+    </div>
+
+    <!-- 게임 -->
+    <div id="kt-play" hidden>
+        <div class="kt-hud">
+            <div class="kt-stat">
+                <span class="t" id="kt-time">3:00</span>
+                <span class="s" id="kt-score">0</span>
+                <span class="kt-stars" id="kt-stars">★★★</span>
+            </div>
+            <div class="kt-who" id="kt-who"></div>
+        </div>
+        <div class="kt-scene" id="kt-scene">
+            <div class="kt-toasts" id="kt-toasts"></div>
+            <div class="kt-over" id="kt-over" hidden>
+                <div class="big" id="kt-over-title">영업 종료!</div>
+                <div class="st" id="kt-over-stars">★★★</div>
+                <div style="font-size:22px;font-weight:900" id="kt-over-score"></div>
+                <div class="kt-row" style="justify-content:center">
+                    <button type="button" class="kt-btn" id="kt-again">대기실로</button>
+                    <button type="button" class="kt-btn sub" id="kt-over-leave">나가기</button>
+                </div>
+                <div class="kt-note" id="kt-over-note"></div>
+            </div>
+        </div>
+        <div class="kt-tip">바구니의 재료와 냄비 속 요리, 상 위의 그릇을 끌어서 놓을 곳으로 옮기세요. 놓을 수 있는 곳은 초록색으로 빛나요.</div>
+    </div>
+</section>
+
+<script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
+<script>
+(function () {
+    'use strict';
+    const COLORS = ['#ef4444', '#3b82f6', '#16a34a', '#f59e0b'];
+    const FACES = ['😀', '🙂', '😋', '🤤', '😎', '🧑', '👩', '👴', '👧', '🧔'];
+    const CODE_EMOJI = { noodle: '🍜', egg: '🍳', scallion: '🌿' };
+    const $ = (id) => document.getElementById(id);
+    const sound = (name) => { try { window.GameSound && window.GameSound.play(name); } catch (e) {} };
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // ── 가게 장면 배치: [x, y, 너비, (높이 — 없으면 정사각형), 글자 크기] (데스크톱 100x68 / 폰 100x122 단위) ──
+    const LAYOUT = [
+        { id: 'seat:0', cls: 'seat', d: [3, 1, 21, 31, 9], m: [1, 1, 23.5, 29, 8], ff: [9, 8], it: [3.6, 4.4] },
+        { id: 'seat:1', cls: 'seat', d: [27.5, 1, 21, 31, 9], m: [25.5, 1, 23.5, 29, 8], ff: [9, 8], it: [3.6, 4.4] },
+        { id: 'seat:2', cls: 'seat', d: [52, 1, 21, 31, 9], m: [50, 1, 23.5, 29, 8], ff: [9, 8], it: [3.6, 4.4] },
+        { id: 'seat:3', cls: 'seat', d: [76.5, 1, 21, 31, 9], m: [74.5, 1, 23.5, 29, 8], ff: [9, 8], it: [3.6, 4.4] },
+        { id: 'crate:noodle', cls: 'crate', d: [3, 41, 10.5, 0, 6.2], m: [2, 40, 17, 0, 10], emoji: '🍝', label: '면' },
+        { id: 'crate:egg', cls: 'crate', d: [15, 41, 10.5, 0, 6.2], m: [21, 40, 17, 0, 10], emoji: '🥚', label: '달걀' },
+        { id: 'crate:scallion', cls: 'crate', d: [27, 41, 10.5, 0, 6.2], m: [40, 40, 17, 0, 10], emoji: '🌿', label: '파' },
+        { id: 'bowls', cls: 'crate bowls', d: [9, 55, 12, 0, 7], m: [59, 40, 17, 0, 10], emoji: '🥣', label: '그릇' },
+        { id: 'pot:0', cls: 'pot', d: [42, 40.5, 10.5, 0, 9], m: [5, 63, 26, 0, 20] },
+        { id: 'pot:1', cls: 'pot', d: [53.5, 40.5, 10.5, 0, 9], m: [37, 63, 26, 0, 20] },
+        { id: 'pot:2', cls: 'pot', d: [65, 40.5, 10.5, 0, 9], m: [69, 63, 26, 0, 20] },
+        { id: 'slot:0', cls: 'slot', d: [40, 57.5, 10.5, 0, 8], m: [2, 96, 23, 0, 18] },
+        { id: 'slot:1', cls: 'slot', d: [52, 55.5, 10.5, 0, 8], m: [26, 96, 23, 0, 18] },
+        { id: 'slot:2', cls: 'slot', d: [64, 55.5, 10.5, 0, 8], m: [50, 96, 23, 0, 18] },
+        { id: 'slot:3', cls: 'slot', d: [76, 57.5, 10.5, 0, 8], m: [74, 96, 23, 0, 18] },
+        { id: 'trash', cls: 'trash', d: [87.5, 43, 9.5, 0, 6], m: [80, 40, 17, 0, 10], emoji: '🗑️', label: '버리기' },
+    ];
+    const DECO = [
+        { cls: 'kt-counter', d: [0, 32, 100, 4.6], m: [0, 30.5, 100, 4] },
+        { cls: 'kt-stove', d: [39.5, 38.5, 36, 15.5], m: [2, 60, 96, 31] },
+        { cls: 'kt-sign', d: [39, 0, 22, 3.6], m: [32, 0, 36, 3.2], text: '🍜 IPSE 분식' },
+    ];
+
+    let ws = null, me = null, roomCode = null, S = null, autoStart = false, joinedByLink = false;
+    const wantedRoom = new URLSearchParams(location.search).get('room');
+    const nodes = {};                                  // data-id → 요소
+    let dragging = null, built = false;
+
+    // ── 연결 ────────────────────────────────────────────────────
+    function send(payload) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(payload)); }
+    function connect() {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/kitchen/');
+        ws.onopen = () => { if (!connect.ping) connect.ping = setInterval(() => send({ type: '__ping__' }), 25000); };
+        ws.onmessage = (e) => handle(JSON.parse(e.data));
+        ws.onclose = () => setTimeout(connect, 1500);
+    }
+    function handle(m) {
+        if (m.type === 'hello') {
+            roomCode = m.room;
+            if (m.me) me = m.me;
+            if (!m.room) {
+                S = null; show('menu');
+                if (wantedRoom && !joinedByLink) { joinedByLink = true; send({ type: 'join', code: wantedRoom }); }   // 주소의 ?room=코드로 들어온 경우
+                return;
+            }
+            if (autoStart) { autoStart = false; send({ type: 'start' }); }
+        } else if (m.type === 'state') {
+            S = m.state;
+            (S.events || []).forEach(onEvent);
+            renderState();
+        } else if (m.type === 'error') {
+            toast('⚠️ ' + m.message);
+            sound('error');
+        }
+    }
+
+    // ── 화면 전환 ───────────────────────────────────────────────
+    function show(view) {
+        $('kt-menu').hidden = view !== 'menu';
+        $('kt-lobby').hidden = view !== 'lobby';
+        $('kt-play').hidden = view !== 'play';
+        if (view === 'play') { buildScene(); fitScene(); }
+        else cancelDrag();
+    }
+    function renderState() {
+        if (!S) return;
+        if (S.phase === 'lobby') {
+            show('lobby');
+            $('kt-room-code').textContent = S.code;
+            $('kt-lobby-players').innerHTML = S.players.map((p) =>
+                `<span class="kt-chip ${p.id === me ? 'me' : ''}"><span class="kt-dot" style="background:${COLORS[p.color % 4]}"></span>${esc(p.name)}${p.id === S.host ? ' 👑' : ''}${p.online ? '' : ' (연결 끊김)'}</span>`).join('');
+            const host = S.host === me;
+            $('kt-start').hidden = !host;
+            $('kt-start').textContent = S.players.length > 1 ? `게임 시작 (${S.players.length}명)` : '혼자서 시작';
+            $('kt-lobby-note').textContent = host ? '모두 모이면 시작하세요. 최대 4명까지 들어올 수 있어요.' : '방장이 시작하길 기다리는 중이에요…';
+            return;
+        }
+        show('play');
+        renderHud();
+        renderScene();
+        const done = S.phase === 'done';
+        $('kt-over').hidden = !done;
+        if (done) {
+            const stars = S.stars;
+            $('kt-over-title').textContent = stars >= 3 ? '🎉 완벽한 영업!' : stars >= 1 ? '👏 영업 종료!' : '😅 영업 종료!';
+            $('kt-over-stars').innerHTML = [1, 2, 3].map((i) => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
+            $('kt-over-score').textContent = `${S.score}점 (목표 ${S.targets.join(' / ')})`;
+            $('kt-again').hidden = S.host !== me;
+            $('kt-over-note').textContent = S.host === me ? '대기실로 돌아가 다시 시작할 수 있어요.' : '방장이 다시 시작하길 기다려 주세요.';
+            cancelDrag();
+        }
+    }
+    function renderHud() {
+        const t = Math.ceil(S.time), m = Math.floor(t / 60), s = String(t % 60).padStart(2, '0');
+        $('kt-time').textContent = `${m}:${s}`;
+        $('kt-time').classList.toggle('low', t <= 20);
+        $('kt-score').textContent = S.score;
+        $('kt-stars').innerHTML = S.targets.map((target) => `<span class="${S.score >= target ? 'on' : ''}" title="${target}점">★</span>`).join('');
+        $('kt-who').innerHTML = S.players.length > 1 ? S.players.map((p) =>
+            `<span class="kt-chip ${p.id === me ? 'me' : ''}"><span class="kt-dot" style="background:${COLORS[p.color % 4]}"></span>${esc(p.name)}${p.online ? '' : ' (끊김)'}</span>`).join('') : '';
+    }
+
+    // ── 장면 만들기 (한 번만) ───────────────────────────────────
+    function vars(d, m, extra) {
+        const sq = !d[3];
+        let s = `--x:${d[0]};--y:${d[1]};--w:${d[2]};--h:${d[3] || d[2]};--f:${d[4] || 8};--mx:${m[0]};--my:${m[1]};--mw:${m[2]};--mh:${m[3] || m[2]};--mf:${m[4] || 8};`;
+        return (extra || '') + s;
+    }
+    function buildScene() {
+        if (built) return;
+        built = true;
+        const scene = $('kt-scene');
+        DECO.forEach((o) => {
+            const el = document.createElement('div');
+            el.className = 'kt-deco ' + o.cls;
+            el.style.cssText = vars(o.d, o.m);
+            if (o.text) el.textContent = o.text;
+            scene.appendChild(el);
+        });
+        LAYOUT.forEach((o) => {
+            const el = document.createElement('div');
+            const kind = o.id.split(':')[0];
+            const draggable = kind === 'crate' || kind === 'bowls' || kind === 'pot' || kind === 'slot';
+            el.className = 'kt-el ' + o.cls + (o.d[3] ? '' : ' sq');
+            el.dataset.id = o.id;
+            if (draggable) el.dataset.src = o.id;
+            if (kind !== 'crate' && kind !== 'bowls') el.dataset.drop = o.id;
+            let style = vars(o.d, o.m);
+            if (o.ff) style += `--ff:${o.ff[0]};--mff:${o.ff[1]};--it:${o.it[0]};--mit:${o.it[1]};`;
+            el.style.cssText = style;
+            if (kind === 'seat') el.innerHTML = '<div class="bubble"><span class="items"></span><span class="nm"></span></div><div class="face">🪑</div><div class="bar"><i></i></div>';
+            else if (kind === 'pot') el.innerHTML = '<div class="ring"></div><div class="body"></div><span class="spr"></span><span class="steam">♨️</span><span class="flame">🔥</span>';
+            else if (kind === 'slot') el.innerHTML = '<div class="mat"></div><span class="spr"></span><span class="tops"></span>';
+            else el.innerHTML = `<div class="basket"><span class="spr">${o.emoji}</span></div><span class="lbl">${o.label}</span>`;
+            scene.appendChild(el);
+            nodes[o.id] = el;
+        });
+        new ResizeObserver(fitScene).observe(scene);
+    }
+    function fitScene() { const s = $('kt-scene'); if (s) s.style.setProperty('--u', s.clientWidth / 100 + 'px'); }
+
+    // ── 물건 모양 ───────────────────────────────────────────────
+    function itemEmoji(it) {
+        if (it.k === 'noodle') return it.s === 'cooked' ? '🍜' : it.s === 'burnt' ? '💨' : '🍝';
+        if (it.k === 'egg') return it.s === 'cooked' ? '🍳' : it.s === 'burnt' ? '💨' : '🥚';
+        return '🌿';
+    }
+    function spriteText(it) { return it.k === 'bowl' ? '🥣' + it.c.map((c) => CODE_EMOJI[c]).join('') : itemEmoji(it); }
+    function barClass(frac) { return frac < 0.3 ? 'bad' : frac < 0.6 ? 'warn' : ''; }
+
+    function renderScene() {
+        S.seats.forEach((c, i) => {
+            const el = nodes['seat:' + i];
+            if (!c) { el.classList.add('empty'); el.classList.remove('enter'); el.dataset.cid = ''; el.querySelector('.face').textContent = '🪑'; return; }
+            const frac = c.patience / c.max;
+            const entering = el.dataset.cid !== String(c.id);
+            el.dataset.cid = c.id;
+            el.classList.remove('empty');
+            el.classList.toggle('enter', entering);
+            el.querySelector('.face').textContent = frac < 0.3 ? '😡' : frac < 0.6 ? '😐' : FACES[c.id % FACES.length];
+            el.querySelector('.items').textContent = c.items.map((x) => CODE_EMOJI[x]).join('');
+            el.querySelector('.nm').textContent = c.name;
+            const bar = el.querySelector('.bar');
+            bar.className = 'bar ' + barClass(frac);
+            bar.firstElementChild.style.width = Math.max(0, frac * 100) + '%';
+        });
+        S.pots.forEach((pot, i) => {
+            const el = nodes['pot:' + i];
+            el.classList.toggle('empty', !pot);
+            ['cooking', 'cooked', 'burnt'].forEach((s) => el.classList.toggle(s, !!pot && pot.s === s));
+            el.querySelector('.spr').textContent = pot ? itemEmoji({ k: pot.k, s: pot.s === 'cooking' ? 'raw' : pot.s }) : '';
+            el.style.setProperty('--p', pot ? (pot.s === 'cooking' ? pot.p : (pot.s === 'cooked' ? 1 - pot.p : 0)) : 0);
+        });
+        S.slots.forEach((bowl, i) => {
+            const el = nodes['slot:' + i];
+            el.classList.toggle('full', !!bowl);
+            el.querySelector('.spr').textContent = bowl ? '🥣' : '';
+            el.querySelector('.tops').textContent = bowl ? bowl.c.map((c) => CODE_EMOJI[c]).join('') : '';
+        });
+        Object.values(nodes).forEach((el) => el.classList.toggle('dragging', !!dragging && dragging.src === el.dataset.src && !!dragging.moved));
+        if (dragging && dragging.moved) markTargets();
+    }
+
+    // ── 끌어 놓기 ───────────────────────────────────────────────
+    function itemAt(src) {
+        const [kind, arg] = src.split(':');
+        if (kind === 'crate') return { k: arg, s: 'raw' };
+        if (kind === 'bowls') return { k: 'bowl', c: [] };
+        if (kind === 'pot') { const p = S.pots[+arg]; return p ? { k: p.k, s: p.s === 'cooking' ? 'raw' : p.s } : null; }
+        if (kind === 'slot') return S.slots[+arg] || null;
+        return null;
+    }
+    function canDrop(src, item, dst) {                // 서버 규칙과 같은 판단 (놓을 수 있는 곳을 빛내려고)
+        if (src === dst) return false;
+        const [kind, arg] = dst.split(':'), i = +arg;
+        if (kind === 'trash') return true;
+        if (kind === 'pot') return !S.pots[i] && (item.k === 'noodle' || item.k === 'egg') && item.s === 'raw';
+        if (kind === 'slot') {
+            const bowl = S.slots[i];
+            if (!bowl) return item.k === 'bowl';
+            return item.k !== 'bowl' && !bowl.c.includes(item.k) && (item.k === 'scallion' || item.s === 'cooked');
+        }
+        if (kind === 'seat') { const c = S.seats[i]; return !!(c && item.k === 'bowl' && item.c.length); }     // 틀린 주문이어도 시도는 할 수 있다 (서버가 알려 준다)
+        return false;
+    }
+    function exactOrder(item, i) { const c = S.seats[i]; return !!(c && item.k === 'bowl' && [...item.c].sort().join() === [...c.items].sort().join()); }
+    function markTargets() {
+        Object.values(nodes).forEach((el) => {
+            const dst = el.dataset.drop;
+            if (!dst) return;
+            const ok = canDrop(dragging.src, dragging.item, dst) && (!dst.startsWith('seat') || exactOrder(dragging.item, +dst.split(':')[1]));
+            el.classList.toggle('ok', ok);
+        });
+    }
+    function clearMarks() { Object.values(nodes).forEach((el) => el.classList.remove('ok', 'over', 'bad', 'dragging')); }
+    function dropTargetAt(x, y) {
+        const hit = document.elementsFromPoint(x, y).find((el) => el.dataset && el.dataset.drop && el.classList.contains('kt-el'));
+        return hit || null;
+    }
+    function cancelDrag() {
+        if (!dragging) return;
+        if (dragging.sprite) dragging.sprite.remove();
+        dragging = null;
+        clearMarks();
+    }
+
+    $('kt-scene').addEventListener('pointerdown', (e) => {
+        if (!S || S.phase !== 'playing' || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        const el = e.target.closest('[data-src]');
+        if (!el) return;
+        const item = itemAt(el.dataset.src);
+        if (!item) return;
+        e.preventDefault();
+        dragging = { src: el.dataset.src, item: item, x0: e.clientX, y0: e.clientY, moved: false, sprite: null, el: el };
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    window.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        if (!dragging.moved) {
+            if (Math.hypot(e.clientX - dragging.x0, e.clientY - dragging.y0) < 6) return;
+            dragging.moved = true;
+            const sprite = document.createElement('div');
+            sprite.className = 'kt-drag';
+            sprite.textContent = spriteText(dragging.item);
+            sprite.style.fontSize = Math.max(30, $('kt-scene').clientWidth * 0.08) + 'px';
+            document.body.appendChild(sprite);
+            dragging.sprite = sprite;
+            dragging.el.classList.add('dragging');
+            markTargets();
+            sound('tap');
+        }
+        const s = dragging.sprite;
+        s.style.transform = `translate(${e.clientX - s.offsetWidth / 2}px, ${e.clientY - s.offsetHeight * 0.6}px) rotate(-6deg)`;
+        const over = dropTargetAt(e.clientX, e.clientY);
+        Object.values(nodes).forEach((el) => el.classList.toggle('over', el === over && el.classList.contains('ok')));
+    });
+    function finishDrag(e, cancelled) {
+        if (!dragging) return;
+        const d = dragging;
+        const target = d.moved && !cancelled ? dropTargetAt(e.clientX, e.clientY) : null;
+        cancelDrag();
+        if (!target || target.dataset.drop === d.src) return;
+        const dst = target.dataset.drop;
+        if (!S || S.phase !== 'playing') return;
+        if (canDrop(d.src, d.item, dst)) {
+            send({ type: 'drag', src: d.src, dst: dst });
+            sound(dst === 'trash' ? 'click' : 'pop');
+        } else {                                       // 놓을 수 없는 곳: 흔들어 알려 준다
+            target.classList.add('bad');
+            setTimeout(() => target.classList.remove('bad'), 320);
+            sound('error');
+        }
+    }
+    window.addEventListener('pointerup', (e) => finishDrag(e, false));
+    window.addEventListener('pointercancel', (e) => finishDrag(e, true));
+    window.addEventListener('blur', () => cancelDrag());
+
+    // ── 이벤트(소리·안내) ───────────────────────────────────────
+    function onEvent(e) {
+        if (e.t === 'serve') { toast(`✅ ${e.name} +${e.pts}${e.bonus ? ` (빠른 서빙 +${e.bonus})` : ''} · ${e.by}`); sound('success'); }
+        else if (e.t === 'reject' && e.uid === me) { toast('주문과 달라요! 재료를 다시 확인하세요'); sound('error'); }
+        else if (e.t === 'leave') { toast(`😠 ${e.name} 손님이 기다리다 떠났어요`); sound('lose'); }
+        else if (e.t === 'burnt') { toast('🔥 탔어요! 꺼내서 쓰레기통에 버려요'); sound('error'); }
+        else if (e.t === 'ding') { sound('pop'); }
+        else if (e.t === 'end') { sound(e.stars >= 2 ? 'jackpot' : 'fanfare'); }
+    }
+    function toast(text) {
+        const box = $('kt-toasts'), el = document.createElement('div');
+        el.className = 'kt-toast';
+        el.textContent = text;
+        box.appendChild(el);
+        while (box.children.length > 3) box.removeChild(box.firstChild);
+        setTimeout(() => el.remove(), 2400);
+    }
+
+    // ── 버튼 ────────────────────────────────────────────────────
+    $('kt-solo').addEventListener('click', () => { autoStart = true; send({ type: 'create' }); });
+    $('kt-create').addEventListener('click', () => send({ type: 'create' }));
+    $('kt-join-form').addEventListener('submit', (e) => { e.preventDefault(); const code = $('kt-code-input').value.trim(); if (code) send({ type: 'join', code: code }); });
+    $('kt-start').addEventListener('click', () => send({ type: 'start' }));
+    $('kt-again').addEventListener('click', () => send({ type: 'again' }));
+    $('kt-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('kt-over-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('kt-copy').addEventListener('click', () => {
+        const code = S ? S.code : '';
+        if (navigator.clipboard && code) navigator.clipboard.writeText(code).then(() => { $('kt-lobby-note').textContent = '코드를 복사했어요'; }, () => {});
+    });
+    connect();
+})();
+</script>
+{% endblock %}

@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, yacht_engine
+from . import gomoku_engine, gostop_engine, janggi_engine, kitchen_hub, poker_engine, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -1120,3 +1120,91 @@ class JanggiConsumer(AsyncWebsocketConsumer):
     async def _send_state(self):
         state = await database_sync_to_async(janggi_engine.get_state_for)(self.scope["user"])
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
+
+
+class KitchenConsumer(AsyncWebsocketConsumer):
+    """분식 대작전 (협동 라면 가게). 방 상태는 kitchen_hub의 메모리에 있고 DB는 쓰지 않는다. 끌어 놓기는 그대로 규칙 엔진에 넘긴다."""
+
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+        self.group = None
+        await self.accept()
+        room = kitchen_hub.room_of(user.id)
+        if room is not None and user.id in room.players:     # 새로고침·재접속이면 하던 방으로 돌아간다
+            ok, room = kitchen_hub.join_room(user.id, user.username, room.code)
+            await self._enter(room)
+        else:
+            await self._send({"type": "hello", "room": None})
+
+    async def disconnect(self, close_code):
+        user = self.scope.get("user")
+        if self.group:
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+        if user and user.is_authenticated:
+            room = kitchen_hub.disconnect(user.id)
+            if room is not None and room.players:
+                await kitchen_hub.broadcast(room)
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        user, kind = self.scope["user"], data.get("type")
+        if kind == "__ping__":
+            await self._send({"type": "pong"})
+            return
+        room = kitchen_hub.room_of(user.id)
+        if kind == "create":
+            ok, room = kitchen_hub.create_room(user.id, user.username)
+            await self._leave_group()
+            await self._enter(room)
+        elif kind == "join":
+            ok, room = kitchen_hub.join_room(user.id, user.username, data.get("code"))
+            if not ok:
+                await self._send({"type": "error", "message": room})
+                return
+            await self._leave_group()
+            await self._enter(room)
+        elif room is None:
+            return
+        elif kind == "leave":
+            await self._leave_group()
+            left = kitchen_hub.leave(user.id)
+            await self._send({"type": "hello", "room": None})
+            if left is not None and left.players:
+                await kitchen_hub.broadcast(left)
+        elif kind in ("start", "again"):
+            action = room.start if kind == "start" else room.back_to_lobby
+            ok, message = action(user.id)
+            if not ok:
+                await self._send({"type": "error", "message": message})
+                return
+            if kind == "start":
+                kitchen_hub.ensure_loop()
+            await kitchen_hub.broadcast(room)
+        elif kind == "drag":
+            room.drag(user.id, data.get("src"), data.get("dst"))
+            if room.phase == "playing":
+                await kitchen_hub.broadcast(room, room.take_events())       # 결과를 시계 틱을 기다리지 않고 바로 보여 준다
+
+    async def kitchen_state(self, event):
+        await self._send({"type": "state", "state": event["state"]})
+
+    async def _enter(self, room):
+        self.group = kitchen_hub.group_name(room.code)
+        await self.channel_layer.group_add(self.group, self.channel_name)
+        kitchen_hub.ensure_loop()
+        await self._send({"type": "hello", "room": room.code, "me": self.scope["user"].id})
+        await kitchen_hub.broadcast(room)
+
+    async def _leave_group(self):
+        if self.group:
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+            self.group = None
+
+    async def _send(self, payload):
+        await self.send(text_data=json.dumps(payload, ensure_ascii=False))

@@ -434,6 +434,11 @@ def gostop_view(request):
 
 
 @login_required
+def kitchen_view(request):
+    return render(request, "game/kitchen.html", {"title": "분식 대작전"})
+
+
+@login_required
 def gomoku_view(request):
     latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
     return render(request, "game/gomoku.html", {"title": "오목", "chat_messages": list(latest)[::-1]})
