@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import shutil
 import tempfile
 from unittest.mock import patch
@@ -221,6 +222,52 @@ class HandStyleTests(TestCase):
         typed = notepage.render_notes(note, style="typed")
         self.assertTrue(all(p.startswith(b"\x89PNG") for p in hand + typed))
         self.assertLessEqual(len(hand), len(typed))
+
+
+class NoteFontTests(TestCase):
+    """요약 노트 본문 글꼴: 이서윤체 파일(NOTE_FONT_PATH)이 있으면 그것을, 없으면 나눔명조를 쓴다."""
+
+    def setUp(self):
+        from . import notefont
+
+        self.notefont = notefont
+        self.addCleanup(notefont.set_theme, "typed")
+        notefont.set_theme("hand")
+
+    def test_without_the_font_file_the_note_falls_back_to_nanum_myeongjo(self):
+        with override_settings(NOTE_FONT_PATH="/no/such/LeeSeoyun.ttf"):
+            self.assertIsNone(self.notefont.seoyun_path())
+            self.assertEqual(self.notefont.hand_family(), "serif")
+            self.assertEqual(self.notefont.stroke(40, True), 0)                       # 명조는 굵은체가 따로 있어 덧그리지 않는다
+            pages = notepage.render_notes(cram.normalize_note(KINDS_JSON))
+        self.assertTrue(all(p.startswith(b"\x89PNG") for p in pages))
+
+    def test_with_a_font_file_it_is_used_and_missing_syllables_fall_back_to_the_serif(self):
+        import os
+
+        path = os.path.join(self.notefont.FONT_DIR, "NanumMyeongjo-Regular.ttf")     # 이서윤체 대신 아무 글꼴 파일이나 있는 경우를 흉내 낸다
+        with override_settings(NOTE_FONT_PATH=path):
+            self.assertEqual(self.notefont.seoyun_path(), path)
+            self.assertEqual(self.notefont.hand_family(), "seoyun")
+            self.assertGreaterEqual(self.notefont.stroke(40, True), 1)                # 굵은체가 없는 글꼴은 덧그려 굵게
+            self.assertEqual(self.notefont.stroke(40, False), 0)
+            width = self.notefont.text_length("행렬", 30, bold=True)
+            self.assertGreater(width, self.notefont.text_length("행렬", 30, bold=False) - 1)
+            pages = notepage.render_notes(cram.normalize_note(KINDS_JSON))
+        self.assertTrue(all(p.startswith(b"\x89PNG") for p in pages))
+
+    def test_typed_style_never_uses_the_note_font(self):
+        self.notefont.set_theme("typed")
+        with override_settings(NOTE_FONT_PATH="/no/such/LeeSeoyun.ttf"):
+            self.assertEqual(self.notefont.stroke(40, True), 0)
+
+    def test_the_proprietary_font_is_not_in_the_repository(self):
+        import subprocess
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tracked = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout
+        self.assertNotIn("LeeSeoyun", tracked)
+        self.assertIn("private_fonts/", open(os.path.join(root, ".gitignore"), encoding="utf8").read())
 
 
 class TitleUnderlineTests(TestCase):
