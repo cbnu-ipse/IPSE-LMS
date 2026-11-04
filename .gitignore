@@ -168,6 +168,9 @@ image_03.jpeg
 image_04.png
 image_05.png
 
+# 요약 노트 글꼴(이서윤체): 저장소에 올리지 않고 서버에만 둔다 (mypage/notefont.py)
+private_fonts/
+
 # DB/Media Backups
 backups/
 

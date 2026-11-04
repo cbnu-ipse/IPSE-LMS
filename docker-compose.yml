@@ -48,6 +48,7 @@ services:
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
+      - ./private_fonts:/app/private_fonts:ro     # 요약 노트 글꼴(이서윤체, 저장소에는 없음). 파일이 없으면 나눔명조로 그린다
     depends_on:
       db:
         condition: service_healthy
