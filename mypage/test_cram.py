@@ -270,6 +270,26 @@ class NoteFontTests(TestCase):
         self.assertIn("private_fonts/", open(os.path.join(root, ".gitignore"), encoding="utf8").read())
 
 
+class TitleUnderlineTests(TestCase):
+    def ops(self, style):
+        note = cram.normalize_note(NOTE_JSON)
+        notepage._apply(style)
+        try:
+            return [op[0] for page in notepage._layout(note, 1.0, None).pages for op in page]
+        finally:
+            notepage._apply("typed")
+
+    def test_handwritten_title_has_neither_rule_nor_highlight_band_but_typed_keeps_them(self):
+        self.assertNotIn("rule", self.ops("hand"))
+        self.assertIn("rule", self.ops("typed"))
+        note = cram.normalize_note(NOTE_JSON)
+        hand = Image.open(io.BytesIO(notepage.render_notes(note)[0])).convert("RGB")
+        typed = Image.open(io.BytesIO(notepage.render_notes(note, style="typed")[0])).convert("RGB")
+        self.assertIsNone(notepage.THEMES["hand"]["TITLE_BAND"])
+        self.assertNotIn((206, 224, 255), {c for _n, c in hand.getcolors(maxcolors=1 << 20)})          # 예전에 제목 밑에 깔던 파란 띠 색이 없다
+        self.assertIn(notepage.THEMES["typed"]["MARK"], {c for _n, c in typed.getcolors(maxcolors=1 << 20)})   # 타이핑 스타일의 형광 띠는 그대로
+
+
 class BuildNoteTests(TestCase):
     def setUp(self):
         self.media = tempfile.mkdtemp()
