@@ -441,7 +441,7 @@ def gomoku_view(request):
 
 @login_required
 def untitled_view(request):
-    return render(request, "game/untitled.html", {"title": "[무제]", "world_json": untitled_world.world_view()})
+    return render(request, "game/untitled.html", {"title": "경찰과 도둑", "world_json": untitled_world.world_view()})
 
 
 @login_required

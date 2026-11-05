@@ -11,6 +11,9 @@
 - 잡히지 않은 도둑이 감옥 앞 구출 발판을 밟으면 갇힌 도둑이 모두 발판 둘레로 풀려나고 SAFE_SECONDS초 동안 잡히지 않는다.
 - ROUND_SECONDS 안에 도둑이 모두 갇히면 경찰 승리, 시간이 다 됐을 때 한 명이라도 밖에 있으면 도둑 승리.
 - 누구나 대시(DASH_SECONDS 동안 DASH_MULT배 빠르게, DASH_COOLDOWN초마다 한 번)를 쓸 수 있다. 서버가 대시 시간을 기록해 속도 검사에 반영한다.
+
+봇: 방장이 대기실에서 넣고 뺀다(id는 음수). 봇은 서버가 움직인다(사람과 같은 충돌 판정과 대시). 경찰 봇은 가까운 도둑을 쫓고,
+도둑 봇은 가까운 경찰에게서 달아나다가 동료가 갇히면 구출 발판으로 간다. 막히면 잠깐 옆으로 비켜 돌아간다.
 """
 import math
 import random
@@ -115,6 +118,45 @@ def in_jail(x, y):
     return x > JAIL_X and y < JAIL_Y
 
 
+def push_out(x, y, others=()):
+    """(x, y)가 충돌 모양·다른 캐릭터와 겹치면 겹친 만큼 밖으로 민다 (화면의 pushOut과 같은 방식). 민 위치를 돌려준다."""
+    for _ in range(4):
+        moved = False
+        for s in SHAPES:
+            if s["kind"] == "circle":
+                nx, ny, reach = s["cx"], s["cy"], s["r"] + RADIUS
+            else:
+                nx = min(max(x, s["cx"] - s["hx"]), s["cx"] + s["hx"])
+                ny = min(max(y, s["cy"] - s["hy"]), s["cy"] + s["hy"])
+                reach = RADIUS
+            dx, dy = x - nx, y - ny
+            dist = math.hypot(dx, dy)
+            if dist >= reach:
+                continue
+            if dist < 1e-6:                                    # 중심이 사각형 안: 가까운 변으로 나간다
+                ex, ey = s["hx"] - abs(x - s["cx"]), s["hy"] - abs(y - s["cy"])
+                if ex < ey:
+                    x += math.copysign(1, x - s["cx"] or 1) * (ex + reach + 1e-3)
+                else:
+                    y += math.copysign(1, y - s["cy"] or 1) * (ey + reach + 1e-3)
+            else:
+                x += dx / dist * (reach - dist + 1e-3)
+                y += dy / dist * (reach - dist + 1e-3)
+            moved = True
+        for ox, oy in others:
+            dx, dy = x - ox, y - oy
+            dist = math.hypot(dx, dy)
+            if 1e-6 < dist < RADIUS * 2:
+                x += dx / dist * (RADIUS * 2 - dist)
+                y += dy / dist * (RADIUS * 2 - dist)
+                moved = True
+        x = min(max(x, RADIUS), SIZE - RADIUS)
+        y = min(max(y, RADIUS), SIZE - RADIUS)
+        if not moved:
+            break
+    return x, y
+
+
 class Player:
     def __init__(self, uid, name, model, x, y, now):
         self.uid, self.name, self.model = uid, name, model
@@ -129,6 +171,9 @@ class Player:
         self.dash_ready = 0.0
         self.tp = 0                     # 서버가 옮길 때마다 1씩 늘어난다 (화면은 이걸 보고 내 위치를 맞춘다)
         self.catches = 0
+        self.bot = uid < 0
+        self.detour_until, self.detour = 0.0, (0.0, 0.0)
+        self.stuck_check, self.wander = (x, y, now), None
 
     def speed(self):
         return SPEED[self.team or "lobby"]
@@ -141,12 +186,16 @@ class Player:
         return {"id": self.uid, "name": self.name, "model": self.model, "x": round(self.x, 3), "y": round(self.y, 3),
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": self.jailed,
                 "safe": round(max(0.0, self.safe_until - now), 1), "frozen": round(max(0.0, self.frozen_until - now), 1),
-                "dash": round(max(0.0, self.dash_ready - now), 1), "speed": self.speed(), "tp": self.tp, "catches": self.catches}
+                "dash": round(max(0.0, self.dash_ready - now), 1), "speed": self.speed(), "tp": self.tp, "catches": self.catches,
+                "bot": self.bot}
 
 
 class Room:
-    def __init__(self, code, host_id):
+    def __init__(self, code, host_id, name="", private=False):
         self.code, self.host_id = code, host_id
+        self.name = (name or "").strip()[:24] or "경찰과 도둑"
+        self.private = bool(private)
+        self.last_update = None
         self.players = {}
         self.idle_since = None
         self.dirty = True
@@ -171,10 +220,32 @@ class Room:
         self.dirty = True
         return True, ""
 
+    def humans(self):
+        return [p for p in self.players.values() if not p.bot]
+
+    def add_bot(self, uid, now=None):
+        """방장이 대기실에서 봇을 넣는다. 넣은 봇의 id 또는 오류 문구(str)."""
+        if uid != self.host_id:
+            return "방장만 봇을 넣을 수 있어요."
+        if self.phase != "lobby":
+            return "대기실에서만 봇을 넣을 수 있어요."
+        bot_id = min([p.uid for p in self.players.values() if p.bot] + [0]) - 1
+        ok, message = self.add(bot_id, f"봇 {-bot_id}", now)
+        return bot_id if ok else message
+
+    def remove_bot(self, uid):
+        if uid != self.host_id or self.phase != "lobby":
+            return False
+        bots = [p.uid for p in self.players.values() if p.bot]
+        if not bots:
+            return False
+        self.remove(min(bots))                                 # 가장 나중에 넣은 봇 (id가 가장 작다)
+        return True
+
     def remove(self, uid, now=None):
         self.players.pop(uid, None)
-        if uid == self.host_id and self.players:
-            self.host_id = next(iter(self.players))
+        if uid == self.host_id and self.humans():
+            self.host_id = self.humans()[0].uid
         self.dirty = True
         if self.phase in ("countdown", "playing"):
             self._check_end(time.monotonic() if now is None else now)
@@ -245,6 +316,10 @@ class Room:
     def update(self, now=None):
         """시계가 0.1초마다 부른다: 단계 넘기기, 잡기, 구출, 승패."""
         now = time.monotonic() if now is None else now
+        dt = 0.0 if self.last_update is None else min(0.3, max(0.0, now - self.last_update))
+        self.last_update = now
+        if self.phase in ("countdown", "playing") and dt:
+            self._bots(dt, now)
         if self.phase == "countdown" and now >= self.phase_end:
             self.phase, self.phase_end = "playing", now + ROUND_SECONDS
             self.events.append({"t": "go"})
@@ -256,6 +331,88 @@ class Room:
             self.dirty = True                                           # 남은 시간이 흐르므로 매번 보낸다
         elif self.phase == "result" and now >= self.phase_end:
             self._back_to_lobby(now)
+
+    # ── 봇 ─────────────────────────────────────────────────────
+    def _bots(self, dt, now):
+        people = list(self.players.values())
+        for b in people:
+            if not b.bot or b.jailed or now < b.frozen_until:
+                continue
+            goal = self._bot_goal(b, people, now)
+            if goal is None:
+                if b.moving:
+                    b.moving = False
+                    self.dirty = True
+                continue
+            gx, gy, dash = goal
+            dx, dy = gx - b.x, gy - b.y
+            dist = math.hypot(dx, dy)
+            if dist < 0.15:
+                b.moving = False
+                continue
+            if now < b.detour_until:                          # 막혀서 잠깐 옆으로 돌아가는 중
+                dx, dy = b.detour
+                dist = 1.0
+            if dash and now >= b.dash_ready:
+                self.dash(b.uid, now)
+            speed = b.speed() * (DASH_MULT if now < b.dash_until else 1.0)
+            step = min(dist, speed * dt)
+            others = [(p.x, p.y) for p in people if p is not b and not p.jailed]
+            n = max(1, math.ceil(step / 0.08))
+            x, y = b.x, b.y
+            for _ in range(n):
+                x += dx / dist * step / n
+                y += dy / dist * step / n
+                x, y = push_out(x, y, others)
+            if not free_at(x, y) or in_jail(x, y):
+                x, y = b.x, b.y
+            b.dir = math.atan2(x - b.x, y - b.y) if (x, y) != (b.x, b.y) else b.dir
+            b.x, b.y, b.moving = x, y, True
+            sx, sy, st = b.stuck_check
+            if now - st > 0.8:                                  # 0.8초 동안 거의 못 움직였으면 옆으로 비켜 간다
+                if math.hypot(b.x - sx, b.y - sy) < 0.35 and now >= b.detour_until:
+                    side = self.rng.choice((1, -1))
+                    b.detour = (-(gy - b.y) * side, (gx - b.x) * side)
+                    norm = math.hypot(*b.detour) or 1.0
+                    b.detour = (b.detour[0] / norm, b.detour[1] / norm)
+                    b.detour_until = now + 0.7
+                b.stuck_check = (b.x, b.y, now)
+            self.dirty = True
+
+    def _bot_goal(self, b, people, now):
+        """봇이 향할 곳 (x, y, 대시할지). 없으면 None."""
+        if b.team == "cop":
+            prey = [p for p in people if p.team == "thief" and not p.jailed and now >= p.safe_until]
+            if not prey:
+                return None
+            t = min(prey, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2)
+            d = math.hypot(t.x - b.x, t.y - b.y)
+            return t.x, t.y, 1.5 < d < 4.5
+        if b.team != "thief":
+            return None
+        cops = [p for p in people if p.team == "cop"]
+        near = min(cops, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2) if cops else None
+        d = math.hypot(near.x - b.x, near.y - b.y) if near else 99.0
+        jailed = any(p.jailed for p in people)
+        pad_guard = min((math.hypot(p.x - PAD["cx"], p.y - PAD["cy"]) for p in cops), default=99.0)
+        if jailed and (d > 3.0 or pad_guard > 4.0) and pad_guard > 2.0:
+            return PAD["cx"], PAD["cy"], d < 2.5
+        if near is not None and d < 7.0:                          # 경찰과 멀어지는 쪽 중 갈 수 있는 방향
+            best, best_score = None, -1e9
+            for k in range(16):
+                a = k * math.pi / 8
+                tx, ty = push_out(b.x + math.cos(a) * 1.5, b.y + math.sin(a) * 1.5)
+                score = math.hypot(tx - near.x, ty - near.y) + math.hypot(tx - b.x, ty - b.y) * 0.6 + self.rng.uniform(0, 0.3)
+                if score > best_score and not in_jail(tx, ty):
+                    best, best_score = (tx, ty), score
+            return best[0], best[1], d < 2.5
+        if b.wander is None or math.hypot(b.wander[0] - b.x, b.wander[1] - b.y) < 0.5 or self.rng.random() < 0.01:
+            for _ in range(20):
+                wx, wy = self.rng.uniform(1, SIZE - 1), self.rng.uniform(JAIL_Y + 1, SIZE - 1)
+                if free_at(wx, wy):
+                    b.wander = (wx, wy)
+                    break
+        return (b.wander[0], b.wander[1], False) if b.wander else None
 
     def _catch(self, now):
         cops = [p for p in self.players.values() if p.team == "cop" and now >= p.frozen_until]
@@ -323,9 +480,14 @@ class Room:
         ev, self.events = self.events, []
         return ev
 
+    def summary(self):
+        """열린 방 목록에 보일 한 줄."""
+        return {"code": self.code, "name": self.name, "players": len(self.humans()), "bots": len(self.players) - len(self.humans()),
+                "max": MAX_PLAYERS, "phase": self.phase}
+
     def snapshot(self, now=None):
         now = time.monotonic() if now is None else now
-        return {"code": self.code, "host": self.host_id, "phase": self.phase,
+        return {"code": self.code, "name": self.name, "private": self.private, "host": self.host_id, "phase": self.phase,
                 "left": round(max(0.0, self.phase_end - now), 1) if self.phase != "lobby" else None,
                 "result": self.result, "players": [p.public(now) for p in self.players.values()]}
 

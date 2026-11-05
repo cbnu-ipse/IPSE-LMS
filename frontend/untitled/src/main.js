@@ -1,4 +1,4 @@
-// 3D plaza for the [untitled] room game (templates/game/untitled.html). The page owns the WebSocket; this module draws the
+// 3D plaza for the cops-and-robbers room game (templates/game/untitled.html). The page owns the WebSocket; this module draws the
 // plaza and everyone in the room, moves the local player with WASD (camera-relative, sliding along obstacles), and reports
 // the local position (onMove) and name-tag anchors (onFrame). Collision uses the server's shapes (untitled_world.SHAPES): the player is a
 // circle, props are circles or boxes sized from the real models; overlaps are pushed out so the player slides around things.
@@ -95,8 +95,8 @@ export function createRoomScene(container, { base, world }) {
     scene.add(padRing, disc);
   }
 
-  // ── camera: isometric, follows the local player, wheel zooms ──
-  let zoom = 1.6;
+  // ── camera: isometric, follows the local player at a fixed zoom ──
+  const zoom = 1.6;
   const focus = new THREE.Vector3(W / 2, 0, W / 2);
   function frame() {
     const width = container.clientWidth || 600, height = container.clientHeight || 400;
@@ -112,7 +112,6 @@ export function createRoomScene(container, { base, world }) {
   frame();
   placeCamera();
   new ResizeObserver(frame).observe(container);
-  renderer.domElement.addEventListener('wheel', (e) => { e.preventDefault(); zoom = Math.max(0.8, Math.min(4, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); frame(); }, { passive: false });
 
   // ── collision: circle player vs the server's shapes; overlaps are pushed out (so movement slides), small sub-steps avoid tunnelling ──
   const R = world.radius, SHAPES = world.shapes;

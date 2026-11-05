@@ -19104,8 +19104,7 @@ function em(s, { base: e, world: t }) {
     const J = new Qe(new Cr(M.r * mt - 0.7, 48), new jt({ color: 16639626, transparent: !0, opacity: 0.45 }));
     J.rotation.x = -Math.PI / 2, J.position.copy(h(M.cx, M.cy, 0.07)), a.add(u, J);
   }
-  let d = 1.6;
-  const f = new C(i / 2, 0, i / 2);
+  const d = 1.6, f = new C(i / 2, 0, i / 2);
   function g() {
     const M = s.clientWidth || 600, J = s.clientHeight || 400;
     r.setSize(M, J, !1);
@@ -19115,9 +19114,7 @@ function em(s, { base: e, world: t }) {
   function _() {
     o.position.copy(f).add(new C(1, 0.9, 1).normalize().multiplyScalar(300)), o.lookAt(f);
   }
-  g(), _(), new ResizeObserver(g).observe(s), r.domElement.addEventListener("wheel", (M) => {
-    M.preventDefault(), d = Math.max(0.8, Math.min(4, d * (M.deltaY < 0 ? 1.15 : 1 / 1.15))), g();
-  }, { passive: !1 });
+  g(), _(), new ResizeObserver(g).observe(s);
   const p = t.radius, m = t.shapes;
   function T(M, J) {
     for (let q = 0; q < 4; q++) {

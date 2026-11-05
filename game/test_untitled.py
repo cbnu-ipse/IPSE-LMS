@@ -1,3 +1,5 @@
+import math
+
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -146,6 +148,80 @@ class CopsAndRobbersTests(SimpleTestCase):
         self.assertEqual(room.result["winner"], "thief")
 
 
+class BotTests(SimpleTestCase):
+    def solo(self, bots=1):
+        room = world.Room("SOLO", 1)
+        room.add(1, "me", now=0)
+        for _ in range(bots):
+            self.assertLess(room.add_bot(1, now=0), 0)
+        room.rng.seed(4)
+        return room
+
+    def run_until(self, room, done, start, limit=90.0):
+        t = start
+        while t < start + limit and not done():
+            t += 0.1
+            room.update(now=t)
+        return t
+
+    def test_only_the_host_adds_bots_in_the_lobby(self):
+        room = self.solo(bots=0)
+        room.add(2, "friend", now=0)
+        self.assertIsInstance(room.add_bot(2, now=0), str)
+        bot = room.add_bot(1, now=0)
+        self.assertTrue(room.players[bot].bot)
+        self.assertTrue(room.remove_bot(1))
+        self.assertFalse(any(p.bot for p in room.players.values()))
+        self.assertFalse(room.remove_bot(1))
+
+    def test_one_person_and_a_bot_can_play_and_a_cop_bot_catches(self):
+        room = self.solo(bots=1)
+        room.update(now=0)
+        self.assertTrue(room.start(1, now=0)[0])
+        me, bot = room.players[1], next(p for p in room.players.values() if p.bot)
+        me.team, bot.team = "thief", "cop"                          # 나는 가만히 있는 도둑, 봇은 경찰
+        bot.frozen_until = 0
+        me.x, me.y = 3.5, 19.5
+        bot.x, bot.y = 15.5, 19.5
+        t = self.run_until(room, lambda: me.jailed, 0.1)
+        self.assertTrue(me.jailed, "경찰 봇이 도둑을 잡지 못했다")
+        self.assertLess(t, 30)
+        self.assertEqual(room.result["winner"], "cop")
+
+    def test_thief_bot_runs_away_and_comes_to_rescue(self):
+        room = self.solo(bots=2)
+        room.update(now=0)
+        room.start(1, now=0)
+        me = room.players[1]
+        bots = [p for p in room.players.values() if p.bot]
+        me.team = "cop"
+        for b in bots:
+            b.team = "thief"
+        jailed, runner = bots
+        jailed.jailed = True
+        jailed.x, jailed.y = world.JAIL_SPOTS[0]
+        me.x, me.y = 2.5, 20.5                                       # 경찰(나)은 멀리 구석에 가만히 있다
+        runner.x, runner.y = 10.5, 19.5
+        self.run_until(room, lambda: not jailed.jailed, 0.1, limit=40)
+        self.assertFalse(jailed.jailed, "도둑 봇이 구출하러 가지 않았다")
+        me.x, me.y = runner.x + 1.2, runner.y
+        d0 = math.hypot(me.x - runner.x, me.y - runner.y)
+        t = room.last_update
+        self.run_until(room, lambda: False, t, limit=1.0)
+        self.assertGreater(math.hypot(me.x - runner.x, me.y - runner.y), d0)     # 가까이 온 경찰에게서 멀어진다
+
+    def test_bots_never_end_up_inside_anything(self):
+        room = self.solo(bots=5)
+        room.update(now=0)
+        room.start(1, now=0)
+        t = 0.0
+        for _ in range(600):
+            t += 0.1
+            room.update(now=t)
+            for p in room.players.values():
+                self.assertTrue(world.free_at(p.x, p.y), (p.name, p.x, p.y))
+
+
 class HubTests(SimpleTestCase):
     def setUp(self):
         self.addCleanup(hub.ROOMS.clear)
@@ -161,6 +237,15 @@ class HubTests(SimpleTestCase):
         hub.leave(1)
         hub.leave(2)
         self.assertNotIn(room.code, hub.ROOMS)
+
+    def test_room_list_hides_private_rooms_and_rooms_left_to_bots(self):
+        public = hub.create_room(1, "a", "다같이")
+        hub.create_room(2, "b", "비밀", private=True)
+        self.assertEqual([r["name"] for r in hub.list_rooms()], ["다같이"])
+        public.add_bot(1, now=0)
+        self.assertEqual(hub.list_rooms()[0]["bots"], 1)
+        hub.leave(1)                                                      # 봇만 남으면 방이 없어진다
+        self.assertNotIn(public.code, hub.ROOMS)
 
     def test_creating_a_new_room_leaves_the_old_one(self):
         first = hub.create_room(1, "a")
@@ -180,9 +265,9 @@ class HubTests(SimpleTestCase):
 
 class PageTests(TestCase):
     def test_page_needs_login_and_lists_the_map(self):
-        self.assertEqual(self.client.get(reverse("untitled")).status_code, 302)
+        self.assertEqual(self.client.get(reverse("cops_robbers")).status_code, 302)
         self.client.force_login(User.objects.create_user("walker", password="pw"))
-        res = self.client.get(reverse("untitled"))
+        res = self.client.get(reverse("cops_robbers"))
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "ut-world")
-        self.assertContains(self.client.get(reverse("game_lobby")), reverse("untitled"))
+        self.assertContains(self.client.get(reverse("game_lobby")), reverse("cops_robbers"))

@@ -1123,7 +1123,8 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class UntitledConsumer(AsyncWebsocketConsumer):
-    """[무제] 방: 만들기·코드로 입장·나가기, 캐릭터 이동, 경찰과 도둑 시작·대시. 방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
+    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개)·입장·나가기, 봇 넣고 빼기, 캐릭터 이동, 시작·대시.
+    방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
 
     async def connect(self):
         user = self.scope["user"]
@@ -1155,8 +1156,10 @@ class UntitledConsumer(AsyncWebsocketConsumer):
         user, kind = self.scope["user"], data.get("type")
         if kind == "__ping__":
             await self._send({"type": "pong"})
+        elif kind == "list":
+            await self._send({"type": "rooms", "rooms": untitled_hub.list_rooms()})
         elif kind == "create":
-            room = untitled_hub.create_room(user.id, self._name())
+            room = untitled_hub.create_room(user.id, self._name(), str(data.get("name") or "")[:24], bool(data.get("private")))
             await self._leave_group()
             await self._enter(room)
         elif kind == "join":
@@ -1179,6 +1182,19 @@ class UntitledConsumer(AsyncWebsocketConsumer):
                     return
                 untitled_hub.ensure_loop()
                 await untitled_hub.broadcast(room)
+        elif kind in ("add_bot", "remove_bot"):
+            room = untitled_hub.room_of(user.id)
+            if room is None:
+                return
+            if kind == "add_bot":
+                result = room.add_bot(user.id)
+                if isinstance(result, str):
+                    await self._send({"type": "error", "message": result})
+                    return
+            else:
+                room.remove_bot(user.id)
+            untitled_hub.ensure_loop()
+            await untitled_hub.broadcast(room)
         elif kind == "dash":
             room = untitled_hub.room_of(user.id)
             if room is not None:

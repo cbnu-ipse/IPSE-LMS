@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}IPSE 놀이터 | [무제]{% endblock %}
+{% block title %}IPSE 놀이터 | 경찰과 도둑{% endblock %}
 
 {% block content %}
 <style>
-    /* [무제]: 모든 스타일은 ut- 접두사로 한정해 다른 화면에 영향이 없게 한다. 3D 그림은 Kenney Furniture Kit / Mini Characters (CC0) */
+    /* 경찰과 도둑: 모든 스타일은 ut- 접두사로 한정해 다른 화면에 영향이 없게 한다. 3D 그림은 Kenney Furniture Kit / Mini Characters (CC0) */
     .ut-wrap { max-width: 1100px; margin: 0 auto; padding: 18px 14px 40px; }
     .ut-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 12px; }
     .ut-head h1 { margin: 0; font-size: 26px; font-weight: 900; color: #1e293b; }
@@ -53,28 +53,57 @@
     .ut-result > div { background: #fff; border-radius: 20px; padding: 20px 26px; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, .35); min-width: 260px; }
     .ut-result h2 { margin: 0 0 6px; font-size: 26px; font-weight: 900; }
     .ut-result p { margin: 4px 0; font-size: 14px; color: #475569; }
+    .ut-menu { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 860px) { .ut-menu { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+    .ut-menu > * { min-width: 0; }
+    .ut-card h2 { margin: 0; font-size: 16px; font-weight: 900; color: #1e293b; }
+    .ut-rooms { display: grid; gap: 8px; }
+    .ut-roomrow { display: flex; gap: 10px; align-items: center; border: 1px solid #e2e8f0; border-radius: 14px; padding: 10px 12px; background: #fff; cursor: pointer; text-align: left; font: inherit; width: 100%; }
+    .ut-roomrow:hover { border-color: #a5b4fc; background: #f5f3ff; }
+    .ut-roomrow b { flex: 1; min-width: 0; font-size: 15px; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ut-roomrow small { font-size: 12px; color: #64748b; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ut-roomrow .st { font-size: 11.5px; font-weight: 800; border-radius: 99px; padding: 2px 8px; background: #dcfce7; color: #166534; white-space: nowrap; }
+    .ut-roomrow .st.play { background: #fef3c7; color: #92400e; }
+    .ut-roomrow.full { opacity: .5; cursor: not-allowed; }
+    .ut-empty { font-size: 13px; color: #94a3b8; text-align: center; padding: 18px 8px; border: 1px dashed #e2e8f0; border-radius: 14px; }
+    .ut-text { flex: 1; min-width: 140px; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 12px; border: 2px solid #e2e8f0; }
+    .ut-text:focus { outline: none; border-color: #4f46e5; }
+    .ut-check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: #475569; font-weight: 700; }
     .ut-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 95; background: #1e293b; color: #fff; padding: 10px 18px; border-radius: 99px; font-weight: 800; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); max-width: 90vw; text-align: center; }
     .ut-toast.bad { background: #be123c; }
 </style>
 
 <div class="ut-wrap">
     <div class="ut-head">
-        <h1>[무제]</h1>
-        <p>방을 만들거나 코드로 들어가서 경찰과 도둑을 해요.</p>
+        <h1>경찰과 도둑</h1>
+        <p>방에 들어가 경찰은 도둑을 잡고, 도둑은 끝까지 도망쳐요. 봇을 넣으면 혼자서도 할 수 있어요.</p>
     </div>
 
-    <div class="ut-card" id="ut-menu">
-        <div class="ut-row"><button type="button" class="ut-btn" id="ut-create">방 만들기</button></div>
-        <form class="ut-row" id="ut-join-form">
-            <input class="ut-input" id="ut-code-input" maxlength="4" placeholder="방 코드" autocomplete="off" aria-label="방 코드">
-            <button type="submit" class="ut-btn sub">입장</button>
-        </form>
-        <p class="ut-note">방을 만들면 4자리 코드가 생겨요. 친구에게 코드를 알려 주면 같은 방에 들어올 수 있어요 (최대 8명).</p>
+    <div class="ut-menu" id="ut-menu">
+        <section class="ut-card" aria-labelledby="ut-list-h" style="max-width:none">
+            <div class="ut-row" style="justify-content:space-between"><h2 id="ut-list-h">열린 방</h2><small class="ut-note" id="ut-list-note">불러오는 중…</small></div>
+            <div class="ut-rooms" id="ut-rooms"></div>
+        </section>
+        <div style="display:grid;gap:14px">
+            <form class="ut-card" id="ut-create-form" style="max-width:none">
+                <h2>방 만들기</h2>
+                <div class="ut-row"><input class="ut-text" id="ut-room-name" maxlength="24" placeholder="방 이름 (비워 두면 '닉네임의 방')" aria-label="방 이름"></div>
+                <label class="ut-check"><input type="checkbox" id="ut-private"> 비공개 (목록에 안 보이고 코드로만 들어와요)</label>
+                <div class="ut-row"><button type="submit" class="ut-btn" id="ut-create">방 만들기</button></div>
+            </form>
+            <form class="ut-card" id="ut-join-form" style="max-width:none">
+                <h2>코드로 들어가기</h2>
+                <div class="ut-row">
+                    <input class="ut-input" id="ut-code-input" maxlength="4" placeholder="코드" autocomplete="off" aria-label="방 코드">
+                    <button type="submit" class="ut-btn sub">입장</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <div id="ut-room" hidden>
         <div class="ut-bar">
-            <span class="ut-code">방 코드 <span id="ut-room-code">----</span></span>
+            <span class="ut-code"><span id="ut-room-name-label"></span> · 코드 <span id="ut-room-code">----</span></span>
             <button type="button" class="ut-btn sub" id="ut-copy">코드 복사</button>
             <div class="ut-chips" id="ut-chips"></div>
             <button type="button" class="ut-btn sub" id="ut-leave">나가기</button>
@@ -84,7 +113,9 @@
             <span class="ut-pill timer" id="ut-timer" hidden>3:00</span>
             <span class="ut-pill" id="ut-role" hidden></span>
             <span class="ut-pill" id="ut-count" hidden></span>
-            <button type="button" class="ut-btn" id="ut-start" hidden>🚓 경찰과 도둑 시작</button>
+            <button type="button" class="ut-btn sub" id="ut-bot-add" hidden>🤖 봇 추가</button>
+            <button type="button" class="ut-btn sub" id="ut-bot-remove" hidden>봇 빼기</button>
+            <button type="button" class="ut-btn" id="ut-start" hidden>🚓 시작</button>
         </div>
         <div class="ut-stage" id="ut-stage">
             <div class="ut-loading" id="ut-loading">광장을 불러오는 중…</div>
@@ -93,7 +124,7 @@
             <div class="ut-dash" id="ut-dash" hidden>대시 <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">준비</span></div>
             <div class="ut-result" id="ut-result" hidden><div><h2 id="ut-result-title"></h2><p id="ut-result-text"></p><p id="ut-result-catch"></p><p style="font-size:12px">잠시 뒤 대기실로 돌아가요</p></div></div>
         </div>
-        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 대시 · 휠로 확대·축소 · <kbd>H</kbd> 충돌 판정 보기<br>
+        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 대시<br>
             <b>경찰과 도둑</b>: 경찰은 도둑에게 닿아 감옥(오른쪽 위 울타리)에 보내요. 도둑은 감옥 앞 노란 발판을 밟아 갇힌 동료를 모두 구해요. 3분 안에 모두 가두면 경찰, 한 명이라도 남으면 도둑 승리!</p>
     </div>
 </div>
@@ -144,7 +175,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         players.forEach((p) => {
             const c = document.createElement('span');
             c.className = 'ut-chip' + (p.id === meId ? ' me' : '') + (p.online ? '' : ' off');
-            c.textContent = p.name + (p.id === meId ? ' (나)' : '');
+            c.textContent = (p.bot ? '🤖 ' : '') + p.name + (p.id === meId ? ' (나)' : '');
             box.appendChild(c);
         });
     }
@@ -164,7 +195,12 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         $('ut-role').textContent = mine.team === 'cop' ? '🚓 나는 경찰' : mine.jailed ? '⛓ 갇혔어요 · 동료를 기다려요' : '🦹 나는 도둑';
         $('ut-count').hidden = !inGame;
         $('ut-count').textContent = '도둑 ' + (thieves.length - jailed) + '명 도망 중 · ' + jailed + '명 갇힘';
-        $('ut-start').hidden = !(st.phase === 'lobby' && st.host === meId);
+        const hostLobby = st.phase === 'lobby' && st.host === meId;
+        $('ut-room-name-label').textContent = st.name + (st.private ? ' 🔒' : '');
+        $('ut-start').hidden = !hostLobby;
+        $('ut-bot-add').hidden = !hostLobby;
+        $('ut-bot-add').disabled = st.players.length >= 8;
+        $('ut-bot-remove').hidden = !(hostLobby && st.players.some((p) => p.bot));
         $('ut-start').disabled = st.players.length < 2;
         $('ut-start').title = st.players.length < 2 ? '두 명 이상 있어야 시작할 수 있어요' : '';
         const banner = $('ut-banner');
@@ -212,7 +248,8 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/untitled/');
         ws.onmessage = (m) => {
             const d = JSON.parse(m.data);
-            if (d.type === 'hello') { meId = d.me || meId; showRoom(d.room); }
+            if (d.type === 'hello') { meId = d.me || meId; showRoom(d.room); if (!d.room) send({ type: 'list' }); }
+            else if (d.type === 'rooms') renderRooms(d.rooms);
             else if (d.type === 'state' && room) { ensureScene().setPlayers(d.state.players, meId); renderChips(d.state.players); renderGame(d.state); }
             else if (d.type === 'correct' && scene3d) scene3d.correct(d.x, d.y);
             else if (d.type === 'error') toast(d.message, 'bad');
@@ -222,7 +259,39 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
     const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
     setInterval(() => send({ type: '__ping__' }), 25000);
 
-    $('ut-create').addEventListener('click', () => send({ type: 'create' }));
+    function renderRooms(rooms) {
+        const box = $('ut-rooms');
+        box.textContent = '';
+        $('ut-list-note').textContent = rooms.length + '개';
+        if (!rooms.length) {
+            const e = document.createElement('div');
+            e.className = 'ut-empty';
+            e.textContent = '열린 방이 없어요. 오른쪽에서 방을 만들어 보세요.';
+            box.appendChild(e);
+            return;
+        }
+        rooms.forEach((r) => {
+            const full = r.players + r.bots >= r.max;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ut-roomrow' + (full ? ' full' : '');
+            b.dataset.code = r.code;
+            b.disabled = full;
+            const name = document.createElement('b'); name.textContent = r.name;
+            const st = document.createElement('span'); st.className = 'st' + (r.phase === 'lobby' ? '' : ' play'); st.textContent = r.phase === 'lobby' ? '대기 중' : '진행 중 · 구경';
+            const n = document.createElement('small'); n.textContent = (r.players + r.bots) + ' / ' + r.max + (r.bots ? ' (봇 ' + r.bots + ')' : '');
+            b.append(name, st, n);
+            box.appendChild(b);
+        });
+    }
+    $('ut-rooms').addEventListener('click', (e) => { const b = e.target.closest('[data-code]'); if (b && !b.disabled) send({ type: 'join', code: b.dataset.code }); });
+    setInterval(() => { if (!room) send({ type: 'list' }); }, 2000);
+    $('ut-create-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        send({ type: 'create', name: $('ut-room-name').value.trim(), private: $('ut-private').checked });
+    });
+    $('ut-bot-add').addEventListener('click', () => send({ type: 'add_bot' }));
+    $('ut-bot-remove').addEventListener('click', () => send({ type: 'remove_bot' }));
     $('ut-join-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const code = $('ut-code-input').value.trim().toUpperCase();

@@ -29,9 +29,9 @@ def room_of(uid):
     return ROOMS.get(USER_ROOM.get(uid))
 
 
-def create_room(uid, name):
+def create_room(uid, name, room_name="", private=False):
     leave(uid)
-    room = world.Room(world.new_code(ROOMS), uid)
+    room = world.Room(world.new_code(ROOMS), uid, room_name or f"{name}의 방", private)
     room.add(uid, name)
     ROOMS[room.code] = room
     USER_ROOM[uid] = room.code
@@ -63,9 +63,15 @@ def leave(uid):
     if room is None:
         return None
     room.remove(uid)
-    if not room.players:
+    if not room.humans():                                   # 사람이 아무도 없으면 봇만 남은 방도 지운다
         ROOMS.pop(code, None)
     return room
+
+
+def list_rooms():
+    """열린 방 목록 (비공개 방은 빼고, 사람이 있는 방만)."""
+    rooms = [r.summary() for r in ROOMS.values() if not r.private and r.humans()]
+    return sorted(rooms, key=lambda r: (r["phase"] != "lobby", -r["players"], r["name"]))
 
 
 def disconnect(uid):
@@ -78,7 +84,7 @@ def disconnect(uid):
         player.connected = False
         player.moving = False
         room.dirty = True
-    if not any(p.connected for p in room.players.values()):
+    if not any(p.connected for p in room.humans()):
         room.idle_since = time.monotonic()
     return room
 
