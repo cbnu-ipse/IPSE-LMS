@@ -1123,7 +1123,7 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class UntitledConsumer(AsyncWebsocketConsumer):
-    """[무제] 방: 만들기·코드로 입장·나가기와 캐릭터 이동. 방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
+    """[무제] 방: 만들기·코드로 입장·나가기, 캐릭터 이동, 경찰과 도둑 시작·대시. 방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
 
     async def connect(self):
         user = self.scope["user"]
@@ -1170,6 +1170,19 @@ class UntitledConsumer(AsyncWebsocketConsumer):
             await self._leave_group()
             untitled_hub.leave(user.id)
             await self._send({"type": "hello", "room": None})
+        elif kind == "start":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                ok, message = room.start(user.id)
+                if not ok:
+                    await self._send({"type": "error", "message": message})
+                    return
+                untitled_hub.ensure_loop()
+                await untitled_hub.broadcast(room)
+        elif kind == "dash":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                room.dash(user.id)
         elif kind == "move":
             room = untitled_hub.room_of(user.id)
             if room is not None and not room.move(user.id, data.get("x"), data.get("y"), data.get("dir", 0), data.get("moving")):

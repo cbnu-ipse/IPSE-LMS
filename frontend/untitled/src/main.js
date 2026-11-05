@@ -67,6 +67,34 @@ export function createRoomScene(container, { base, world }) {
     }
   })();
 
+  // ── jail (fenced corner) and the rescue pad ──
+  if (world.jail) {
+    const J = world.jail, metal = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5, metalness: 0.4 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry((SIZE - J.x) * CELL, J.y * CELL), new THREE.MeshStandardMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.55 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.copy(toWorld((SIZE + J.x) / 2, J.y / 2, 0.04));
+    floor.receiveShadow = true;
+    scene.add(floor);
+    const post = (x, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.5, 0.35), metal); m.position.copy(toWorld(x, y, 2.75)); m.castShadow = true; scene.add(m); };
+    for (let y = 0; y <= J.y + 1e-6; y += 0.5) post(J.x, y);
+    for (let x = J.x + 0.5; x <= SIZE + 1e-6; x += 0.5) post(x, J.y);
+    for (const h of [0.6, 5.2]) {
+      const a = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, J.y * CELL), metal); a.position.copy(toWorld(J.x, J.y / 2, h)); scene.add(a);
+      const b = new THREE.Mesh(new THREE.BoxGeometry((SIZE - J.x) * CELL, 0.3, 0.3), metal); b.position.copy(toWorld((SIZE + J.x) / 2, J.y, h)); scene.add(b);
+    }
+  }
+  let padRing = null;
+  if (world.pad) {
+    const P = world.pad;
+    padRing = new THREE.Mesh(new THREE.RingGeometry(P.r * CELL - 0.7, P.r * CELL, 48), new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+    padRing.rotation.x = -Math.PI / 2;
+    padRing.position.copy(toWorld(P.cx, P.cy, 0.08));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(P.r * CELL - 0.7, 48), new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.45 }));
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.copy(toWorld(P.cx, P.cy, 0.07));
+    scene.add(padRing, disc);
+  }
+
   // ── camera: isometric, follows the local player, wheel zooms ──
   let zoom = 1.6;
   const focus = new THREE.Vector3(W / 2, 0, W / 2);
@@ -142,6 +170,36 @@ export function createRoomScene(container, { base, world }) {
   const ringGeo = new THREE.RingGeometry(R * CELL - 0.25, R * CELL, 40);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0x4f46e5, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
 
+  // ── team look: a blue police cap or a black beanie on the head bone (model units), and the colour of the ring underfoot ──
+  const TEAM_RING = { cop: 0x2563eb, thief: 0xdc2626 };
+  function teamHat(team) {
+    const g = new THREE.Group();
+    if (team === 'cop') {
+      const blue = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.6 });
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.12, 24), blue);
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.025, 0.14), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+      visor.position.set(0, -0.04, 0.2);
+      const badge = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.6 }));
+      badge.position.set(0, 0.01, 0.215);
+      g.add(crown, visor, badge);
+    } else if (team === 'thief') {
+      const black = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 });
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.235, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), black);
+      cap.scale.y = 0.7;
+      g.add(cap);
+    }
+    g.position.set(0, 0.3, 0.0);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    return g;
+  }
+  function dressFor(rec, team) {
+    if (!rec.actor || rec.team === team) return;
+    rec.team = team;
+    const head = rec.actor.root.getObjectByName('head');
+    if (rec.hat) { rec.hat.parent.remove(rec.hat); rec.hat = null; }
+    if (team && head) { rec.hat = teamHat(team); head.add(rec.hat); }
+  }
+
   // ── people ──
   const people = new Map();            // id → { actor, target, dir, moving, name }
   let meId = null, me = null;
@@ -152,12 +210,12 @@ export function createRoomScene(container, { base, world }) {
     if (!people.has(p.id)) return;
     rec.actor = actor;
     actor.root.position.copy(toWorld(rec.x, rec.y));
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+    const ring = new THREE.Mesh(ringGeo, ringMat.clone());
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
-    ring.visible = hitboxes.visible;
     rec.ring = ring;
     actor.root.add(ring);
     scene.add(actor.root);
+    dressFor(rec, rec.wantTeam);                               // the team may have arrived while the model was loading
   }
   function setPlayers(list, myId) {
     meId = myId;
@@ -166,9 +224,11 @@ export function createRoomScene(container, { base, world }) {
       seen.add(p.id);
       if (!people.has(p.id)) spawn(p);
       const rec = people.get(p.id);
-      rec.name = p.name; rec.online = p.online;
-      if (p.id === meId) {                                     // my own position is driven locally; only adopt it the first time
-        if (!me) { me = { x: p.x, y: p.y, dir: p.dir }; }
+      rec.name = p.name; rec.online = p.online; rec.jailed = p.jailed; rec.safe = p.safe; rec.wantTeam = p.team;
+      dressFor(rec, p.team);
+      if (p.id === meId) {                                     // my own position is driven locally; adopt it at first and whenever the server moves me
+        if (!me || p.tp !== me.tp) { me = { ...(me || {}), x: p.x, y: p.y, dir: p.dir, tp: p.tp }; }
+        me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.dashLeft = p.dash;
         return;
       }
       rec.x = p.x; rec.y = p.y; rec.dir = p.dir; rec.moving = p.moving;
@@ -189,11 +249,21 @@ export function createRoomScene(container, { base, world }) {
   // ── WASD: screen-relative (W = up the screen = toward the back corner) ──
   const keys = new Set();
   const MOVE_KEYS = { w: [-1, -1], arrowup: [-1, -1], s: [1, 1], arrowdown: [1, 1], a: [-1, 1], arrowleft: [-1, 1], d: [1, -1], arrowright: [1, -1] };
+  let dashUntil = 0, dashReady = 0, dashCb = null;
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
+    if (k === ' ' && !e.target.closest('input, textarea, button') && me) {
+      e.preventDefault();
+      const now = performance.now() / 1000;
+      if (now >= dashReady && !(me.frozen > 0) && !me.jailed) {
+        dashUntil = now + world.dash.seconds;
+        dashReady = now + world.dash.cooldown;
+        if (dashCb) dashCb();
+      }
+      return;
+    }
     if (k === 'h' && !e.target.closest('input, textarea') && meId) {
       hitboxes.visible = !hitboxes.visible;
-      for (const rec of people.values()) if (rec.ring) rec.ring.visible = hitboxes.visible;
       return;
     }
     if (!MOVE_KEYS[k] || e.target.closest('input, textarea') || !meId) return;
@@ -209,8 +279,11 @@ export function createRoomScene(container, { base, world }) {
     keys.forEach((k) => { vx += MOVE_KEYS[k][0]; vy += MOVE_KEYS[k][1]; });
     const len = Math.hypot(vx, vy);
     const moving = len > 0;
-    if (moving) {
-      const dist = world.speed * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
+    const frozen = me.frozen > 0;
+    if (frozen) me.frozen = Math.max(0, me.frozen - dt);
+    if (moving && !frozen) {
+      const boost = performance.now() / 1000 < dashUntil ? world.dash.mult : 1;
+      const dist = (me.speed || world.speed.lobby) * boost * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
       const others = [...people.entries()].filter(([id]) => id !== meId).map(([, r]) => r);
       for (let i = 0; i < steps; i++) {                     // small steps, each pushed back out of whatever it touched
         me.x += vx / len * dist / steps;
@@ -224,8 +297,8 @@ export function createRoomScene(container, { base, world }) {
       sinceSend = 0;
       moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving });
     }
-    wasMoving = moving;
-    return moving;
+    wasMoving = moving && !frozen;
+    return moving && !frozen;
   }
 
   // ── anchors for name tags ──
@@ -235,7 +308,8 @@ export function createRoomScene(container, { base, world }) {
     for (const [id, rec] of people) {
       if (!rec.actor) continue;
       v.copy(rec.actor.root.position).setY(6.2).project(camera);
-      out[id] = { x: (v.x + 1) / 2 * container.clientWidth, y: (1 - v.y) / 2 * container.clientHeight, name: rec.name, me: id === meId, online: rec.online !== false };
+      out[id] = { x: (v.x + 1) / 2 * container.clientWidth, y: (1 - v.y) / 2 * container.clientHeight, name: rec.name, me: id === meId,
+        online: rec.online !== false, team: rec.team, jailed: rec.jailed };
     }
     return out;
   }
@@ -255,10 +329,16 @@ export function createRoomScene(container, { base, world }) {
       if (mine) a.root.position.copy(target);
       else a.root.position.lerp(target, Math.min(1, dt * 10));
       a.root.rotation.y = mine ? me.dir : rec.dir;
+      if (rec.ring) {
+        const flash = rec.safe > 0 && Math.floor(performance.now() / 150) % 2;
+        rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team] || 0x4f46e5);
+        rec.ring.visible = !!rec.team || hitboxes.visible || mine;
+      }
       a.pose((mine ? myMoving : rec.moving) ? 'walk' : 'idle');
       a.update(dt);
     }
     if (me) focus.lerp(toWorld(me.x, me.y), Math.min(1, dt * 5));
+    if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
     placeCamera();
     renderer.render(scene, camera);
     if (frameCb) frameCb(anchors());
@@ -270,6 +350,8 @@ export function createRoomScene(container, { base, world }) {
     setPlayers, correct, clear,
     focus() { renderer.domElement.focus(); },
     onMove(cb) { moveCb = cb; },
+    onDash(cb) { dashCb = cb; },
+    dashState() { const now = performance.now() / 1000; return { ready: Math.max(0, dashReady - now), active: now < dashUntil }; },
     onFrame(cb) { frameCb = cb; },
   };
 }

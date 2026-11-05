@@ -33,6 +33,26 @@
     .ut-tag.me { background: #4f46e5; }
     .ut-tag.off { opacity: .45; }
     .ut-loading { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #4338ca; pointer-events: none; }
+    .ut-tag.cop { background: #1d4ed8; }
+    .ut-tag.thief { background: #b91c1c; }
+    .ut-tag.jailed { background: #475569; }
+    .ut-tag.me { outline: 2px solid #fff; }
+    .ut-game { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .ut-pill { font-size: 14px; font-weight: 800; color: #1e293b; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 7px 12px; font-variant-numeric: tabular-nums; }
+    .ut-pill.cop { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
+    .ut-pill.thief { background: #fee2e2; border-color: #fca5a5; color: #7f1d1d; }
+    .ut-pill.timer { background: #1e293b; color: #fff; border-color: #1e293b; }
+    .ut-banner { position: absolute; left: 50%; top: 18%; transform: translate(-50%, -50%); z-index: 5; text-align: center; pointer-events: none; color: #fff; text-shadow: 0 3px 12px rgba(15, 23, 42, .6); }
+    .ut-banner b { display: block; font-size: 54px; font-weight: 900; line-height: 1.1; }
+    .ut-banner span { font-size: 18px; font-weight: 800; }
+    .ut-dash { position: absolute; left: 12px; bottom: 12px; z-index: 5; background: rgba(15, 23, 42, .85); color: #fff; border-radius: 12px; padding: 6px 10px; font-size: 13px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
+    .ut-dash i { display: block; width: 70px; height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+    .ut-dash i u { display: block; height: 100%; background: #facc15; }
+    .ut-result { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(15, 23, 42, .45); }
+    .ut-result[hidden] { display: none; }
+    .ut-result > div { background: #fff; border-radius: 20px; padding: 20px 26px; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, .35); min-width: 260px; }
+    .ut-result h2 { margin: 0 0 6px; font-size: 26px; font-weight: 900; }
+    .ut-result p { margin: 4px 0; font-size: 14px; color: #475569; }
     .ut-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 95; background: #1e293b; color: #fff; padding: 10px 18px; border-radius: 99px; font-weight: 800; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); max-width: 90vw; text-align: center; }
     .ut-toast.bad { background: #be123c; }
 </style>
@@ -40,7 +60,7 @@
 <div class="ut-wrap">
     <div class="ut-head">
         <h1>[무제]</h1>
-        <p>방을 만들거나 코드로 들어가서 함께 돌아다녀요.</p>
+        <p>방을 만들거나 코드로 들어가서 경찰과 도둑을 해요.</p>
     </div>
 
     <div class="ut-card" id="ut-menu">
@@ -59,11 +79,22 @@
             <div class="ut-chips" id="ut-chips"></div>
             <button type="button" class="ut-btn sub" id="ut-leave">나가기</button>
         </div>
+        <div class="ut-game">
+            <span class="ut-pill" id="ut-phase">대기 중</span>
+            <span class="ut-pill timer" id="ut-timer" hidden>3:00</span>
+            <span class="ut-pill" id="ut-role" hidden></span>
+            <span class="ut-pill" id="ut-count" hidden></span>
+            <button type="button" class="ut-btn" id="ut-start" hidden>🚓 경찰과 도둑 시작</button>
+        </div>
         <div class="ut-stage" id="ut-stage">
             <div class="ut-loading" id="ut-loading">광장을 불러오는 중…</div>
             <div class="ut-tags" id="ut-tags"></div>
+            <div class="ut-banner" id="ut-banner" hidden><b id="ut-banner-big"></b><span id="ut-banner-small"></span></div>
+            <div class="ut-dash" id="ut-dash" hidden>대시 <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">준비</span></div>
+            <div class="ut-result" id="ut-result" hidden><div><h2 id="ut-result-title"></h2><p id="ut-result-text"></p><p id="ut-result-catch"></p><p style="font-size:12px">잠시 뒤 대기실로 돌아가요</p></div></div>
         </div>
-        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · 휠로 확대·축소 · <kbd>H</kbd> 충돌 판정 보기</p>
+        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 대시 · 휠로 확대·축소 · <kbd>H</kbd> 충돌 판정 보기<br>
+            <b>경찰과 도둑</b>: 경찰은 도둑에게 닿아 감옥(오른쪽 위 울타리)에 보내요. 도둑은 감옥 앞 노란 발판을 밟아 갇힌 동료를 모두 구해요. 3분 안에 모두 가두면 경찰, 한 명이라도 남으면 도둑 승리!</p>
     </div>
 </div>
 
@@ -90,6 +121,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         if (scene3d) return scene3d;
         scene3d = createRoomScene($('ut-stage'), { base: BASE3D, world: WORLD });
         scene3d.onMove((pos) => send({ type: 'move', ...pos }));
+        scene3d.onDash(() => send({ type: 'dash' }));
         scene3d.onFrame(drawTags);
         return scene3d;
     }
@@ -100,8 +132,8 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         Object.entries(anchors).forEach(([id, a]) => {
             let e = tagEls[id];
             if (!e) { e = document.createElement('div'); layer.appendChild(e); tagEls[id] = e; }
-            e.className = 'ut-tag' + (a.me ? ' me' : '') + (a.online ? '' : ' off');
-            e.textContent = a.name + (a.online ? '' : ' (자리 비움)');
+            e.className = 'ut-tag' + (a.me ? ' me' : '') + (a.online ? '' : ' off') + (a.jailed ? ' jailed' : a.team ? ' ' + a.team : '');
+            e.textContent = (a.team === 'cop' ? '🚓 ' : a.team === 'thief' ? (a.jailed ? '⛓ ' : '🦹 ') : '') + a.name + (a.online ? '' : ' (자리 비움)');
             e.style.left = a.x + 'px'; e.style.top = a.y + 'px';
         });
         Object.keys(tagEls).forEach((id) => { if (!anchors[id]) { tagEls[id].remove(); delete tagEls[id]; } });
@@ -116,6 +148,55 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
             box.appendChild(c);
         });
     }
+    const fmt = (sec) => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+    let G = null;
+    function renderGame(st) {
+        G = st;
+        const mine = st.players.find((p) => p.id === meId) || {};
+        const thieves = st.players.filter((p) => p.team === 'thief');
+        const jailed = thieves.filter((p) => p.jailed).length;
+        const inGame = st.phase === 'countdown' || st.phase === 'playing';
+        $('ut-phase').textContent = { lobby: '대기 중', countdown: '곧 시작', playing: '경찰과 도둑', result: '끝' }[st.phase];
+        $('ut-timer').hidden = st.phase !== 'playing';
+        if (st.phase === 'playing') $('ut-timer').textContent = fmt(st.left);
+        $('ut-role').hidden = !mine.team;
+        $('ut-role').className = 'ut-pill ' + (mine.team || '');
+        $('ut-role').textContent = mine.team === 'cop' ? '🚓 나는 경찰' : mine.jailed ? '⛓ 갇혔어요 · 동료를 기다려요' : '🦹 나는 도둑';
+        $('ut-count').hidden = !inGame;
+        $('ut-count').textContent = '도둑 ' + (thieves.length - jailed) + '명 도망 중 · ' + jailed + '명 갇힘';
+        $('ut-start').hidden = !(st.phase === 'lobby' && st.host === meId);
+        $('ut-start').disabled = st.players.length < 2;
+        $('ut-start').title = st.players.length < 2 ? '두 명 이상 있어야 시작할 수 있어요' : '';
+        const banner = $('ut-banner');
+        banner.hidden = true;
+        if (st.phase === 'countdown') { banner.hidden = false; $('ut-banner-big').textContent = Math.ceil(st.left); $('ut-banner-small').textContent = mine.team === 'cop' ? '경찰이에요! 도둑이 먼저 흩어진 뒤 출발해요' : mine.team === 'thief' ? '도둑이에요! 흩어져서 숨으세요' : ''; }
+        else if (st.phase === 'playing' && mine.frozen > 0) { banner.hidden = false; $('ut-banner-big').textContent = Math.ceil(mine.frozen); $('ut-banner-small').textContent = '경찰 출발까지'; }
+        $('ut-dash').hidden = !inGame || mine.jailed;
+        const res = $('ut-result');
+        res.hidden = st.phase !== 'result' || !st.result;
+        if (st.result) {
+            const win = st.result.winner;
+            $('ut-result-title').textContent = win === 'cop' ? '🚓 경찰 승리!' : '🦹 도둑 승리!';
+            $('ut-result-title').style.color = win === 'cop' ? '#1d4ed8' : '#b91c1c';
+            $('ut-result-text').textContent = (mine.team === win ? '이겼어요! ' : mine.team ? '아쉽게 졌어요. ' : '') + '도둑 ' + st.result.thieves + '명 중 ' + st.result.free + '명이 도망쳤어요.';
+            const best = Object.entries(st.result.catches || {}).sort((a, b) => b[1] - a[1])[0];
+            const who = best && st.players.find((p) => String(p.id) === String(best[0]));
+            $('ut-result-catch').textContent = who && best[1] ? '최다 검거: ' + who.name + ' (' + best[1] + '명)' : '';
+        }
+        (st.events || []).forEach((ev) => {
+            const name = (id) => (st.players.find((p) => p.id === id) || {}).name || '누군가';
+            if (ev.t === 'caught') toast(ev.thief === meId ? '⛓ 잡혔어요! 동료가 구해 줄 거예요' : '🚓 ' + name(ev.cop) + '이(가) ' + name(ev.thief) + '을(를) 잡았어요', ev.thief === meId ? 'bad' : '');
+            else if (ev.t === 'rescue') toast('🔓 ' + name(ev.by) + '이(가) 동료 ' + ev.count + '명을 구했어요!');
+            else if (ev.t === 'go') toast('시작!');
+        });
+    }
+    setInterval(() => {
+        if (!scene3d || !G) return;
+        const d = scene3d.dashState(), cd = WORLD.dash.cooldown;
+        $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / cd) * 100 : 100) + '%';
+        $('ut-dash-t').textContent = d.active ? '쌩!' : d.ready > 0 ? d.ready.toFixed(1) + '초' : 'Space';
+    }, 100);
+
     function showRoom(code) {
         room = code;
         $('ut-menu').hidden = !!code;
@@ -132,7 +213,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         ws.onmessage = (m) => {
             const d = JSON.parse(m.data);
             if (d.type === 'hello') { meId = d.me || meId; showRoom(d.room); }
-            else if (d.type === 'state' && room) { ensureScene().setPlayers(d.state.players, meId); renderChips(d.state.players); }
+            else if (d.type === 'state' && room) { ensureScene().setPlayers(d.state.players, meId); renderChips(d.state.players); renderGame(d.state); }
             else if (d.type === 'correct' && scene3d) scene3d.correct(d.x, d.y);
             else if (d.type === 'error') toast(d.message, 'bad');
         };
@@ -149,6 +230,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         send({ type: 'join', code: code });
     });
     $('ut-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('ut-start').addEventListener('click', () => { send({ type: 'start' }); if (scene3d) scene3d.focus(); });
     $('ut-copy').addEventListener('click', () => {
         navigator.clipboard.writeText(room || '').then(() => toast('코드를 복사했어요'), () => toast('복사하지 못했어요. 코드를 직접 알려 주세요', 'bad'));
     });

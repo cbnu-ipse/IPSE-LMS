@@ -1,7 +1,7 @@
-"""[무제]: 방 관리와 위치 방송 (Daphne 한 프로세스 안의 메모리). 이동 규칙은 untitled_world.
+"""[무제]: 방 관리, 게임 시계, 상태 방송 (Daphne 한 프로세스 안의 메모리). 이동·경찰과 도둑 규칙은 untitled_world.
 
-방은 DB에 저장하지 않는다 (서버가 다시 시작되면 사라진다). 위치는 화면이 보내고 서버가 검증한 뒤,
-방마다 0.1초에 한 번 바뀐 것이 있으면 방 그룹으로 보낸다.
+방은 DB에 저장하지 않는다 (서버가 다시 시작되면 사라진다). 위치는 화면이 보내고 서버가 검증한다.
+0.1초마다 방마다 규칙을 한 번 돌리고(잡기·구출·승패), 바뀐 것이 있으면 일어난 일과 함께 방 그룹으로 보낸다.
 """
 import asyncio
 import logging
@@ -85,7 +85,9 @@ def disconnect(uid):
 
 async def broadcast(room):
     room.dirty = False
-    await get_channel_layer().group_send(group_name(room.code), {"type": "untitled.state", "state": room.snapshot()})
+    state = room.snapshot()
+    state["events"] = room.take_events()
+    await get_channel_layer().group_send(group_name(room.code), {"type": "untitled.state", "state": state})
 
 
 def ensure_loop():
@@ -100,6 +102,7 @@ async def _run():
         now = time.monotonic()
         for room in list(ROOMS.values()):
             try:
+                room.update(now)
                 if room.dirty:
                     await broadcast(room)
                 if room.idle_since is not None and now - room.idle_since > ABANDONED_ROOM_KEEP_SECONDS:
