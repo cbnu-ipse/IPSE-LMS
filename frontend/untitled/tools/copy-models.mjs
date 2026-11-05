@@ -6,8 +6,11 @@ import path from 'node:path';
 const src = process.argv[2];
 if (!src) throw new Error('usage: npm run models -- <kenney-assets-dir>');
 const out = path.resolve(import.meta.dirname, '../../../static/game/untitled3d/models');
-const FURNITURE = ['floorFull', 'wall', 'wallWindow', 'bench', 'benchCushion', 'pottedPlant', 'plantSmall1', 'lampSquareFloor', 'lampRoundFloor',
-  'tableRound', 'tableCoffee', 'loungeChair', 'loungeSofa', 'rugRound', 'bookcaseOpen', 'radio', 'speaker', 'trashcan', 'cardboardBoxClosed'];
+const FURNITURE = ['floorFull', 'wall', 'wallWindow', 'wallHalf', 'bench', 'benchCushion', 'pottedPlant', 'plantSmall1', 'lampSquareFloor', 'lampRoundFloor',
+  'tableRound', 'tableCoffee', 'tableCoffeeGlass', 'table', 'tableCloth', 'chair', 'chairCushion', 'stoolBar', 'desk', 'chairDesk',
+  'loungeChair', 'loungeSofa', 'loungeSofaLong', 'rugRound', 'rugRectangle', 'rugSquare', 'bookcaseOpen', 'bookcaseClosed', 'bookcaseClosedWide',
+  'radio', 'speaker', 'trashcan', 'cardboardBoxClosed', 'cardboardBoxOpen', 'kitchenBar', 'kitchenCabinet', 'kitchenFridge', 'kitchenCoffeeMachine',
+  'cabinetTelevision', 'televisionModern', 'washer', 'coatRackStanding', 'sideTable'];
 
 fs.mkdirSync(path.join(out, 'furniture'), { recursive: true });
 for (const name of FURNITURE) {

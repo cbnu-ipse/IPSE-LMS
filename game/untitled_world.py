@@ -13,16 +13,18 @@
 - 누구나 대시(DASH_SECONDS 동안 DASH_MULT배 빠르게, DASH_COOLDOWN초마다 한 번)를 쓸 수 있다. 서버가 대시 시간을 기록해 속도 검사에 반영한다.
 
 봇: 방장이 대기실에서 넣고 뺀다(id는 음수). 봇은 서버가 움직인다(사람과 같은 충돌 판정과 대시). 경찰 봇은 가까운 도둑을 쫓고,
-도둑 봇은 가까운 경찰에게서 달아나다가 동료가 갇히면 구출 발판으로 간다. 막히면 잠깐 옆으로 비켜 돌아간다.
+도둑 봇은 가까운 경찰에게서 달아나다가 동료가 갇히면 구출 발판으로 간다. 벽이 가로막으면 반 칸 격자에서 길을 찾아 돌아간다.
 """
 import math
+from collections import deque
 import random
 import time
 
-SIZE = 22
+SIZE = 32
 MAX_PLAYERS = 8
 SPEED = {"lobby": 4.0, "cop": 4.3, "thief": 4.0}     # 칸/초
 RADIUS = 0.3                   # 캐릭터 몸통 반지름 (칸)
+TOUCH = 2e-3                   # 맞닿음 허용 오차: 화면은 밀어낸 위치를 소수 셋째 자리로 반올림해 보내므로 그만큼 봐준다
 SLACK = 1.6                    # 네트워크 지연을 봐주는 속도 여유 배수
 CATCH = 0.75                   # 경찰과 도둑의 중심이 이보다 가까우면 잡힌다 (칸)
 DASH_MULT, DASH_SECONDS, DASH_COOLDOWN = 1.8, 0.8, 5.0
@@ -32,37 +34,91 @@ MODELS = ["character-male-a", "character-female-a", "character-male-b", "charact
           "character-male-d", "character-female-d", "character-male-e", "character-female-e", "character-male-f", "character-female-f"]
 
 # 감옥: 오른쪽 위 구석 [JAIL_X, SIZE] × [0, JAIL_Y]. 울타리(충돌 모양)로 막혀 있다. 구출 발판은 울타리 바깥 모서리 앞.
-JAIL_X, JAIL_Y = 18, 4
-PAD = {"cx": 16.9, "cy": 5.1, "r": 0.8}
-JAIL_SPOTS = [(19.0 + (i % 3) * 1.0, 1.0 + (i // 3) * 1.2) for i in range(9)]
+JAIL_X, JAIL_Y = 28, 4
+PAD = {"cx": 26.9, "cy": 5.1, "r": 0.8}
+JAIL_SPOTS = [(JAIL_X + 1.0 + (i % 3) * 1.0, 1.0 + (i // 3) * 1.2) for i in range(9)]
+
+# 구역: 바닥 무늬가 다르고(화면), 사이사이 문이 뚫린 낮은 벽으로 나뉜다. 가운데 십자 띠는 열린 광장·복도.
+ZONES = [
+    {"kind": "library", "name": "도서관", "x0": 0, "y0": 0, "x1": 12, "y1": 12},
+    {"kind": "cafe", "name": "카페", "x0": 20, "y0": 0, "x1": 32, "y1": 12},
+    {"kind": "lounge", "name": "라운지", "x0": 0, "y0": 20, "x1": 12, "y1": 32},
+    {"kind": "warehouse", "name": "창고", "x0": 20, "y0": 20, "x1": 32, "y1": 32},
+]
+# 벽: (방향, 고정 좌표, 시작, 끝, 문 구간들). "v"는 x=고정 좌표인 세로 벽(y 시작~끝), "h"는 y=고정 좌표인 가로 벽(x 시작~끝).
+WALL_LINES = [
+    ("v", 12, 0, 12, [(5, 7)]), ("h", 12, 0, 12, [(5, 7)]),
+    ("v", 20, 0, 12, [(7, 9)]), ("h", 12, 20, 32, [(24, 26)]),
+    ("v", 12, 20, 32, [(25, 27)]), ("h", 20, 0, 12, [(2, 4), (8, 10)]),
+    ("v", 20, 20, 32, [(25, 27)]), ("h", 20, 20, 32, [(25, 27)]),
+]
+WALL_T = 0.12                   # 벽 두께의 절반 (칸)
+
+
+def wall_pieces():
+    """벽을 한 칸 길이 조각들로 (화면은 조각마다 Kenney 반쪽 벽을 그린다): [(방향, 고정 좌표, 시작)]."""
+    out = []
+    for o, fixed, a, b, gaps in WALL_LINES:
+        for t in range(a, b):
+            if not any(g0 <= t < g1 for g0, g1 in gaps):
+                out.append((o, fixed, t))
+    return out
+
+
+def _bookrow(y, xs, model="bookcaseOpen"):
+    return [(model, x, y, 0, 1, 1) for x in xs]
+
 
 # 광장 소품: (모델, x, y, 돌림, 가로 칸, 세로 칸). 가로·세로는 광장 기준(돌린 뒤) 차지하는 칸 수이고, 소품은 그 칸들의 가운데에 놓인다.
-PROPS = [
-    ("tableRound", 10, 10, 0, 2, 2), ("benchCushion", 9, 10, 1, 1, 1), ("benchCushion", 12, 11, 3, 1, 1),
-    ("loungeSofa", 1, 6, 1, 1, 2), ("tableCoffee", 2, 6, 1, 1, 2), ("bookcaseOpen", 0, 10, 1, 1, 1), ("bookcaseOpen", 0, 11, 1, 1, 1),
-    ("bookcaseOpen", 6, 4, 0, 1, 1), ("bookcaseOpen", 7, 4, 0, 1, 1), ("bookcaseOpen", 8, 4, 0, 1, 1),
-    ("bookcaseOpen", 13, 16, 0, 1, 1), ("bookcaseOpen", 14, 16, 0, 1, 1), ("bookcaseOpen", 15, 16, 0, 1, 1),
-    ("loungeSofa", 5, 14, 0, 2, 1), ("loungeSofa", 15, 7, 1, 1, 2), ("tableCoffee", 5, 13, 0, 2, 1),
-    ("pottedPlant", 3, 3, 0, 1, 1), ("pottedPlant", 3, 18, 0, 1, 1), ("pottedPlant", 18, 18, 0, 1, 1), ("pottedPlant", 10, 6, 0, 1, 1),
-    ("pottedPlant", 10, 15, 0, 1, 1), ("pottedPlant", 6, 9, 0, 1, 1), ("pottedPlant", 15, 12, 0, 1, 1),
-    ("lampSquareFloor", 7, 7, 0, 1, 1), ("lampSquareFloor", 14, 4, 0, 1, 1), ("lampSquareFloor", 7, 17, 0, 1, 1), ("lampSquareFloor", 17, 13, 0, 1, 1),
-    ("loungeChair", 12, 0, 0, 1, 1), ("radio", 14, 0, 0, 1, 1), ("speaker", 0, 2, 1, 1, 1),
-    ("trashcan", 21, 20, 3, 1, 1), ("cardboardBoxClosed", 20, 21, 0, 1, 1), ("cardboardBoxClosed", 21, 21, 0, 1, 1),
-    ("cardboardBoxClosed", 3, 10, 0, 1, 1), ("cardboardBoxClosed", 18, 9, 0, 1, 1), ("cardboardBoxClosed", 19, 9, 0, 1, 1),
-]
-DECOR = [("rugRound", 10, 10, 0)]       # 밟고 지나갈 수 있는 것
-LOBBY_SPAWNS = [(11.0 + dx, 19.5) for dx in (-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5)]
-COP_SPAWNS = [(11.0, 8.2), (12.5, 8.2), (9.5, 8.2), (11.0, 13.8)]
-THIEF_SPAWNS = [(2.0, 20.0), (20.0, 15.0), (4.0, 1.0), (19.0, 20.0), (1.0, 14.5), (8.5, 1.5), (16.0, 19.5), (20.0, 11.0)]
+PROPS = (
+    # 도서관: 책장 줄 사이 통로, 열람 책상
+    _bookrow(2, [1, 2, 3, 4, 7, 8, 9, 10]) + _bookrow(5, [1, 2, 3, 6, 7, 8, 9]) + _bookrow(8, [1, 2, 5, 6, 7, 8, 9, 10])
+    + [("bookcaseClosedWide", 1, 11, 0, 2, 1), ("bookcaseClosedWide", 8, 11, 2, 2, 1), ("table", 4, 10, 0, 2, 1),
+       ("chair", 4, 11, 2, 1, 1), ("chair", 5, 11, 2, 1, 1), ("lampRoundFloor", 11, 1, 0, 1, 1), ("pottedPlant", 11, 9, 0, 1, 1)]
+    # 카페: 카운터와 스툴, 테이블 자리
+    + [("kitchenFridge", 20, 0, 0, 1, 1), ("kitchenBar", 21, 0, 0, 1, 1), ("kitchenBar", 22, 0, 0, 1, 1), ("kitchenBar", 23, 0, 0, 1, 1),
+       ("kitchenCabinet", 24, 0, 0, 1, 1), ("kitchenCabinet", 25, 0, 0, 1, 1),
+       ("stoolBar", 21, 2, 2, 1, 1), ("stoolBar", 22, 2, 2, 1, 1), ("stoolBar", 23, 2, 2, 1, 1),
+       ("tableRound", 21, 4, 0, 2, 2), ("chair", 23, 5, 3, 1, 1),
+       ("tableRound", 22, 8, 0, 2, 2), ("chair", 24, 9, 3, 1, 1), ("chair", 22, 10, 2, 1, 1),
+       ("tableCloth", 27, 8, 0, 2, 1), ("chair", 27, 9, 2, 1, 1), ("chair", 28, 9, 2, 1, 1), ("chair", 27, 7, 0, 1, 1), ("chair", 28, 7, 0, 1, 1),
+       ("pottedPlant", 31, 11, 0, 1, 1), ("pottedPlant", 20, 11, 0, 1, 1), ("lampSquareFloor", 31, 6, 0, 1, 1)]
+    # 라운지: 소파, TV장, 책상 자리
+    + [("loungeSofa", 2, 23, 0, 2, 1), ("tableCoffee", 2, 25, 0, 2, 1), ("cabinetTelevision", 2, 27, 2, 2, 1),
+       ("desk", 7, 23, 0, 2, 1), ("chairDesk", 7, 22, 0, 1, 1), ("desk", 7, 28, 0, 2, 1), ("chairDesk", 8, 27, 0, 1, 1),
+       ("loungeChair", 10, 22, 3, 1, 1), ("loungeChair", 10, 30, 3, 1, 1), ("sideTable", 5, 30, 0, 1, 1),
+       ("coatRackStanding", 11, 23, 0, 1, 1), ("pottedPlant", 1, 21, 0, 1, 1), ("pottedPlant", 11, 31, 0, 1, 1), ("lampSquareFloor", 0, 30, 0, 1, 1)]
+    # 창고: 상자 미로와 세탁기
+    + [("cardboardBoxClosed", x, 22, 0, 1, 1) for x in (22, 23, 24, 28, 29, 30)]
+    + [("cardboardBoxOpen", x, 24, 0, 1, 1) for x in (21, 26, 27, 31)]
+    + [("cardboardBoxClosed", x, 27, 0, 1, 1) for x in (22, 23, 28, 29, 30)]
+    + [("cardboardBoxOpen", x, 29, 0, 1, 1) for x in (24, 25, 26, 30)]
+    + [("bookcaseClosed", 21, 31, 0, 1, 1), ("bookcaseClosed", 22, 31, 0, 1, 1), ("washer", 31, 31, 0, 1, 1), ("washer", 30, 31, 0, 1, 1)]
+    # 가운데 광장과 복도
+    + [("tableRound", 15, 15, 0, 2, 2), ("benchCushion", 14, 15, 1, 1, 1), ("benchCushion", 17, 16, 3, 1, 1),
+       ("lampSquareFloor", 13, 13, 0, 1, 1), ("lampSquareFloor", 18, 13, 0, 1, 1), ("lampSquareFloor", 13, 18, 0, 1, 1), ("lampSquareFloor", 18, 18, 0, 1, 1),
+       ("pottedPlant", 14, 4, 0, 1, 1), ("pottedPlant", 17, 8, 0, 1, 1), ("bench", 15, 1, 0, 1, 1), ("lampRoundFloor", 16, 6, 0, 1, 1),
+       ("pottedPlant", 14, 24, 0, 1, 1), ("pottedPlant", 17, 28, 0, 1, 1), ("bench", 15, 30, 2, 1, 1), ("lampRoundFloor", 16, 22, 0, 1, 1),
+       ("pottedPlant", 3, 14, 0, 1, 1), ("pottedPlant", 8, 17, 0, 1, 1), ("bench", 5, 13, 0, 1, 1), ("trashcan", 1, 18, 0, 1, 1),
+       ("pottedPlant", 24, 14, 0, 1, 1), ("pottedPlant", 29, 17, 0, 1, 1), ("speaker", 31, 13, 3, 1, 1), ("bench", 27, 13, 0, 1, 1)]
+)
+DECOR = [("rugRound", 15, 15, 0), ("rugRectangle", 2, 29, 0), ("rugSquare", 21, 8, 0)]       # 밟고 지나갈 수 있는 것
+LOBBY_SPAWNS = [(12.5 + i, 19.5) for i in range(8)]
+COP_SPAWNS = [(15.0, 13.6), (16.8, 13.6), (14.4, 18.2), (17.6, 18.2)]
+THIEF_SPAWNS = [(5.5, 6.5), (5.5, 29.5), (25.5, 30.5), (25.5, 10.6), (15.5, 3.5), (3.5, 16.5), (28.5, 16.5), (15.5, 27.5)]
 
 # Kenney Furniture Kit 모델의 바닥 크기 (모델 단위, 돌리기 전 가로 x · 세로 z). 한 칸 = 5 모델 단위.
 CELL_UNITS = 5.0
 MODEL_SIZE = {
+    "table": (8.4, 4.5), "tableCloth": (8.4, 4.5), "chair": (2.0, 2.0), "stoolBar": (2.7, 2.3), "desk": (7.3, 3.9), "chairDesk": (3.3, 3.1),
+    "bookcaseClosed": (4.0, 2.5), "bookcaseClosedWide": (8.0, 2.5), "cardboardBoxOpen": (3.7, 2.1), "kitchenBar": (4.3, 2.1),
+    "kitchenCabinet": (4.3, 4.5), "kitchenFridge": (4.3, 2.9), "cabinetTelevision": (8.0, 2.5), "washer": (3.9, 3.9),
+    "coatRackStanding": (2.7, 2.7), "sideTable": (5.3, 2.2), "bench": (4.0, 2.0), "tableCoffeeGlass": (6.6, 4.0),
     "tableRound": (6.9, 8.0), "benchCushion": (4.0, 2.0), "pottedPlant": (2.1, 2.4), "lampSquareFloor": (1.2, 1.2),
     "lampRoundFloor": (1.5, 1.8), "loungeSofa": (9.8, 4.1), "tableCoffee": (6.6, 4.0), "bookcaseOpen": (4.0, 2.5),
     "loungeChair": (4.9, 4.1), "radio": (3.1, 1.0), "speaker": (1.5, 1.5), "trashcan": (2.1, 2.3), "cardboardBoxClosed": (2.1, 2.1),
 }
-ROUND = {"tableRound", "pottedPlant", "lampSquareFloor", "lampRoundFloor", "trashcan"}    # 위에서 보면 둥근 것
+ROUND = {"tableRound", "pottedPlant", "lampSquareFloor", "lampRoundFloor", "trashcan", "stoolBar", "coatRackStanding"}    # 위에서 보면 둥근 것
 FENCE_T = 0.12                  # 감옥 울타리 두께의 절반 (칸)
 
 
@@ -80,6 +136,16 @@ def shapes():
             out.append({"kind": "circle", "cx": cx, "cy": cy, "r": round(min(ex, ey) / 2, 4), "model": model})
         else:
             out.append({"kind": "box", "cx": cx, "cy": cy, "hx": round(ex / 2, 4), "hy": round(ey / 2, 4), "model": model})
+    for o, fixed, a, b, gaps in WALL_LINES:                  # 벽: 문 구간을 뺀 이어진 토막마다 얇은 사각형
+        cuts = [a] + [g for gap in gaps for g in gap] + [b]
+        for t0, t1 in zip(cuts[::2], cuts[1::2]):
+            if t1 <= t0:
+                continue
+            mid, half = (t0 + t1) / 2, (t1 - t0) / 2 + WALL_T
+            if o == "v":
+                out.append({"kind": "box", "cx": fixed, "cy": mid, "hx": WALL_T, "hy": half, "model": "wall"})
+            else:
+                out.append({"kind": "box", "cx": mid, "cy": fixed, "hx": half, "hy": WALL_T, "model": "wall"})
     out.append({"kind": "box", "cx": JAIL_X, "cy": JAIL_Y / 2, "hx": FENCE_T, "hy": JAIL_Y / 2 + FENCE_T, "model": "fence"})
     out.append({"kind": "box", "cx": (JAIL_X + SIZE) / 2, "cy": JAIL_Y, "hx": (SIZE - JAIL_X) / 2 + FENCE_T, "hy": FENCE_T, "model": "fence"})
     return out
@@ -88,11 +154,34 @@ def shapes():
 SHAPES = shapes()
 
 
+def _bucket_shapes():
+    """칸마다 그 칸 안의 어떤 점에서든 닿을 수 있는 충돌 모양만 모아 둔다 (밀어내기·빈자리 검사를 빠르게)."""
+    reach = RADIUS + 0.8                       # 한 번 밀린 뒤 옆 칸으로 넘어가도 놓치지 않을 만큼 넉넉히
+    out = [[[] for _ in range(SIZE)] for _ in range(SIZE)]
+    for s in SHAPES:
+        ext_x = s["r"] if s["kind"] == "circle" else s["hx"]
+        ext_y = s["r"] if s["kind"] == "circle" else s["hy"]
+        for i in range(max(0, int(s["cx"] - ext_x - reach)), min(SIZE, int(s["cx"] + ext_x + reach) + 1)):
+            for j in range(max(0, int(s["cy"] - ext_y - reach)), min(SIZE, int(s["cy"] + ext_y + reach) + 1)):
+                out[i][j].append(s)
+    return out
+
+
+_BUCKETS = _bucket_shapes()
+WALLS = [s for s in SHAPES if s["model"] in ("wall", "fence")]
+
+
+def near_shapes(x, y):
+    i, j = min(SIZE - 1, max(0, int(x))), min(SIZE - 1, max(0, int(y)))
+    return _BUCKETS[i][j]
+
+
 def world_view():
     """화면에 보낼 광장 정보."""
     return {"size": SIZE, "speed": SPEED, "radius": RADIUS, "shapes": SHAPES, "catch": CATCH,
             "dash": {"mult": DASH_MULT, "seconds": DASH_SECONDS, "cooldown": DASH_COOLDOWN},
-            "jail": {"x": JAIL_X, "y": JAIL_Y}, "pad": PAD,
+            "jail": {"x": JAIL_X, "y": JAIL_Y}, "pad": PAD, "zones": ZONES,
+            "walls": [{"o": o, "f": f, "t": t} for o, f, t in wall_pieces()],
             "props": [{"model": m, "x": x, "y": y, "rot": r, "w": w, "d": d} for m, x, y, r, w, d in PROPS],
             "decor": [{"model": m, "x": x, "y": y, "rot": r} for m, x, y, r in DECOR]}
 
@@ -111,7 +200,27 @@ def free_at(x, y):
     eps = 1e-6
     if not (RADIUS - eps <= x <= SIZE - RADIUS + eps and RADIUS - eps <= y <= SIZE - RADIUS + eps):
         return False
-    return all(gap(s, x, y) >= RADIUS - 1e-4 for s in SHAPES)
+    return all(gap(s, x, y) >= RADIUS - TOUCH for s in near_shapes(x, y))
+
+
+def _seg_hits_box(x0, y0, x1, y1, s):
+    """선분이 사각형 s 자체(반지름으로 부풀리지 않은 것)를 지나는지 (slab 방법)."""
+    lo, hi = 0.0, 1.0
+    for a0, d, c, h in ((x0, x1 - x0, s["cx"], s["hx"]), (y0, y1 - y0, s["cy"], s["hy"])):
+        if abs(d) < 1e-12:
+            if abs(a0 - c) > h:
+                return False
+            continue
+        t0, t1 = (c - h - a0) / d, (c + h - a0) / d
+        lo, hi = max(lo, min(t0, t1)), min(hi, max(t0, t1))
+        if lo > hi:
+            return False
+    return True
+
+
+def crosses_wall(x0, y0, x1, y1):
+    """두 위치 사이에서 벽·울타리를 뚫고 지나갔는지. 끝점만 보면 얇은 벽을 한 번에 건너뛸 수 있어서 따로 본다."""
+    return any(_seg_hits_box(x0, y0, x1, y1, s) for s in WALLS)
 
 
 def in_jail(x, y):
@@ -120,9 +229,16 @@ def in_jail(x, y):
 
 def push_out(x, y, others=()):
     """(x, y)가 충돌 모양·다른 캐릭터와 겹치면 겹친 만큼 밖으로 민다 (화면의 pushOut과 같은 방식). 민 위치를 돌려준다."""
-    for _ in range(4):
+    for _ in range(8):
         moved = False
-        for s in SHAPES:
+        for ox, oy in others:                                  # 다른 캐릭터를 먼저 밀고 충돌 모양이 마지막에 이긴다
+            dx, dy = x - ox, y - oy
+            dist = math.hypot(dx, dy)
+            if 1e-6 < dist < RADIUS * 2:
+                x += dx / dist * (RADIUS * 2 - dist)
+                y += dy / dist * (RADIUS * 2 - dist)
+                moved = True
+        for s in near_shapes(x, y):
             if s["kind"] == "circle":
                 nx, ny, reach = s["cx"], s["cy"], s["r"] + RADIUS
             else:
@@ -143,18 +259,114 @@ def push_out(x, y, others=()):
                 x += dx / dist * (reach - dist + 1e-3)
                 y += dy / dist * (reach - dist + 1e-3)
             moved = True
-        for ox, oy in others:
-            dx, dy = x - ox, y - oy
-            dist = math.hypot(dx, dy)
-            if 1e-6 < dist < RADIUS * 2:
-                x += dx / dist * (RADIUS * 2 - dist)
-                y += dy / dist * (RADIUS * 2 - dist)
-                moved = True
         x = min(max(x, RADIUS), SIZE - RADIUS)
         y = min(max(y, RADIUS), SIZE - RADIUS)
         if not moved:
             break
     return x, y
+
+
+# ── 봇 길찾기: 반 칸 격자 위 너비 우선 탐색 ────────────────────────
+STEP = 0.5
+BOT_COP_HANDICAP = 0.92         # 혼자 연습할 때 경찰 봇이 너무 세지 않게 (사람 속도는 그대로)
+BOT_REACTION = 0.35            # 경찰 봇이 도둑 위치를 다시 보는 간격 (초)
+GRID_N = int(SIZE / STEP)
+_WALK = None
+
+
+def walkable():
+    """반 칸 격자 마디마다 캐릭터가 설 수 있는지 (감옥 안은 못 가는 곳으로 친다). 한 번만 계산한다."""
+    global _WALK
+    if _WALK is None:
+        _WALK = [[free_at((i + 0.5) * STEP, (j + 0.5) * STEP) and not in_jail((i + 0.5) * STEP, (j + 0.5) * STEP)
+                  for j in range(GRID_N)] for i in range(GRID_N)]
+    return _WALK
+
+
+_OPEN = None
+
+
+def openness():
+    """마디마다 둘레 7×7 마디 중 설 수 있는 곳의 수 (구석·막다른 곳일수록 작다). 한 번만 계산한다."""
+    global _OPEN
+    if _OPEN is None:
+        w = walkable()
+        _OPEN = [[sum(w[a][b] for a in range(max(0, i - 3), min(GRID_N, i + 4)) for b in range(max(0, j - 3), min(GRID_N, j + 4)))
+                  for j in range(GRID_N)] for i in range(GRID_N)]
+    return _OPEN
+
+
+def _node(x, y):
+    return min(GRID_N - 1, max(0, int(x / STEP))), min(GRID_N - 1, max(0, int(y / STEP)))
+
+
+def clear_line(x0, y0, x1, y1):
+    """두 점 사이를 격자 위에서 막힘 없이 곧게 갈 수 있는지."""
+    w = walkable()
+    n = max(1, math.ceil(math.hypot(x1 - x0, y1 - y0) / (STEP * 0.4)))
+    for k in range(n + 1):
+        i, j = _node(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n)
+        if not w[i][j]:
+            return False
+    return True
+
+
+def find_path(x0, y0, x1, y1):
+    """(x0, y0)에서 (x1, y1)까지 거쳐 갈 점들. 목표 마디가 막혀 있으면 가장 가까운 열린 마디로 간다. 못 가면 []."""
+    w = walkable()
+    start, goal = _node(x0, y0), _node(x1, y1)
+    if not w[goal[0]][goal[1]]:
+        cands = [(i, j) for i in range(max(0, goal[0] - 3), min(GRID_N, goal[0] + 4))
+                 for j in range(max(0, goal[1] - 3), min(GRID_N, goal[1] + 4)) if w[i][j]]
+        if not cands:
+            return []
+        goal = min(cands, key=lambda c: (c[0] - goal[0]) ** 2 + (c[1] - goal[1]) ** 2)
+    prev = {start: None}
+    queue = deque([start])
+    while queue:
+        cur = queue.popleft()
+        if cur == goal:
+            break
+        i, j = cur
+        for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            ni, nj = i + di, j + dj
+            if not (0 <= ni < GRID_N and 0 <= nj < GRID_N) or (ni, nj) in prev or not w[ni][nj]:
+                continue
+            if di and dj and not (w[i + di][j] and w[i][j + dj]):      # 모서리를 대각선으로 파고들지 않는다
+                continue
+            prev[(ni, nj)] = cur
+            queue.append((ni, nj))
+    if goal not in prev:
+        return []
+    out, cur = [], goal
+    while cur is not None and cur != start:
+        out.append(((cur[0] + 0.5) * STEP, (cur[1] + 0.5) * STEP))
+        cur = prev[cur]
+    out.reverse()
+    if out:
+        out[-1] = (x1, y1) if free_at(x1, y1) else out[-1]
+    return out
+
+
+def grid_dist(sources, limit=None):
+    """여러 출발점에서 격자를 따라 잰 거리(칸) 지도 {마디: 거리}. limit을 넘는 곳은 넣지 않는다."""
+    w = walkable()
+    dist, queue = {}, deque()
+    for x, y in sources:
+        n = _node(x, y)
+        if n not in dist:
+            dist[n] = 0.0
+            queue.append(n)
+    while queue:
+        cur = queue.popleft()
+        i, j = cur
+        base = dist[cur]
+        for di, dj, c in ((1, 0, STEP), (-1, 0, STEP), (0, 1, STEP), (0, -1, STEP)):
+            ni, nj = i + di, j + dj
+            if 0 <= ni < GRID_N and 0 <= nj < GRID_N and w[ni][nj] and (ni, nj) not in dist and (limit is None or base + c <= limit):
+                dist[(ni, nj)] = base + c
+                queue.append((ni, nj))
+    return dist
 
 
 class Player:
@@ -174,9 +386,13 @@ class Player:
         self.bot = uid < 0
         self.detour_until, self.detour = 0.0, (0.0, 0.0)
         self.stuck_check, self.wander = (x, y, now), None
+        self.path, self.path_goal, self.path_at = [], None, -1.0
+        self.seen = None                # 경찰 봇이 마지막으로 본 도둑 (id, x, y, 시각)
+        self.flee, self.flee_at = None, -1.0
 
     def speed(self):
-        return SPEED[self.team or "lobby"]
+        base = SPEED[self.team or "lobby"]
+        return base * BOT_COP_HANDICAP if self.bot and self.team == "cop" else base
 
     def teleport(self, x, y):
         self.x, self.y, self.moving = x, y, False
@@ -187,7 +403,7 @@ class Player:
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": self.jailed,
                 "safe": round(max(0.0, self.safe_until - now), 1), "frozen": round(max(0.0, self.frozen_until - now), 1),
                 "dash": round(max(0.0, self.dash_ready - now), 1), "speed": self.speed(), "tp": self.tp, "catches": self.catches,
-                "bot": self.bot}
+                "bot": self.bot, "dashing": now < self.dash_until}
 
 
 class Room:
@@ -204,6 +420,7 @@ class Room:
         self.result = None
         self.events = []
         self.rng = random.Random()
+        self._cop_dist, self._cop_map_at = {}, None
 
     # ── 방 ─────────────────────────────────────────────────────
     def add(self, uid, name, now=None):
@@ -267,7 +484,8 @@ class Room:
         dash = min(dt, max(0.0, p.dash_until - p.last))                 # 이 구간 중 대시하던 시간
         reach = (p.speed() * (dt + dash * (DASH_MULT - 1))) * SLACK + 0.25
         frozen = now < p.frozen_until
-        bad = (x - p.x) ** 2 + (y - p.y) ** 2 > reach ** 2 or not free_at(x, y) or (frozen and (x, y) != (p.x, p.y))
+        bad = ((x - p.x) ** 2 + (y - p.y) ** 2 > reach ** 2 or not free_at(x, y) or (frozen and (x, y) != (p.x, p.y))
+               or crosses_wall(p.x, p.y, x, y))
         if not bad and self.phase in ("countdown", "playing"):
             bad = in_jail(x, y) != p.jailed                             # 갇힌 사람은 감옥 안, 나머지는 감옥 밖에만
         p.last = now
@@ -345,6 +563,9 @@ class Room:
                     self.dirty = True
                 continue
             gx, gy, dash = goal
+            gx, gy = self._waypoint(b, gx, gy, now)
+            if dash and now >= b.dash_ready:
+                self.dash(b.uid, now)
             dx, dy = gx - b.x, gy - b.y
             dist = math.hypot(dx, dy)
             if dist < 0.15:
@@ -353,8 +574,6 @@ class Room:
             if now < b.detour_until:                          # 막혀서 잠깐 옆으로 돌아가는 중
                 dx, dy = b.detour
                 dist = 1.0
-            if dash and now >= b.dash_ready:
-                self.dash(b.uid, now)
             speed = b.speed() * (DASH_MULT if now < b.dash_until else 1.0)
             step = min(dist, speed * dt)
             others = [(p.x, p.y) for p in people if p is not b and not p.jailed]
@@ -379,6 +598,50 @@ class Room:
                 b.stuck_check = (b.x, b.y, now)
             self.dirty = True
 
+    def _cop_map(self, cops, now):
+        """모든 경찰에서 잰 격자 거리 지도. 0.3초마다 한 번만 새로 잰다."""
+        if self._cop_map_at is None or now - self._cop_map_at > 0.3:
+            self._cop_dist, self._cop_map_at = grid_dist([(p.x, p.y) for p in cops]), now
+        return self._cop_dist
+
+    def _flee_spot(self, b, cops, now):
+        cop_d = self._cop_map(cops, now)
+        mine = grid_dist([(b.x, b.y)], limit=7.0)
+        ratio = SPEED["cop"] / SPEED["thief"]
+        room = openness()
+        taken = [p.flee for p in self.players.values() if p is not b and p.team == "thief" and not p.jailed and p.flee]
+        best, best_score = None, -1e9
+        for (i, j), md in mine.items():
+            cd = min(cop_d.get((i, j), 99.0), 14.0)
+            if cd - md * ratio < -1.0 and md > 0.5:      # 경찰이 먼저 닿는 곳으로는 가지 않는다
+                continue
+            x, y = (i + 0.5) * STEP, (j + 0.5) * STEP
+            score = cd + room[i][j] * 0.15 + self.rng.uniform(0, 0.5)
+            if any(math.hypot(x - q[0], y - q[1]) < 1.2 for q in taken):   # 다른 도둑과 같은 곳으로 몰리지 않는다
+                score -= 3.0
+            if score > best_score:
+                best, best_score = (x, y), score
+        return best
+
+    def _waypoint(self, b, gx, gy, now):
+        """목표까지 곧장 갈 수 있으면 목표, 아니면 길을 찾아 지금 보이는 가장 먼 거쳐 갈 점."""
+        if clear_line(b.x, b.y, gx, gy):
+            b.path = []
+            return gx, gy
+        pg = b.path_goal
+        if not b.path or pg is None or math.hypot(pg[0] - gx, pg[1] - gy) > 1.0 or now - b.path_at > 1.0:
+            b.path, b.path_goal, b.path_at = find_path(b.x, b.y, gx, gy), (gx, gy), now
+        while len(b.path) > 1 and math.hypot(b.path[0][0] - b.x, b.path[0][1] - b.y) < 0.3:
+            b.path.pop(0)
+        if not b.path:
+            return gx, gy
+        best = 0
+        for k in range(min(len(b.path), 10)):
+            if clear_line(b.x, b.y, *b.path[k]):
+                best = k
+        del b.path[:best]
+        return b.path[0]
+
     def _bot_goal(self, b, people, now):
         """봇이 향할 곳 (x, y, 대시할지). 없으면 None."""
         if b.team == "cop":
@@ -386,8 +649,13 @@ class Room:
             if not prey:
                 return None
             t = min(prey, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2)
+            seen = b.seen
+            if seen is None or seen[0] != t.uid or now - seen[3] >= BOT_REACTION:   # 사람처럼 조금 늦게 다시 겨눈다
+                seen = b.seen = (t.uid, t.x, t.y, now)
             d = math.hypot(t.x - b.x, t.y - b.y)
-            return t.x, t.y, 1.5 < d < 4.5
+            if math.hypot(seen[1] - b.x, seen[2] - b.y) < 0.4:                    # 본 자리에 닿았으면 지금 자리로
+                seen = b.seen = (t.uid, t.x, t.y, now)
+            return seen[1], seen[2], 1.5 < d < 4.0
         if b.team != "thief":
             return None
         cops = [p for p in people if p.team == "cop"]
@@ -395,23 +663,29 @@ class Room:
         d = math.hypot(near.x - b.x, near.y - b.y) if near else 99.0
         jailed = any(p.jailed for p in people)
         pad_guard = min((math.hypot(p.x - PAD["cx"], p.y - PAD["cy"]) for p in cops), default=99.0)
-        if jailed and (d > 3.0 or pad_guard > 4.0) and pad_guard > 2.0:
+        if jailed and d > 4.0 and pad_guard > 5.0:                # 발판을 지키는 경찰이 없고 쫓기지 않을 때만 구하러 간다
             return PAD["cx"], PAD["cy"], d < 2.5
-        if near is not None and d < 7.0:                          # 경찰과 멀어지는 쪽 중 갈 수 있는 방향
-            best, best_score = None, -1e9
-            for k in range(16):
-                a = k * math.pi / 8
-                tx, ty = push_out(b.x + math.cos(a) * 1.5, b.y + math.sin(a) * 1.5)
-                score = math.hypot(tx - near.x, ty - near.y) + math.hypot(tx - b.x, ty - b.y) * 0.6 + self.rng.uniform(0, 0.3)
-                if score > best_score and not in_jail(tx, ty):
-                    best, best_score = (tx, ty), score
-            return best[0], best[1], d < 2.5
+        def danger(x, y):                                      # 모든 경찰 중 가장 가까운 거리
+            return min((math.hypot(p.x - x, p.y - y) for p in cops), default=99.0)
+
+        if near is not None and d < 7.0:                          # 경찰보다 먼저 닿을 수 있는 곳 중 경찰에게서 가장 먼 곳
+            dash_now = d < 2.5 or (near.dash_until > now and d < 4.0)
+            if b.flee is None or now - b.flee_at > 0.3 or math.hypot(b.flee[0] - b.x, b.flee[1] - b.y) < 0.4:
+                b.flee, b.flee_at = self._flee_spot(b, cops, now), now
+            if b.flee is not None:
+                b.wander = None
+                return b.flee[0], b.flee[1], dash_now
         if b.wander is None or math.hypot(b.wander[0] - b.x, b.wander[1] - b.y) < 0.5 or self.rng.random() < 0.01:
-            for _ in range(20):
-                wx, wy = self.rng.uniform(1, SIZE - 1), self.rng.uniform(JAIL_Y + 1, SIZE - 1)
-                if free_at(wx, wy):
-                    b.wander = (wx, wy)
+            spots = []
+            for _ in range(30):
+                wx, wy = self.rng.uniform(1, SIZE - 1), self.rng.uniform(1, SIZE - 1)
+                i, j = _node(wx, wy)
+                if walkable()[i][j]:
+                    spots.append((wx, wy))
+                if len(spots) >= 6:
                     break
+            if spots:                                              # 경찰에게서 먼 곳으로 돌아다닌다
+                b.wander = max(spots, key=lambda q: danger(*q) + self.rng.uniform(0, 3))
         return (b.wander[0], b.wander[1], False) if b.wander else None
 
     def _catch(self, now):
@@ -498,3 +772,8 @@ def new_code(taken, rng=random):
         if code not in taken:
             return code
     raise RuntimeError("방 코드를 만들 수 없습니다.")
+
+
+# 봇 길찾기 격자는 서버가 뜰 때 한 번 만들어 둔다 (첫 판 도중 이벤트 루프가 멈칫하지 않게, 약 30ms)
+walkable()
+openness()

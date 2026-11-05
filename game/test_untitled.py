@@ -20,17 +20,42 @@ class WorldTests(SimpleTestCase):
         self.assertFalse(world.free_at(0.1, 5))                               # 광장 밖으로 몸이 나간다
 
     def test_round_table_is_a_circle(self):
-        table = next(x for x in world.SHAPES if x["model"] == "tableRound")
-        self.assertEqual((table["cx"], table["cy"]), (11, 11))
-        self.assertFalse(world.free_at(11.5, 11.0))
-        self.assertTrue(world.free_at(10.0, 12.2))                            # 2×2 칸의 모서리 쪽은 비어 있다
+        table = next(x for x in world.SHAPES if x["model"] == "tableRound" and x["cx"] == 16)   # 가운데 광장 탁자
+        self.assertEqual((table["cx"], table["cy"]), (16, 16))
+        self.assertFalse(world.free_at(16.5, 16.0))
+        self.assertTrue(world.free_at(15.0, 17.2))                            # 2×2 칸의 모서리 쪽은 비어 있다
 
-    def test_turned_sofa_uses_its_turned_size(self):
-        sofa = next(x for x in world.SHAPES if x["model"] == "loungeSofa")
-        self.assertEqual((sofa["cx"], sofa["cy"]), (1.5, 7.0))                # 1×2 칸의 가운데
-        self.assertLess(sofa["hx"], sofa["hy"])                              # 돌려서 세로로 길다
-        self.assertTrue(world.free_at(1.5, 7.0 - sofa["hy"] - 0.31))
-        self.assertFalse(world.free_at(1.5, 7.0 - sofa["hy"] - 0.25))
+    def test_turned_bench_uses_its_turned_size(self):
+        bench = next(x for x in world.SHAPES if x["model"] == "benchCushion" and x["cx"] == 14.5)
+        self.assertEqual((bench["cx"], bench["cy"]), (14.5, 15.5))            # 1×1 칸의 가운데
+        self.assertLess(bench["hx"], bench["hy"])                            # 돌려서 세로로 길다
+        self.assertTrue(world.free_at(14.5, 15.5 - bench["hy"] - 0.31))
+        self.assertFalse(world.free_at(14.5, 15.5 - bench["hy"] - 0.25))
+
+    def test_zone_walls_block_except_at_their_doors(self):
+        self.assertFalse(world.free_at(12.0, 3.0))                            # 도서관 동쪽 벽
+        self.assertTrue(world.free_at(12.0, 6.0))                             # 그 벽의 문
+        self.assertFalse(world.free_at(25.0, 20.0))                           # 창고 북쪽 벽
+        self.assertTrue(world.free_at(26.0, 20.0))
+        pieces = world.wall_pieces()
+        self.assertNotIn(("v", 12, 5), pieces)                               # 문 칸에는 벽 조각을 그리지 않는다
+        self.assertIn(("v", 12, 4), pieces)
+
+    def test_every_open_spot_is_reachable_from_the_plaza(self):
+        walk = world.walkable()
+        seen = world.grid_dist([(15.5, 19.5)])
+        open_nodes = {(i, j) for i in range(world.GRID_N) for j in range(world.GRID_N) if walk[i][j]}
+        self.assertEqual(open_nodes - set(seen), set())
+        for x, y in world.THIEF_SPAWNS + world.COP_SPAWNS + [(world.PAD["cx"], world.PAD["cy"])]:
+            self.assertIn(world._node(x, y), seen)
+
+    def test_paths_go_through_doors(self):
+        path = world.find_path(6.0, 6.0, 6.0, 26.0)                          # 도서관 → 라운지 (벽 너머)
+        self.assertTrue(path)
+        self.assertEqual(path[-1], (6.0, 26.0))
+        self.assertTrue(all(world.free_at(x, y) for x, y in path))
+        crossings = [x for (x, y0), (_, y1) in zip(path, path[1:]) if y0 < 12 <= y1]
+        self.assertTrue(crossings and 5 <= crossings[0] <= 7)                  # 도서관 남쪽 문으로 나간다
 
     def test_room_fills_up_and_hands_over_host(self):
         room = world.Room("ABCD", 1)
@@ -53,9 +78,13 @@ class WorldTests(SimpleTestCase):
         self.assertFalse(room.move(1, None, 3, 0, True, now=0.3))
         far = world.Room("EFGH", 2)
         far.add(2, "x", now=0)
-        far.players[2].x, far.players[2].y = 9.5, 12.6
-        self.assertFalse(far.move(2, 10.6, 11.6, 0, True, now=10))                # 탁자 안으로는 못 들어간다
-        self.assertTrue(far.move(2, 9.6, 12.5, 0, True, now=10.5))
+        far.players[2].x, far.players[2].y = 14.5, 17.6
+        self.assertFalse(far.move(2, 15.6, 16.6, 0, True, now=10))                # 탁자 안으로는 못 들어간다
+        self.assertTrue(far.move(2, 14.6, 17.5, 0, True, now=10.5))
+        far.players[2].x, far.players[2].y = 11.448, 22.931                        # 라운지 의자와 옷걸이 사이 좁은 틈
+        self.assertTrue(far.move(2, 11.209, 23.009, 0, True, now=10.6))           # 밀어낸 위치를 반올림해 보내도 받는다
+        far.players[2].x, far.players[2].y = 11.5, 3.0
+        self.assertFalse(far.move(2, 12.5, 3.0, 0, True, now=11))                 # 벽은 뚫고 지나갈 수 없다
 
 
 class CopsAndRobbersTests(SimpleTestCase):
@@ -140,6 +169,8 @@ class CopsAndRobbersTests(SimpleTestCase):
         t.last = 10.0
         self.assertTrue(room.dash(t.uid, now=10.0))
         self.assertTrue(room.move(t.uid, 5.5 + 1.6, 19.5, 0, True, now=10.15))
+        self.assertTrue(t.public(10.3)["dashing"])                                   # 다른 사람 화면에도 대시가 보이도록 알린다
+        self.assertFalse(t.public(10.0 + world.DASH_SECONDS + 0.01)["dashing"])
         self.assertFalse(room.dash(t.uid, now=11.0))                                 # 쿨타임
 
     def test_cops_leaving_ends_the_round(self):
@@ -200,7 +231,7 @@ class BotTests(SimpleTestCase):
         jailed, runner = bots
         jailed.jailed = True
         jailed.x, jailed.y = world.JAIL_SPOTS[0]
-        me.x, me.y = 2.5, 20.5                                       # 경찰(나)은 멀리 구석에 가만히 있다
+        me.x, me.y = 2.5, 30.5                                       # 경찰(나)은 멀리 라운지 구석에 가만히 있다
         runner.x, runner.y = 10.5, 19.5
         self.run_until(room, lambda: not jailed.jailed, 0.1, limit=40)
         self.assertFalse(jailed.jailed, "도둑 봇이 구출하러 가지 않았다")
@@ -209,6 +240,18 @@ class BotTests(SimpleTestCase):
         t = room.last_update
         self.run_until(room, lambda: False, t, limit=1.0)
         self.assertGreater(math.hypot(me.x - runner.x, me.y - runner.y), d0)     # 가까이 온 경찰에게서 멀어진다
+
+    def test_cop_bot_walks_around_a_wall_to_reach_a_thief(self):
+        room = self.solo(bots=1)
+        room.update(now=0)
+        room.start(1, now=0)
+        me, bot = room.players[1], next(p for p in room.players.values() if p.bot)
+        me.team, bot.team = "thief", "cop"
+        bot.frozen_until = 0.0
+        bot.x, bot.y = 14.0, 3.0                                     # 벽 바로 바깥 (도서관 동쪽 벽 x=12)
+        me.x, me.y = 10.5, 3.0                                       # 벽 안쪽, 문은 y 5~7
+        self.run_until(room, lambda: me.jailed, room.last_update or 0.1, limit=20)
+        self.assertTrue(me.jailed, "경찰 봇이 벽을 돌아 문으로 들어오지 못했다")
 
     def test_bots_never_end_up_inside_anything(self):
         room = self.solo(bots=5)

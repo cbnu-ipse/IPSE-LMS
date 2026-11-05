@@ -10,6 +10,29 @@ import { Actor } from './actors.js';
 const CELL = 5;
 const WALL_H = 12.9;
 const SEND_EVERY = 0.1;              // seconds between position reports while moving
+const LOW_WALL_H = 3.4;              // partition walls are cut to waist height so the camera sees over them
+const ZONE_LOOK = {
+  library: { color: 0x8b5a2b, opacity: 0.28, ink: 'rgba(92,52,20,0.8)' },
+  cafe: { color: 0xf59e0b, opacity: 0.22, ink: 'rgba(146,84,10,0.8)' },
+  lounge: { color: 0x14b8a6, opacity: 0.22, ink: 'rgba(15,98,90,0.8)' },
+  warehouse: { color: 0x64748b, opacity: 0.32, ink: 'rgba(51,65,85,0.85)' },
+};
+
+function floorLabel(text, ink) {                // zone name painted flat on the floor
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const g = c.getContext('2d');
+  g.font = '900 96px "Pretendard", "Noto Sans KR", sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = ink;
+  g.fillText(text, 256, 68);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(32, 8), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = Math.PI / 4;                   // turned to read along the isometric screen
+  return m;
+}
 
 export function createRoomScene(container, { base, world }) {
   const SIZE = world.size, W = SIZE * CELL;
@@ -50,6 +73,25 @@ export function createRoomScene(container, { base, world }) {
       left.rotation.y = Math.PI / 2;
       left.position.set(-0.35, 0, i * 10 + 5);
       scene.add(back, left);
+    }
+    for (const z of world.zones || []) {                      // each zone gets its own floor tint and its name painted on the floor
+      const look = ZONE_LOOK[z.kind] || ZONE_LOOK.library;
+      const tint = new THREE.Mesh(new THREE.PlaneGeometry((z.x1 - z.x0) * CELL, (z.y1 - z.y0) * CELL),
+        new THREE.MeshStandardMaterial({ color: look.color, transparent: true, opacity: look.opacity, depthWrite: false }));
+      tint.rotation.x = -Math.PI / 2;
+      tint.position.copy(toWorld((z.x0 + z.x1) / 2, (z.y0 + z.y1) / 2, 0.02));
+      tint.receiveShadow = true;
+      scene.add(tint);
+      const label = floorLabel(z.name, look.ink);
+      label.position.copy(toWorld((z.x0 + z.x1) / 2, (z.y0 + z.y1) / 2, 0.025));
+      scene.add(label);
+    }
+    for (const piece of world.walls || []) {                  // low partition walls: Kenney half walls cut down to waist height
+      const g = await furniture(base, 'wallHalf');
+      g.scale.set(CELL / g.userData.size.x, LOW_WALL_H / g.userData.size.y, 1);
+      if (piece.o === 'v') { g.rotation.y = Math.PI / 2; g.position.copy(toWorld(piece.f, piece.t + 0.5)); }
+      else g.position.copy(toWorld(piece.t + 0.5, piece.f));
+      scene.add(g);
     }
     for (const d of world.decor) {
       const g = await furniture(base, d.model);
@@ -116,8 +158,14 @@ export function createRoomScene(container, { base, world }) {
   // ── collision: circle player vs the server's shapes; overlaps are pushed out (so movement slides), small sub-steps avoid tunnelling ──
   const R = world.radius, SHAPES = world.shapes;
   function pushOut(pos, others) {
-    for (let iter = 0; iter < 4; iter++) {
+    for (let iter = 0; iter < 8; iter++) {
       let moved = false;
+      for (const o of others) {                              // other players first (soft circles, only on this screen) so solid shapes get the last word
+        const dx = pos.x - o.x, dy = pos.y - o.y, dist = Math.hypot(dx, dy), reach = R * 2;
+        if (dist >= reach || dist < 1e-6) continue;
+        pos.x += dx / dist * (reach - dist); pos.y += dy / dist * (reach - dist);
+        moved = true;
+      }
       for (const s of SHAPES) {
         let nx, ny;
         if (s.kind === 'circle') { nx = s.cx; ny = s.cy; }
@@ -133,12 +181,6 @@ export function createRoomScene(container, { base, world }) {
         } else {
           pos.x += dx / dist * (reach - dist + 1e-3); pos.y += dy / dist * (reach - dist + 1e-3);
         }
-        moved = true;
-      }
-      for (const o of others) {                              // other players: soft circles, only on this screen
-        const dx = pos.x - o.x, dy = pos.y - o.y, dist = Math.hypot(dx, dy), reach = R * 2;
-        if (dist >= reach || dist < 1e-6) continue;
-        pos.x += dx / dist * (reach - dist); pos.y += dy / dist * (reach - dist);
         moved = true;
       }
       pos.x = Math.min(Math.max(pos.x, R), SIZE - R);
@@ -171,6 +213,7 @@ export function createRoomScene(container, { base, world }) {
 
   // ── team look: a blue police cap or a black beanie on the head bone (model units), and the colour of the ring underfoot ──
   const TEAM_RING = { cop: 0x2563eb, thief: 0xdc2626 };
+  const WHITE = new THREE.Color(0xffffff);
   function teamHat(team) {
     const g = new THREE.Group();
     if (team === 'cop') {
@@ -231,6 +274,8 @@ export function createRoomScene(container, { base, world }) {
         return;
       }
       rec.x = p.x; rec.y = p.y; rec.dir = p.dir; rec.moving = p.moving;
+      if (p.dashing && !rec.dashing) rec.dashEnd = performance.now() / 1000 + world.dash.seconds;   // local expiry in case the "off" update is late
+      rec.dashing = !!p.dashing;
     });
     for (const [id, rec] of people) {
       if (seen.has(id)) continue;
@@ -284,10 +329,18 @@ export function createRoomScene(container, { base, world }) {
       const boost = performance.now() / 1000 < dashUntil ? world.dash.mult : 1;
       const dist = (me.speed || world.speed.lobby) * boost * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
       const others = [...people.entries()].filter(([id]) => id !== meId).map(([, r]) => r);
+      const sx = vx / len * dist / steps, sy = vy / len * dist / steps;
       for (let i = 0; i < steps; i++) {                     // small steps, each pushed back out of whatever it touched
-        me.x += vx / len * dist / steps;
-        me.y += vy / len * dist / steps;
+        const px = me.x, py = me.y;
+        me.x += sx; me.y += sy;
         pushOut(me, others);
+        if (!blockedAt(me.x, me.y)) continue;
+        // squeezed into a notch the push could not settle: undo, then slide along one axis at a time (never report a blocked spot)
+        me.x = px + sx; me.y = py; pushOut(me, others);
+        if (blockedAt(me.x, me.y)) { me.x = px; me.y = py; }
+        const qx = me.x;
+        me.y += sy; pushOut(me, others);
+        if (blockedAt(me.x, me.y)) { me.x = qx; me.y -= sy; if (blockedAt(me.x, me.y)) { me.x = px; me.y = py; } }
       }
       me.dir = Math.atan2(vx, vy);
     }
@@ -298,6 +351,59 @@ export function createRoomScene(container, { base, world }) {
     }
     wasMoving = moving && !frozen;
     return moving && !frozen;
+  }
+
+  // ── dash look: dust puffs kicked up at the feet, speed streaks trailing the body, a brighter and wider ring ──
+  const puffGeo = new THREE.SphereGeometry(0.75, 10, 8);
+  const burstGeo = new THREE.RingGeometry(1.1, 1.6, 40);
+  const bursts = [];
+  function burst(x, y, color) {                              // shockwave ring at the moment a dash starts
+    const m = new THREE.Mesh(burstGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.copy(toWorld(x, y, 0.15));
+    m.userData.life = 0;
+    scene.add(m);
+    bursts.push(m);
+  }
+  const puffs = [];
+  function puff(x, y) {
+    const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: 0xf5f1e8, transparent: true, opacity: 0.85, depthWrite: false }));
+    m.position.copy(toWorld(x + (Math.random() - 0.5) * 0.25, y + (Math.random() - 0.5) * 0.25, 0.35));
+    m.userData.life = 0;
+    scene.add(m);
+    puffs.push(m);
+  }
+  function stepPuffs(dt) {
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const m = puffs[i];
+      m.userData.life += dt;
+      const t = m.userData.life / 0.5;
+      if (t >= 1) { scene.remove(m); m.material.dispose(); puffs.splice(i, 1); continue; }
+      m.scale.setScalar(1 + t * 1.8);
+      m.position.y = 0.35 + t * 1.2;
+      m.material.opacity = 0.85 * (1 - t);
+    }
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const m = bursts[i];
+      m.userData.life += dt;
+      const t = m.userData.life / 0.4;
+      if (t >= 1) { scene.remove(m); m.material.dispose(); bursts.splice(i, 1); continue; }
+      m.scale.setScalar(1 + t * 2.6);
+      m.material.opacity = 0.9 * (1 - t);
+    }
+  }
+  const streakGeo = new THREE.BoxGeometry(0.18, 0.18, 5.5);
+  function streaks(rec) {
+    if (rec.streaks) return rec.streaks;
+    const g = new THREE.Group();
+    for (const [x, h] of [[-0.9, 1.4], [0.9, 1.9], [-0.45, 3.1], [0.5, 0.7]]) {
+      const s = new THREE.Mesh(streakGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
+      s.position.set(x, h, -3.4);                             // behind the body (the model faces +z)
+      g.add(s);
+    }
+    g.visible = false;
+    rec.actor.root.add(g);
+    return (rec.streaks = g);
   }
 
   // ── anchors for name tags ──
@@ -328,14 +434,30 @@ export function createRoomScene(container, { base, world }) {
       if (mine) a.root.position.copy(target);
       else a.root.position.lerp(target, Math.min(1, dt * 10));
       a.root.rotation.y = mine ? me.dir : rec.dir;
+      const nowS = performance.now() / 1000;
+      const dashing = mine ? nowS < dashUntil : rec.dashing && nowS < (rec.dashEnd || 0);
       if (rec.ring) {
         const flash = rec.safe > 0 && Math.floor(performance.now() / 150) % 2;
         rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team] || 0x4f46e5);
-        rec.ring.visible = !!rec.team || hitboxes.visible || mine;
+        if (dashing) rec.ring.material.color.lerp(WHITE, 0.45);
+        rec.ring.scale.setScalar(dashing ? 1.45 : 1);
+        rec.ring.material.opacity = dashing ? 1 : 0.8;
+        rec.ring.visible = !!rec.team || hitboxes.visible || mine || dashing;
       }
-      a.pose((mine ? myMoving : rec.moving) ? 'walk' : 'idle');
+      if (dashing && !rec.wasDashing) burst(tx, ty, rec.jailed ? 0x94a3b8 : TEAM_RING[rec.team] || 0x6366f1);
+      rec.wasDashing = dashing;
+      const st = streaks(rec);
+      st.visible = dashing;
+      if (dashing) {
+        st.children.forEach((s, k) => { s.material.opacity = 0.5 + 0.4 * Math.abs(Math.sin(nowS * 30 + k * 1.7)); s.scale.z = 0.8 + 0.4 * Math.abs(Math.sin(nowS * 22 + k)); });
+        rec.puffT = (rec.puffT || 0) + dt;
+        if (rec.puffT > 0.05) { rec.puffT = 0; puff(tx, ty); }
+      }
+      a.pose((mine ? myMoving : rec.moving) || dashing ? 'walk' : 'idle');
+      if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : 1;
       a.update(dt);
     }
+    stepPuffs(dt);
     if (me) focus.lerp(toWorld(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
     placeCamera();
