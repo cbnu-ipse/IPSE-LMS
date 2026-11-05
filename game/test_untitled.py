@@ -9,16 +9,26 @@ User = get_user_model()
 
 
 class WorldTests(SimpleTestCase):
-    def test_props_block_their_cells_and_spawns_are_free(self):
-        self.assertIn((7, 7), world.BLOCKED)                 # 원형 탁자
-        self.assertFalse(world.free_at(7.5, 7.5))
+    def test_props_block_only_their_real_shape(self):
+        lamp = next(x for x in world.SHAPES if x["model"] == "lampSquareFloor")
+        self.assertEqual(lamp["kind"], "circle")
+        self.assertFalse(world.free_at(lamp["cx"] + 0.3, lamp["cy"]))          # 조명 바로 옆은 막힌다
+        self.assertTrue(world.free_at(lamp["cx"] - 0.45, lamp["cy"] - 0.45))   # 같은 칸이어도 구석은 지나갈 수 있다 (예전엔 칸 전체가 막혔다)
         self.assertTrue(all(world.free_at(x, y) for x, y in world.SPAWNS))
-        self.assertFalse(world.free_at(0.1, 5))              # 광장 밖으로 몸이 나간다
-        self.assertTrue(world.free_at(4.5, 4.5))
+        self.assertFalse(world.free_at(0.1, 5))                               # 광장 밖으로 몸이 나간다
 
-    def test_body_radius_keeps_players_off_prop_edges(self):
-        self.assertFalse(world.free_at(6.9 - 0.25, 7.5 - 1.0 + 0.5))   # 의자(6, 7) 칸에 몸통이 걸친다
-        self.assertTrue(world.free_at(5.5, 3.5))
+    def test_round_table_is_a_circle(self):
+        table = next(x for x in world.SHAPES if x["model"] == "tableRound")
+        self.assertEqual((table["cx"], table["cy"]), (8, 8))
+        self.assertFalse(world.free_at(8.5, 8.0))
+        self.assertTrue(world.free_at(7.0, 9.2))                              # 2×2 칸의 모서리 쪽은 비어 있다
+
+    def test_turned_sofa_uses_its_turned_size(self):
+        sofa = next(x for x in world.SHAPES if x["model"] == "loungeSofa")
+        self.assertEqual((sofa["cx"], sofa["cy"]), (1.5, 7.0))                # 1×2 칸의 가운데
+        self.assertLess(sofa["hx"], sofa["hy"])                              # 돌려서 세로로 길다
+        self.assertTrue(world.free_at(1.5, 7.0 - sofa["hy"] - 0.31))
+        self.assertFalse(world.free_at(1.5, 7.0 - sofa["hy"] - 0.25))
 
     def test_room_fills_up_and_hands_over_host(self):
         room = world.Room("ABCD", 1)
@@ -41,8 +51,9 @@ class WorldTests(SimpleTestCase):
         self.assertFalse(room.move(1, None, 3, 0, True, now=0.3))
         far = world.Room("EFGH", 2)
         far.add(2, "x", now=0)
-        far.players[2].x, far.players[2].y = 6.5, 6.5
-        self.assertFalse(far.move(2, 7.2, 7.2, 0, True, now=10))                  # 탁자 안으로는 못 들어간다
+        far.players[2].x, far.players[2].y = 6.5, 9.6
+        self.assertFalse(far.move(2, 7.6, 8.6, 0, True, now=10))                  # 탁자 안으로는 못 들어간다
+        self.assertTrue(far.move(2, 6.6, 9.5, 0, True, now=10.5))
 
 
 class HubTests(SimpleTestCase):

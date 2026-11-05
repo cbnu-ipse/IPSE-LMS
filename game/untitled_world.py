@@ -1,8 +1,9 @@
 """[무제]: 방(코드로 입장)과 광장 위 캐릭터 이동 규칙 (DB를 쓰지 않는 순수 파이썬).
 
-좌표는 칸 단위 실수 (x, y). 광장은 SIZE×SIZE 칸이고, 칸 (i, j)는 x∈[i, i+1), y∈[j, j+1)이다. 소품이 놓인 칸은 지나갈 수 없다.
-이동은 화면(브라우저)이 바로 그리고 위치를 서버에 보낸다. 서버는 속도 한도를 넘거나 막힌 칸·광장 밖으로 가는 위치를 받지 않고,
-마지막으로 받은 위치를 되돌려 준다(화면은 그 자리로 돌아간다).
+좌표는 칸 단위 실수 (x, y). 광장은 SIZE×SIZE 칸이고, 칸 (i, j)는 x∈[i, i+1), y∈[j, j+1)이다.
+소품은 칸 전체가 아니라 실제 모델 크기의 충돌 모양(둥근 것은 원, 나머지는 회전을 반영한 사각형)으로 막는다.
+캐릭터는 반지름 RADIUS의 원이다. 이동은 화면(브라우저)이 바로 그리고(겹치면 밖으로 밀어내 미끄러진다) 위치를 서버에 보낸다.
+서버는 속도 한도를 넘거나 충돌 모양·광장 밖에 걸친 위치를 받지 않고, 마지막으로 받은 위치를 되돌려 준다.
 """
 import math
 import random
@@ -17,7 +18,7 @@ CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 MODELS = ["character-male-a", "character-female-a", "character-male-b", "character-female-b", "character-male-c", "character-female-c",
           "character-male-d", "character-female-d", "character-male-e", "character-female-e", "character-male-f", "character-female-f"]
 
-# 광장 소품: (모델, x, y, 돌림, 가로 칸, 세로 칸). 차지한 칸은 막힌다.
+# 광장 소품: (모델, x, y, 돌림, 가로 칸, 세로 칸). 가로·세로는 광장 기준(돌린 뒤) 차지하는 칸 수이고, 소품은 그 칸들의 가운데에 놓인다.
 PROPS = [
     ("tableRound", 7, 7, 0, 2, 2), ("benchCushion", 6, 7, 1, 1, 1), ("benchCushion", 9, 8, 3, 1, 1),
     ("pottedPlant", 2, 2, 0, 1, 1), ("pottedPlant", 13, 2, 0, 1, 1), ("pottedPlant", 2, 13, 0, 1, 1), ("pottedPlant", 13, 13, 0, 1, 1),
@@ -30,37 +31,58 @@ DECOR = [("rugRound", 7, 7, 0)]       # 밟고 지나갈 수 있는 것
 SPAWNS = [(8.0 + dx, 13.5) for dx in (-2.5, -1.5, -0.5, 0.5, 1.5, 2.5, -3.5, 3.5)]
 
 
-def blocked_cells():
-    out = set()
-    for _, x, y, _, w, d in PROPS:
-        for i in range(w):
-            for j in range(d):
-                out.add((x + i, y + j))
+# Kenney Furniture Kit 모델의 바닥 크기 (모델 단위, 돌리기 전 가로 x · 세로 z). 한 칸 = 5 모델 단위.
+CELL_UNITS = 5.0
+MODEL_SIZE = {
+    "tableRound": (6.9, 8.0), "benchCushion": (4.0, 2.0), "pottedPlant": (2.1, 2.4), "lampSquareFloor": (1.2, 1.2),
+    "lampRoundFloor": (1.5, 1.8), "loungeSofa": (9.8, 4.1), "tableCoffee": (6.6, 4.0), "bookcaseOpen": (4.0, 2.5),
+    "loungeChair": (4.9, 4.1), "radio": (3.1, 1.0), "speaker": (1.5, 1.5), "trashcan": (2.1, 2.3), "cardboardBoxClosed": (2.1, 2.1),
+}
+ROUND = {"tableRound", "pottedPlant", "lampSquareFloor", "lampRoundFloor", "trashcan"}    # 위에서 보면 둥근 것
+
+
+def shapes():
+    """소품들의 충돌 모양. 화면에서 소품을 그릴 때와 같은 크기·위치다 (칸보다 크면 칸에 맞게 줄인다)."""
+    out = []
+    for model, x, y, rot, w, d in PROPS:
+        sx, sz = MODEL_SIZE[model]
+        if rot % 2:
+            sx, sz = sz, sx                                      # 돌린 뒤의 광장 기준 크기
+        ex = min(sx / CELL_UNITS, w + 0.12)
+        ey = min(sz / CELL_UNITS, d + 0.12)
+        cx, cy = x + w / 2, y + d / 2
+        if model in ROUND:
+            out.append({"kind": "circle", "cx": cx, "cy": cy, "r": round(min(ex, ey) / 2, 4), "model": model})
+        else:
+            out.append({"kind": "box", "cx": cx, "cy": cy, "hx": round(ex / 2, 4), "hy": round(ey / 2, 4), "model": model})
     return out
 
 
-BLOCKED = blocked_cells()
+SHAPES = shapes()
 
 
 def world_view():
     """화면에 보낼 광장 정보."""
-    return {"size": SIZE, "speed": SPEED, "radius": RADIUS,
+    return {"size": SIZE, "speed": SPEED, "radius": RADIUS, "shapes": SHAPES,
             "props": [{"model": m, "x": x, "y": y, "rot": r, "w": w, "d": d} for m, x, y, r, w, d in PROPS],
             "decor": [{"model": m, "x": x, "y": y, "rot": r} for m, x, y, r in DECOR]}
 
 
+def gap(shape, x, y):
+    """점 (x, y)에서 충돌 모양 가장자리까지의 거리 (안쪽이면 0)."""
+    if shape["kind"] == "circle":
+        return max(0.0, math.hypot(x - shape["cx"], y - shape["cy"]) - shape["r"])
+    dx = max(abs(x - shape["cx"]) - shape["hx"], 0.0)
+    dy = max(abs(y - shape["cy"]) - shape["hy"], 0.0)
+    return math.hypot(dx, dy)
+
+
 def free_at(x, y):
-    """(x, y)에 캐릭터가 설 수 있는가: 광장 안이고, 몸통이 막힌 칸에 걸치지 않는다."""
-    if not (RADIUS <= x <= SIZE - RADIUS and RADIUS <= y <= SIZE - RADIUS):
+    """(x, y)에 캐릭터가 설 수 있는가: 광장 안이고, 몸통(원)이 어떤 충돌 모양과도 겹치지 않는다."""
+    eps = 1e-6
+    if not (RADIUS - eps <= x <= SIZE - RADIUS + eps and RADIUS - eps <= y <= SIZE - RADIUS + eps):
         return False
-    for cx in range(int(math.floor(x - RADIUS)), int(math.floor(x + RADIUS)) + 1):
-        for cy in range(int(math.floor(y - RADIUS)), int(math.floor(y + RADIUS)) + 1):
-            if (cx, cy) not in BLOCKED:
-                continue
-            nx, ny = min(max(x, cx), cx + 1), min(max(y, cy), cy + 1)      # 칸 사각형에서 가장 가까운 점
-            if (x - nx) ** 2 + (y - ny) ** 2 < RADIUS ** 2 - 1e-9:
-                return False
-    return True
+    return all(gap(s, x, y) >= RADIUS - 1e-4 for s in SHAPES)
 
 
 class Player:
