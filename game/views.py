@@ -11,7 +11,7 @@ from .models import (
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
     PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank, GomokuMatch, JanggiMatch,
 )
-from . import gostop_engine, poker_engine
+from . import gostop_engine, poker_engine, untitled_world
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -437,6 +437,11 @@ def gostop_view(request):
 def gomoku_view(request):
     latest = LobbyChatMessage.objects.select_related("user").order_by("-created_at")[:50]
     return render(request, "game/gomoku.html", {"title": "오목", "chat_messages": list(latest)[::-1]})
+
+
+@login_required
+def untitled_view(request):
+    return render(request, "game/untitled.html", {"title": "[무제]", "world_json": untitled_world.world_view()})
 
 
 @login_required

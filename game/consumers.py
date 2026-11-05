@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, yacht_engine
+from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, untitled_hub, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -1120,3 +1120,85 @@ class JanggiConsumer(AsyncWebsocketConsumer):
     async def _send_state(self):
         state = await database_sync_to_async(janggi_engine.get_state_for)(self.scope["user"])
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
+
+
+class UntitledConsumer(AsyncWebsocketConsumer):
+    """[무제] 방: 만들기·코드로 입장·나가기와 캐릭터 이동. 방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
+
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+        self.group = None
+        self.player_name = await database_sync_to_async(self._load_name)()     # 닉네임은 학생 정보(DB)에서 온다
+        await self.accept()
+        room = untitled_hub.room_of(user.id)
+        if room is not None and user.id in room.players:      # 새로고침·재접속이면 하던 방으로 돌아간다
+            ok, room = untitled_hub.join_room(user.id, self._name(), room.code)
+            await self._enter(room)
+        else:
+            await self._send({"type": "hello", "room": None})
+
+    async def disconnect(self, close_code):
+        user = self.scope.get("user")
+        if self.group:
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+        if user and user.is_authenticated:
+            untitled_hub.disconnect(user.id)
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        user, kind = self.scope["user"], data.get("type")
+        if kind == "__ping__":
+            await self._send({"type": "pong"})
+        elif kind == "create":
+            room = untitled_hub.create_room(user.id, self._name())
+            await self._leave_group()
+            await self._enter(room)
+        elif kind == "join":
+            ok, room = untitled_hub.join_room(user.id, self._name(), data.get("code"))
+            if not ok:
+                await self._send({"type": "error", "message": room})
+                return
+            await self._leave_group()
+            await self._enter(room)
+        elif kind == "leave":
+            await self._leave_group()
+            untitled_hub.leave(user.id)
+            await self._send({"type": "hello", "room": None})
+        elif kind == "move":
+            room = untitled_hub.room_of(user.id)
+            if room is not None and not room.move(user.id, data.get("x"), data.get("y"), data.get("dir", 0), data.get("moving")):
+                p = room.players.get(user.id)
+                if p is not None:                               # 받지 않은 위치: 마지막 위치로 되돌려 보낸다
+                    await self._send({"type": "correct", "x": p.x, "y": p.y})
+
+    async def untitled_state(self, event):
+        await self._send({"type": "state", "state": event["state"]})
+
+    async def _enter(self, room):
+        self.group = untitled_hub.group_name(room.code)
+        await self.channel_layer.group_add(self.group, self.channel_name)
+        untitled_hub.ensure_loop()
+        await self._send({"type": "hello", "room": room.code, "me": self.scope["user"].id})
+        await untitled_hub.broadcast(room)
+
+    async def _leave_group(self):
+        if self.group:
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+            self.group = None
+
+    def _load_name(self):
+        user = self.scope["user"]
+        return (user.display_name or user.username)[:16]
+
+    def _name(self):
+        return self.player_name
+
+    async def _send(self, payload):
+        await self.send(text_data=json.dumps(payload, ensure_ascii=False))
+

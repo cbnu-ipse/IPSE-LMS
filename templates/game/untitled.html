@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | [무제]{% endblock %}
+
+{% block content %}
+<style>
+    /* [무제]: 모든 스타일은 ut- 접두사로 한정해 다른 화면에 영향이 없게 한다. 3D 그림은 Kenney Furniture Kit / Mini Characters (CC0) */
+    .ut-wrap { max-width: 1100px; margin: 0 auto; padding: 18px 14px 40px; }
+    .ut-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+    .ut-head h1 { margin: 0; font-size: 26px; font-weight: 900; color: #1e293b; }
+    .ut-head p { margin: 0; font-size: 13px; color: #64748b; }
+    .ut-card { background: #fff; border: 1px solid #e3e8ef; border-radius: 20px; padding: 18px; box-shadow: 0 2px 10px rgba(30, 58, 138, .06); display: grid; gap: 12px; max-width: 520px; }
+    .ut-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .ut-btn { border: 0; border-radius: 12px; padding: 11px 16px; font-weight: 800; font-size: 15px; cursor: pointer; color: #fff; background: #4f46e5; touch-action: manipulation; }
+    .ut-btn:hover { background: #4338ca; }
+    .ut-btn.sub { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+    .ut-btn.sub:hover { background: #f8fafc; }
+    .ut-input { flex: 1; min-width: 120px; font: inherit; font-size: 18px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; text-align: center; padding: 10px 12px; border-radius: 12px; border: 2px solid #e2e8f0; }
+    .ut-input:focus { outline: none; border-color: #4f46e5; }
+    .ut-note { font-size: 13px; color: #64748b; margin: 0; line-height: 1.7; }
+    .ut-note kbd { display: inline-block; min-width: 18px; padding: 0 5px; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 5px; background: #fff; font: 700 11px ui-monospace, monospace; color: #334155; text-align: center; }
+    .ut-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .ut-code { font-size: 15px; font-weight: 900; color: #1e293b; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 7px 12px; letter-spacing: .15em; }
+    .ut-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+    .ut-chip { font-size: 12.5px; font-weight: 700; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 99px; padding: 4px 10px; }
+    .ut-chip.me { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+    .ut-chip.off { opacity: .5; }
+    .ut-stage { position: relative; width: 100%; height: clamp(360px, min(70vh, 80vw + 40px), 760px); border-radius: 22px; overflow: hidden; user-select: none; -webkit-user-select: none;
+        background: radial-gradient(120% 90% at 50% 0%, #f5f3ff 0%, #ddd6fe 55%, #c4b5fd 100%); border: 1px solid #ddd6fe; }
+    .ut-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .ut-tag { position: absolute; transform: translate(-50%, -100%); background: rgba(15, 23, 42, .8); color: #fff; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+    .ut-tag.me { background: #4f46e5; }
+    .ut-tag.off { opacity: .45; }
+    .ut-loading { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #4338ca; pointer-events: none; }
+    .ut-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 95; background: #1e293b; color: #fff; padding: 10px 18px; border-radius: 99px; font-weight: 800; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); max-width: 90vw; text-align: center; }
+    .ut-toast.bad { background: #be123c; }
+</style>
+
+<div class="ut-wrap">
+    <div class="ut-head">
+        <h1>[무제]</h1>
+        <p>방을 만들거나 코드로 들어가서 함께 돌아다녀요.</p>
+    </div>
+
+    <div class="ut-card" id="ut-menu">
+        <div class="ut-row"><button type="button" class="ut-btn" id="ut-create">방 만들기</button></div>
+        <form class="ut-row" id="ut-join-form">
+            <input class="ut-input" id="ut-code-input" maxlength="4" placeholder="방 코드" autocomplete="off" aria-label="방 코드">
+            <button type="submit" class="ut-btn sub">입장</button>
+        </form>
+        <p class="ut-note">방을 만들면 4자리 코드가 생겨요. 친구에게 코드를 알려 주면 같은 방에 들어올 수 있어요 (최대 8명).</p>
+    </div>
+
+    <div id="ut-room" hidden>
+        <div class="ut-bar">
+            <span class="ut-code">방 코드 <span id="ut-room-code">----</span></span>
+            <button type="button" class="ut-btn sub" id="ut-copy">코드 복사</button>
+            <div class="ut-chips" id="ut-chips"></div>
+            <button type="button" class="ut-btn sub" id="ut-leave">나가기</button>
+        </div>
+        <div class="ut-stage" id="ut-stage">
+            <div class="ut-loading" id="ut-loading">광장을 불러오는 중…</div>
+            <div class="ut-tags" id="ut-tags"></div>
+        </div>
+        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · 휠로 확대·축소</p>
+    </div>
+</div>
+
+{{ world_json|json_script:"ut-world" }}
+<script type="module">
+import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
+(function () {
+    'use strict';
+    const WORLD = JSON.parse(document.getElementById('ut-world').textContent);
+    const BASE3D = "{% static 'game/untitled3d/' %}";
+    const $ = (id) => document.getElementById(id);
+    let ws = null, room = null, meId = null, scene3d = null, toastTimer = null;
+
+    function toast(msg, cls) {
+        document.querySelectorAll('.ut-toast').forEach((t) => t.remove());
+        const t = document.createElement('div');
+        t.className = 'ut-toast ' + (cls || '');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.remove(), 2400);
+    }
+    function ensureScene() {
+        if (scene3d) return scene3d;
+        scene3d = createRoomScene($('ut-stage'), { base: BASE3D, world: WORLD });
+        scene3d.onMove((pos) => send({ type: 'move', ...pos }));
+        scene3d.onFrame(drawTags);
+        return scene3d;
+    }
+    const tagEls = {};
+    function drawTags(anchors) {
+        $('ut-loading').hidden = true;
+        const layer = $('ut-tags');
+        Object.entries(anchors).forEach(([id, a]) => {
+            let e = tagEls[id];
+            if (!e) { e = document.createElement('div'); layer.appendChild(e); tagEls[id] = e; }
+            e.className = 'ut-tag' + (a.me ? ' me' : '') + (a.online ? '' : ' off');
+            e.textContent = a.name + (a.online ? '' : ' (자리 비움)');
+            e.style.left = a.x + 'px'; e.style.top = a.y + 'px';
+        });
+        Object.keys(tagEls).forEach((id) => { if (!anchors[id]) { tagEls[id].remove(); delete tagEls[id]; } });
+    }
+    function renderChips(players) {
+        const box = $('ut-chips');
+        box.textContent = '';
+        players.forEach((p) => {
+            const c = document.createElement('span');
+            c.className = 'ut-chip' + (p.id === meId ? ' me' : '') + (p.online ? '' : ' off');
+            c.textContent = p.name + (p.id === meId ? ' (나)' : '');
+            box.appendChild(c);
+        });
+    }
+    function showRoom(code) {
+        room = code;
+        $('ut-menu').hidden = !!code;
+        $('ut-room').hidden = !code;
+        if (code) {
+            $('ut-room-code').textContent = code;
+            ensureScene();
+            setTimeout(() => scene3d.focus(), 50);
+        } else if (scene3d) scene3d.clear();
+    }
+
+    function connect() {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/untitled/');
+        ws.onmessage = (m) => {
+            const d = JSON.parse(m.data);
+            if (d.type === 'hello') { meId = d.me || meId; showRoom(d.room); }
+            else if (d.type === 'state' && room) { ensureScene().setPlayers(d.state.players, meId); renderChips(d.state.players); }
+            else if (d.type === 'correct' && scene3d) scene3d.correct(d.x, d.y);
+            else if (d.type === 'error') toast(d.message, 'bad');
+        };
+        ws.onclose = () => setTimeout(connect, 2000);
+    }
+    const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+    setInterval(() => send({ type: '__ping__' }), 25000);
+
+    $('ut-create').addEventListener('click', () => send({ type: 'create' }));
+    $('ut-join-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const code = $('ut-code-input').value.trim().toUpperCase();
+        if (code.length !== 4) { toast('방 코드 4자리를 입력해 주세요', 'bad'); return; }
+        send({ type: 'join', code: code });
+    });
+    $('ut-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('ut-copy').addEventListener('click', () => {
+        navigator.clipboard.writeText(room || '').then(() => toast('코드를 복사했어요'), () => toast('복사하지 못했어요. 코드를 직접 알려 주세요', 'bad'));
+    });
+    connect();
+})();
+</script>
+{% endblock %}

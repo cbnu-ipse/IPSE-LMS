@@ -176,3 +176,5 @@ backups/
 
 # yhw_agent_project: independent repo, pushed to a separate Gitea remote
 yhw_agent_project/
+# 3D scene build tooling (frontend/*)
+frontend/*/node_modules/
