@@ -84,7 +84,51 @@
         osc.stop(startTime + duration + 0.02);
     }
 
+    // 필터를 거친 짧은 잡음 (바람 소리·전기 지지직·쾅 소리용)
+    function noise(c, startTime, duration, opts) {
+        opts = opts || {};
+        const src = c.createBufferSource();
+        src.buffer = getNoiseBuffer(c);
+        const filter = c.createBiquadFilter();
+        filter.type = opts.filter || 'bandpass';
+        filter.frequency.setValueAtTime(opts.freq || 1000, startTime);
+        if (opts.sweepTo) filter.frequency.exponentialRampToValueAtTime(opts.sweepTo, startTime + duration);
+        filter.Q.value = opts.q || 1;
+        const gain = c.createGain();
+        gain.gain.setValueAtTime(0.0001, startTime);
+        gain.gain.exponentialRampToValueAtTime(opts.volume || 0.2, startTime + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+        src.connect(filter).connect(gain).connect(c.destination);
+        src.start(startTime, Math.random());
+        src.stop(startTime + duration + 0.02);
+    }
+
     const PRESETS = {
+        // 경찰과 도둑
+        crDash: (c, t0) => noise(c, t0, 0.32, { freq: 600, sweepTo: 2600, q: 0.8, volume: 0.22 }),
+        crShot: (c, t0) => {
+            tone(c, 1600, t0, 0.12, { type: 'sawtooth', slideTo: 500, volume: 0.12 });
+            noise(c, t0, 0.08, { freq: 3500, q: 2, volume: 0.12 });
+        },
+        crZap: (c, t0) => {
+            for (let i = 0; i < 6; i++) tone(c, 90 + Math.random() * 60, t0 + i * 0.06, 0.07, { type: 'square', volume: 0.12 });
+            noise(c, t0, 0.4, { freq: 4000, q: 4, volume: 0.16 });
+        },
+        crCaught: (c, t0) => {
+            tone(c, 196, t0, 0.25, { type: 'square', volume: 0.16 });
+            tone(c, 147, t0 + 0.12, 0.35, { type: 'square', volume: 0.16 });
+            noise(c, t0, 0.18, { filter: 'lowpass', freq: 900, volume: 0.25 });
+        },
+        crRescue: (c, t0) => {
+            [392, 523.25, 659.25, 783.99].forEach((f, i) => tone(c, f, t0 + i * 0.07, 0.2, { type: 'triangle', volume: 0.2 }));
+        },
+        crSteal: (c, t0) => {
+            [1046.5, 1318.5, 1568].forEach((f, i) => tone(c, f, t0 + i * 0.06, 0.25, { type: 'sine', volume: 0.18 }));
+        },
+        crAppear: (c, t0) => tone(c, 880, t0, 0.3, { type: 'sine', slideTo: 1320, volume: 0.1 }),
+        crTick: (c, t0, n) => tone(c, 600 + (n || 0) * 120, t0, 0.06, { type: 'square', volume: 0.08 }),
+        crBeep: (c, t0) => tone(c, 660, t0, 0.12, { type: 'square', volume: 0.12 }),
+        crGo: (c, t0) => tone(c, 990, t0, 0.3, { type: 'square', volume: 0.14 }),
         click: (c, t0) => tone(c, 880, t0, 0.05, { type: 'square', volume: 0.12 }),
         reelStop: (c, t0, note) => tone(c, note || 440, t0, 0.09, { type: 'triangle', volume: 0.22 }),
         spinStart: (c, t0) => tone(c, 220, t0, 0.25, { type: 'sawtooth', slideTo: 660, volume: 0.15 }),

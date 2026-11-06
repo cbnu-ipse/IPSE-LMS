@@ -2,7 +2,7 @@
 // map (rooms and corridors from untitled_maps) and everyone in the room, moves the local player with WASD (camera-relative, sliding
 // along obstacles), and reports the local position (onMove) and name-tag anchors (onFrame). Collision uses the server's shapes: the
 // player is a circle, props are circles or boxes sized from the real models; overlaps are pushed out so the player slides around things.
-// During a round the floor outside the local player's line of sight is darkened (fog), and the server leaves out opponents we can't see.
+// During a round whatever the local player can't see is shaded dark (sight shader), and the server leaves out opponents we can't see.
 // Space: thieves dash, cops fire the taser.
 // Build: `npm run build` here → static/game/untitled3d/untitled3d.js.
 import * as THREE from 'three';
@@ -36,6 +36,10 @@ function floorLabel(text, ink) {                // zone name painted flat on the
   m.rotation.z = Math.PI / 4;                   // turned to read along the isometric screen
   return m;
 }
+
+// Sight uniforms are shared by every scene: model materials are cached across scenes (assets.js), so a material patched while the
+// lobby was showing must read the same uniforms when the game map takes over. Only one scene is alive at a time.
+const SIGHT = { uSight: { value: null }, uSightOn: { value: 0 }, uSightSize: { value: new THREE.Vector2(1, 1) } };
 
 export function createRoomScene(container, { base, world }) {
   const MW = world.w, MH = world.h;                           // map size in cells (not square)
@@ -172,6 +176,7 @@ export function createRoomScene(container, { base, world }) {
   if (world.pad) {
     const P = world.pad;
     padRing = new THREE.Mesh(new THREE.RingGeometry(P.r * CELL - 0.7, P.r * CELL, 48), new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+    padRing.userData.noSight = true;
     padRing.rotation.x = -Math.PI / 2;
     padRing.position.copy(onFloor(P.cx, P.cy, 0.08));
     const disc = new THREE.Mesh(new THREE.CircleGeometry(P.r * CELL - 0.7, 48), new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.45 }));
@@ -306,12 +311,12 @@ export function createRoomScene(container, { base, world }) {
   const people = new Map();            // id → { actor, target, dir, moving, name }
   let meId = null, me = null;
   async function spawn(p) {
-    const rec = { actor: null, x: p.x, y: p.y, dir: p.dir, moving: false, name: p.name, model: p.model };
+    const rec = { actor: null, x: p.x, y: p.y, dir: p.dir || 0, moving: false, name: p.name, model: p.model, hidden: !!p.hidden };
     people.set(p.id, rec);
     const actor = await Actor.create(base, p.model, {});
     if (!people.has(p.id)) return;
     rec.actor = actor;
-    actor.root.position.copy(onFloor(rec.x, rec.y));
+    if (Number.isFinite(rec.x)) actor.root.position.copy(onFloor(rec.x, rec.y));
     const ring = new THREE.Mesh(ringGeo, ringMat.clone());
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
     rec.ring = ring;
@@ -384,6 +389,10 @@ export function createRoomScene(container, { base, world }) {
       }
       return;
     }
+    if (EMOTE_KEYS[k] && !e.target.closest('input, textarea') && meId) {
+      if (emoteCb && !e.repeat) emoteCb(EMOTE_KEYS[k]);
+      return;
+    }
     if (k === 'h' && !e.target.closest('input, textarea') && meId) {
       hitboxes.visible = !hitboxes.visible;
       return;
@@ -409,7 +418,8 @@ export function createRoomScene(container, { base, world }) {
     if (moving && !frozen) {
       const boost = performance.now() / 1000 < dashUntil ? world.dash.mult : 1;
       const dist = (me.speed || world.speed.lobby) * boost * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
-      const others = [...people.entries()].filter(([id]) => id !== meId).map(([, r]) => r);
+      // other players push me softly, but only ones I can see and whose spot I know (hidden opponents arrive without x/y)
+      const others = [...people.entries()].filter(([id, r]) => id !== meId && !r.hidden && Number.isFinite(r.x) && Number.isFinite(r.y)).map(([, r]) => r);
       const sx = vx / len * dist / steps, sy = vy / len * dist / steps;
       for (let i = 0; i < steps; i++) {                     // small steps, each pushed back out of whatever it touched
         const px = me.x, py = me.y;
@@ -422,6 +432,7 @@ export function createRoomScene(container, { base, world }) {
         const qx = me.x;
         me.y += sy; pushOut(me, others);
         if (blockedAt(me.x, me.y)) { me.x = qx; me.y -= sy; if (blockedAt(me.x, me.y)) { me.x = px; me.y = py; } }
+        if (!Number.isFinite(me.x) || !Number.isFinite(me.y)) { me.x = px; me.y = py; }    // never let a bad number stick
       }
       me.dir = Math.atan2(vx, vy);
     }
@@ -494,8 +505,9 @@ export function createRoomScene(container, { base, world }) {
     for (const [id, rec] of people) {
       if (!rec.actor || (rec.hidden && id !== meId)) continue;
       v.copy(rec.actor.root.position).setY(6.2).project(camera);
+      const age = rec.emote ? performance.now() / 1000 - rec.emote.born : 9;
       out[id] = { x: (v.x + 1) / 2 * container.clientWidth, y: (1 - v.y) / 2 * container.clientHeight, name: rec.name, me: id === meId,
-        online: rec.online !== false, team: rec.team, jailed: rec.jailed };
+        online: rec.online !== false, team: rec.team, jailed: rec.jailed, emote: age < 1.8 ? rec.emote.e : null, emoteAge: age };
     }
     return out;
   }
@@ -543,13 +555,15 @@ export function createRoomScene(container, { base, world }) {
         a.root.rotation.y += Math.sin(nowS * 70) * 0.18;
         if (rec.ring) rec.ring.material.color.setHex(Math.floor(nowS * 20) % 2 ? 0x22d3ee : 0xffffff);
       }
-      a.pose(!stunned && ((mine ? myMoving : rec.moving) || dashing) ? 'walk' : 'idle');
+      const crouch = (rec.crouchUntil || 0) > nowS;
+      a.pose(crouch ? 'sit' : !stunned && ((mine ? myMoving : rec.moving) || dashing) ? 'walk' : 'idle');
       if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : stunned ? 3 : 1;
       a.update(dt);
     }
     checkTags();
     stepDarts();
-    stepFog();
+    stepSight();
+    stepArtifacts(dt);
     stepPuffs(dt);
     if (me) focus.lerp(onFloor(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
@@ -594,6 +608,8 @@ export function createRoomScene(container, { base, world }) {
         scene.add(m, wires);
         darts.push({ cop: ev.cop, x: ev.x, y: ev.y, dir: ev.dir, t0: now, end: null, endAt: 0, m, wires });
         if (ev.cop !== meId) muzzle(people.get(ev.cop));
+      } else if (ev.t === 'emote') {
+        showEmote(ev.id, ev.e);
       } else if (ev.t === 'tase') {
         const d = darts.find((q) => q.cop === ev.cop && !q.end);
         if (d) d.end = { x: ev.x, y: ev.y };
@@ -655,63 +671,159 @@ export function createRoomScene(container, { base, world }) {
     pos.needsUpdate = true;
   }
 
-  // ── fog: during a round, the floor I can't see from where I stand is darkened. Walls and tall furniture (world.sight) block the view,
-  // the same rule the server uses to leave unseen opponents out (untitled_maps.GameMap.can_see). One texel per half cell. ──
-  let roundOn = false, fogAt = 0;
-  const FX = MW * 2, FY = MH * 2, SUB = 4;
-  const fogData = new Uint8Array(FX * FY * 4);
-  const fogTex = new THREE.DataTexture(fogData, FX, FY, THREE.RGBAFormat);
-  fogTex.magFilter = THREE.LinearFilter; fogTex.minFilter = THREE.LinearFilter;
-  const fog = new THREE.Group();                              // one quad per area, lying on that area's floor (tilted on stairs)
-  const fogMat = new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
-  for (const ar of world.areas) {
-    const corners = [[ar.x0, ar.y0], [ar.x1, ar.y0], [ar.x0, ar.y1], [ar.x1, ar.y1]];
-    const lift = (x, y) => (ar.kind === 'stairs' ? (ar.from + (ar.to - ar.from) * (ar.axis === 'x' ? (x - ar.x0) / (ar.x1 - ar.x0) : (y - ar.y0) / (ar.y1 - ar.y0))) : (ar.h || 0)) * LEVEL_H;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(corners.flatMap(([x, y]) => [x * CELL, lift(x, y) + 0.08 + (ar.kind === 'stairs' ? 0.35 : 0), y * CELL]), 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(corners.flatMap(([x, y]) => [x / MW, (MH - y) / MH]), 2));
-    geo.setIndex([0, 2, 1, 1, 2, 3]);
-    const q = new THREE.Mesh(geo, fogMat);
-    q.renderOrder = 2;
-    fog.add(q);
-  }
-  fog.visible = false;
-  scene.add(fog);
-  const floorAt = new Uint8Array(MW * MH);                    // 1 where some area has floor
-  for (const ar of world.areas) for (let i = ar.x0; i < ar.x1; i++) for (let j = ar.y0; j < ar.y1; j++) floorAt[j * MW + i] = 1;
-  const opaque = new Uint8Array(MW * SUB * MH * SUB);         // quarter-cell grid of what blocks sight
+  // ── sight: during a round everything I can't see from where I stand (floor, walls, furniture, teammates) is shaded dark blue.
+  // Rays are cast from me against walls and tall furniture (world.sight, the server's can_see rule); what a ray reaches is lit,
+  // fading out toward world.view cells, and the result is blurred so shadow edges are soft. Every scene material reads this
+  // texture (patched in sightify), so nothing in a dark room looks lit. Glowing effects opt out with userData.noSight. ──
+  let roundOn = false, sightAt = 0;
+  const SUB = 4, FX = MW * SUB, FY = MH * SUB;               // quarter-cell texels
+  const sightRaw = new Float32Array(FX * FY), sightData = new Uint8Array(FX * FY);
+  const sightTex = new THREE.DataTexture(sightData, FX, FY, THREE.RedFormat, THREE.UnsignedByteType);
+  sightTex.magFilter = THREE.LinearFilter; sightTex.minFilter = THREE.LinearFilter; sightTex.needsUpdate = true;
+  const sightU = SIGHT;
+  SIGHT.uSight.value = sightTex; SIGHT.uSightOn.value = 0; SIGHT.uSightSize.value.set(WX, WZ);
+  const opaque = new Uint8Array(FX * FY);                     // quarter-cell grid of what blocks sight
   for (const b of world.sight || []) {
-    for (let i = Math.max(0, Math.floor((b.cx - b.hx) * SUB)); i < Math.min(MW * SUB, Math.ceil((b.cx + b.hx) * SUB)); i++) {
-      for (let j = Math.max(0, Math.floor((b.cy - b.hy) * SUB)); j < Math.min(MH * SUB, Math.ceil((b.cy + b.hy) * SUB)); j++) opaque[j * MW * SUB + i] = 1;
+    for (let i = Math.max(0, Math.floor((b.cx - b.hx) * SUB)); i < Math.min(FX, Math.ceil((b.cx + b.hx) * SUB)); i++) {
+      for (let j = Math.max(0, Math.floor((b.cy - b.hy) * SUB)); j < Math.min(FY, Math.ceil((b.cy + b.hy) * SUB)); j++) opaque[j * FX + i] = 1;
     }
   }
-  function seen(x0, y0, x1, y1) {
-    const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.2);
-    for (let k = 1; k < n; k++) {
-      const i = Math.floor((x0 + (x1 - x0) * k / n) * SUB), j = Math.floor((y0 + (y1 - y0) * k / n) * SUB);
-      if (opaque[j * MW * SUB + i]) return false;
-    }
-    return true;
+  function sightify(material) {
+    if (!material || material.userData.sight || material.userData.noSight || material.isLineBasicMaterial || material.isSpriteMaterial) return;
+    material.userData.sight = true;
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, sightU);
+      shader.vertexShader = 'varying vec2 vSightXZ;\n' + shader.vertexShader.replace('#include <project_vertex>',
+        '#include <project_vertex>\n  vSightXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      shader.fragmentShader = 'uniform sampler2D uSight;\nuniform float uSightOn;\nuniform vec2 uSightSize;\nvarying vec2 vSightXZ;\n'
+        + shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>
+  if (uSightOn > 0.5) { float sv = texture2D(uSight, vSightXZ / uSightSize).r; gl_FragColor.rgb *= mix(vec3(0.2, 0.23, 0.34), vec3(1.0), sv); }`);
+    };
+    material.customProgramCacheKey = () => 'sight1';
+    material.needsUpdate = true;
   }
-  function stepFog() {
-    fog.visible = roundOn && !!me && !!me.team;
+  let sightScanAt = 0;
+  function sightScan() {                                      // patch materials of whatever was added since the last scan
+    scene.traverse((o) => {
+      if (!o.material || o.userData.noSight) return;
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(sightify);
+    });
+  }
+  function stepSight() {
+    const on = roundOn && !!me && !!me.team;
+    sightU.uSightOn.value = on ? 1 : 0;
     const now = performance.now();
-    if (!fog.visible || now - fogAt < 120) return;
-    fogAt = now;
-    for (let r = 0; r < FY; r++) {
-      const y = (FY - 1 - r + 0.5) / 2;                       // texture row 0 is the far (+z) edge of the plane
-      for (let c = 0; c < FX; c++) {
-        const x = (c + 0.5) / 2, o = (r * FX + c) * 4;
-        const floor = floorAt[Math.floor(y) * MW + Math.floor(x)];
-        fogData[o] = 15; fogData[o + 1] = 23; fogData[o + 2] = 42;
-        fogData[o + 3] = !floor ? 0 : seen(me.x, me.y, x, y) ? 0 : 150;
+    if (now - sightScanAt > 700) { sightScanAt = now; sightScan(); }
+    if (!on || now - sightAt < 100) return;
+    sightAt = now;
+    sightRaw.fill(0);
+    const R = world.view || 18, FADE = 5, RAYS = 720, STEP = 0.12;
+    const light = (x, y, v) => {
+      const i = Math.floor(x * SUB), j = Math.floor(y * SUB);
+      if (i < 0 || j < 0 || i >= FX || j >= FY) return;
+      const k = j * FX + i;
+      if (v > sightRaw[k]) sightRaw[k] = v;
+    };
+    for (let r = 0; r < RAYS; r++) {
+      const a = r / RAYS * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
+      let after = -1;                                         // once a ray hits a wall, light a little more so the wall's face shows
+      for (let d = 0; d <= R; d += STEP) {
+        const x = me.x + dx * d, y = me.y + dy * d;
+        if (areaAt(x, y) < 0 && after < 0) after = 1;
+        const v = d < R - FADE ? 1 : Math.max(0, (R - d) / FADE);
+        light(x, y, v);
+        if (after >= 0) { if (after-- === 0) break; continue; }
+        const i = Math.floor(x * SUB), j = Math.floor(y * SUB);
+        if (i >= 0 && j >= 0 && i < FX && j < FY && opaque[j * FX + i]) after = 3;
       }
     }
-    fogTex.needsUpdate = true;
+    for (let j = 0; j < FY; j++) {                            // 3×3 blur for soft edges
+      for (let i = 0; i < FX; i++) {
+        let sum = 0, n = 0;
+        for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+          const ii = i + c, jj = j + b;
+          if (ii >= 0 && jj >= 0 && ii < FX && jj < FY) { sum += sightRaw[jj * FX + ii]; n++; }
+        }
+        sightData[j * FX + i] = Math.round(sum / n * 255);
+      }
+    }
+    sightTex.needsUpdate = true;
   }
+
+  // ── artifacts: a spinning gem on a pedestal with a light beam (seen through the dark), and a ring that fills while a thief
+  // steals it. The rescue pad gets the same kind of ring. ──
+  const artifacts = new Map();                                // id → { group, gem, ring, p }
+  const glow = (m) => { m.userData.noSight = true; return m; };
+  function progressRing(r0, r1, p, color) {
+    return new THREE.Mesh(new THREE.RingGeometry(r0, r1, 48, 1, Math.PI / 2, -Math.PI * 2 * Math.max(0.001, p)),
+      glow(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthWrite: false })));
+  }
+  function setArtifacts(list, padP) {
+    const seenIds = new Set();
+    for (const a of list || []) {
+      seenIds.add(a.id);
+      let rec = artifacts.get(a.id);
+      if (!rec) {
+        const group = new THREE.Group();
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.4, 1.0, 20), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 }));
+        base.position.y = 0.5;
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.0), glow(new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.9, metalness: 0.4, roughness: 0.25 })));
+        gem.position.y = 2.7; gem.castShadow = true;
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.9, 16, 16, 1, true), glow(new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide })));
+        beam.position.y = 8;
+        group.add(base, gem, beam);
+        group.position.copy(onFloor(a.x, a.y));
+        scene.add(group);
+        rec = { group, gem, ring: null, p: -1 };
+        artifacts.set(a.id, rec);
+        for (let k = 0; k < 5; k++) puff(a.x + (Math.random() - 0.5), a.y + (Math.random() - 0.5));
+      }
+      if (Math.abs(a.p - rec.p) > 0.01) {                     // redraw the steal ring
+        if (rec.ring) { rec.group.remove(rec.ring); rec.ring.geometry.dispose(); }
+        rec.ring = a.p > 0 ? progressRing(world.steal.radius * CELL - 0.6, world.steal.radius * CELL, a.p, 0xef4444) : null;
+        if (rec.ring) { rec.ring.rotation.x = -Math.PI / 2; rec.ring.position.y = 0.15; rec.group.add(rec.ring); }
+        rec.p = a.p;
+      }
+    }
+    for (const [id, rec] of artifacts) {
+      if (seenIds.has(id)) continue;
+      const p = rec.group.position;
+      for (let k = 0; k < 10; k++) puff(p.x / CELL + (Math.random() - 0.5) * 1.5, p.z / CELL + (Math.random() - 0.5) * 1.5);
+      scene.remove(rec.group);
+      artifacts.delete(id);
+    }
+    if (padRing) {
+      if (padFill) { scene.remove(padFill); padFill.geometry.dispose(); padFill = null; }
+      if (padP > 0) {
+        padFill = progressRing(world.pad.r * CELL - 0.7, world.pad.r * CELL + 0.4, padP, 0x22c55e);
+        padFill.rotation.x = -Math.PI / 2;
+        padFill.position.copy(onFloor(world.pad.cx, world.pad.cy, 0.12));
+        scene.add(padFill);
+      }
+    }
+  }
+  let padFill = null;
+  function stepArtifacts(dt) {
+    const t = performance.now() / 1000;
+    for (const rec of artifacts.values()) { rec.gem.rotation.y += dt * 1.6; rec.gem.position.y = 2.7 + Math.sin(t * 2.2) * 0.25; }
+  }
+
+  // ── emotes: an emoji bubble over the head, or (teabag) a quick crouch. Keys 1–5 and C. ──
+  const EMOJI = { laugh: '🤣', taunt: '😜', wave: '👋', angry: '😡', cool: '😎' };
+  const EMOTE_KEYS = { 1: 'laugh', 2: 'taunt', 3: 'wave', 4: 'angry', 5: 'cool', c: 'teabag' };
+  function showEmote(id, kind) {                             // the emoji itself is drawn by the page above the name tag (anchors)
+    const rec = people.get(id);
+    if (!rec || !rec.actor || (rec.hidden && id !== meId)) return false;
+    const now = performance.now() / 1000;
+    if (kind === 'teabag') rec.crouchUntil = now + 0.28;
+    else rec.emote = { e: EMOJI[kind] || '❓', born: now };
+    return true;
+  }
+  let emoteCb = null;
 
   function dispose() {
     dead = true;
+    if (SIGHT.uSight.value === sightTex) SIGHT.uSightOn.value = 0;
     cancelAnimationFrame(raf);
     resizer.disconnect();
     window.removeEventListener('keydown', onKeyDown);
@@ -729,6 +841,8 @@ export function createRoomScene(container, { base, world }) {
     onMove(cb) { moveCb = cb; },
     onDash(cb) { dashCb = cb; },
     onShot(cb) { shotCb = cb; },
+    onEmote(cb) { emoteCb = cb; },
+    setArtifacts,
     events: handleEvents,
     setPhase(phase) { roundOn = phase === 'countdown' || phase === 'playing'; },
     abilityState() {                                           // what Space does for me right now, and how long until it's ready

@@ -100,7 +100,7 @@ class MapTests(SimpleTestCase):
 
     def test_page_data_has_every_map(self):
         worlds = world.worlds_view()
-        self.assertEqual(set(worlds), set(maps.MAPS))
+        self.assertEqual(set(worlds), set(maps.MAPS) | {"lobby"})              # 대기실도 그린다
         dorm = worlds["dorm"]
         self.assertEqual((dorm["w"], dorm["h"]), (30, 40))
         self.assertEqual(dorm["jail"], {"x0": 26, "y0": 0, "x1": 30, "y1": 4})
@@ -120,6 +120,7 @@ class WorldTests(SimpleTestCase):
 
     def test_moves_are_checked_for_speed_and_obstacles(self):
         room = world.Room("ABCD", 1, map_key="school")
+        room.map = SCHOOL                                                      # 이동 규칙만 본다 (보통은 대기실)
         room.add(1, "me", now=0)
         p = room.players[1]
         x0, y0 = p.x, p.y
@@ -129,6 +130,7 @@ class WorldTests(SimpleTestCase):
         self.assertFalse(room.move(1, "nan", 3, 0, True, now=0.3))
         self.assertFalse(room.move(1, None, 3, 0, True, now=0.3))
         bunch = world.Room("BNCH", 3, map_key="school")                                            # 늦게 오다 몰려 온 위치
+        bunch.map = SCHOOL
         bunch.add(3, "b", now=0)
         q = bunch.players[3]
         q.x, q.y, q.last = 20.0, 15.0, 0.0
@@ -136,6 +138,7 @@ class WorldTests(SimpleTestCase):
         self.assertTrue(bunch.move(3, 20.0 - 1.2, 15.0, 0, True, now=0.255))     # 바로 뒤에 붙어 와도 받는다
         self.assertFalse(bunch.move(3, 20.0 - 5.2, 15.0, 0, True, now=2.0))      # 오래 멈춰 있었어도 순간이동은 안 된다
         far = world.Room("EFGH", 2, map_key="school")
+        far.map = SCHOOL
         far.add(2, "x", now=0)
         far.players[2].x, far.players[2].y = 3.0, 15.5
         self.assertFalse(far.move(2, 3.0, 12.5, 0, True, now=10))                 # 교실 벽은 뚫고 지나갈 수 없다
@@ -205,11 +208,24 @@ class CopsAndRobbersTests(SimpleTestCase):
         self.assertTrue(jailed.jailed)
         cop.x, cop.y = 40.5, 10.0
         hero.x, hero.y = room.map.pad["cx"], room.map.pad["cy"]
-        room.update(now=now + 1)
+        t = now
+        for _ in range(15):                                                   # 1.5초: 아직 모자라다
+            t += 0.1
+            room.update(now=t)
+        self.assertTrue(jailed.jailed)
+        self.assertGreater(room.snapshot(t)["pad"], 0.4)
+        hero.x += 2.0                                                         # 내려오면 처음부터
+        room.update(now=t + 0.1)
+        self.assertEqual(room.pad_time, 0.0)
+        hero.x -= 2.0
+        t += 0.1
+        for _ in range(int(world.RESCUE_SECONDS * 10) + 2):
+            t += 0.1
+            room.update(now=t)
         self.assertFalse(jailed.jailed)
         self.assertFalse(room.map.in_jail(jailed.x, jailed.y))
         cop.x, cop.y = jailed.x + 0.3, jailed.y
-        room.update(now=now + 2)
+        room.update(now=t + 0.5)
         self.assertFalse(jailed.jailed)                                       # 풀려난 직후 잠깐은 안 잡힌다
 
     def test_cops_win_when_every_thief_is_jailed(self):
@@ -224,10 +240,71 @@ class CopsAndRobbersTests(SimpleTestCase):
         self.assertEqual(room.phase, "lobby")
         self.assertTrue(all(p.team is None and not p.jailed for p in room.players.values()))
 
-    def test_thieves_win_when_time_runs_out(self):
+    def test_cops_win_when_time_runs_out_before_the_loot_is_stolen(self):
         room, cop, thieves = self.playing()
-        room.update(now=world.COUNTDOWN + world.ROUND_SECONDS + 1)
+        room.update(now=world.COUNTDOWN + room.round_seconds + 1)
+        self.assertEqual(room.result["winner"], "cop")
+        self.assertEqual(room.result["stolen"], 0)
+
+    def test_thieves_steal_artifacts_by_standing_next_to_them(self):
+        room, cop, thieves = self.playing()
+        t = thieves[0]
+        now = world.COUNTDOWN + 1
+        cop.x, cop.y = 40.5, 10.0
+        need, seconds, active = world.round_plan(3, 2)
+        self.assertEqual((room.need, room.round_seconds, len(room.artifacts)), (need, seconds, active))
+        for _ in range(room.need):
+            a = room.artifacts[0]
+            t.x, t.y = a["x"], a["y"]
+            for _ in range(15):                                               # 1.5초 서 있다가
+                now += 0.1
+                room.update(now=now)
+            self.assertGreater(a["progress"], 0.4)
+            t.x += 3.0                                                        # 떠나면 처음부터
+            now += 0.1
+            room.update(now=now)
+            self.assertEqual(a["progress"], 0.0)
+            t.x, t.y = a["x"], a["y"]
+            for _ in range(int(world.STEAL_SECONDS * 10) + 1):
+                now += 0.1
+                room.update(now=now)
+            self.assertNotIn(a, room.artifacts)
+            for _ in range(int(world.ARTIFACT_RESPAWN * 10) + 1):             # 다른 곳에 새로 나타난다
+                now += 0.1
+                room.update(now=now)
+            if room.phase == "result":
+                break
         self.assertEqual(room.result["winner"], "thief")
+        self.assertEqual(room.result["stolen"], room.need)
+
+    def test_more_players_need_more_loot_and_time(self):
+        small, big = world.round_plan(3, 2), world.round_plan(8, 5)
+        self.assertLess(small[0], big[0])
+        self.assertLess(small[1], big[1])
+
+    def test_lobby_is_a_fixed_square_and_the_round_moves_to_the_chosen_map(self):
+        room = self.room(3)
+        self.assertEqual(room.map.key, "lobby")
+        self.assertEqual(room.map.w, room.map.h)
+        self.assertEqual(room.set_map(1, "dorm", now=0), "")
+        self.assertEqual(room.map.key, "lobby")                              # 고르기만 하고 대기실에 그대로
+        room.start(1, now=0)
+        self.assertEqual(room.map.key, "dorm")
+        self.assertTrue(all(room.map.free_at(p.x, p.y) for p in room.players.values()))
+        room.update(now=world.COUNTDOWN + 0.01)
+        room.update(now=world.COUNTDOWN + room.round_seconds + 1)
+        room.update(now=world.COUNTDOWN + room.round_seconds + world.RESULT_SECONDS + 2)
+        self.assertEqual((room.phase, room.map.key, room.choice.key), ("lobby", "lobby", "dorm"))
+        self.assertFalse(room.artifacts)
+
+    def test_emotes_are_broadcast_but_not_spammed(self):
+        room = self.room(2)
+        room.take_events()
+        self.assertTrue(room.emote(1, "teabag", now=1.0))
+        self.assertFalse(room.emote(1, "teabag", now=1.05))                 # 너무 잦다
+        self.assertTrue(room.emote(1, "laugh", now=1.2))
+        self.assertFalse(room.emote(1, "<script>", now=2.0))
+        self.assertEqual([(e["id"], e["e"]) for e in room.take_events()], [(1, "teabag"), (1, "laugh")])
 
     def test_only_thieves_dash(self):
         room, cop, thieves = self.playing()
@@ -299,7 +376,12 @@ class CopsAndRobbersTests(SimpleTestCase):
         seen_by_t = {p["id"]: p for p in world.visible_view(room.snapshot(now), t.uid)["players"]}
         self.assertFalse(seen_by_t[mate.uid].get("hidden"))                 # 같은 팀은 늘 보인다
         self.assertTrue(seen_by_t[cop.uid].get("hidden"))
-        room.update(now=world.COUNTDOWN + world.ROUND_SECONDS + 1)          # 끝나면 다 보인다
+        far = {p["id"]: p for p in world.visible_view(room.snapshot(now), cop.uid)["players"]}
+        self.assertFalse(far[mate.uid].get("hidden"))
+        self.place(mate, 3.0 + world.VIEW_RANGE + 1, 15.0, now)            # 같은 복도라도 너무 멀면 안 보인다
+        far = {p["id"]: p for p in world.visible_view(room.snapshot(now), cop.uid)["players"]}
+        self.assertTrue(far[mate.uid].get("hidden"))
+        room.update(now=world.COUNTDOWN + room.round_seconds + 1)           # 끝나면 다 보인다
         self.assertFalse(any(p.get("hidden") for p in world.visible_view(room.snapshot(), cop.uid)["players"]))
 
     def test_a_cops_tag_counts_where_the_thief_just_was(self):
@@ -458,12 +540,12 @@ class BotTests(SimpleTestCase):
     def test_host_picks_the_map_in_the_lobby(self):
         room = self.solo(bots=1)
         room.add(2, "friend", now=0)
-        self.assertEqual(world.Room("NEW", 1).map.key, maps.DEFAULT_MAP)
+        self.assertEqual(world.Room("NEW", 1).choice.key, maps.DEFAULT_MAP)
         self.assertTrue(room.set_map(2, "dorm", now=0))                   # 방장만
         self.assertTrue(room.set_map(1, "nowhere", now=0))
         self.assertEqual(room.set_map(1, "dorm", now=0), "")
-        self.assertEqual(room.snapshot(now=0)["map"], "dorm")
-        self.assertTrue(all((p.x, p.y) in room.map.lobby_spawns for p in room.players.values()))   # 모두 새 맵 대기 자리로
+        self.assertEqual((room.snapshot(now=0)["map"], room.snapshot(now=0)["choice"]), ("lobby", "dorm"))
+        self.assertTrue(all((p.x, p.y) in room.map.lobby_spawns for p in room.players.values()))   # 모두 대기실에 그대로
         self.assertEqual(room.summary()["map"], "기숙사")
         room.start(1, now=0)
         self.assertTrue(room.set_map(1, "school", now=1))                 # 게임 중에는 못 바꾼다
@@ -477,9 +559,9 @@ class HubTests(SimpleTestCase):
 
     def test_a_room_can_be_created_on_any_map(self):
         room = hub.create_room(1, "a", "기숙사 방", map_key="dorm")
-        self.assertEqual(room.map.key, "dorm")
+        self.assertEqual(room.choice.key, "dorm")
         self.assertEqual(hub.list_rooms()[0]["map"], "기숙사")
-        self.assertEqual(hub.create_room(2, "b", map_key="bogus").map.key, maps.DEFAULT_MAP)
+        self.assertEqual(hub.create_room(2, "b", map_key="bogus").choice.key, maps.DEFAULT_MAP)
 
     def test_create_join_leave(self):
         room = hub.create_room(1, "a")

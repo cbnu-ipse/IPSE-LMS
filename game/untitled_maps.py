@@ -74,12 +74,15 @@ class GameMap:
             for i in range(a["x0"], a["x1"]):
                 for j in range(a["y0"], a["y1"]):
                     self.cell[i][j] = k
-        jail = next(a for a in areas if a["kind"] == "jail")
-        self.jail = {"x0": jail["x0"], "y0": jail["y0"], "x1": jail["x1"], "y1": jail["y1"]}
-        self.pad = {"cx": pad[0], "cy": pad[1], "r": 0.8}
-        jx, jy = (jail["x1"] - jail["x0"]) - 1.6, (jail["y1"] - jail["y0"]) - 1.6
-        self.jail_spots = [(jail["x0"] + 0.8 + jx * (i % 3) / 2, jail["y0"] + 0.8 + jy * (i // 3) / 2) for i in range(9)]
-        self.wall_edges, self.fence_edges = self._edges(areas.index(jail))
+        jail = next((a for a in areas if a["kind"] == "jail"), None)    # 대기실처럼 감옥이 없는 맵도 있다
+        if jail is None:
+            self.jail, self.pad, self.jail_spots = None, None, []
+        else:
+            self.jail = {"x0": jail["x0"], "y0": jail["y0"], "x1": jail["x1"], "y1": jail["y1"]}
+            self.pad = {"cx": pad[0], "cy": pad[1], "r": 0.8}
+            jx, jy = (jail["x1"] - jail["x0"]) - 1.6, (jail["y1"] - jail["y0"]) - 1.6
+            self.jail_spots = [(jail["x0"] + 0.8 + jx * (i % 3) / 2, jail["y0"] + 0.8 + jy * (i // 3) / 2) for i in range(9)]
+        self.wall_edges, self.fence_edges = self._edges(areas.index(jail) if jail else -1)
         self.shapes = self._shapes()
         self.walls = [s for s in self.shapes if s["model"] in ("wall", "fence")]
         self.sight = [s for s in self.shapes if s["model"] == "wall" or (s["model"] in SIGHT_MODELS and s["kind"] == "box")]
@@ -207,7 +210,7 @@ class GameMap:
 
     def in_jail(self, x, y):
         j = self.jail
-        return j["x0"] < x < j["x1"] and j["y0"] < y < j["y1"]
+        return j is not None and j["x0"] < x < j["x1"] and j["y0"] < y < j["y1"]
 
     def can_see(self, x0, y0, x1, y1):
         """(x0, y0)에서 (x1, y1)이 보이는가: 그 사이를 벽·높은 가구가 가리지 않는다."""
@@ -220,7 +223,7 @@ class GameMap:
         return True
 
     def on_pad(self, x, y):
-        return (x - self.pad["cx"]) ** 2 + (y - self.pad["cy"]) ** 2 <= self.pad["r"] ** 2
+        return self.pad is not None and (x - self.pad["cx"]) ** 2 + (y - self.pad["cy"]) ** 2 <= self.pad["r"] ** 2
 
     def push_out(self, x, y, others=()):
         """(x, y)가 충돌 모양·다른 캐릭터와 겹치면 겹친 만큼 밖으로 민다 (화면의 pushOut과 같은 방식). 민 위치를 돌려준다."""
@@ -511,5 +514,21 @@ def _dorm():
                    pad=(24.6, 2.0))
 
 
-MAPS = {m.key: m for m in (_lab(), _school(), _dorm())}
+# ── 대기실 (18×18, 정사각형 고정): 게임 전후에 모이는 곳. 맵은 여기서 방장이 고른다. ─────────────
+def _lobby():
+    areas = [_area("대기실", "room", "#818cf8", 0, 0, 18, 18)]
+    props = [
+        ("loungeSofa", 1, 1, 0, 2, 1), ("loungeSofa", 15, 1, 0, 2, 1), ("tableCoffee", 1, 3, 0, 2, 1), ("tableCoffee", 15, 3, 0, 2, 1),
+        ("kitchenFridge", 8, 0, 0, 1, 1), ("kitchenFridge", 9, 0, 0, 1, 1), ("pottedPlant", 0, 17, 0, 1, 1), ("pottedPlant", 17, 17, 0, 1, 1),
+        ("pottedPlant", 0, 8, 0, 1, 1), ("pottedPlant", 17, 8, 0, 1, 1), ("bench", 4, 16, 2, 1, 1), ("bench", 13, 16, 2, 1, 1),
+        ("lampSquareFloor", 5, 5, 0, 1, 1), ("lampSquareFloor", 12, 5, 0, 1, 1), ("lampSquareFloor", 5, 12, 0, 1, 1), ("lampSquareFloor", 12, 12, 0, 1, 1),
+    ]
+    ring = [(9.0 + 3.2 * math.cos(k * math.pi / 4), 9.0 + 3.2 * math.sin(k * math.pi / 4)) for k in range(8)]
+    return GameMap("lobby", "대기실", "게임 전에 모이는 곳", areas, [], props, [("rugRound", 8, 8, 0)],
+                   lobby=[(round(x, 2), round(y, 2)) for x, y in ring], cops=[(9.0, 9.0)], thieves=[(9.0, 9.0)], pad=None)
+
+
+MAPS = {m.key: m for m in (_lab(), _school(), _dorm())}      # 게임 맵 (방장이 고른다)
+LOBBY = _lobby()
+ALL_MAPS = {**MAPS, LOBBY.key: LOBBY}
 DEFAULT_MAP = "lab"

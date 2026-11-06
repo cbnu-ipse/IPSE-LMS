@@ -1,6 +1,7 @@
 """[무제]: 방(코드로 입장), 맵 위 캐릭터 이동, 그리고 그 위에서 하는 경찰과 도둑 (DB를 쓰지 않는 순수 파이썬).
 
-맵(크기·벽·소품·충돌 판정·봇 길찾기 격자)은 untitled_maps에 있고, 방장이 대기실에서 고른다.
+맵(크기·벽·소품·충돌 판정·봇 길찾기 격자)은 untitled_maps에 있다. 판과 판 사이에는 정사각형 대기실(LOBBY)에 모이고,
+방장이 거기서 다음 판의 맵(choice)을 고른다. 시작하면 그 맵으로 옮겨 가고, 결과가 끝나면 대기실로 돌아온다.
 캐릭터는 반지름 RADIUS의 원이다. 이동은 화면(브라우저)이 바로 그리고(겹치면 밖으로 밀어내 미끄러진다) 위치를 서버에 보낸다.
 서버는 속도 한도를 넘거나 충돌 모양·맵 밖에 걸치거나 벽을 뚫은 위치를 받지 않고, 마지막으로 받은 위치를 되돌려 준다.
 
@@ -9,12 +10,16 @@
 - 경찰이 도둑에게 닿으면(CATCH 거리) 도둑은 오른쪽 위 구석의 감옥(울타리로 막힌 칸)으로 옮겨진다.
   경찰 화면에는 도둑이 조금 늦게 그려지므로(전송·방송 간격), 경찰 화면이 "닿았다(tag)"고 알리면 서버는 도둑이
   최근 몇십 분의 1초(두 사람의 핑으로 정한다, tag_window) 동안 지나간 자리 중 하나라도 경찰 곁(TAG_REACH)이었는지로 판정한다.
-- 잡히지 않은 도둑이 감옥 앞 구출 발판을 밟으면 갇힌 도둑이 모두 발판 둘레로 풀려나고 SAFE_SECONDS초 동안 잡히지 않는다.
-- ROUND_SECONDS 안에 도둑이 모두 갇히면 경찰 승리, 시간이 다 됐을 때 한 명이라도 밖에 있으면 도둑 승리.
+- 잡히지 않은 도둑이 감옥 앞 구출 발판에 RESCUE_SECONDS초 동안 서 있으면 갇힌 도둑이 모두 발판 둘레로 풀려나고
+  SAFE_SECONDS초 동안 잡히지 않는다. 발판에서 내려오면 처음부터 다시.
+- 아티팩트: 맵 여기저기에 무작위로 나타난다. 도둑이 그 곁(STEAL_RADIUS)에 STEAL_SECONDS초 동안 서 있으면 훔친다(떨어지면 처음부터).
+  훔치면 잠시 뒤 다른 곳에 새로 나타난다. 필요한 개수와 제한 시간은 인원에 따라 다르다 (round_plan).
+- 도둑은 제한 시간 안에 필요한 만큼 훔치면 이긴다. 경찰은 시간이 다 되거나 도둑을 모두 가두면 이긴다.
 - 도둑만 대시(DASH_SECONDS 동안 DASH_MULT배 빠르게, DASH_COOLDOWN초마다 한 번)를 쓸 수 있다. 서버가 대시 시간을 기록해 속도 검사에 반영한다.
 - 경찰은 대시 대신 테이저건을 쏜다: 바라보는 방향으로 침이 DART_SPEED로 TASER_RANGE칸까지 날아가고(벽에 막힌다),
   맞은 도둑은 STUN_SECONDS초 동안 감전돼 움직이지 못한다. TASER_COOLDOWN초마다 한 번. 날아가는 동안 피할 수 있다.
-- 사각지대: 게임 중에는 상대 팀이 내 캐릭터에서 보일 때(벽·높은 가구가 가리지 않을 때)만 그 위치를 보낸다 (visible_view).
+- 사각지대: 게임 중에는 상대 팀이 내 캐릭터에서 보일 때(VIEW_RANGE칸 안이고 벽·높은 가구가 가리지 않을 때)만 그 위치를 보낸다 (visible_view).
+- 이모티콘: 언제든 EMOTES 중 하나를 띄울 수 있다(놀리기용 앉았다 일어나기 "teabag" 포함). 너무 잦으면 무시한다.
 
 봇: 방장이 대기실에서 넣고 뺀다(id는 음수). 봇은 서버가 움직인다(사람과 같은 충돌 판정과 대시). 경찰 봇은 가까운 도둑을 쫓고,
 도둑 봇은 경찰보다 먼저 닿을 수 있는 트인 곳으로 달아나다가 동료가 갇히면 구출 발판으로 간다. 벽은 반 칸 격자에서 길을 찾아 돌아간다.
@@ -24,7 +29,7 @@ from collections import deque
 import random
 import time
 
-from .untitled_maps import DEFAULT_MAP, MAPS, STEP
+from .untitled_maps import ALL_MAPS, DEFAULT_MAP, LOBBY, MAPS, STEP
 
 MAX_PLAYERS = 8
 SPEED = {"lobby": 4.0, "cop": 4.3, "thief": 4.0}     # 칸/초
@@ -40,7 +45,13 @@ DASH_MULT, DASH_SECONDS, DASH_COOLDOWN = 1.8, 0.8, 5.0
 TASER_RANGE, TASER_CONE = 6.0, 0.3   # 사거리(칸), 조준 보정 각(라디안)
 DART_SPEED, DART_HIT = 14.0, 0.4     # 테이저 침 속도(칸/초), 침과 도둑 중심이 이만큼 가까우면 맞는다(칸)
 TASER_COOLDOWN, STUN_SECONDS = 5.0, 1.5
-COUNTDOWN, HEAD_START, ROUND_SECONDS, SAFE_SECONDS, RESULT_SECONDS = 3.0, 5.0, 180.0, 3.0, 8.0
+COUNTDOWN, HEAD_START, SAFE_SECONDS, RESULT_SECONDS = 3.0, 5.0, 3.0, 8.0
+RESCUE_SECONDS = 3.0           # 구출 발판에 이만큼 서 있어야 동료가 풀려난다
+STEAL_SECONDS, STEAL_RADIUS = 3.0, 1.0   # 아티팩트 곁(칸)에 이만큼(초) 서 있어야 훔친다
+ARTIFACT_RESPAWN = 2.0         # 훔친 뒤 새 아티팩트가 나타나기까지 (초)
+VIEW_RANGE = 18.0              # 이보다 먼 상대는 보이지 않는다 (칸)
+EMOTES = ("laugh", "taunt", "wave", "angry", "cool", "teabag")
+EMOTE_GAP = 0.12               # 이모티콘 사이 최소 간격 (초)
 BOT_COP_HANDICAP = 0.92        # 혼자 연습할 때 경찰 봇이 너무 세지 않게 (사람 속도는 그대로)
 BOT_REACTION = 0.35            # 경찰 봇이 도둑 위치를 다시 보는 간격 (초)
 BOT_TASER_RANGE, BOT_AIM_ERROR = 4.5, 0.15   # 경찰 봇은 가까이서만 쏘고, 사람처럼 조준이 조금 빗나간다 (라디안)
@@ -49,10 +60,17 @@ MODELS = ["character-male-a", "character-female-a", "character-male-b", "charact
           "character-male-d", "character-female-d", "character-male-e", "character-female-e", "character-male-f", "character-female-f"]
 
 
+def round_plan(players, thieves):
+    """인원에 따라: (훔쳐야 할 아티팩트 수, 제한 시간(초), 한꺼번에 나와 있는 아티팩트 수)."""
+    need = max(3, thieves + 1)
+    return need, 75.0 + 15.0 * need + 5.0 * players, 2 if need <= 4 else 3
+
+
 def rules_view():
     """모든 맵에 공통인 규칙 (화면용)."""
     return {"speed": SPEED, "catch": CATCH, "dash": {"mult": DASH_MULT, "seconds": DASH_SECONDS, "cooldown": DASH_COOLDOWN},
-            "taser": {"range": TASER_RANGE, "cooldown": TASER_COOLDOWN, "stun": STUN_SECONDS, "speed": DART_SPEED}}
+            "taser": {"range": TASER_RANGE, "cooldown": TASER_COOLDOWN, "stun": STUN_SECONDS, "speed": DART_SPEED},
+            "view": VIEW_RANGE, "steal": {"seconds": STEAL_SECONDS, "radius": STEAL_RADIUS}, "rescue": RESCUE_SECONDS}
 
 
 HIDDEN_KEYS = ("id", "name", "model", "team", "jailed", "online", "bot", "catches")
@@ -65,10 +83,11 @@ def visible_view(state, viewer_id):
     me = next((p for p in state["players"] if p["id"] == viewer_id), None)
     if me is None or me["team"] is None:
         return state
-    m = MAPS[state["map"]]
+    m = ALL_MAPS[state["map"]]
     players = []
     for p in state["players"]:
-        if p["id"] == viewer_id or p["team"] == me["team"] or m.can_see(me["x"], me["y"], p["x"], p["y"]):
+        near = (p["x"] - me["x"]) ** 2 + (p["y"] - me["y"]) ** 2 <= VIEW_RANGE ** 2
+        if p["id"] == viewer_id or p["team"] == me["team"] or (near and m.can_see(me["x"], me["y"], p["x"], p["y"])):
             players.append(p)
         else:
             players.append({**{k: p[k] for k in HIDDEN_KEYS}, "hidden": True})
@@ -77,7 +96,7 @@ def visible_view(state, viewer_id):
 
 def worlds_view():
     """화면에 보낼 맵들: {맵 key: 맵 정보}."""
-    return {key: m.view(rules_view()) for key, m in MAPS.items()}
+    return {key: m.view(rules_view()) for key, m in ALL_MAPS.items()}
 
 
 def maps_list():
@@ -109,6 +128,7 @@ class Player:
         self.trail = deque(maxlen=16)  # 최근 위치 (시각, x, y): 경찰 화면의 "닿았다"를 판정할 때 본다
         self.budget = 0.0              # 이동 허용량 (칸): 시간이 지나면 쌓이고, 받은 이동만큼 줄어든다
         self.rtt = 0.0 if self.bot else RTT_DEFAULT   # 화면이 잰 왕복 지연 (초). 봇은 서버 안에 있어 0
+        self.emote_at = -1.0
 
     def speed(self):
         base = SPEED[self.team or "lobby"]
@@ -136,7 +156,8 @@ class Player:
 class Room:
     def __init__(self, code, host_id, name="", private=False, map_key=DEFAULT_MAP):
         self.code, self.host_id = code, host_id
-        self.map = MAPS.get(map_key, MAPS[DEFAULT_MAP])
+        self.choice = MAPS.get(map_key, MAPS[DEFAULT_MAP])     # 다음 판의 맵 (방장이 대기실에서 고른다)
+        self.map = LOBBY                                        # 지금 서 있는 맵: 대기 중에는 대기실
         self.name = (name or "").strip()[:24] or "경찰과 도둑"
         self.private = bool(private)
         self.last_update = None
@@ -149,6 +170,10 @@ class Room:
         self.events = []
         self.rng = random.Random()
         self.darts = []                 # 날아가는 테이저 침
+        self.artifacts = []             # 나와 있는 아티팩트 {"id", "x", "y", "progress"(0~1)}
+        self.artifact_seq, self.spawn_at = 0, []
+        self.need, self.stolen, self.round_seconds = 0, 0, 0.0
+        self.pad_time = 0.0             # 누군가 구출 발판에 서 있은 시간 (초)
         self._cop_dist, self._cop_map_at = {}, None
 
     # ── 방 ─────────────────────────────────────────────────────
@@ -198,26 +223,30 @@ class Room:
             self._check_end(time.monotonic() if now is None else now)
 
     def set_map(self, uid, key, now=None):
-        """방장이 대기실에서 맵을 바꾼다. 모두 새 맵의 대기 자리로 옮겨진다. 성공하면 "", 아니면 오류 문구."""
-        now = time.monotonic() if now is None else now
+        """방장이 대기실에서 다음 판의 맵을 고른다 (모두 대기실에 그대로 있다). 성공하면 "", 아니면 오류 문구."""
         if uid != self.host_id:
             return "방장만 맵을 고를 수 있어요."
         if self.phase != "lobby":
             return "대기실에서만 맵을 바꿀 수 있어요."
         if key not in MAPS:
             return "없는 맵이에요."
-        if key == self.map.key:
+        if key == self.choice.key:
             return ""
-        self.map = MAPS[key]
-        self._cop_dist, self._cop_map_at = {}, None
-        spawns = self.map.lobby_spawns
-        for i, p in enumerate(self.players.values()):
-            p.teleport(*spawns[i % len(spawns)])
-            p.reset_bot_plan()
-            p.last = now
+        self.choice = MAPS[key]
         self.events.append({"t": "map", "map": key})
         self.dirty = True
         return ""
+
+    def emote(self, uid, kind, now=None):
+        """이모티콘을 띄운다. 띄웠으면 True."""
+        now = time.monotonic() if now is None else now
+        p = self.players.get(uid)
+        if p is None or kind not in EMOTES or now - p.emote_at < EMOTE_GAP:
+            return False
+        p.emote_at = now
+        self.events.append({"t": "emote", "id": uid, "e": kind})
+        self.dirty = True
+        return True
 
     # ── 이동 ───────────────────────────────────────────────────
     def move(self, uid, x, y, direction, moving, now=None):
@@ -363,6 +392,9 @@ class Room:
             return False, "두 명 이상 있어야 시작할 수 있어요."
         self.rng.shuffle(people)
         cops = max(1, round(len(people) / 3))
+        self.map, self._cop_dist, self._cop_map_at = self.choice, {}, None
+        self.need, self.round_seconds, active = round_plan(len(people), len(people) - cops)
+        self.stolen, self.artifacts, self.spawn_at, self.pad_time = 0, [], [], 0.0
         for i, p in enumerate(people):
             p.team = "cop" if i < cops else "thief"
             p.jailed, p.catches = False, 0
@@ -370,9 +402,12 @@ class Room:
             spots = self.map.cop_spawns if p.team == "cop" else self.map.thief_spawns
             index = i if p.team == "cop" else i - cops
             p.teleport(*spots[index % len(spots)])
+            p.reset_bot_plan()
             p.frozen_until = now + COUNTDOWN + (HEAD_START if p.team == "cop" else 0.0)
             p.last = now
         self.phase, self.phase_end, self.result, self.darts = "countdown", now + COUNTDOWN, None, []
+        for _ in range(active):
+            self._place_artifact()
         self.events.append({"t": "start"})
         self.dirty = True
         return True, ""
@@ -387,12 +422,13 @@ class Room:
         if self.phase == "playing" and dt:
             self._darts(dt, now)
         if self.phase == "countdown" and now >= self.phase_end:
-            self.phase, self.phase_end = "playing", now + ROUND_SECONDS
+            self.phase, self.phase_end = "playing", now + self.round_seconds
             self.events.append({"t": "go"})
             self.dirty = True
         elif self.phase == "playing":
             self._catch(now)
-            self._rescue(now)
+            self._rescue(now, dt)
+            self._steal(now, dt)
             self._check_end(now)
             self.dirty = True                                           # 남은 시간이 흐르므로 매번 보낸다
         elif self.phase == "result" and now >= self.phase_end:
@@ -499,7 +535,8 @@ class Room:
         m = self.map
         if b.team == "cop":
             prey = [p for p in people if p.team == "thief" and not p.jailed and now >= p.safe_until]
-            visible = [p for p in prey if m.can_see(b.x, b.y, p.x, p.y)]    # 경찰 봇도 사각지대 너머는 못 본다
+            visible = [p for p in prey if math.hypot(p.x - b.x, p.y - b.y) <= VIEW_RANGE
+                       and m.can_see(b.x, b.y, p.x, p.y)]                    # 경찰 봇도 사각지대 너머는 못 본다
             if visible:
                 t = min(visible, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2)
                 seen = b.seen
@@ -516,6 +553,13 @@ class Room:
             if b.seen is not None and math.hypot(b.seen[1] - b.x, b.seen[2] - b.y) > 0.5:
                 return b.seen[1], b.seen[2], False                                # 마지막으로 본 자리로 가 본다
             b.seen = None
+            if self.artifacts and self.rng.random() < 0.7:          # 아무도 안 보이면 아티팩트를 지키러 간다
+                if b.wander is None or math.hypot(b.wander[0] - b.x, b.wander[1] - b.y) < 1.5:
+                    a = self.rng.choice(self.artifacts)
+                    b.wander = (a["x"] + self.rng.uniform(-1.5, 1.5), a["y"] + self.rng.uniform(-1.5, 1.5))
+                    if not m.walkable_at(*b.wander):
+                        b.wander = (a["x"], a["y"])
+                return b.wander[0], b.wander[1], False
             return self._wander(b, [], now)
         if b.team != "thief":
             return None
@@ -527,6 +571,11 @@ class Room:
         pad_guard = min((math.hypot(p.x - pad["cx"], p.y - pad["cy"]) for p in cops), default=99.0)
         if jailed and d > 4.0 and pad_guard > 5.0:                # 발판을 지키는 경찰이 없고 쫓기지 않을 때만 구하러 간다
             return pad["cx"], pad["cy"], d < 2.5
+        loot = [a for a in self.artifacts if min((math.hypot(p.x - a["x"], p.y - a["y"]) for p in cops), default=99.0) > 4.0]
+        if loot and d > 4.0:                                      # 경찰이 지키지 않는 아티팩트를 훔치러 간다
+            a = min(loot, key=lambda q: (q["x"] - b.x) ** 2 + (q["y"] - b.y) ** 2)
+            b.wander = None
+            return a["x"], a["y"], False
         if near is not None and d < 7.0:                          # 경찰보다 먼저 닿을 수 있는 곳 중 경찰에게서 가장 먼 곳
             dash_now = d < 3.0                                  # 테이저 사거리 안으로 들어온 경찰을 대시로 떼어 낸다
             if b.flee is None or now - b.flee_at > 0.3 or math.hypot(b.flee[0] - b.x, b.flee[1] - b.y) < 0.4:
@@ -571,14 +620,19 @@ class Room:
         self.events.append({"t": "caught", "thief": t.uid, "cop": cop.uid})
         self.dirty = True
 
-    def _rescue(self, now):
+    def _rescue(self, now, dt):
         jailed = [p for p in self.players.values() if p.jailed]
-        if not jailed:
-            return
         m, pad = self.map, self.map.pad
-        hero = next((p for p in self.players.values() if p.team == "thief" and not p.jailed and m.on_pad(p.x, p.y)), None)
-        if hero is None:
+        hero = next((p for p in self.players.values() if p.team == "thief" and not p.jailed and now >= p.stun_until
+                     and m.on_pad(p.x, p.y)), None)
+        if not jailed or hero is None:
+            if self.pad_time:
+                self.pad_time, self.dirty = 0.0, True
             return
+        self.pad_time += dt                                       # 발판에 계속 서 있어야 한다
+        if self.pad_time < RESCUE_SECONDS:
+            return
+        self.pad_time = 0.0
         for i, t in enumerate(jailed):
             angle = math.pi * (0.55 + 0.5 * i / max(1, len(jailed)))          # 발판 아래쪽 둘레에 내려놓는다
             x, y = pad["cx"] + math.cos(angle) * 1.4, pad["cy"] + math.sin(angle) * 1.4
@@ -590,25 +644,64 @@ class Room:
             t.last = now
         self.events.append({"t": "rescue", "by": hero.uid, "count": len(jailed)})
 
+    def _place_artifact(self):
+        """걸을 수 있는 아무 곳에 아티팩트를 하나 둔다: 다른 아티팩트·구출 발판·경찰 출발점에서 떨어진 곳을 고르고, 없으면 조건을 늦춘다."""
+        m = self.map
+        nodes = [(i, j) for i in range(m.gx) for j in range(m.gy) if m.walk[i][j]]
+        for spread in (8.0, 5.0, 2.0, 0.0):
+            far = [((i + 0.5) * STEP, (j + 0.5) * STEP) for i, j in nodes]
+            far = [(x, y) for x, y in far if m.free_at(x, y)
+                   and all(math.hypot(x - a["x"], y - a["y"]) >= spread for a in self.artifacts)
+                   and (m.pad is None or math.hypot(x - m.pad["cx"], y - m.pad["cy"]) >= min(spread, 4.0))
+                   and all(math.hypot(x - cx, y - cy) >= min(spread, 6.0) for cx, cy in m.cop_spawns)]
+            if far:
+                x, y = self.rng.choice(far)
+                self.artifact_seq += 1
+                self.artifacts.append({"id": self.artifact_seq, "x": round(x, 2), "y": round(y, 2), "progress": 0.0})
+                self.events.append({"t": "artifact", "id": self.artifact_seq})
+                self.dirty = True
+                return
+
+    def _steal(self, now, dt):
+        """아티팩트 곁에 도둑이 계속 서 있으면 훔쳐진다. 훔친 만큼 잠시 뒤 다른 곳에 새로 나타난다."""
+        for a in list(self.artifacts):
+            thief = next((p for p in self.players.values() if p.team == "thief" and not p.jailed and now >= p.stun_until
+                          and math.hypot(p.x - a["x"], p.y - a["y"]) <= STEAL_RADIUS), None)
+            if thief is None:
+                a["progress"] = 0.0
+                continue
+            a["progress"] = min(1.0, a["progress"] + dt / STEAL_SECONDS)
+            if a["progress"] < 1.0:
+                continue
+            self.artifacts.remove(a)
+            self.stolen += 1
+            self.events.append({"t": "stolen", "by": thief.uid, "n": self.stolen, "need": self.need, "x": a["x"], "y": a["y"]})
+            if self.stolen + len(self.artifacts) + len(self.spawn_at) < self.need:
+                self.spawn_at.append(now + ARTIFACT_RESPAWN)
+        for at in [t for t in self.spawn_at if now >= t]:
+            self.spawn_at.remove(at)
+            self._place_artifact()
+
     def _check_end(self, now):
         cops = [p for p in self.players.values() if p.team == "cop"]
         thieves = [p for p in self.players.values() if p.team == "thief"]
         winner = None
-        if not cops:
-            winner = "thief"
+        if not cops or (self.need and self.stolen >= self.need):
+            winner = "thief"                                       # 필요한 만큼 훔쳤다
         elif not thieves or all(t.jailed for t in thieves):
             winner = "cop"
         elif self.phase == "playing" and now >= self.phase_end:
-            winner = "thief"
+            winner = "cop"                                         # 시간 안에 다 훔치지 못했다
         if winner:
             self.phase, self.phase_end = "result", now + RESULT_SECONDS
             self.result = {"winner": winner, "free": sum(1 for t in thieves if not t.jailed), "thieves": len(thieves),
-                           "catches": {p.uid: p.catches for p in cops}}
+                           "catches": {p.uid: p.catches for p in cops}, "stolen": self.stolen, "need": self.need}
             self.events.append({"t": "end", "winner": winner})
             self.dirty = True
 
     def _back_to_lobby(self, now):
         self.phase, self.result, self.darts = "lobby", None, []
+        self.map, self.artifacts, self.spawn_at, self.pad_time = LOBBY, [], [], 0.0
         for i, p in enumerate(self.players.values()):
             p.team, p.jailed = None, False
             p.safe_until = p.frozen_until = p.dash_until = p.dash_ready = p.stun_until = p.taser_ready = 0.0
@@ -624,12 +717,15 @@ class Room:
     def summary(self):
         """열린 방 목록에 보일 한 줄."""
         return {"code": self.code, "name": self.name, "players": len(self.humans()), "bots": len(self.players) - len(self.humans()),
-                "max": MAX_PLAYERS, "phase": self.phase, "map": self.map.name}
+                "max": MAX_PLAYERS, "phase": self.phase, "map": self.choice.name}
 
     def snapshot(self, now=None):
         now = time.monotonic() if now is None else now
-        return {"code": self.code, "name": self.name, "private": self.private, "host": self.host_id, "phase": self.phase, "map": self.map.key,
+        return {"code": self.code, "name": self.name, "private": self.private, "host": self.host_id, "phase": self.phase,
+                "map": self.map.key, "choice": self.choice.key,
                 "left": round(max(0.0, self.phase_end - now), 1) if self.phase != "lobby" else None,
+                "artifacts": [{"id": a["id"], "x": a["x"], "y": a["y"], "p": round(a["progress"], 2)} for a in self.artifacts],
+                "stolen": self.stolen, "need": self.need, "pad": round(min(1.0, self.pad_time / RESCUE_SECONDS), 2),
                 "result": self.result, "players": [p.public(now) for p in self.players.values()]}
 
 
