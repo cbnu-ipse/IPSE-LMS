@@ -11,7 +11,7 @@ from .models import (
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
     PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank, GomokuMatch, JanggiMatch,
 )
-from . import gostop_engine, poker_engine, untitled_world
+from . import gostop_engine, poker_engine, untitled_maps, untitled_world
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -441,7 +441,7 @@ def gomoku_view(request):
 
 @login_required
 def untitled_view(request):
-    return render(request, "game/untitled.html", {"title": "경찰과 도둑", "world_json": untitled_world.world_view()})
+    return render(request, "game/untitled.html", {"title": "경찰과 도둑", "world_json": {"maps": untitled_world.maps_list(), "worlds": untitled_world.worlds_view(), "default": untitled_maps.DEFAULT_MAP}})
 
 
 @login_required

@@ -29,9 +29,9 @@ def room_of(uid):
     return ROOMS.get(USER_ROOM.get(uid))
 
 
-def create_room(uid, name, room_name="", private=False):
+def create_room(uid, name, room_name="", private=False, map_key=None):
     leave(uid)
-    room = world.Room(world.new_code(ROOMS), uid, room_name or f"{name}의 방", private)
+    room = world.Room(world.new_code(ROOMS), uid, room_name or f"{name}의 방", private, map_key or world.DEFAULT_MAP)
     room.add(uid, name)
     ROOMS[room.code] = room
     USER_ROOM[uid] = room.code

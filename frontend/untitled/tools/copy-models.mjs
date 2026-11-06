@@ -10,7 +10,8 @@ const FURNITURE = ['floorFull', 'wall', 'wallWindow', 'wallHalf', 'bench', 'benc
   'tableRound', 'tableCoffee', 'tableCoffeeGlass', 'table', 'tableCloth', 'chair', 'chairCushion', 'stoolBar', 'desk', 'chairDesk',
   'loungeChair', 'loungeSofa', 'loungeSofaLong', 'rugRound', 'rugRectangle', 'rugSquare', 'bookcaseOpen', 'bookcaseClosed', 'bookcaseClosedWide',
   'radio', 'speaker', 'trashcan', 'cardboardBoxClosed', 'cardboardBoxOpen', 'kitchenBar', 'kitchenCabinet', 'kitchenFridge', 'kitchenCoffeeMachine',
-  'cabinetTelevision', 'televisionModern', 'washer', 'coatRackStanding', 'sideTable'];
+  'cabinetTelevision', 'televisionModern', 'washer', 'coatRackStanding', 'sideTable',
+  'bedSingle', 'bedBunk', 'dryer', 'washerDryerStacked', 'cabinetBedDrawer', 'kitchenStove', 'kitchenSink', 'bookcaseOpenLow', 'tableCross', 'loungeChairRelax'];
 
 fs.mkdirSync(path.join(out, 'furniture'), { recursive: true });
 for (const name of FURNITURE) {

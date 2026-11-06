@@ -11,12 +11,13 @@ const CELL = 5;
 const WALL_H = 12.9;
 const SEND_EVERY = 0.1;              // seconds between position reports while moving
 const LOW_WALL_H = 3.4;              // partition walls are cut to waist height so the camera sees over them
-const ZONE_LOOK = {
-  library: { color: 0x8b5a2b, opacity: 0.28, ink: 'rgba(92,52,20,0.8)' },
-  cafe: { color: 0xf59e0b, opacity: 0.22, ink: 'rgba(146,84,10,0.8)' },
-  lounge: { color: 0x14b8a6, opacity: 0.22, ink: 'rgba(15,98,90,0.8)' },
-  warehouse: { color: 0x64748b, opacity: 0.32, ink: 'rgba(51,65,85,0.85)' },
-};
+const VIEW_CELLS = 32;                 // the camera shows about this many cells across on every map (fixed zoom)
+
+function zoneLook(z) {                  // floor tint from the server's zone colour, and a darker ink for its painted name
+  const color = new THREE.Color(z.color || '#94a3b8');
+  const ink = color.clone().multiplyScalar(0.5);
+  return { color, opacity: z.opacity ?? 0.24, ink: `rgba(${Math.round(ink.r * 255)},${Math.round(ink.g * 255)},${Math.round(ink.b * 255)},0.85)` };
+}
 
 function floorLabel(text, ink) {                // zone name painted flat on the floor
   const c = document.createElement('canvas');
@@ -35,7 +36,9 @@ function floorLabel(text, ink) {                // zone name painted flat on the
 }
 
 export function createRoomScene(container, { base, world }) {
-  const SIZE = world.size, W = SIZE * CELL;
+  const MW = world.w, MH = world.h;                           // map size in cells (not square)
+  const WX = MW * CELL, WZ = MH * CELL, WMAX = Math.max(WX, WZ);
+  let dead = false;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -55,27 +58,33 @@ export function createRoomScene(container, { base, world }) {
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.05;
-  Object.assign(sun.shadow.camera, { left: -W, right: W, top: W, bottom: -W, near: 1, far: 300 });
-  sun.position.set(W * 0.15 + 40, 90, W * 0.9 + 50);
-  sun.target.position.set(W / 2, 0, W / 2);
+  Object.assign(sun.shadow.camera, { left: -WMAX, right: WMAX, top: WMAX, bottom: -WMAX, near: 1, far: 300 + WMAX });
+  sun.position.set(WX / 2 + 40 - WMAX * 0.35, 90, WZ / 2 + 50 + WMAX * 0.4);
+  sun.target.position.set(WX / 2, 0, WZ / 2);
   scene.add(hemi, sun, sun.target);
 
   const toWorld = (x, y, h = 0) => new THREE.Vector3(x * CELL, h, y * CELL);      // (x, y) in cells → world
 
   // ── plaza: Kenney floor slabs, two back walls with windows, props from the server's map ──
   (async () => {
-    const slabs = await Promise.all(Array.from({ length: (SIZE / 2) ** 2 }, () => furniture(base, 'floorFull')));
-    slabs.forEach((s, i) => { s.position.set((i % (SIZE / 2)) * 10 + 5, -0.5, Math.floor(i / (SIZE / 2)) * 10 + 5); s.traverse((o) => { o.receiveShadow = true; }); scene.add(s); });
-    for (let i = 0; i < SIZE / 2; i++) {
+    const cols = MW / 2, rows = MH / 2;                       // one floor slab covers 2×2 cells
+    const slabs = await Promise.all(Array.from({ length: cols * rows }, () => furniture(base, 'floorFull')));
+    if (dead) return;
+    slabs.forEach((s, i) => { s.position.set((i % cols) * 10 + 5, -0.5, Math.floor(i / cols) * 10 + 5); s.traverse((o) => { o.receiveShadow = true; }); scene.add(s); });
+    for (let i = 0; i < cols; i++) {                          // back wall along the top edge
       const back = await furniture(base, i % 2 ? 'wallWindow' : 'wall');
       back.position.set(i * 10 + 5, 0, -0.35);
+      scene.add(back);
+    }
+    for (let i = 0; i < rows; i++) {                          // and along the left edge
       const left = await furniture(base, i % 2 ? 'wall' : 'wallWindow');
       left.rotation.y = Math.PI / 2;
       left.position.set(-0.35, 0, i * 10 + 5);
-      scene.add(back, left);
+      scene.add(left);
     }
+    if (dead) return;
     for (const z of world.zones || []) {                      // each zone gets its own floor tint and its name painted on the floor
-      const look = ZONE_LOOK[z.kind] || ZONE_LOOK.library;
+      const look = zoneLook(z);
       const tint = new THREE.Mesh(new THREE.PlaneGeometry((z.x1 - z.x0) * CELL, (z.y1 - z.y0) * CELL),
         new THREE.MeshStandardMaterial({ color: look.color, transparent: true, opacity: look.opacity, depthWrite: false }));
       tint.rotation.x = -Math.PI / 2;
@@ -83,6 +92,7 @@ export function createRoomScene(container, { base, world }) {
       tint.receiveShadow = true;
       scene.add(tint);
       const label = floorLabel(z.name, look.ink);
+      label.scale.setScalar(Math.min(1, Math.min(z.x1 - z.x0, z.y1 - z.y0) * CELL * 1.3 / 32));   // narrow corridors get a smaller name
       label.position.copy(toWorld((z.x0 + z.x1) / 2, (z.y0 + z.y1) / 2, 0.025));
       scene.add(label);
     }
@@ -95,11 +105,13 @@ export function createRoomScene(container, { base, world }) {
     }
     for (const d of world.decor) {
       const g = await furniture(base, d.model);
+      if (dead) return;
       g.position.copy(toWorld(d.x + 1, d.y + 1, 0.03));
       scene.add(g);
     }
     for (const p of world.props) {
       const g = await furniture(base, p.model);
+      if (dead) return;
       const sz = g.userData.size;
       const [lx, lz] = p.rot % 2 ? [p.d, p.w] : [p.w, p.d];      // cells available along the model's own x / z (before turning)
       g.scale.set(Math.min(1, (lx + 0.12) * CELL / sz.x), 1, Math.min(1, (lz + 0.12) * CELL / sz.z));
@@ -112,17 +124,17 @@ export function createRoomScene(container, { base, world }) {
   // ── jail (fenced corner) and the rescue pad ──
   if (world.jail) {
     const J = world.jail, metal = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5, metalness: 0.4 });
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry((SIZE - J.x) * CELL, J.y * CELL), new THREE.MeshStandardMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.55 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry((MW - J.x) * CELL, J.y * CELL), new THREE.MeshStandardMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.55 }));
     floor.rotation.x = -Math.PI / 2;
-    floor.position.copy(toWorld((SIZE + J.x) / 2, J.y / 2, 0.04));
+    floor.position.copy(toWorld((MW + J.x) / 2, J.y / 2, 0.04));
     floor.receiveShadow = true;
     scene.add(floor);
     const post = (x, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.5, 0.35), metal); m.position.copy(toWorld(x, y, 2.75)); m.castShadow = true; scene.add(m); };
     for (let y = 0; y <= J.y + 1e-6; y += 0.5) post(J.x, y);
-    for (let x = J.x + 0.5; x <= SIZE + 1e-6; x += 0.5) post(x, J.y);
+    for (let x = J.x + 0.5; x <= MW + 1e-6; x += 0.5) post(x, J.y);
     for (const h of [0.6, 5.2]) {
       const a = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, J.y * CELL), metal); a.position.copy(toWorld(J.x, J.y / 2, h)); scene.add(a);
-      const b = new THREE.Mesh(new THREE.BoxGeometry((SIZE - J.x) * CELL, 0.3, 0.3), metal); b.position.copy(toWorld((SIZE + J.x) / 2, J.y, h)); scene.add(b);
+      const b = new THREE.Mesh(new THREE.BoxGeometry((MW - J.x) * CELL, 0.3, 0.3), metal); b.position.copy(toWorld((MW + J.x) / 2, J.y, h)); scene.add(b);
     }
   }
   let padRing = null;
@@ -139,11 +151,11 @@ export function createRoomScene(container, { base, world }) {
 
   // ── camera: isometric, follows the local player at a fixed zoom ──
   const zoom = 1.6;
-  const focus = new THREE.Vector3(W / 2, 0, W / 2);
+  const focus = new THREE.Vector3(WX / 2, 0, WZ / 2);
   function frame() {
     const width = container.clientWidth || 600, height = container.clientHeight || 400;
     renderer.setSize(width, height, false);
-    const half = W * 0.62 / zoom, aspect = width / height;
+    const half = VIEW_CELLS * CELL * 0.62 / zoom, aspect = width / height;
     camera.left = -half * aspect; camera.right = half * aspect; camera.top = half; camera.bottom = -half;
     camera.updateProjectionMatrix();
   }
@@ -153,7 +165,8 @@ export function createRoomScene(container, { base, world }) {
   }
   frame();
   placeCamera();
-  new ResizeObserver(frame).observe(container);
+  const resizer = new ResizeObserver(frame);
+  resizer.observe(container);
 
   // ── collision: circle player vs the server's shapes; overlaps are pushed out (so movement slides), small sub-steps avoid tunnelling ──
   const R = world.radius, SHAPES = world.shapes;
@@ -183,8 +196,8 @@ export function createRoomScene(container, { base, world }) {
         }
         moved = true;
       }
-      pos.x = Math.min(Math.max(pos.x, R), SIZE - R);
-      pos.y = Math.min(Math.max(pos.y, R), SIZE - R);
+      pos.x = Math.min(Math.max(pos.x, R), MW - R);
+      pos.y = Math.min(Math.max(pos.y, R), MH - R);
       if (!moved) break;
     }
     return pos;
@@ -273,6 +286,16 @@ export function createRoomScene(container, { base, world }) {
         me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.dashLeft = p.dash;
         return;
       }
+      const t = performance.now() / 1000;                    // velocity from the last two samples: others are drawn a little ahead of the
+      const since = t - (rec.sampleAt || 0);                 // last report so they lag less behind where they really are
+      const jump = Math.hypot(p.x - rec.x, p.y - rec.y);
+      if (!p.moving || jump > 3 || since > 0.5) { rec.vx = 0; rec.vy = 0; }
+      else if (since > 0.02) {
+        const k = Math.min(1, 9 / Math.max(1e-6, jump / since));           // cap at about dash speed
+        rec.vx = (p.x - rec.x) / since * k; rec.vy = (p.y - rec.y) / since * k;
+      }
+      rec.snap = jump > 3;                                     // teleported (jail, rescue, new map): don't glide across the map
+      rec.sampleAt = t;
       rec.x = p.x; rec.y = p.y; rec.dir = p.dir; rec.moving = p.moving;
       if (p.dashing && !rec.dashing) rec.dashEnd = performance.now() / 1000 + world.dash.seconds;   // local expiry in case the "off" update is late
       rec.dashing = !!p.dashing;
@@ -294,7 +317,7 @@ export function createRoomScene(container, { base, world }) {
   const keys = new Set();
   const MOVE_KEYS = { w: [-1, -1], arrowup: [-1, -1], s: [1, 1], arrowdown: [1, 1], a: [-1, 1], arrowleft: [-1, 1], d: [1, -1], arrowright: [1, -1] };
   let dashUntil = 0, dashReady = 0, dashCb = null;
-  window.addEventListener('keydown', (e) => {
+  function onKeyDown(e) {
     const k = e.key.toLowerCase();
     if (k === ' ' && !e.target.closest('input, textarea, button') && me) {
       e.preventDefault();
@@ -313,9 +336,12 @@ export function createRoomScene(container, { base, world }) {
     if (!MOVE_KEYS[k] || e.target.closest('input, textarea') || !meId) return;
     e.preventDefault();
     keys.add(k);
-  });
-  window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
-  window.addEventListener('blur', () => keys.clear());
+  }
+  const onKeyUp = (e) => keys.delete(e.key.toLowerCase());
+  const onBlur = () => keys.clear();
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlur);
   let moveCb = null, sinceSend = 0, wasMoving = false;
   function stepMe(dt) {
     if (!me) return false;
@@ -429,10 +455,11 @@ export function createRoomScene(container, { base, world }) {
       const a = rec.actor;
       if (!a) continue;
       const mine = id === meId && me;
-      const tx = mine ? me.x : rec.x, ty = mine ? me.y : rec.y;
+      const ahead = mine ? 0 : Math.min(0.12, performance.now() / 1000 - (rec.sampleAt || 0));
+      const tx = mine ? me.x : rec.x + (rec.vx || 0) * ahead, ty = mine ? me.y : rec.y + (rec.vy || 0) * ahead;
       const target = toWorld(tx, ty);
-      if (mine) a.root.position.copy(target);
-      else a.root.position.lerp(target, Math.min(1, dt * 10));
+      if (mine || rec.snap) { a.root.position.copy(target); rec.snap = false; }
+      else a.root.position.lerp(target, Math.min(1, dt * 14));
       a.root.rotation.y = mine ? me.dir : rec.dir;
       const nowS = performance.now() / 1000;
       const dashing = mine ? nowS < dashUntil : rec.dashing && nowS < (rec.dashEnd || 0);
@@ -457,18 +484,49 @@ export function createRoomScene(container, { base, world }) {
       if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : 1;
       a.update(dt);
     }
+    checkTags();
     stepPuffs(dt);
     if (me) focus.lerp(toWorld(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
     placeCamera();
     renderer.render(scene, camera);
     if (frameCb) frameCb(anchors());
-    requestAnimationFrame(tick);
+    if (!dead) raf = requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+  let raf = requestAnimationFrame(tick);
+
+  // ── tagging: a cop tells the server the moment a thief touches them on this screen. Others are drawn slightly late, so the
+  // server judges the claim against where that thief was over the last few tenths of a second (untitled_world.Room.tag). ──
+  let tagCb = null;
+  function checkTags() {
+    const mine = people.get(meId);
+    if (!tagCb || !me || !mine || mine.team !== 'cop' || me.frozen > 0) return;
+    const now = performance.now() / 1000;
+    for (const [id, rec] of people) {
+      if (id === meId || !rec.actor || rec.team !== 'thief' || rec.jailed || rec.safe > 0) continue;
+      const p = rec.actor.root.position;
+      if (Math.hypot(p.x / CELL - me.x, p.z / CELL - me.y) > world.catch + 0.05 || now - (rec.tagAt || 0) < 0.25) continue;
+      rec.tagAt = now;
+      if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: true }); }   // my latest spot first
+      tagCb(id);
+    }
+  }
+
+  function dispose() {
+    dead = true;
+    cancelAnimationFrame(raf);
+    resizer.disconnect();
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onBlur);
+    renderer.dispose();
+    renderer.forceContextLoss();
+    renderer.domElement.remove();
+  }
 
   return {
-    setPlayers, correct, clear,
+    setPlayers, correct, clear, dispose, mapKey: world.key,
+    onTag(cb) { tagCb = cb; },
     focus() { renderer.domElement.focus(); },
     onMove(cb) { moveCb = cb; },
     onDash(cb) { dashCb = cb; },

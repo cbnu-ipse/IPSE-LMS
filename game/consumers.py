@@ -1123,7 +1123,7 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class UntitledConsumer(AsyncWebsocketConsumer):
-    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개)·입장·나가기, 봇 넣고 빼기, 캐릭터 이동, 시작·대시.
+    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개·맵)·입장·나가기, 맵 고르기, 봇 넣고 빼기, 캐릭터 이동, 시작·대시·잡기(tag).
     방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
 
     async def connect(self):
@@ -1155,11 +1155,15 @@ class UntitledConsumer(AsyncWebsocketConsumer):
             return
         user, kind = self.scope["user"], data.get("type")
         if kind == "__ping__":
-            await self._send({"type": "pong"})
+            await self._send({"type": "pong", "t": data.get("t")})      # t를 그대로 돌려줘 화면이 왕복 지연(핑)을 잰다
+            room = untitled_hub.room_of(user.id)
+            if room is not None and data.get("rtt") is not None:
+                room.set_rtt(user.id, data.get("rtt"))                   # 잡기(tag) 판정이 얼마나 되돌아볼지 정하는 데 쓴다
         elif kind == "list":
             await self._send({"type": "rooms", "rooms": untitled_hub.list_rooms()})
         elif kind == "create":
-            room = untitled_hub.create_room(user.id, self._name(), str(data.get("name") or "")[:24], bool(data.get("private")))
+            room = untitled_hub.create_room(user.id, self._name(), str(data.get("name") or "")[:24], bool(data.get("private")),
+                                            str(data.get("map") or ""))
             await self._leave_group()
             await self._enter(room)
         elif kind == "join":
@@ -1199,6 +1203,18 @@ class UntitledConsumer(AsyncWebsocketConsumer):
             room = untitled_hub.room_of(user.id)
             if room is not None:
                 room.dash(user.id)
+        elif kind == "map":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                message = room.set_map(user.id, str(data.get("map") or ""))
+                if message:
+                    await self._send({"type": "error", "message": message})
+                    return
+                await untitled_hub.broadcast(room)
+        elif kind == "tag":
+            room = untitled_hub.room_of(user.id)
+            if room is not None and room.tag(user.id, data.get("id")):
+                await untitled_hub.broadcast(room)                    # 잡힌 걸 바로 알린다
         elif kind == "move":
             room = untitled_hub.room_of(user.id)
             if room is not None and not room.move(user.id, data.get("x"), data.get("y"), data.get("dir", 0), data.get("moving")):
