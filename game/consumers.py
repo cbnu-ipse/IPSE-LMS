@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, untitled_hub, yacht_engine
+from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, untitled_hub, untitled_world, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -1123,7 +1123,7 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class UntitledConsumer(AsyncWebsocketConsumer):
-    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개·맵)·입장·나가기, 맵 고르기, 봇 넣고 빼기, 캐릭터 이동, 시작·대시·잡기(tag).
+    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개·맵)·입장·나가기, 맵 고르기, 봇 넣고 빼기, 캐릭터 이동, 시작·대시(도둑)·테이저(경찰)·잡기(tag).
     방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
 
     async def connect(self):
@@ -1203,6 +1203,12 @@ class UntitledConsumer(AsyncWebsocketConsumer):
             room = untitled_hub.room_of(user.id)
             if room is not None:
                 room.dash(user.id)
+        elif kind == "taser":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                room.taser(user.id, data.get("dir"))
+                if room.dirty:
+                    await untitled_hub.broadcast(room)                # 쏜 것(맞혔든 빗나갔든)을 바로 알린다
         elif kind == "map":
             room = untitled_hub.room_of(user.id)
             if room is not None:
@@ -1223,7 +1229,8 @@ class UntitledConsumer(AsyncWebsocketConsumer):
                     await self._send({"type": "correct", "x": p.x, "y": p.y})
 
     async def untitled_state(self, event):
-        await self._send({"type": "state", "state": event["state"]})
+        state = untitled_world.visible_view(event["state"], self.scope["user"].id)   # 사각지대에 있는 상대는 위치를 빼고 보낸다
+        await self._send({"type": "state", "state": state})
 
     async def _enter(self, room):
         self.group = untitled_hub.group_name(room.code)

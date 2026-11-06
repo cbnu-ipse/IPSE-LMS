@@ -1,14 +1,15 @@
-// 3D plaza for the cops-and-robbers room game (templates/game/untitled.html). The page owns the WebSocket; this module draws the
-// plaza and everyone in the room, moves the local player with WASD (camera-relative, sliding along obstacles), and reports
-// the local position (onMove) and name-tag anchors (onFrame). Collision uses the server's shapes (untitled_world.SHAPES): the player is a
-// circle, props are circles or boxes sized from the real models; overlaps are pushed out so the player slides around things.
+// 3D map for the cops-and-robbers room game (templates/game/untitled.html). The page owns the WebSocket; this module draws the
+// map (rooms and corridors from untitled_maps) and everyone in the room, moves the local player with WASD (camera-relative, sliding
+// along obstacles), and reports the local position (onMove) and name-tag anchors (onFrame). Collision uses the server's shapes: the
+// player is a circle, props are circles or boxes sized from the real models; overlaps are pushed out so the player slides around things.
+// During a round the floor outside the local player's line of sight is darkened (fog), and the server leaves out opponents we can't see.
+// Space: thieves dash, cops fire the taser.
 // Build: `npm run build` here → static/game/untitled3d/untitled3d.js.
 import * as THREE from 'three';
 import { furniture } from './assets.js';
 import { Actor } from './actors.js';
 
 const CELL = 5;
-const WALL_H = 12.9;
 const SEND_EVERY = 0.1;              // seconds between position reports while moving
 const LOW_WALL_H = 3.4;              // partition walls are cut to waist height so the camera sees over them
 const VIEW_CELLS = 32;                 // the camera shows about this many cells across on every map (fixed zoom)
@@ -65,39 +66,25 @@ export function createRoomScene(container, { base, world }) {
 
   const toWorld = (x, y, h = 0) => new THREE.Vector3(x * CELL, h, y * CELL);      // (x, y) in cells → world
 
-  // ── plaza: Kenney floor slabs, two back walls with windows, props from the server's map ──
+  // ── map: one floor slab per area (rooms and corridors; nothing is drawn over the void), walls on area borders, props ──
+  const WOOD = new THREE.Color(0xd2b48c);
+  for (const ar of world.areas) {
+    const look = zoneLook(ar);
+    const color = ar.kind === 'jail' ? new THREE.Color(0x94a3b8) : WOOD.clone().lerp(look.color, ar.kind === 'corridor' ? 0.15 : 0.32);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry((ar.x1 - ar.x0) * CELL, 0.6, (ar.y1 - ar.y0) * CELL), new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
+    slab.position.copy(toWorld((ar.x0 + ar.x1) / 2, (ar.y0 + ar.y1) / 2, -0.3));
+    slab.receiveShadow = true;
+    scene.add(slab);
+    if (ar.kind === 'jail') continue;
+    const label = floorLabel(ar.name, look.ink);
+    label.scale.setScalar(Math.min(1, Math.min(ar.x1 - ar.x0, ar.y1 - ar.y0) * CELL * 1.3 / 32));   // narrow corridors get a smaller name
+    label.position.copy(toWorld((ar.x0 + ar.x1) / 2, (ar.y0 + ar.y1) / 2, 0.025));
+    scene.add(label);
+  }
   (async () => {
-    const cols = MW / 2, rows = MH / 2;                       // one floor slab covers 2×2 cells
-    const slabs = await Promise.all(Array.from({ length: cols * rows }, () => furniture(base, 'floorFull')));
-    if (dead) return;
-    slabs.forEach((s, i) => { s.position.set((i % cols) * 10 + 5, -0.5, Math.floor(i / cols) * 10 + 5); s.traverse((o) => { o.receiveShadow = true; }); scene.add(s); });
-    for (let i = 0; i < cols; i++) {                          // back wall along the top edge
-      const back = await furniture(base, i % 2 ? 'wallWindow' : 'wall');
-      back.position.set(i * 10 + 5, 0, -0.35);
-      scene.add(back);
-    }
-    for (let i = 0; i < rows; i++) {                          // and along the left edge
-      const left = await furniture(base, i % 2 ? 'wall' : 'wallWindow');
-      left.rotation.y = Math.PI / 2;
-      left.position.set(-0.35, 0, i * 10 + 5);
-      scene.add(left);
-    }
-    if (dead) return;
-    for (const z of world.zones || []) {                      // each zone gets its own floor tint and its name painted on the floor
-      const look = zoneLook(z);
-      const tint = new THREE.Mesh(new THREE.PlaneGeometry((z.x1 - z.x0) * CELL, (z.y1 - z.y0) * CELL),
-        new THREE.MeshStandardMaterial({ color: look.color, transparent: true, opacity: look.opacity, depthWrite: false }));
-      tint.rotation.x = -Math.PI / 2;
-      tint.position.copy(toWorld((z.x0 + z.x1) / 2, (z.y0 + z.y1) / 2, 0.02));
-      tint.receiveShadow = true;
-      scene.add(tint);
-      const label = floorLabel(z.name, look.ink);
-      label.scale.setScalar(Math.min(1, Math.min(z.x1 - z.x0, z.y1 - z.y0) * CELL * 1.3 / 32));   // narrow corridors get a smaller name
-      label.position.copy(toWorld((z.x0 + z.x1) / 2, (z.y0 + z.y1) / 2, 0.025));
-      scene.add(label);
-    }
-    for (const piece of world.walls || []) {                  // low partition walls: Kenney half walls cut down to waist height
+    for (const piece of world.walls) {                       // walls: Kenney half walls cut down to waist height so the camera sees over them
       const g = await furniture(base, 'wallHalf');
+      if (dead) return;
       g.scale.set(CELL / g.userData.size.x, LOW_WALL_H / g.userData.size.y, 1);
       if (piece.o === 'v') { g.rotation.y = Math.PI / 2; g.position.copy(toWorld(piece.f, piece.t + 0.5)); }
       else g.position.copy(toWorld(piece.t + 0.5, piece.f));
@@ -121,20 +108,16 @@ export function createRoomScene(container, { base, world }) {
     }
   })();
 
-  // ── jail (fenced corner) and the rescue pad ──
-  if (world.jail) {
-    const J = world.jail, metal = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5, metalness: 0.4 });
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry((MW - J.x) * CELL, J.y * CELL), new THREE.MeshStandardMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.55 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.copy(toWorld((MW + J.x) / 2, J.y / 2, 0.04));
-    floor.receiveShadow = true;
-    scene.add(floor);
-    const post = (x, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.5, 0.35), metal); m.position.copy(toWorld(x, y, 2.75)); m.castShadow = true; scene.add(m); };
-    for (let y = 0; y <= J.y + 1e-6; y += 0.5) post(J.x, y);
-    for (let x = J.x + 0.5; x <= MW + 1e-6; x += 0.5) post(x, J.y);
+  // ── jail fence (blocks walking, not sight): posts every half cell and two rails along each fenced edge ──
+  const metal = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.4 });
+  const postGeo = new THREE.BoxGeometry(0.35, 5.5, 0.35);
+  for (const e of world.fences || []) {
+    const along = e.o === 'v' ? (k) => toWorld(e.f, e.t + k) : (k) => toWorld(e.t + k, e.f);
+    for (const k of [0, 0.5, 1]) { const m = new THREE.Mesh(postGeo, metal); m.position.copy(along(k)).setY(2.75); m.castShadow = true; scene.add(m); }
     for (const h of [0.6, 5.2]) {
-      const a = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, J.y * CELL), metal); a.position.copy(toWorld(J.x, J.y / 2, h)); scene.add(a);
-      const b = new THREE.Mesh(new THREE.BoxGeometry((MW - J.x) * CELL, 0.3, 0.3), metal); b.position.copy(toWorld((MW + J.x) / 2, J.y, h)); scene.add(b);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(e.o === 'v' ? 0.3 : CELL, 0.3, e.o === 'v' ? CELL : 0.3), metal);
+      rail.position.copy(along(0.5)).setY(h);
+      scene.add(rail);
     }
   }
   let padRing = null;
@@ -247,12 +230,28 @@ export function createRoomScene(container, { base, world }) {
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     return g;
   }
+  function taserGun() {                       // a yellow-and-black taser held at the end of the right arm, pointing forward (model units)
+    const g = new THREE.Group();
+    const yellow = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.45 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.6 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.17), yellow); body.position.set(0, 0, 0.06);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 0.05), black); grip.position.set(0, -0.06, 0.0); grip.rotation.x = -0.25;
+    const cartridge = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.075, 0.05), black); cartridge.position.set(0, 0, 0.16);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.01), new THREE.MeshBasicMaterial({ color: 0x38bdf8 })); lamp.position.set(0, 0.025, 0.186);
+    g.add(body, grip, cartridge, lamp);
+    g.position.set(-0.01, -0.13, 0.05);
+    g.scale.setScalar(1.6);                   // a bit oversized so it reads from the isometric camera
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    return g;
+  }
   function dressFor(rec, team) {
     if (!rec.actor || rec.team === team) return;
     rec.team = team;
-    const head = rec.actor.root.getObjectByName('head');
+    const head = rec.actor.root.getObjectByName('head'), arm = rec.actor.root.getObjectByName('arm-right');
     if (rec.hat) { rec.hat.parent.remove(rec.hat); rec.hat = null; }
+    if (rec.gun) { rec.gun.parent.remove(rec.gun); rec.gun = null; }
     if (team && head) { rec.hat = teamHat(team); head.add(rec.hat); }
+    if (team === 'cop' && arm) { rec.gun = taserGun(); arm.add(rec.gun); }    // cops carry a taser instead of dashing
   }
 
   // ── people ──
@@ -281,11 +280,14 @@ export function createRoomScene(container, { base, world }) {
       const rec = people.get(p.id);
       rec.name = p.name; rec.online = p.online; rec.jailed = p.jailed; rec.safe = p.safe; rec.wantTeam = p.team;
       dressFor(rec, p.team);
+      if (p.stun > 0) rec.stunEnd = performance.now() / 1000 + p.stun;
       if (p.id === meId) {                                     // my own position is driven locally; adopt it at first and whenever the server moves me
         if (!me || p.tp !== me.tp) { me = { ...(me || {}), x: p.x, y: p.y, dir: p.dir, tp: p.tp }; }
-        me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.dashLeft = p.dash;
+        me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.team = p.team;
         return;
       }
+      if (p.hidden) { rec.hidden = true; rec.moving = false; return; }   // out of my sight: the server didn't say where
+      if (rec.hidden) { rec.hidden = false; rec.snap = true; rec.sampleAt = 0; rec.x = p.x; rec.y = p.y; }
       const t = performance.now() / 1000;                    // velocity from the last two samples: others are drawn a little ahead of the
       const since = t - (rec.sampleAt || 0);                 // last report so they lag less behind where they really are
       const jump = Math.hypot(p.x - rec.x, p.y - rec.y);
@@ -316,16 +318,21 @@ export function createRoomScene(container, { base, world }) {
   // ── WASD: screen-relative (W = up the screen = toward the back corner) ──
   const keys = new Set();
   const MOVE_KEYS = { w: [-1, -1], arrowup: [-1, -1], s: [1, 1], arrowdown: [1, 1], a: [-1, 1], arrowleft: [-1, 1], d: [1, -1], arrowright: [1, -1] };
-  let dashUntil = 0, dashReady = 0, dashCb = null;
+  let dashUntil = 0, dashReady = 0, dashCb = null, taserReady = 0, shotCb = null;
   function onKeyDown(e) {
     const k = e.key.toLowerCase();
     if (k === ' ' && !e.target.closest('input, textarea, button') && me) {
       e.preventDefault();
       const now = performance.now() / 1000;
-      if (now >= dashReady && !(me.frozen > 0) && !me.jailed) {
+      if (me.frozen > 0 || me.jailed) return;
+      if (me.team === 'thief' && now >= dashReady) {          // thieves dash
         dashUntil = now + world.dash.seconds;
         dashReady = now + world.dash.cooldown;
         if (dashCb) dashCb();
+      } else if (me.team === 'cop' && now >= taserReady) {    // cops fire the taser where they face
+        taserReady = now + world.taser.cooldown;
+        muzzle(people.get(meId));
+        if (shotCb) shotCb(+me.dir.toFixed(4));
       }
       return;
     }
@@ -437,7 +444,7 @@ export function createRoomScene(container, { base, world }) {
   function anchors() {
     const out = {};
     for (const [id, rec] of people) {
-      if (!rec.actor) continue;
+      if (!rec.actor || (rec.hidden && id !== meId)) continue;
       v.copy(rec.actor.root.position).setY(6.2).project(camera);
       out[id] = { x: (v.x + 1) / 2 * container.clientWidth, y: (1 - v.y) / 2 * container.clientHeight, name: rec.name, me: id === meId,
         online: rec.online !== false, team: rec.team, jailed: rec.jailed };
@@ -455,6 +462,8 @@ export function createRoomScene(container, { base, world }) {
       const a = rec.actor;
       if (!a) continue;
       const mine = id === meId && me;
+      a.root.visible = mine || !rec.hidden;
+      if (!a.root.visible) continue;
       const ahead = mine ? 0 : Math.min(0.12, performance.now() / 1000 - (rec.sampleAt || 0));
       const tx = mine ? me.x : rec.x + (rec.vx || 0) * ahead, ty = mine ? me.y : rec.y + (rec.vy || 0) * ahead;
       const target = toWorld(tx, ty);
@@ -480,11 +489,19 @@ export function createRoomScene(container, { base, world }) {
         rec.puffT = (rec.puffT || 0) + dt;
         if (rec.puffT > 0.05) { rec.puffT = 0; puff(tx, ty); }
       }
-      a.pose((mine ? myMoving : rec.moving) || dashing ? 'walk' : 'idle');
-      if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : 1;
+      const stunned = (rec.stunEnd || 0) > nowS;
+      sparks(rec, stunned);
+      if (stunned) {                                           // electrocuted: shake in place, cyan flicker underfoot
+        a.root.rotation.y += Math.sin(nowS * 70) * 0.18;
+        if (rec.ring) rec.ring.material.color.setHex(Math.floor(nowS * 20) % 2 ? 0x22d3ee : 0xffffff);
+      }
+      a.pose(!stunned && ((mine ? myMoving : rec.moving) || dashing) ? 'walk' : 'idle');
+      if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : stunned ? 3 : 1;
       a.update(dt);
     }
     checkTags();
+    stepDarts();
+    stepFog();
     stepPuffs(dt);
     if (me) focus.lerp(toWorld(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
@@ -503,13 +520,137 @@ export function createRoomScene(container, { base, world }) {
     if (!tagCb || !me || !mine || mine.team !== 'cop' || me.frozen > 0) return;
     const now = performance.now() / 1000;
     for (const [id, rec] of people) {
-      if (id === meId || !rec.actor || rec.team !== 'thief' || rec.jailed || rec.safe > 0) continue;
+      if (id === meId || !rec.actor || rec.hidden || rec.team !== 'thief' || rec.jailed || rec.safe > 0) continue;
       const p = rec.actor.root.position;
       if (Math.hypot(p.x / CELL - me.x, p.z / CELL - me.y) > world.catch + 0.05 || now - (rec.tagAt || 0) < 0.25) continue;
       rec.tagAt = now;
       if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: true }); }   // my latest spot first
       tagCb(id);
     }
+  }
+
+  // ── taser: a dart flies from the cop along the shot direction (server 'shot' event) until the server's 'tase' event says where it
+  // stopped (a thief, a wall, or the end of its range); two thin wires trail back to the gun. A hit sets the thief sparking. ──
+  const darts = [];
+  const dartGeo = new THREE.BoxGeometry(0.35, 0.35, 1.1);
+  const dartMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+  const wireMat = new THREE.LineBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.9 });
+  function handleEvents(list) {
+    const now = performance.now() / 1000;
+    for (const ev of list || []) {
+      if (ev.t === 'shot') {
+        const m = new THREE.Mesh(dartGeo, dartMat);
+        m.rotation.y = ev.dir;
+        const wires = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3)), wireMat);
+        wires.frustumCulled = false;
+        scene.add(m, wires);
+        darts.push({ cop: ev.cop, x: ev.x, y: ev.y, dir: ev.dir, t0: now, end: null, endAt: 0, m, wires });
+        if (ev.cop !== meId) muzzle(people.get(ev.cop));
+      } else if (ev.t === 'tase') {
+        const d = darts.find((q) => q.cop === ev.cop && !q.end);
+        if (d) d.end = { x: ev.x, y: ev.y };
+        if (ev.thief != null) {
+          const rec = people.get(ev.thief);
+          if (rec) rec.stunEnd = now + world.taser.stun;
+          for (let k = 0; k < 6; k++) puff(ev.x + (Math.random() - 0.5) * 0.4, ev.y + (Math.random() - 0.5) * 0.4);
+        }
+      }
+    }
+  }
+  function stepDarts() {
+    const now = performance.now() / 1000, speed = world.taser.speed, range = world.taser.range;
+    for (let i = darts.length - 1; i >= 0; i--) {
+      const d = darts[i];
+      let dist = Math.min(range, (now - d.t0) * speed);
+      if (d.end) dist = Math.min(dist, Math.hypot(d.end.x - d.x, d.end.y - d.y));
+      const x = d.x + Math.sin(d.dir) * dist, y = d.y + Math.cos(d.dir) * dist;
+      d.m.position.copy(toWorld(x, y, 2.2));
+      const shooter = people.get(d.cop), from = shooter && shooter.actor ? shooter.actor.root.position : toWorld(d.x, d.y);
+      const pos = d.wires.geometry.attributes.position;
+      pos.setXYZ(0, from.x - 0.25, 2.3, from.z); pos.setXYZ(1, x * CELL - 0.15, 2.3, y * CELL);
+      pos.setXYZ(2, from.x + 0.25, 2.1, from.z); pos.setXYZ(3, x * CELL + 0.15, 2.1, y * CELL);
+      pos.needsUpdate = true;
+      const arrived = (d.end && dist >= Math.hypot(d.end.x - d.x, d.end.y - d.y) - 1e-3) || dist >= range;
+      if (arrived && !d.endAt) d.endAt = now;
+      if (d.endAt && now - d.endAt > 0.35 || now - d.t0 > 2) {     // wires linger a moment, then reel in
+        scene.remove(d.m, d.wires); d.wires.geometry.dispose(); darts.splice(i, 1);
+      }
+    }
+  }
+  function muzzle(rec) {                                      // flash at the gun when a taser fires
+    if (!rec || !rec.gun) return;
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.95 }));
+    flash.position.set(0, 0, 0.24);
+    rec.gun.add(flash);
+    setTimeout(() => { rec.gun && rec.gun.remove(flash); flash.material.dispose(); }, 120);
+  }
+  const sparkMat = new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.95 });
+  function sparks(rec, on) {                                  // electric zigzags around a stunned body, redrawn every frame
+    if (!on) { if (rec.sparks) rec.sparks.visible = false; return; }
+    if (!rec.sparks) {
+      rec.sparks = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3 * 2 * 18), 3)), sparkMat);
+      rec.sparks.frustumCulled = false;
+      rec.actor.root.add(rec.sparks);
+    }
+    rec.sparks.visible = true;
+    const pos = rec.sparks.geometry.attributes.position;
+    for (let b = 0; b < 3; b++) {                              // three bolts of six segments each, from feet to head
+      let a = Math.random() * Math.PI * 2, px = Math.cos(a) * 1.3, py = 0.3, pz = Math.sin(a) * 1.3;
+      for (let k = 0; k < 6; k++) {
+        a += (Math.random() - 0.3) * 1.2;
+        const nx = Math.cos(a) * (1.1 + Math.random() * 0.6), ny = py + 0.7 + Math.random() * 0.4, nz = Math.sin(a) * (1.1 + Math.random() * 0.6);
+        const idx = (b * 6 + k) * 2;
+        pos.setXYZ(idx, px, py, pz); pos.setXYZ(idx + 1, nx, ny, nz);
+        px = nx; py = ny; pz = nz;
+      }
+    }
+    pos.needsUpdate = true;
+  }
+
+  // ── fog: during a round, the floor I can't see from where I stand is darkened. Walls and tall furniture (world.sight) block the view,
+  // the same rule the server uses to leave unseen opponents out (untitled_maps.GameMap.can_see). One texel per half cell. ──
+  let roundOn = false, fogAt = 0;
+  const FX = MW * 2, FY = MH * 2, SUB = 4;
+  const fogData = new Uint8Array(FX * FY * 4);
+  const fogTex = new THREE.DataTexture(fogData, FX, FY, THREE.RGBAFormat);
+  fogTex.magFilter = THREE.LinearFilter; fogTex.minFilter = THREE.LinearFilter;
+  const fog = new THREE.Mesh(new THREE.PlaneGeometry(WX, WZ), new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false }));
+  fog.rotation.x = -Math.PI / 2;
+  fog.position.set(WX / 2, 0.06, WZ / 2);
+  fog.renderOrder = 2;
+  fog.visible = false;
+  scene.add(fog);
+  const floorAt = new Uint8Array(MW * MH);                    // 1 where some area has floor
+  for (const ar of world.areas) for (let i = ar.x0; i < ar.x1; i++) for (let j = ar.y0; j < ar.y1; j++) floorAt[j * MW + i] = 1;
+  const opaque = new Uint8Array(MW * SUB * MH * SUB);         // quarter-cell grid of what blocks sight
+  for (const b of world.sight || []) {
+    for (let i = Math.max(0, Math.floor((b.cx - b.hx) * SUB)); i < Math.min(MW * SUB, Math.ceil((b.cx + b.hx) * SUB)); i++) {
+      for (let j = Math.max(0, Math.floor((b.cy - b.hy) * SUB)); j < Math.min(MH * SUB, Math.ceil((b.cy + b.hy) * SUB)); j++) opaque[j * MW * SUB + i] = 1;
+    }
+  }
+  function seen(x0, y0, x1, y1) {
+    const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.2);
+    for (let k = 1; k < n; k++) {
+      const i = Math.floor((x0 + (x1 - x0) * k / n) * SUB), j = Math.floor((y0 + (y1 - y0) * k / n) * SUB);
+      if (opaque[j * MW * SUB + i]) return false;
+    }
+    return true;
+  }
+  function stepFog() {
+    fog.visible = roundOn && !!me && !!me.team;
+    const now = performance.now();
+    if (!fog.visible || now - fogAt < 120) return;
+    fogAt = now;
+    for (let r = 0; r < FY; r++) {
+      const y = (FY - 1 - r + 0.5) / 2;                       // texture row 0 is the far (+z) edge of the plane
+      for (let c = 0; c < FX; c++) {
+        const x = (c + 0.5) / 2, o = (r * FX + c) * 4;
+        const floor = floorAt[Math.floor(y) * MW + Math.floor(x)];
+        fogData[o] = 15; fogData[o + 1] = 23; fogData[o + 2] = 42;
+        fogData[o + 3] = !floor ? 0 : seen(me.x, me.y, x, y) ? 0 : 150;
+      }
+    }
+    fogTex.needsUpdate = true;
   }
 
   function dispose() {
@@ -530,7 +671,15 @@ export function createRoomScene(container, { base, world }) {
     focus() { renderer.domElement.focus(); },
     onMove(cb) { moveCb = cb; },
     onDash(cb) { dashCb = cb; },
-    dashState() { const now = performance.now() / 1000; return { ready: Math.max(0, dashReady - now), active: now < dashUntil }; },
+    onShot(cb) { shotCb = cb; },
+    events: handleEvents,
+    setPhase(phase) { roundOn = phase === 'countdown' || phase === 'playing'; },
+    abilityState() {                                           // what Space does for me right now, and how long until it's ready
+      const now = performance.now() / 1000, team = me && me.team;
+      if (team === 'cop') return { kind: 'taser', ready: Math.max(0, taserReady - now), cooldown: world.taser.cooldown, active: false };
+      if (team === 'thief') return { kind: 'dash', ready: Math.max(0, dashReady - now), cooldown: world.dash.cooldown, active: now < dashUntil };
+      return { kind: null };
+    },
     onFrame(cb) { frameCb = cb; },
   };
 }

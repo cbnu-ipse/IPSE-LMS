@@ -11,7 +11,10 @@
   최근 몇십 분의 1초(두 사람의 핑으로 정한다, tag_window) 동안 지나간 자리 중 하나라도 경찰 곁(TAG_REACH)이었는지로 판정한다.
 - 잡히지 않은 도둑이 감옥 앞 구출 발판을 밟으면 갇힌 도둑이 모두 발판 둘레로 풀려나고 SAFE_SECONDS초 동안 잡히지 않는다.
 - ROUND_SECONDS 안에 도둑이 모두 갇히면 경찰 승리, 시간이 다 됐을 때 한 명이라도 밖에 있으면 도둑 승리.
-- 누구나 대시(DASH_SECONDS 동안 DASH_MULT배 빠르게, DASH_COOLDOWN초마다 한 번)를 쓸 수 있다. 서버가 대시 시간을 기록해 속도 검사에 반영한다.
+- 도둑만 대시(DASH_SECONDS 동안 DASH_MULT배 빠르게, DASH_COOLDOWN초마다 한 번)를 쓸 수 있다. 서버가 대시 시간을 기록해 속도 검사에 반영한다.
+- 경찰은 대시 대신 테이저건을 쏜다: 바라보는 방향으로 침이 DART_SPEED로 TASER_RANGE칸까지 날아가고(벽에 막힌다),
+  맞은 도둑은 STUN_SECONDS초 동안 감전돼 움직이지 못한다. TASER_COOLDOWN초마다 한 번. 날아가는 동안 피할 수 있다.
+- 사각지대: 게임 중에는 상대 팀이 내 캐릭터에서 보일 때(벽·높은 가구가 가리지 않을 때)만 그 위치를 보낸다 (visible_view).
 
 봇: 방장이 대기실에서 넣고 뺀다(id는 음수). 봇은 서버가 움직인다(사람과 같은 충돌 판정과 대시). 경찰 봇은 가까운 도둑을 쫓고,
 도둑 봇은 경찰보다 먼저 닿을 수 있는 트인 곳으로 달아나다가 동료가 갇히면 구출 발판으로 간다. 벽은 반 칸 격자에서 길을 찾아 돌아간다.
@@ -34,9 +37,13 @@ TAG_BASE, TAG_MIN, TAG_MAX = 0.2, 0.15, 0.45
 TAG_REACH = CATCH + 0.1        # 그 자리와 경찰 사이가 이만큼 가까우면 잡힌다 (칸)
 RTT_DEFAULT = 0.1              # 핑을 아직 못 잰 사람의 왕복 지연 (초)
 DASH_MULT, DASH_SECONDS, DASH_COOLDOWN = 1.8, 0.8, 5.0
+TASER_RANGE, TASER_CONE = 6.0, 0.3   # 사거리(칸), 조준 보정 각(라디안)
+DART_SPEED, DART_HIT = 14.0, 0.4     # 테이저 침 속도(칸/초), 침과 도둑 중심이 이만큼 가까우면 맞는다(칸)
+TASER_COOLDOWN, STUN_SECONDS = 5.0, 1.5
 COUNTDOWN, HEAD_START, ROUND_SECONDS, SAFE_SECONDS, RESULT_SECONDS = 3.0, 5.0, 180.0, 3.0, 8.0
 BOT_COP_HANDICAP = 0.92        # 혼자 연습할 때 경찰 봇이 너무 세지 않게 (사람 속도는 그대로)
 BOT_REACTION = 0.35            # 경찰 봇이 도둑 위치를 다시 보는 간격 (초)
+BOT_TASER_RANGE, BOT_AIM_ERROR = 4.5, 0.15   # 경찰 봇은 가까이서만 쏘고, 사람처럼 조준이 조금 빗나간다 (라디안)
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 MODELS = ["character-male-a", "character-female-a", "character-male-b", "character-female-b", "character-male-c", "character-female-c",
           "character-male-d", "character-female-d", "character-male-e", "character-female-e", "character-male-f", "character-female-f"]
@@ -44,7 +51,28 @@ MODELS = ["character-male-a", "character-female-a", "character-male-b", "charact
 
 def rules_view():
     """모든 맵에 공통인 규칙 (화면용)."""
-    return {"speed": SPEED, "catch": CATCH, "dash": {"mult": DASH_MULT, "seconds": DASH_SECONDS, "cooldown": DASH_COOLDOWN}}
+    return {"speed": SPEED, "catch": CATCH, "dash": {"mult": DASH_MULT, "seconds": DASH_SECONDS, "cooldown": DASH_COOLDOWN},
+            "taser": {"range": TASER_RANGE, "cooldown": TASER_COOLDOWN, "stun": STUN_SECONDS, "speed": DART_SPEED}}
+
+
+HIDDEN_KEYS = ("id", "name", "model", "team", "jailed", "online", "bot", "catches")
+
+
+def visible_view(state, viewer_id):
+    """viewer에게 보낼 상태: 게임 중에는 내 캐릭터에서 안 보이는 상대 팀의 위치를 지운다 (같은 팀·관전자는 다 보인다)."""
+    if state.get("phase") not in ("countdown", "playing"):
+        return state
+    me = next((p for p in state["players"] if p["id"] == viewer_id), None)
+    if me is None or me["team"] is None:
+        return state
+    m = MAPS[state["map"]]
+    players = []
+    for p in state["players"]:
+        if p["id"] == viewer_id or p["team"] == me["team"] or m.can_see(me["x"], me["y"], p["x"], p["y"]):
+            players.append(p)
+        else:
+            players.append({**{k: p[k] for k in HIDDEN_KEYS}, "hidden": True})
+    return {**state, "players": players}
 
 
 def worlds_view():
@@ -68,6 +96,8 @@ class Player:
         self.frozen_until = 0.0
         self.dash_until = 0.0
         self.dash_ready = 0.0
+        self.stun_until = 0.0           # 테이저에 맞아 감전된 동안 (frozen_until도 함께 늘린다)
+        self.taser_ready = 0.0
         self.tp = 0                     # 서버가 옮길 때마다 1씩 늘어난다 (화면은 이걸 보고 내 위치를 맞춘다)
         self.catches = 0
         self.bot = uid < 0
@@ -99,6 +129,7 @@ class Player:
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": self.jailed,
                 "safe": round(max(0.0, self.safe_until - now), 1), "frozen": round(max(0.0, self.frozen_until - now), 1),
                 "dash": round(max(0.0, self.dash_ready - now), 1), "speed": self.speed(), "tp": self.tp, "catches": self.catches,
+                "stun": round(max(0.0, self.stun_until - now), 1), "taser": round(max(0.0, self.taser_ready - now), 1),
                 "bot": self.bot, "dashing": now < self.dash_until}
 
 
@@ -117,6 +148,7 @@ class Room:
         self.result = None
         self.events = []
         self.rng = random.Random()
+        self.darts = []                 # 날아가는 테이저 침
         self._cop_dist, self._cop_map_at = {}, None
 
     # ── 방 ─────────────────────────────────────────────────────
@@ -250,12 +282,74 @@ class Room:
     def dash(self, uid, now=None):
         p = self.players.get(uid)
         now = time.monotonic() if now is None else now
-        if p is None or now < p.dash_ready or now < p.frozen_until or p.jailed:
-            return False
+        if p is None or p.team != "thief" or now < p.dash_ready or now < p.frozen_until or p.jailed:
+            return False                                       # 대시는 도둑만
         p.dash_until = now + DASH_SECONDS
         p.dash_ready = now + DASH_COOLDOWN
         self.dirty = True
         return True
+
+    def taser(self, uid, direction, now=None):
+        """경찰이 바라보는 방향(direction: 화면과 같은 atan2(dx, dy))으로 테이저 침을 쏜다. 쐈으면 True.
+        침은 DART_SPEED로 날아가므로 옆으로 피하거나 벽 뒤로 숨으면 피할 수 있다. 조준 보정: TASER_CONE 안에 보이는 도둑이 있으면
+        그쪽으로 살짝 꺾어 쏜다 (방향키 8방향으로도 맞힐 수 있게)."""
+        now = time.monotonic() if now is None else now
+        cop = self.players.get(uid)
+        try:
+            direction = float(direction)
+        except (TypeError, ValueError):
+            return False
+        if (self.phase != "playing" or cop is None or cop.team != "cop" or not math.isfinite(direction)
+                or now < cop.frozen_until or now < cop.taser_ready):
+            return False
+        m = self.map
+        best, best_d = None, 1e9
+        for t in self.players.values():
+            if t.team != "thief" or t.jailed or now < t.safe_until or now < t.stun_until:
+                continue
+            vx, vy = t.x - cop.x, t.y - cop.y
+            d = math.hypot(vx, vy)
+            off = abs((math.atan2(vx, vy) - direction + math.pi) % (2 * math.pi) - math.pi)
+            if 0 < d <= TASER_RANGE and off <= TASER_CONE and d < best_d and m.can_see(cop.x, cop.y, t.x, t.y):
+                best, best_d = t, d
+        if best is not None:
+            direction = math.atan2(best.x - cop.x, best.y - cop.y)
+        cop.taser_ready, cop.dir = now + TASER_COOLDOWN, direction
+        dx, dy = math.sin(direction), math.cos(direction)
+        x, y = cop.x + dx * 0.3, cop.y + dy * 0.3
+        self.darts.append({"cop": uid, "x": x, "y": y, "dx": dx, "dy": dy, "flown": 0.0})
+        self.events.append({"t": "shot", "cop": uid, "x": round(x, 3), "y": round(y, 3), "dir": round(direction, 4)})
+        self.dirty = True
+        return True
+
+    def _darts(self, dt, now):
+        """날아가는 테이저 침: 벽·높은 가구에 막히거나, 사거리 끝이거나, 도둑에 맞으면 끝난다."""
+        m, left = self.map, []
+        for d in self.darts:
+            step = DART_SPEED * dt
+            n = max(1, math.ceil(step / 0.1))
+            hit, done = None, False
+            for _ in range(n):
+                nx, ny = d["x"] + d["dx"] * step / n, d["y"] + d["dy"] * step / n
+                if m.area_at(nx, ny) < 0 or not m.can_see(d["x"], d["y"], nx, ny):
+                    done = True
+                    break
+                d["x"], d["y"], d["flown"] = nx, ny, d["flown"] + step / n
+                hit = next((t for t in self.players.values() if t.team == "thief" and not t.jailed and now >= t.safe_until
+                            and now >= t.stun_until and (t.x - nx) ** 2 + (t.y - ny) ** 2 <= DART_HIT ** 2), None)
+                if hit is not None or d["flown"] >= TASER_RANGE:
+                    done = True
+                    break
+            if not done:
+                left.append(d)
+                continue
+            if hit is not None:
+                hit.stun_until = now + STUN_SECONDS
+                hit.frozen_until = max(hit.frozen_until, hit.stun_until)
+                hit.moving = False
+            self.events.append({"t": "tase", "cop": d["cop"], "thief": hit.uid if hit else None, "x": round(d["x"], 2), "y": round(d["y"], 2)})
+            self.dirty = True
+        self.darts = left
 
     # ── 경찰과 도둑 ────────────────────────────────────────────
     def start(self, uid, now=None):
@@ -272,13 +366,13 @@ class Room:
         for i, p in enumerate(people):
             p.team = "cop" if i < cops else "thief"
             p.jailed, p.catches = False, 0
-            p.safe_until = p.dash_until = p.dash_ready = 0.0
+            p.safe_until = p.dash_until = p.dash_ready = p.stun_until = p.taser_ready = 0.0
             spots = self.map.cop_spawns if p.team == "cop" else self.map.thief_spawns
             index = i if p.team == "cop" else i - cops
             p.teleport(*spots[index % len(spots)])
             p.frozen_until = now + COUNTDOWN + (HEAD_START if p.team == "cop" else 0.0)
             p.last = now
-        self.phase, self.phase_end, self.result = "countdown", now + COUNTDOWN, None
+        self.phase, self.phase_end, self.result, self.darts = "countdown", now + COUNTDOWN, None, []
         self.events.append({"t": "start"})
         self.dirty = True
         return True, ""
@@ -290,6 +384,8 @@ class Room:
         self.last_update = now
         if self.phase in ("countdown", "playing") and dt:
             self._bots(dt, now)
+        if self.phase == "playing" and dt:
+            self._darts(dt, now)
         if self.phase == "countdown" and now >= self.phase_end:
             self.phase, self.phase_end = "playing", now + ROUND_SECONDS
             self.events.append({"t": "go"})
@@ -400,48 +496,59 @@ class Room:
 
     def _bot_goal(self, b, people, now):
         """봇이 향할 곳 (x, y, 대시할지). 없으면 None."""
+        m = self.map
         if b.team == "cop":
             prey = [p for p in people if p.team == "thief" and not p.jailed and now >= p.safe_until]
-            if not prey:
-                return None
-            t = min(prey, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2)
-            seen = b.seen
-            if seen is None or seen[0] != t.uid or now - seen[3] >= BOT_REACTION:   # 사람처럼 조금 늦게 다시 겨눈다
-                seen = b.seen = (t.uid, t.x, t.y, now)
-            d = math.hypot(t.x - b.x, t.y - b.y)
-            if math.hypot(seen[1] - b.x, seen[2] - b.y) < 0.4:                    # 본 자리에 닿았으면 지금 자리로
-                seen = b.seen = (t.uid, t.x, t.y, now)
-            return seen[1], seen[2], 1.5 < d < 4.0
+            visible = [p for p in prey if m.can_see(b.x, b.y, p.x, p.y)]    # 경찰 봇도 사각지대 너머는 못 본다
+            if visible:
+                t = min(visible, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2)
+                seen = b.seen
+                if seen is None or seen[0] != t.uid or now - seen[3] >= BOT_REACTION:   # 사람처럼 조금 늦게 다시 겨눈다
+                    seen = b.seen = (t.uid, t.x, t.y, now)
+                if math.hypot(seen[1] - b.x, seen[2] - b.y) < 0.4:                    # 본 자리에 닿았으면 지금 자리로
+                    seen = b.seen = (t.uid, t.x, t.y, now)
+                d = math.hypot(seen[1] - b.x, seen[2] - b.y)
+                if now >= b.taser_ready and CATCH < d <= BOT_TASER_RANGE and now >= t.stun_until:
+                    aim = math.atan2(seen[1] - b.x, seen[2] - b.y) + self.rng.uniform(-BOT_AIM_ERROR, BOT_AIM_ERROR)
+                    self.taser(b.uid, aim, now)
+                b.wander = None
+                return seen[1], seen[2], False
+            if b.seen is not None and math.hypot(b.seen[1] - b.x, b.seen[2] - b.y) > 0.5:
+                return b.seen[1], b.seen[2], False                                # 마지막으로 본 자리로 가 본다
+            b.seen = None
+            return self._wander(b, [], now)
         if b.team != "thief":
             return None
         cops = [p for p in people if p.team == "cop"]
         near = min(cops, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2) if cops else None
         d = math.hypot(near.x - b.x, near.y - b.y) if near else 99.0
-        m, pad = self.map, self.map.pad
+        pad = self.map.pad
         jailed = any(p.jailed for p in people)
         pad_guard = min((math.hypot(p.x - pad["cx"], p.y - pad["cy"]) for p in cops), default=99.0)
         if jailed and d > 4.0 and pad_guard > 5.0:                # 발판을 지키는 경찰이 없고 쫓기지 않을 때만 구하러 간다
             return pad["cx"], pad["cy"], d < 2.5
-        def danger(x, y):                                      # 모든 경찰 중 가장 가까운 거리
-            return min((math.hypot(p.x - x, p.y - y) for p in cops), default=99.0)
-
         if near is not None and d < 7.0:                          # 경찰보다 먼저 닿을 수 있는 곳 중 경찰에게서 가장 먼 곳
-            dash_now = d < 2.5 or (near.dash_until > now and d < 4.0)
+            dash_now = d < 3.0                                  # 테이저 사거리 안으로 들어온 경찰을 대시로 떼어 낸다
             if b.flee is None or now - b.flee_at > 0.3 or math.hypot(b.flee[0] - b.x, b.flee[1] - b.y) < 0.4:
                 b.flee, b.flee_at = self._flee_spot(b, cops, now), now
             if b.flee is not None:
                 b.wander = None
                 return b.flee[0], b.flee[1], dash_now
+        return self._wander(b, cops, now)
+
+    def _wander(self, b, cops, now):
+        """돌아다닐 곳: 걸을 수 있는 아무 곳 중 (cops가 있으면 경찰에게서 먼 곳)."""
+        m = self.map
         if b.wander is None or math.hypot(b.wander[0] - b.x, b.wander[1] - b.y) < 0.5 or self.rng.random() < 0.01:
             spots = []
-            for _ in range(30):
+            for _ in range(40):
                 wx, wy = self.rng.uniform(1, m.w - 1), self.rng.uniform(1, m.h - 1)
                 if m.walkable_at(wx, wy):
                     spots.append((wx, wy))
                 if len(spots) >= 6:
                     break
-            if spots:                                              # 경찰에게서 먼 곳으로 돌아다닌다
-                b.wander = max(spots, key=lambda q: danger(*q) + self.rng.uniform(0, 3))
+            if spots:
+                b.wander = max(spots, key=lambda q: min((math.hypot(p.x - q[0], p.y - q[1]) for p in cops), default=0.0) + self.rng.uniform(0, 3))
         return (b.wander[0], b.wander[1], False) if b.wander else None
 
     def _catch(self, now):
@@ -501,10 +608,10 @@ class Room:
             self.dirty = True
 
     def _back_to_lobby(self, now):
-        self.phase, self.result = "lobby", None
+        self.phase, self.result, self.darts = "lobby", None, []
         for i, p in enumerate(self.players.values()):
             p.team, p.jailed = None, False
-            p.safe_until = p.frozen_until = p.dash_until = p.dash_ready = 0.0
+            p.safe_until = p.frozen_until = p.dash_until = p.dash_ready = p.stun_until = p.taser_ready = 0.0
             p.teleport(*self.map.lobby_spawns[i % len(self.map.lobby_spawns)])
             p.last = now
         self.events.append({"t": "lobby"})

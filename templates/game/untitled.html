@@ -137,11 +137,12 @@
             <div class="ut-ping" id="ut-ping" title="서버까지 왕복 시간">핑 –</div>
             <div class="ut-tags" id="ut-tags"></div>
             <div class="ut-banner" id="ut-banner" hidden><b id="ut-banner-big"></b><span id="ut-banner-small"></span></div>
-            <div class="ut-dash" id="ut-dash" hidden>대시 <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">준비</span></div>
+            <div class="ut-dash" id="ut-dash" hidden><span id="ut-dash-name">대시</span> <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">준비</span></div>
             <div class="ut-result" id="ut-result" hidden><div><h2 id="ut-result-title"></h2><p id="ut-result-text"></p><p id="ut-result-catch"></p><p style="font-size:12px">잠시 뒤 대기실로 돌아가요</p></div></div>
         </div>
-        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 대시<br>
-            <b>경찰과 도둑</b>: 경찰은 도둑에게 닿아 감옥(오른쪽 위 울타리)에 보내요. 도둑은 감옥 앞 노란 발판을 밟아 갇힌 동료를 모두 구해요. 3분 안에 모두 가두면 경찰, 한 명이라도 남으면 도둑 승리!</p>
+        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 도둑은 대시, 경찰은 테이저<br>
+            <b>경찰과 도둑</b>: 경찰은 도둑에게 닿아 감옥(울타리 친 방)에 보내요. 테이저 침에 맞은 도둑은 잠깐 감전돼 못 움직여요(침은 날아가니 피할 수 있어요). 도둑은 감옥 앞 노란 발판을 밟아 갇힌 동료를 모두 구해요.
+            벽 너머·높은 가구 뒤는 사각지대라 상대가 안 보여요. 3분 안에 모두 가두면 경찰, 한 명이라도 남으면 도둑 승리!</p>
     </div>
 </div>
 
@@ -180,6 +181,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         scene3d = createRoomScene($('ut-stage'), { base: BASE3D, world: WORLDS[key] });
         scene3d.onMove((pos) => send({ type: 'move', ...pos }));
         scene3d.onDash(() => send({ type: 'dash' }));
+        scene3d.onShot((dir) => send({ type: 'taser', dir: dir }));
         scene3d.onTag((id) => send({ type: 'tag', id: id }));
         scene3d.onFrame(drawTags);
         setTimeout(() => scene3d && scene3d.focus(), 50);
@@ -260,6 +262,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         const banner = $('ut-banner');
         banner.hidden = true;
         if (st.phase === 'countdown') { banner.hidden = false; $('ut-banner-big').textContent = Math.ceil(st.left); $('ut-banner-small').textContent = mine.team === 'cop' ? '경찰이에요! 도둑이 먼저 흩어진 뒤 출발해요' : mine.team === 'thief' ? '도둑이에요! 흩어져서 숨으세요' : ''; }
+        else if (st.phase === 'playing' && mine.team === 'thief' && mine.stun > 0) { banner.hidden = false; $('ut-banner-big').textContent = '⚡'; $('ut-banner-small').textContent = '감전! 잠깐 움직일 수 없어요'; }
         else if (st.phase === 'playing' && mine.frozen > 0) { banner.hidden = false; $('ut-banner-big').textContent = Math.ceil(mine.frozen); $('ut-banner-small').textContent = '경찰 출발까지'; }
         $('ut-dash').hidden = !inGame || mine.jailed;
         const res = $('ut-result');
@@ -278,13 +281,16 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
             if (ev.t === 'caught') toast(ev.thief === meId ? '⛓ 잡혔어요! 동료가 구해 줄 거예요' : '🚓 ' + name(ev.cop) + '이(가) ' + name(ev.thief) + '을(를) 잡았어요', ev.thief === meId ? 'bad' : '');
             else if (ev.t === 'rescue') toast('🔓 ' + name(ev.by) + '이(가) 동료 ' + ev.count + '명을 구했어요!');
             else if (ev.t === 'go') toast('시작!');
+            else if (ev.t === 'tase' && ev.thief != null) toast(ev.thief === meId ? '⚡ 테이저에 맞았어요! 잠깐 못 움직여요' : '⚡ ' + name(ev.cop) + '이(가) ' + name(ev.thief) + '을(를) 감전시켰어요', ev.thief === meId ? 'bad' : '');
             else if (ev.t === 'map') toast('🗺 맵이 ' + mapName(ev.map) + '(으)로 바뀌었어요');
         });
     }
     setInterval(() => {
         if (!scene3d || !G) return;
-        const d = scene3d.dashState(), cd = RULES.dash.cooldown;
-        $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / cd) * 100 : 100) + '%';
+        const d = scene3d.abilityState();
+        if (!d.kind) return;
+        $('ut-dash-name').textContent = d.kind === 'taser' ? '⚡ 테이저' : '💨 대시';
+        $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / d.cooldown) * 100 : 100) + '%';
         $('ut-dash-t').textContent = d.active ? '쌩!' : d.ready > 0 ? d.ready.toFixed(1) + '초' : 'Space';
     }, 100);
 
@@ -302,7 +308,13 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
             const d = JSON.parse(m.data);
             if (d.type === 'hello') { meId = d.me || meId; showRoom(d.room); if (!d.room) send({ type: 'list' }); }
             else if (d.type === 'rooms') renderRooms(d.rooms);
-            else if (d.type === 'state' && room) { ensureScene(d.state.map).setPlayers(d.state.players, meId); renderChips(d.state.players); renderGame(d.state); }
+            else if (d.type === 'state' && room) {
+                const sc = ensureScene(d.state.map);
+                sc.setPhase(d.state.phase);
+                sc.setPlayers(d.state.players, meId);
+                sc.events(d.state.events);
+                renderChips(d.state.players); renderGame(d.state);
+            }
             else if (d.type === 'pong' && typeof d.t === 'number') showPing(performance.now() - d.t);
             else if (d.type === 'correct' && scene3d) scene3d.correct(d.x, d.y);
             else if (d.type === 'error') toast(d.message, 'bad');
