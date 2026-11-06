@@ -148,7 +148,7 @@
 
 {{ world_json|json_script:"ut-world" }}
 <script type="module">
-import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
+import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v={{ bundle_version }}";
 (function () {
     'use strict';
     const DATA = JSON.parse(document.getElementById('ut-world').textContent);
@@ -174,12 +174,23 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
         Object.keys(tagEls).forEach((id) => { tagEls[id].remove(); delete tagEls[id]; });
         $('ut-loading').hidden = false;
     }
+    let failedMap = null;
     function ensureScene(mapKey) {                       // one scene per map: switching maps builds a fresh one
         const key = WORLDS[mapKey] ? mapKey : DATA.default;
         if (scene3d && scene3d.mapKey === key) return scene3d;
+        if (failedMap === key) return null;              // already failed for this map: don't retry 10 times a second
         dropScene();
-        scene3d = createRoomScene($('ut-stage'), { base: BASE3D, world: WORLDS[key] });
+        try {
+            scene3d = createRoomScene($('ut-stage'), { base: BASE3D, world: WORLDS[key] });
+        } catch (err) {                                  // never leave "loading" up forever: say what to do instead
+            console.error(err);
+            failedMap = key;
+            $('ut-stage').querySelectorAll('canvas').forEach((c) => c.remove());
+            $('ut-loading').textContent = '맵을 그리지 못했어요. 새로고침(Ctrl+Shift+R) 해 주세요.';
+            return null;
+        }
         scene3d.onMove((pos) => send({ type: 'move', ...pos }));
+        $('ut-loading').textContent = '맵을 불러오는 중…';
         scene3d.onDash(() => send({ type: 'dash' }));
         scene3d.onShot((dir) => send({ type: 'taser', dir: dir }));
         scene3d.onTag((id) => send({ type: 'tag', id: id }));
@@ -310,9 +321,11 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}";
             else if (d.type === 'rooms') renderRooms(d.rooms);
             else if (d.type === 'state' && room) {
                 const sc = ensureScene(d.state.map);
-                sc.setPhase(d.state.phase);
-                sc.setPlayers(d.state.players, meId);
-                sc.events(d.state.events);
+                if (sc) {
+                    sc.setPhase(d.state.phase);
+                    sc.setPlayers(d.state.players, meId);
+                    sc.events(d.state.events);
+                }
                 renderChips(d.state.players); renderGame(d.state);
             }
             else if (d.type === 'pong' && typeof d.t === 'number') showPing(performance.now() - d.t);

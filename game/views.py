@@ -1,4 +1,5 @@
 import json
+import os
 import random
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -439,9 +440,19 @@ def gomoku_view(request):
     return render(request, "game/gomoku.html", {"title": "오목", "chat_messages": list(latest)[::-1]})
 
 
+def _bundle_version(path):
+    """정적 JS 파일이 바뀔 때마다 달라지는 값 (?v=): 브라우저가 예전 3D 모듈을 캐시해 새 맵 데이터와 어긋나지 않게."""
+    from django.contrib.staticfiles import finders
+    found = finders.find(path)
+    return str(int(os.path.getmtime(found))) if found else "0"
+
+
 @login_required
 def untitled_view(request):
-    return render(request, "game/untitled.html", {"title": "경찰과 도둑", "world_json": {"maps": untitled_world.maps_list(), "worlds": untitled_world.worlds_view(), "default": untitled_maps.DEFAULT_MAP}})
+    return render(request, "game/untitled.html", {
+        "title": "경찰과 도둑", "bundle_version": _bundle_version("game/untitled3d/untitled3d.js"),
+        "world_json": {"maps": untitled_world.maps_list(), "worlds": untitled_world.worlds_view(), "default": untitled_maps.DEFAULT_MAP},
+    })
 
 
 @login_required

@@ -11,7 +11,8 @@ import { Actor } from './actors.js';
 
 const CELL = 5;
 const SEND_EVERY = 0.1;              // seconds between position reports while moving
-const LOW_WALL_H = 3.4;              // partition walls are cut to waist height so the camera sees over them
+const LOW_WALL_H = 3.4;
+const LEVEL_H = 3.0;                 // world units per floor level (walls are 3.4 tall, characters about 6)              // partition walls are cut to waist height so the camera sees over them
 const VIEW_CELLS = 32;                 // the camera shows about this many cells across on every map (fixed zoom)
 
 function zoneLook(z) {                  // floor tint from the server's zone colour, and a darker ink for its painted name
@@ -66,34 +67,80 @@ export function createRoomScene(container, { base, world }) {
 
   const toWorld = (x, y, h = 0) => new THREE.Vector3(x * CELL, h, y * CELL);      // (x, y) in cells → world
 
-  // ── map: one floor slab per area (rooms and corridors; nothing is drawn over the void), walls on area borders, props ──
+  // ── floor height: every area has a level (h: -1 basement, 0 ground, 1 upstairs …); stairs slope from one level to another
+  // (untitled_maps.GameMap.height_at). Movement and collision stay flat; height is only drawn. ──
+  const areaIndex = new Int16Array(MW * MH).fill(-1);
+  world.areas.forEach((ar, k) => { for (let i = ar.x0; i < ar.x1; i++) for (let j = ar.y0; j < ar.y1; j++) areaIndex[j * MW + i] = k; });
+  function areaAt(x, y) {
+    const i = Math.floor(x), j = Math.floor(y);
+    return i >= 0 && j >= 0 && i < MW && j < MH ? areaIndex[j * MW + i] : -1;
+  }
+  function levelAt(x, y) {                                    // in levels (stairs give in-between values); the void counts as 0
+    const k = areaAt(x, y);
+    if (k < 0) return 0;
+    const ar = world.areas[k];
+    if (ar.kind !== 'stairs') return ar.h || 0;
+    const t = ar.axis === 'x' ? (x - ar.x0) / (ar.x1 - ar.x0) : (y - ar.y0) / (ar.y1 - ar.y0);
+    return ar.from + (ar.to - ar.from) * Math.min(1, Math.max(0, t));
+  }
+  const heightAt = (x, y) => levelAt(x, y) * LEVEL_H;
+  const onFloor = (x, y, dh = 0) => toWorld(x, y, heightAt(x, y) + dh);   // a point standing on the floor at (x, y)
+
+  // ── map: one floor block per area, from the ground (or below it, for basements) up to its level; stairs are drawn as steps.
+  // Nothing is drawn over the void. ──
   const WOOD = new THREE.Color(0xd2b48c);
+  const labelled = new Set();
+  function block(x0, y0, x1, y1, top, material) {
+    const bottom = Math.min(top, 0) - 0.6;
+    const m = new THREE.Mesh(new THREE.BoxGeometry((x1 - x0) * CELL, top - bottom, (y1 - y0) * CELL), material);
+    m.position.copy(toWorld((x0 + x1) / 2, (y0 + y1) / 2, (top + bottom) / 2));
+    m.receiveShadow = true; m.castShadow = top > 0;
+    scene.add(m);
+  }
   for (const ar of world.areas) {
     const look = zoneLook(ar);
+    if (ar.kind === 'stairs') {
+      const mat = new THREE.MeshStandardMaterial({ color: 0xb8a78f, roughness: 0.8 });
+      const len = ar.axis === 'x' ? ar.x1 - ar.x0 : ar.y1 - ar.y0, steps = len * 3;
+      for (let k = 0; k < steps; k++) {                        // each step's top is the stairs' height at the step's far edge
+        const a = k / steps, b = (k + 1) / steps;
+        const lvl = ar.from + (ar.to - ar.from) * (ar.from < ar.to ? b : a);
+        if (ar.axis === 'x') block(ar.x0 + a * len, ar.y0, ar.x0 + b * len, ar.y1, lvl * LEVEL_H, mat);
+        else block(ar.x0, ar.y0 + a * len, ar.x1, ar.y0 + b * len, lvl * LEVEL_H, mat);
+      }
+      continue;
+    }
     const color = ar.kind === 'jail' ? new THREE.Color(0x94a3b8) : WOOD.clone().lerp(look.color, ar.kind === 'corridor' ? 0.15 : 0.32);
-    const slab = new THREE.Mesh(new THREE.BoxGeometry((ar.x1 - ar.x0) * CELL, 0.6, (ar.y1 - ar.y0) * CELL), new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
-    slab.position.copy(toWorld((ar.x0 + ar.x1) / 2, (ar.y0 + ar.y1) / 2, -0.3));
-    slab.receiveShadow = true;
-    scene.add(slab);
-    if (ar.kind === 'jail') continue;
+    if ((ar.h || 0) > 0) color.offsetHSL(0, 0, 0.05);       // upper floors a touch lighter, basements darker
+    if ((ar.h || 0) < 0) color.offsetHSL(0, 0, -0.08);
+    block(ar.x0, ar.y0, ar.x1, ar.y1, (ar.h || 0) * LEVEL_H, new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
+    const key = ar.group || ar.name + ar.x0 + ',' + ar.y0;     // an L-shaped room (one group) gets one name
+    if (ar.kind === 'jail' || labelled.has(key)) continue;
+    labelled.add(key);
     const label = floorLabel(ar.name, look.ink);
     label.scale.setScalar(Math.min(1, Math.min(ar.x1 - ar.x0, ar.y1 - ar.y0) * CELL * 1.3 / 32));   // narrow corridors get a smaller name
-    label.position.copy(toWorld((ar.x0 + ar.x1) / 2, (ar.y0 + ar.y1) / 2, 0.025));
+    label.position.copy(toWorld((ar.x0 + ar.x1) / 2, (ar.y0 + ar.y1) / 2, (ar.h || 0) * LEVEL_H + 0.025));
     scene.add(label);
+  }
+  function edgeSpan(e) {                                      // floor heights on both sides of a one-cell edge (void sides skipped)
+    const mid = e.o === 'v' ? [[e.f - 0.05, e.t + 0.5], [e.f + 0.05, e.t + 0.5]] : [[e.t + 0.5, e.f - 0.05], [e.t + 0.5, e.f + 0.05]];
+    const hs = mid.filter(([x, y]) => areaAt(x, y) >= 0).map(([x, y]) => heightAt(x, y));
+    return { bottom: Math.min(...hs), top: Math.max(...hs) };
   }
   (async () => {
     for (const piece of world.walls) {                       // walls: Kenney half walls cut down to waist height so the camera sees over them
       const g = await furniture(base, 'wallHalf');
       if (dead) return;
-      g.scale.set(CELL / g.userData.size.x, LOW_WALL_H / g.userData.size.y, 1);
-      if (piece.o === 'v') { g.rotation.y = Math.PI / 2; g.position.copy(toWorld(piece.f, piece.t + 0.5)); }
-      else g.position.copy(toWorld(piece.t + 0.5, piece.f));
+      const span = edgeSpan(piece);                          // from the lower floor up to waist height above the higher one
+      g.scale.set(CELL / g.userData.size.x, (span.top - span.bottom + LOW_WALL_H) / g.userData.size.y, 1);
+      if (piece.o === 'v') { g.rotation.y = Math.PI / 2; g.position.copy(toWorld(piece.f, piece.t + 0.5, span.bottom)); }
+      else g.position.copy(toWorld(piece.t + 0.5, piece.f, span.bottom));
       scene.add(g);
     }
     for (const d of world.decor) {
       const g = await furniture(base, d.model);
       if (dead) return;
-      g.position.copy(toWorld(d.x + 1, d.y + 1, 0.03));
+      g.position.copy(onFloor(d.x + 1, d.y + 1, 0.03));
       scene.add(g);
     }
     for (const p of world.props) {
@@ -103,7 +150,7 @@ export function createRoomScene(container, { base, world }) {
       const [lx, lz] = p.rot % 2 ? [p.d, p.w] : [p.w, p.d];      // cells available along the model's own x / z (before turning)
       g.scale.set(Math.min(1, (lx + 0.12) * CELL / sz.x), 1, Math.min(1, (lz + 0.12) * CELL / sz.z));
       g.rotation.y = p.rot * Math.PI / 2;
-      g.position.copy(toWorld(p.x + p.w / 2, p.y + p.d / 2));     // p.w / p.d are already the turned footprint
+      g.position.copy(onFloor(p.x + p.w / 2, p.y + p.d / 2));     // p.w / p.d are already the turned footprint
       scene.add(g);
     }
   })();
@@ -112,11 +159,12 @@ export function createRoomScene(container, { base, world }) {
   const metal = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.4 });
   const postGeo = new THREE.BoxGeometry(0.35, 5.5, 0.35);
   for (const e of world.fences || []) {
+    const base = edgeSpan(e).top;
     const along = e.o === 'v' ? (k) => toWorld(e.f, e.t + k) : (k) => toWorld(e.t + k, e.f);
-    for (const k of [0, 0.5, 1]) { const m = new THREE.Mesh(postGeo, metal); m.position.copy(along(k)).setY(2.75); m.castShadow = true; scene.add(m); }
+    for (const k of [0, 0.5, 1]) { const m = new THREE.Mesh(postGeo, metal); m.position.copy(along(k)).setY(base + 2.75); m.castShadow = true; scene.add(m); }
     for (const h of [0.6, 5.2]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(e.o === 'v' ? 0.3 : CELL, 0.3, e.o === 'v' ? CELL : 0.3), metal);
-      rail.position.copy(along(0.5)).setY(h);
+      rail.position.copy(along(0.5)).setY(base + h);
       scene.add(rail);
     }
   }
@@ -125,10 +173,10 @@ export function createRoomScene(container, { base, world }) {
     const P = world.pad;
     padRing = new THREE.Mesh(new THREE.RingGeometry(P.r * CELL - 0.7, P.r * CELL, 48), new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
     padRing.rotation.x = -Math.PI / 2;
-    padRing.position.copy(toWorld(P.cx, P.cy, 0.08));
+    padRing.position.copy(onFloor(P.cx, P.cy, 0.08));
     const disc = new THREE.Mesh(new THREE.CircleGeometry(P.r * CELL - 0.7, 48), new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.45 }));
     disc.rotation.x = -Math.PI / 2;
-    disc.position.copy(toWorld(P.cx, P.cy, 0.07));
+    disc.position.copy(onFloor(P.cx, P.cy, 0.07));
     scene.add(padRing, disc);
   }
 
@@ -200,7 +248,7 @@ export function createRoomScene(container, { base, world }) {
     const geo = s.kind === 'circle' ? new THREE.CylinderGeometry(s.r * CELL, s.r * CELL, 1.2, 40) : new THREE.BoxGeometry(s.hx * 2 * CELL, 1.2, s.hy * 2 * CELL);
     const m = new THREE.Mesh(geo, hitMat);
     m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), hitLine));   // outline so it reads on any floor colour
-    m.position.copy(toWorld(s.cx, s.cy, 0.6));
+    m.position.copy(onFloor(s.cx, s.cy, 0.6));
     m.renderOrder = 10;
     hitboxes.add(m);
   });
@@ -263,7 +311,7 @@ export function createRoomScene(container, { base, world }) {
     const actor = await Actor.create(base, p.model, {});
     if (!people.has(p.id)) return;
     rec.actor = actor;
-    actor.root.position.copy(toWorld(rec.x, rec.y));
+    actor.root.position.copy(onFloor(rec.x, rec.y));
     const ring = new THREE.Mesh(ringGeo, ringMat.clone());
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
     rec.ring = ring;
@@ -393,7 +441,7 @@ export function createRoomScene(container, { base, world }) {
   function burst(x, y, color) {                              // shockwave ring at the moment a dash starts
     const m = new THREE.Mesh(burstGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
     m.rotation.x = -Math.PI / 2;
-    m.position.copy(toWorld(x, y, 0.15));
+    m.position.copy(onFloor(x, y, 0.15));
     m.userData.life = 0;
     scene.add(m);
     bursts.push(m);
@@ -401,7 +449,7 @@ export function createRoomScene(container, { base, world }) {
   const puffs = [];
   function puff(x, y) {
     const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: 0xf5f1e8, transparent: true, opacity: 0.85, depthWrite: false }));
-    m.position.copy(toWorld(x + (Math.random() - 0.5) * 0.25, y + (Math.random() - 0.5) * 0.25, 0.35));
+    m.position.copy(onFloor(x + (Math.random() - 0.5) * 0.25, y + (Math.random() - 0.5) * 0.25, 0.35));
     m.userData.life = 0;
     scene.add(m);
     puffs.push(m);
@@ -466,7 +514,7 @@ export function createRoomScene(container, { base, world }) {
       if (!a.root.visible) continue;
       const ahead = mine ? 0 : Math.min(0.12, performance.now() / 1000 - (rec.sampleAt || 0));
       const tx = mine ? me.x : rec.x + (rec.vx || 0) * ahead, ty = mine ? me.y : rec.y + (rec.vy || 0) * ahead;
-      const target = toWorld(tx, ty);
+      const target = onFloor(tx, ty);
       if (mine || rec.snap) { a.root.position.copy(target); rec.snap = false; }
       else a.root.position.lerp(target, Math.min(1, dt * 14));
       a.root.rotation.y = mine ? me.dir : rec.dir;
@@ -503,7 +551,7 @@ export function createRoomScene(container, { base, world }) {
     stepDarts();
     stepFog();
     stepPuffs(dt);
-    if (me) focus.lerp(toWorld(me.x, me.y), Math.min(1, dt * 5));
+    if (me) focus.lerp(onFloor(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
     placeCamera();
     renderer.render(scene, camera);
@@ -564,11 +612,11 @@ export function createRoomScene(container, { base, world }) {
       let dist = Math.min(range, (now - d.t0) * speed);
       if (d.end) dist = Math.min(dist, Math.hypot(d.end.x - d.x, d.end.y - d.y));
       const x = d.x + Math.sin(d.dir) * dist, y = d.y + Math.cos(d.dir) * dist;
-      d.m.position.copy(toWorld(x, y, 2.2));
-      const shooter = people.get(d.cop), from = shooter && shooter.actor ? shooter.actor.root.position : toWorld(d.x, d.y);
-      const pos = d.wires.geometry.attributes.position;
-      pos.setXYZ(0, from.x - 0.25, 2.3, from.z); pos.setXYZ(1, x * CELL - 0.15, 2.3, y * CELL);
-      pos.setXYZ(2, from.x + 0.25, 2.1, from.z); pos.setXYZ(3, x * CELL + 0.15, 2.1, y * CELL);
+      d.m.position.copy(onFloor(x, y, 2.2));
+      const shooter = people.get(d.cop), from = shooter && shooter.actor ? shooter.actor.root.position : onFloor(d.x, d.y);
+      const pos = d.wires.geometry.attributes.position, hy = heightAt(x, y);
+      pos.setXYZ(0, from.x - 0.25, from.y + 2.3, from.z); pos.setXYZ(1, x * CELL - 0.15, hy + 2.3, y * CELL);
+      pos.setXYZ(2, from.x + 0.25, from.y + 2.1, from.z); pos.setXYZ(3, x * CELL + 0.15, hy + 2.1, y * CELL);
       pos.needsUpdate = true;
       const arrived = (d.end && dist >= Math.hypot(d.end.x - d.x, d.end.y - d.y) - 1e-3) || dist >= range;
       if (arrived && !d.endAt) d.endAt = now;
@@ -614,10 +662,19 @@ export function createRoomScene(container, { base, world }) {
   const fogData = new Uint8Array(FX * FY * 4);
   const fogTex = new THREE.DataTexture(fogData, FX, FY, THREE.RGBAFormat);
   fogTex.magFilter = THREE.LinearFilter; fogTex.minFilter = THREE.LinearFilter;
-  const fog = new THREE.Mesh(new THREE.PlaneGeometry(WX, WZ), new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false }));
-  fog.rotation.x = -Math.PI / 2;
-  fog.position.set(WX / 2, 0.06, WZ / 2);
-  fog.renderOrder = 2;
+  const fog = new THREE.Group();                              // one quad per area, lying on that area's floor (tilted on stairs)
+  const fogMat = new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  for (const ar of world.areas) {
+    const corners = [[ar.x0, ar.y0], [ar.x1, ar.y0], [ar.x0, ar.y1], [ar.x1, ar.y1]];
+    const lift = (x, y) => (ar.kind === 'stairs' ? (ar.from + (ar.to - ar.from) * (ar.axis === 'x' ? (x - ar.x0) / (ar.x1 - ar.x0) : (y - ar.y0) / (ar.y1 - ar.y0))) : (ar.h || 0)) * LEVEL_H;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(corners.flatMap(([x, y]) => [x * CELL, lift(x, y) + 0.08 + (ar.kind === 'stairs' ? 0.35 : 0), y * CELL]), 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(corners.flatMap(([x, y]) => [x / MW, (MH - y) / MH]), 2));
+    geo.setIndex([0, 2, 1, 1, 2, 3]);
+    const q = new THREE.Mesh(geo, fogMat);
+    q.renderOrder = 2;
+    fog.add(q);
+  }
   fog.visible = false;
   scene.add(fog);
   const floorAt = new Uint8Array(MW * MH);                    // 1 where some area has floor

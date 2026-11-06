@@ -2,6 +2,8 @@
 
 좌표는 칸 단위 실수 (x, y). 칸 (i, j)는 x∈[i, i+1), y∈[j, j+1)이다.
 벽은 영역의 경계에 저절로 생긴다: 빈 곳과 맞닿은 변, 그리고 다른 영역과 맞닿았지만 문(doors)이 아닌 변.
+영역마다 높이 층(h: -1 지하, 0 바닥, 1 위층 …)이 있고, kind가 "stairs"인 영역은 axis 방향으로 from 층에서 to 층으로 기운 계단이다.
+같은 group의 영역끼리는 벽 없이 이어진다 (ㄱ자처럼 사각형 여러 개로 된 방). 움직임·충돌·시야 판정은 평면(2D)이고, 높이는 화면에만 쓴다.
 감옥은 kind가 "jail"인 작은 영역이고, 다른 영역과 맞닿은 변은 울타리(지나갈 수는 없지만 너머가 보인다)다.
 시야: 벽과 높은 가구(SIGHT_MODELS)가 시선을 막는다. 울타리·문·낮은 가구는 막지 않는다.
 소품은 실제 모델 크기의 충돌 모양(둥근 것은 원, 나머지는 회전을 반영한 사각형)으로 막는다. 캐릭터는 반지름 RADIUS의 원이다.
@@ -88,6 +90,17 @@ class GameMap:
         self.open = [[sum(self.walk[a][b] for a in range(max(0, i - 3), min(self.gx, i + 4)) for b in range(max(0, j - 3), min(self.gy, j + 4)))
                       for j in range(self.gy)] for i in range(self.gx)]
 
+    def height_at(self, x, y):
+        """바닥 높이(층 단위, 계단은 사이 값). 빈 곳은 0."""
+        k = self.area_at(x, y)
+        if k < 0:
+            return 0.0
+        a = self.areas[k]
+        if a["kind"] != "stairs":
+            return float(a.get("h", 0))
+        t = (x - a["x0"]) / (a["x1"] - a["x0"]) if a["axis"] == "x" else (y - a["y0"]) / (a["y1"] - a["y0"])
+        return a["from"] + (a["to"] - a["from"]) * min(1.0, max(0.0, t))
+
     def area_at(self, x, y):
         i, j = int(math.floor(x)), int(math.floor(y))
         return self.cell[i][j] if 0 <= i < self.w and 0 <= j < self.h else -1
@@ -108,7 +121,7 @@ class GameMap:
                     continue
                 for edge, b in ((("v", i, j), cell(i - 1, j)), (("v", i + 1, j), cell(i + 1, j)),
                                 (("h", j, i), cell(i, j - 1)), (("h", j + 1, i), cell(i, j + 1))):
-                    if b == a:
+                    if b == a or (b >= 0 and self.areas[a].get("group") and self.areas[a].get("group") == self.areas[b].get("group")):
                         continue
                     if b >= 0 and jail_index in (a, b):
                         fences.add(edge)
@@ -323,8 +336,14 @@ class GameMap:
 
 
 
-def _area(name, kind, color, x0, y0, x1, y1):
-    return {"name": name, "kind": kind, "color": color, "x0": x0, "y0": y0, "x1": x1, "y1": y1}
+def _area(name, kind, color, x0, y0, x1, y1, h=0, group=None):
+    return {"name": name, "kind": kind, "color": color, "x0": x0, "y0": y0, "x1": x1, "y1": y1, "h": h, "group": group}
+
+
+def _stairs(x0, y0, x1, y1, axis, frm, to):
+    """계단: axis 방향으로 시작 변(x0 또는 y0)이 frm 층, 끝 변이 to 층."""
+    return {"name": "계단", "kind": "stairs", "color": "#a8a29e", "x0": x0, "y0": y0, "x1": x1, "y1": y1,
+            "axis": axis, "from": frm, "to": to, "h": max(frm, to), "group": None}
 
 
 def _row(model, y, xs, rot=0):
@@ -336,76 +355,130 @@ def _desk(x, y):
     return [("desk", x, y, 0, 2, 1), ("chairDesk", x, y + 1, 2, 1, 1)]
 
 
+def _classroom(x0, y0, teacher):
+    out = [("desk", teacher[0], teacher[1], 0, 2, 1)]
+    for dy in (2, 5):
+        for dx in (1, 4, 7):
+            out += _desk(x0 + dx, y0 + dy)
+    return out
+
+
 CORRIDOR, JAIL = "#cbd5e1", "#94a3b8"
 
 
-# ── 학교 (44×28): 가로로 긴 복도 위아래로 교실·교무실·체육관·과학실 ─────────────
+# ── 연구소 (40×44): 위층 헬기장에서 계단 두 개로 내려와, 복도가 고리처럼 방들을 감싸고, 지하 저장고로 다시 계단 두 개 ──
+def _lab():
+    areas = [
+        _area("헬기장", "room", "#64748b", 14, 0, 26, 9, h=1),
+        _stairs(14, 9, 16, 13, "y", 1, 0), _stairs(24, 9, 26, 13, "y", 1, 0),
+        _area("중앙홀", "room", "#f59e0b", 10, 13, 30, 18),
+        _area("서쪽 복도", "corridor", CORRIDOR, 6, 13, 10, 36), _area("동쪽 복도", "corridor", CORRIDOR, 30, 13, 34, 36),
+        _area("남쪽 복도", "corridor", CORRIDOR, 10, 33, 30, 36),
+        _area("실험실", "room", "#14b8a6", 10, 18, 20, 33), _area("서버실", "room", "#6366f1", 20, 18, 30, 33),
+        _area("감옥", "jail", JAIL, 30, 9, 34, 13),
+        _area("휴게실", "room", "#fb7185", 34, 20, 38, 30, group="rest"), _area("휴게실", "room", "#fb7185", 34, 30, 40, 36, group="rest"),
+        _stairs(14, 36, 16, 38, "y", 0, -1), _stairs(24, 36, 26, 38, "y", 0, -1),
+        _area("지하 저장고", "room", "#a16207", 12, 38, 28, 44, h=-1),
+    ]
+    doors = [("h", 9, 14, 16), ("h", 13, 14, 16), ("h", 9, 24, 26), ("h", 13, 24, 26),
+             ("v", 10, 14, 17), ("v", 30, 14, 17),
+             ("h", 18, 14, 16), ("v", 10, 25, 27), ("h", 33, 13, 15), ("v", 20, 22, 24),
+             ("h", 18, 25, 27), ("v", 30, 27, 29), ("h", 33, 26, 28),
+             ("v", 10, 33, 36), ("v", 30, 33, 36), ("v", 34, 22, 24), ("v", 34, 32, 34),
+             ("h", 36, 14, 16), ("h", 38, 14, 16), ("h", 36, 24, 26), ("h", 38, 24, 26)]
+    wide = "bookcaseClosedWide"
+    props = (
+        # 헬기장
+        _row("cardboardBoxClosed", 1, [15, 16, 24]) + _row("cardboardBoxClosed", 2, [24]) + [("speaker", 25, 7, 3, 1, 1), ("speaker", 14, 7, 1, 1, 1)]
+        # 중앙홀
+        + [("pottedPlant", 10, 13, 0, 1, 1), ("pottedPlant", 29, 13, 0, 1, 1), ("bench", 20, 17, 2, 1, 1), ("lampSquareFloor", 12, 17, 0, 1, 1)]
+        # 실험실: 실험대 줄
+        + [("tableCross", x, y, 0, 2, 1) for y in (21, 25, 29) for x in (12, 16)]
+        + [s for y in (22, 26, 30) for s in _row("stoolBar", y, [12, 13, 16, 17])] + [("bookcaseClosed", 19, 32, 2, 1, 1)]
+        # 서버실: 높은 서버 선반(시선을 가린다)
+        + [(wide, x, y, 0, 2, 1) for y in (21, 24, 27, 30) for x in (22, 26)]
+        # 복도: 쓰러진 상자 더미
+        + _row("cardboardBoxClosed", 20, [6, 7]) + _row("cardboardBoxOpen", 29, [8]) + [("pottedPlant", 33, 19, 0, 1, 1), ("trashcan", 31, 25, 0, 1, 1)]
+        + [("trashcan", 20, 35, 0, 1, 1), ("pottedPlant", 11, 35, 0, 1, 1)]
+        # 휴게실 (ㄱ자)
+        + [("loungeSofa", 37, 25, 3, 1, 2), ("tableCoffee", 35, 25, 1, 1, 2), ("kitchenFridge", 39, 35, 2, 1, 1), ("loungeChair", 38, 31, 2, 1, 1)]
+        # 지하 저장고: 상자 미로
+        + _row("cardboardBoxClosed", 40, [14, 15, 19, 20, 24, 25]) + _row("cardboardBoxOpen", 42, [16, 17, 22, 23]) + [("bookcaseClosed", 12, 43, 2, 1, 1)]
+    )
+    decor = [("rugRound", 19, 3, 0), ("rugRectangle", 35, 32, 0)]
+    return GameMap("lab", "연구소", "위층 헬기장, 고리처럼 이어진 복도, 계단으로 내려가는 지하 저장고", areas, doors, props, decor,
+                   lobby=[(13.5 + 2 * i, 15.5) for i in range(8)],
+                   cops=[(18.5, 5.0), (21.5, 5.0), (18.5, 7.0), (21.5, 7.0)],
+                   thieves=[(18.8, 19.5), (28.5, 19.5), (8.0, 25.0), (32.0, 31.0), (21.5, 34.5), (12.5, 42.5), (36.0, 22.0), (27.0, 41.5)],
+                   pad=(32.0, 14.7))
+
+
+# ── 학교 (46×30): 앞·뒤 복도와 옆 통로가 교실을 빙 두르고, 무대가 있는 강당, 계단 아래 지하 매점 ─────────
 def _school():
     areas = [
-        _area("복도", "corridor", CORRIDOR, 0, 13, 44, 17),
-        _area("1반", "room", "#fb923c", 1, 3, 12, 13), _area("2반", "room", "#fbbf24", 12, 3, 23, 13),
-        _area("교무실", "room", "#64748b", 25, 5, 33, 13), _area("감옥", "jail", JAIL, 25, 1, 29, 5),
-        _area("체육관", "room", "#22c55e", 35, 0, 44, 13),
+        _area("복도", "corridor", CORRIDOR, 0, 13, 46, 17), _area("서쪽 통로", "corridor", CORRIDOR, 0, 3, 2, 13),
+        _area("뒷복도", "corridor", CORRIDOR, 0, 0, 23, 3),
+        _area("1반", "room", "#fb923c", 2, 3, 12, 13), _area("2반", "room", "#fbbf24", 12, 3, 23, 13),
+        _area("감옥", "jail", JAIL, 25, 1, 29, 5), _area("교무실", "room", "#64748b", 25, 5, 34, 13),
+        _area("강당", "room", "#22c55e", 34, 5, 46, 13, group="hall"), _area("강당", "room", "#22c55e", 34, 3, 40, 5, group="hall"),
+        _area("강당", "room", "#22c55e", 42, 3, 46, 5, group="hall"),
+        _area("무대", "room", "#15803d", 36, 0, 46, 3, h=1), _stairs(40, 3, 42, 5, "y", 1, 0),
         _area("3반", "room", "#f472b6", 1, 17, 12, 27), _area("화장실", "room", "#38bdf8", 12, 17, 18, 22),
-        _area("계단", "room", "#a78bfa", 18, 17, 26, 23), _area("과학실", "room", "#14b8a6", 26, 17, 38, 28),
-        _area("창고", "room", "#a16207", 38, 17, 44, 24),
+        _stairs(18, 17, 20, 23, "y", 0, -1), _stairs(12, 24, 14, 26, "x", 0, -1),
+        _area("지하 매점", "room", "#eab308", 14, 23, 26, 30, h=-1),
+        _area("과학실", "room", "#14b8a6", 26, 17, 38, 28), _area("창고", "room", "#a16207", 38, 17, 46, 24),
     ]
-    doors = [("h", 13, 6, 8), ("h", 13, 18, 20), ("h", 13, 28, 30), ("h", 13, 38, 41), ("v", 12, 6, 8),
-             ("h", 17, 6, 8), ("h", 17, 14, 16), ("h", 17, 20, 24), ("h", 17, 31, 33), ("h", 17, 40, 42),
-             ("v", 26, 19, 21), ("v", 38, 20, 22)]
-
-    def classroom(x0, y0, teacher_y):
-        out = [("desk", x0 + 4, teacher_y, 0, 2, 1)]
-        for dy in (2, 5):
-            for dx in (1, 4, 7):
-                out += _desk(x0 + dx, y0 + dy)
-        return out
-
+    doors = [("h", 3, 0, 2), ("h", 13, 0, 2), ("h", 3, 5, 7), ("h", 3, 17, 19), ("v", 12, 7, 9), ("v", 2, 9, 11),
+             ("h", 13, 6, 8), ("h", 13, 18, 20), ("h", 13, 28, 30), ("v", 34, 9, 11), ("h", 13, 38, 41),
+             ("h", 3, 40, 42), ("h", 5, 40, 42),
+             ("h", 17, 6, 8), ("h", 17, 14, 16), ("h", 17, 18, 20), ("h", 23, 18, 20), ("v", 12, 24, 26), ("v", 14, 24, 26),
+             ("h", 17, 31, 33), ("v", 38, 20, 22), ("h", 17, 41, 43)]
     props = (
-        classroom(1, 3, 3) + classroom(12, 3, 3) + classroom(1, 17, 26)
+        _classroom(2, 3, (8, 3)) + _classroom(12, 3, (14, 3)) + _classroom(1, 17, (5, 26))
         # 교무실
-        + _desk(26, 10) + _desk(30, 10) + [("bookcaseClosed", 32, 6, 3, 1, 1), ("bookcaseClosed", 32, 7, 3, 1, 1), ("coatRackStanding", 32, 12, 0, 1, 1)]
-        # 체육관
-        + [("bench", 36, 1, 0, 1, 1), ("bench", 42, 1, 0, 1, 1), ("speaker", 35, 0, 0, 1, 1), ("speaker", 43, 0, 0, 1, 1)]
-        + _row("cardboardBoxClosed", 5, [39, 40]) + _row("cardboardBoxClosed", 6, [39, 40])
-        + [("cardboardBoxOpen", 37, 9, 0, 1, 1), ("cardboardBoxOpen", 42, 9, 0, 1, 1)]
-        # 복도
-        + [("pottedPlant", 0, 13, 0, 1, 1), ("pottedPlant", 0, 16, 0, 1, 1), ("trashcan", 11, 16, 0, 1, 1), ("kitchenFridge", 13, 13, 2, 1, 1),
-           ("bench", 26, 13, 0, 1, 1), ("lampSquareFloor", 35, 13, 0, 1, 1), ("pottedPlant", 43, 13, 0, 1, 1), ("pottedPlant", 43, 16, 0, 1, 1)]
-        # 화장실·계단
-        + [("kitchenSink", 13, 21, 2, 1, 1), ("kitchenSink", 15, 21, 2, 1, 1), ("trashcan", 17, 18, 0, 1, 1),
-           ("pottedPlant", 18, 22, 0, 1, 1), ("bench", 21, 22, 2, 1, 1), ("bench", 23, 22, 2, 1, 1), ("pottedPlant", 25, 22, 0, 1, 1)]
+        + _desk(26, 9) + _desk(30, 9) + [("bookcaseClosed", 32, 6, 2, 1, 1), ("bookcaseClosed", 33, 6, 2, 1, 1)]
+        # 강당: 무대와 객석
+        + [("speaker", 36, 0, 0, 1, 1), ("speaker", 45, 0, 0, 1, 1)]
+        + _row("benchCushion", 8, [36, 37, 39, 40, 42, 43], 2) + _row("benchCushion", 10, [36, 37, 39, 40, 42, 43], 2)
+        # 복도·뒷복도
+        + [("kitchenFridge", 22, 13, 2, 1, 1), ("trashcan", 11, 16, 0, 1, 1), ("lampSquareFloor", 35, 16, 0, 1, 1), ("pottedPlant", 45, 13, 0, 1, 1),
+           ("pottedPlant", 22, 0, 0, 1, 1), ("cardboardBoxOpen", 10, 1, 0, 1, 1)]
+        # 화장실
+        + [("kitchenSink", 13, 21, 2, 1, 1), ("kitchenSink", 15, 21, 2, 1, 1), ("trashcan", 17, 18, 0, 1, 1)]
+        # 지하 매점
+        + _row("kitchenBar", 29, [16, 17, 18], 2) + [("kitchenFridge", 19, 29, 2, 1, 1), ("tableRound", 21, 25, 0, 2, 2), ("tableRound", 23, 27, 0, 2, 2),
+                                                    ("chair", 20, 25, 1, 1, 1), ("chair", 25, 28, 3, 1, 1)]
         # 과학실
         + [("tableCross", 28, 20, 0, 2, 1), ("tableCross", 32, 20, 0, 2, 1), ("tableCross", 28, 24, 0, 2, 1), ("tableCross", 32, 24, 0, 2, 1)]
         + _row("stoolBar", 21, [28, 29, 32, 33]) + _row("stoolBar", 25, [28, 29, 32, 33])
-        + [("kitchenCabinet", 27, 27, 2, 1, 1), ("kitchenCabinet", 28, 27, 2, 1, 1), ("kitchenSink", 29, 27, 2, 1, 1),
-           ("bookcaseClosed", 36, 27, 2, 1, 1), ("bookcaseClosed", 37, 27, 2, 1, 1)]
+        + [("kitchenCabinet", 27, 27, 2, 1, 1), ("kitchenCabinet", 28, 27, 2, 1, 1), ("bookcaseClosed", 36, 27, 2, 1, 1), ("bookcaseClosed", 37, 27, 2, 1, 1)]
         # 창고
-        + _row("cardboardBoxClosed", 18, [43]) + _row("cardboardBoxClosed", 19, [43]) + _row("cardboardBoxOpen", 23, [39, 40, 43])
-        + [("bookcaseClosedWide", 41, 21, 0, 2, 1)]
+        + _row("cardboardBoxClosed", 18, [44]) + _row("cardboardBoxClosed", 19, [44]) + _row("cardboardBoxOpen", 22, [40, 41])
+        + [("bookcaseClosedWide", 42, 20, 0, 2, 1)]
     )
-    decor = [("rugRectangle", 20, 18, 0)]
-    return GameMap("school", "학교", "긴 복도와 교실·교무실·체육관·과학실", areas, doors, props, decor,
+    decor = [("rugRectangle", 16, 24, 0)]
+    return GameMap("school", "학교", "교실을 빙 두르는 앞·뒤 복도, 무대가 있는 강당, 계단 아래 지하 매점", areas, doors, props, decor,
                    lobby=[(16.5 + i, 15.0) for i in range(8)],
                    cops=[(30.5, 15.0), (32.5, 15.0), (34.5, 15.0), (36.5, 15.0)],
-                   thieves=[(3.5, 11.0), (21.5, 11.0), (40.0, 10.5), (3.5, 25.0), (15.0, 19.5), (22.0, 20.0), (35.0, 25.5), (41.0, 20.0)],
+                   thieves=[(4.0, 11.5), (21.5, 11.0), (44.5, 11.5), (40.0, 1.5), (3.5, 25.0), (16.0, 26.5), (35.0, 26.0), (44.5, 21.0)],
                    pad=(27.0, 6.4))
 
 
-# ── 기숙사 (30×40): 세로 복도 양쪽에 크기가 다른 방들, 옆방끼리도 문으로 이어진다 ───────
+# ── 기숙사 (30×40): 세로 복도 양쪽의 방들(옆방끼리도 이어진다), 계단 두 개로 내려가는 지하 휴게실 ─────────
 def _dorm():
     areas = [
         _area("복도", "corridor", CORRIDOR, 12, 0, 16, 40),
         _area("101호", "room", "#fb7185", 2, 0, 12, 8), _area("102호", "room", "#f472b6", 0, 8, 12, 16),
-        _area("휴게실", "room", "#14b8a6", 0, 16, 12, 26), _area("103호", "room", "#fb7185", 4, 26, 12, 33),
-        _area("104호", "room", "#f472b6", 2, 33, 12, 40),
+        _area("지하 휴게실", "room", "#14b8a6", 3, 16, 9, 19, h=-1, group="lounge"), _area("지하 휴게실", "room", "#14b8a6", 0, 19, 9, 26, h=-1, group="lounge"),
+        _stairs(9, 18, 12, 22, "x", -1, 0), _stairs(1, 16, 3, 19, "y", 0, -1),
+        _area("103호", "room", "#fb7185", 4, 26, 12, 33), _area("104호", "room", "#f472b6", 2, 33, 12, 40),
         _area("사감실", "room", "#64748b", 16, 0, 26, 8), _area("감옥", "jail", JAIL, 26, 0, 30, 4),
         _area("201호", "room", "#a78bfa", 16, 8, 26, 16), _area("세탁실", "room", "#38bdf8", 16, 16, 24, 22),
         _area("202호", "room", "#c084fc", 16, 22, 28, 31), _area("203호", "room", "#a78bfa", 16, 31, 26, 40),
     ]
-    doors = [("v", 12, 3, 5), ("v", 12, 11, 13), ("v", 12, 18, 22), ("v", 12, 28, 30), ("v", 12, 36, 38),
+    doors = [("v", 12, 3, 5), ("v", 12, 11, 13), ("v", 12, 18, 22), ("v", 9, 18, 22), ("v", 12, 28, 30), ("v", 12, 36, 38),
              ("v", 16, 5, 7), ("v", 16, 11, 13), ("v", 16, 18, 20), ("v", 16, 25, 27), ("v", 16, 35, 37),
-             ("h", 8, 3, 5), ("h", 16, 8, 10), ("h", 26, 5, 7), ("h", 33, 9, 11),
+             ("h", 8, 3, 5), ("h", 16, 1, 3), ("h", 19, 1, 3), ("h", 33, 9, 11),
              ("h", 8, 23, 25), ("h", 16, 17, 19), ("h", 22, 21, 23), ("h", 31, 24, 26)]
 
     def room(x0, y0, x1, left):
@@ -415,13 +488,14 @@ def _dorm():
         return [("bedSingle", outer, y0 + 1, 0, 1, 2), ("bedBunk", outer, y0 + 4, 0, 1, 2), ("cabinetBedDrawer", side, y0 + 1, 0, 1, 1)] + _desk(desk_x, y0 + 1)
 
     props = (
-        room(2, 0, 12, True) + room(0, 8, 12, True) + room(4, 26, 12, True) + room(2, 33, 12, True)
+        room(2, 0, 12, True) + [("bedSingle", 0, 12, 0, 1, 2), ("cabinetBedDrawer", 4, 9, 0, 1, 1)] + _desk(8, 9)
+        + room(4, 26, 12, True) + room(2, 33, 12, True)
         + room(16, 8, 26, False) + room(16, 22, 28, False) + room(16, 31, 26, False)
         # 사감실
         + _desk(17, 1) + [("bookcaseClosed", 20, 0, 0, 1, 1), ("bookcaseClosed", 21, 0, 0, 1, 1), ("coatRackStanding", 17, 6, 0, 1, 1), ("pottedPlant", 25, 7, 0, 1, 1)]
-        # 휴게실
-        + [("loungeSofa", 1, 18, 0, 2, 1), ("tableCoffee", 1, 20, 0, 2, 1), ("cabinetTelevision", 1, 22, 2, 2, 1),
-           ("loungeChair", 5, 19, 1, 1, 1), ("loungeChair", 5, 22, 1, 1, 1), ("tableRound", 7, 19, 0, 2, 2), ("pottedPlant", 0, 25, 0, 1, 1)]
+        # 지하 휴게실
+        + [("loungeSofa", 1, 20, 0, 2, 1), ("tableCoffee", 1, 22, 0, 2, 1), ("cabinetTelevision", 1, 24, 2, 2, 1),
+           ("loungeChair", 5, 21, 1, 1, 1), ("loungeChair", 5, 23, 1, 1, 1), ("tableRound", 5, 16, 0, 2, 2), ("pottedPlant", 8, 25, 0, 1, 1)]
         # 세탁실
         + [("washer", 23, 17, 3, 1, 1), ("washer", 23, 18, 3, 1, 1), ("washer", 23, 19, 3, 1, 1), ("dryer", 23, 20, 3, 1, 1),
            ("washerDryerStacked", 20, 17, 0, 1, 1), ("table", 18, 20, 0, 2, 1)]
@@ -429,51 +503,13 @@ def _dorm():
         + [("pottedPlant", 15, 0, 0, 1, 1), ("pottedPlant", 12, 39, 0, 1, 1), ("lampSquareFloor", 12, 15, 0, 1, 1),
            ("lampSquareFloor", 15, 24, 0, 1, 1), ("trashcan", 15, 31, 0, 1, 1), ("bench", 15, 9, 1, 1, 1)]
     )
-    decor = [("rugRectangle", 1, 19, 0), ("rugSquare", 6, 3, 0), ("rugSquare", 20, 26, 0)]
-    return GameMap("dorm", "기숙사", "세로 복도 양쪽의 크고 작은 방, 옆방끼리도 이어진다", areas, doors, props, decor,
+    decor = [("rugRectangle", 1, 21, 0), ("rugSquare", 6, 3, 0), ("rugSquare", 20, 26, 0)]
+    return GameMap("dorm", "기숙사", "세로 복도 양쪽의 방들, 계단 두 개로 내려가는 지하 휴게실", areas, doors, props, decor,
                    lobby=[(14.0, 9.5 + i) for i in range(8)],
                    cops=[(13.2, 20.0), (14.8, 20.0), (13.2, 22.0), (14.8, 22.0)],
-                   thieves=[(6.0, 5.5), (5.5, 13.5), (9.5, 24.0), (9.5, 31.0), (6.0, 38.5), (21.5, 13.5), (21.5, 28.5), (21.5, 38.0)],
+                   thieves=[(6.0, 5.5), (5.5, 13.5), (7.0, 24.5), (9.5, 31.0), (6.0, 38.5), (21.5, 13.5), (21.5, 28.5), (21.5, 38.0)],
                    pad=(24.6, 2.0))
 
 
-# ── 물류센터 (44×30): 큰 창고 홀과 하역장, 통로로 이어진 사무동 ─────────────────
-def _logistics():
-    areas = [
-        _area("창고 홀", "room", "#475569", 0, 0, 24, 18), _area("연결 통로", "corridor", CORRIDOR, 24, 7, 30, 11),
-        _area("사무동 복도", "corridor", CORRIDOR, 30, 0, 34, 27), _area("사무실", "room", "#0ea5e9", 34, 0, 44, 8),
-        _area("감옥", "jail", JAIL, 40, 8, 44, 12), _area("회의실", "room", "#a78bfa", 34, 12, 42, 20),
-        _area("휴게실", "room", "#14b8a6", 34, 20, 40, 27), _area("하역장", "room", "#ca8a04", 0, 18, 20, 30),
-        _area("아래 통로", "corridor", CORRIDOR, 20, 24, 30, 27),
-    ]
-    doors = [("v", 24, 7, 11), ("v", 30, 7, 11), ("h", 18, 3, 7), ("h", 18, 13, 17), ("v", 20, 24, 27), ("v", 30, 24, 27),
-             ("v", 34, 2, 4), ("v", 34, 15, 17), ("v", 34, 22, 24), ("h", 20, 37, 39)]
-    wide = "bookcaseClosedWide"
-    props = (
-        # 창고 홀: 긴 선반 줄
-        [(wide, x, y, 0, 2, 1) for y in (2, 6, 10, 14) for x in (2, 4, 9, 11, 16, 18)]
-        + _row("cardboardBoxClosed", 2, [21, 22]) + _row("cardboardBoxClosed", 3, [21, 22]) + _row("cardboardBoxOpen", 14, [21, 22])
-        # 하역장: 팔레트 줄
-        + _row("cardboardBoxOpen", 21, [2, 3, 9, 10, 15, 16]) + _row("cardboardBoxClosed", 24, [4, 5, 6, 12, 13])
-        + _row("cardboardBoxOpen", 27, [2, 3, 9, 10, 11, 16, 17]) + [("tableCross", 17, 19, 0, 2, 1)]
-        # 사무실
-        + _desk(36, 1) + _desk(39, 1) + [("bookcaseClosed", 43, 0, 3, 1, 1), ("bookcaseClosed", 43, 1, 3, 1, 1), ("coatRackStanding", 35, 6, 0, 1, 1)]
-        # 회의실
-        + [("tableCloth", 37, 15, 0, 2, 1), ("tableCloth", 37, 16, 0, 2, 1), ("chair", 36, 15, 1, 1, 1), ("chair", 36, 16, 1, 1, 1),
-           ("chair", 39, 15, 3, 1, 1), ("chair", 39, 16, 3, 1, 1), ("pottedPlant", 41, 19, 0, 1, 1)]
-        # 휴게실
-        + [("loungeSofa", 35, 25, 2, 2, 1), ("tableCoffee", 35, 23, 0, 2, 1), ("kitchenFridge", 39, 21, 3, 1, 1)]
-        # 복도
-        + [("pottedPlant", 30, 0, 0, 1, 1), ("pottedPlant", 33, 0, 0, 1, 1), ("lampSquareFloor", 30, 18, 0, 1, 1), ("trashcan", 33, 26, 0, 1, 1),
-           ("pottedPlant", 25, 24, 0, 1, 1)]
-    )
-    decor = [("rugRectangle", 37, 3, 0)]
-    return GameMap("logistics", "물류센터", "선반이 늘어선 창고 홀과 하역장, 통로 건너 사무동", areas, doors, props, decor,
-                   lobby=[(32.0, 9.5 + i) for i in range(8)],
-                   cops=[(25.5, 8.5), (27.0, 8.5), (25.5, 10.0), (27.0, 10.0)],
-                   thieves=[(7.0, 4.5), (13.5, 12.0), (21.5, 8.0), (6.5, 22.5), (13.5, 28.5), (38.5, 4.5), (40.5, 17.5), (38.5, 26.0)],
-                   pad=(42.0, 6.6))
-
-
-MAPS = {m.key: m for m in (_school(), _dorm(), _logistics())}
-DEFAULT_MAP = "school"
+MAPS = {m.key: m for m in (_lab(), _school(), _dorm())}
+DEFAULT_MAP = "lab"

@@ -9,7 +9,7 @@ from . import untitled_maps as maps
 from . import untitled_world as world
 
 User = get_user_model()
-SCHOOL, DORM = maps.MAPS["school"], maps.MAPS["dorm"]
+SCHOOL, DORM, LAB = maps.MAPS["school"], maps.MAPS["dorm"], maps.MAPS["lab"]
 EAST = math.pi / 2                  # 방향은 화면과 같은 atan2(dx, dy): +x 쪽
 
 
@@ -33,13 +33,34 @@ class MapTests(SimpleTestCase):
                 self.assertIn(m.node(m.pad["cx"], m.pad["cy"]), seen)
                 self.assertTrue(m.fence_edges)
 
+    def test_doors_join_floors_of_the_same_height_and_rooms_form_loops(self):
+        for m in maps.MAPS.values():
+            with self.subTest(m.key):
+                links = set()
+                for o, f, t0, t1 in m.doors:
+                    for t in range(t0, t1):
+                        a, b = ((f - 0.01, t + 0.5), (f + 0.01, t + 0.5)) if o == "v" else ((t + 0.5, f - 0.01), (t + 0.5, f + 0.01))
+                        self.assertAlmostEqual(m.height_at(*a), m.height_at(*b), delta=0.05)   # 문턱에서 높이가 맞는다
+                        links.add(tuple(sorted((m.area_at(*a), m.area_at(*b)))))
+                node = lambda k: m.areas[k]["group"] or k                                      # noqa: E731
+                nodes = {node(k) for k, a in enumerate(m.areas) if a["kind"] != "jail"}
+                edges = {tuple(sorted((str(node(a)), str(node(b))))) for a, b in links if node(a) != node(b)}
+                self.assertGreaterEqual(len(edges) - len(nodes) + 1, 3)                     # 빙 돌아 도망칠 고리가 여러 개
+                self.assertGreater(len({a["h"] for a in m.areas}), 1)                      # 높낮이가 있다
+
+    def test_stairs_slope_between_levels(self):
+        self.assertEqual(LAB.height_at(20, 4), 1.0)                            # 위층 헬기장
+        self.assertAlmostEqual(LAB.height_at(15, 11), 0.5)                     # 계단 중간
+        self.assertEqual(LAB.height_at(20, 41), -1.0)                          # 지하 저장고
+        self.assertNotIn(("h", 30, 35), LAB.wall_edges)                        # ㄱ자 휴게실의 두 사각형 사이에는 벽이 없다
+
     def test_void_and_walls_block_and_doors_let_you_through(self):
-        self.assertFalse(SCHOOL.free_at(0.5, 5.0))                             # 1반 왼쪽 바깥은 빈 곳
+        self.assertFalse(SCHOOL.free_at(24.0, 2.0))                            # 2반과 감옥 사이는 빈 곳
         self.assertFalse(SCHOOL.free_at(12.0, 4.0))                            # 1반·2반 사이 벽
-        self.assertTrue(SCHOOL.free_at(12.0, 7.0))                             # 그 벽의 문
+        self.assertTrue(SCHOOL.free_at(12.0, 8.0))                             # 그 벽의 문
         self.assertFalse(SCHOOL.free_at(3.0, 13.0))                            # 교실과 복도 사이 벽
         self.assertTrue(SCHOOL.free_at(7.0, 13.0))
-        self.assertNotIn(("v", 12, 6), SCHOOL.wall_edges)                     # 문 칸에는 벽 조각이 없다
+        self.assertNotIn(("v", 12, 7), SCHOOL.wall_edges)                     # 문 칸에는 벽 조각이 없다
         self.assertIn(("v", 12, 4), SCHOOL.wall_edges)
 
     def test_jail_fence_blocks_walking_but_not_sight(self):
@@ -53,11 +74,11 @@ class MapTests(SimpleTestCase):
         lamp = next(x for x in SCHOOL.shapes if x["model"] == "lampSquareFloor")
         self.assertEqual(lamp["kind"], "circle")
         self.assertFalse(SCHOOL.free_at(lamp["cx"] + 0.3, lamp["cy"]))
-        self.assertTrue(SCHOOL.free_at(lamp["cx"], lamp["cy"] + lamp["r"] + 0.36))
+        self.assertTrue(SCHOOL.free_at(lamp["cx"], lamp["cy"] - lamp["r"] - 0.36))
         table = next(x for x in DORM.shapes if x["model"] == "tableRound")
-        self.assertEqual((table["cx"], table["cy"]), (8, 20))
-        self.assertFalse(DORM.free_at(8.5, 20.0))
-        self.assertTrue(DORM.free_at(7.0, 21.2))                               # 2×2 칸의 모서리 쪽은 비어 있다
+        self.assertEqual((table["cx"], table["cy"]), (6, 17))
+        self.assertFalse(DORM.free_at(6.5, 17.0))
+        self.assertTrue(DORM.free_at(5.0, 18.2))                               # 2×2 칸의 모서리 쪽은 비어 있다
 
     def test_turned_bench_uses_its_turned_size(self):
         bench = next(x for x in DORM.shapes if x["model"] == "bench")
@@ -75,7 +96,7 @@ class MapTests(SimpleTestCase):
         self.assertEqual(path[-1], (3.5, 25.0))
         self.assertTrue(all(SCHOOL.free_at(x, y) for x, y in path))
         out = [x for (x, y0), (_, y1) in zip(path, path[1:]) if y0 < 13 <= y1]
-        self.assertTrue(out and 6 <= out[0] <= 8)                             # 1반 문으로 나간다
+        self.assertTrue(out and (6 <= out[0] <= 8 or 0 <= out[0] <= 2))       # 1반 문이나 옆 통로로 나간다
 
     def test_page_data_has_every_map(self):
         worlds = world.worlds_view()
@@ -89,7 +110,7 @@ class MapTests(SimpleTestCase):
 
 class WorldTests(SimpleTestCase):
     def test_room_fills_up_and_hands_over_host(self):
-        room = world.Room("ABCD", 1)
+        room = world.Room("ABCD", 1, map_key="school")
         for uid in range(1, world.MAX_PLAYERS + 1):
             self.assertTrue(room.add(uid, f"p{uid}", now=0)[0])
         self.assertFalse(room.add(99, "late", now=0)[0])
@@ -98,7 +119,7 @@ class WorldTests(SimpleTestCase):
         self.assertEqual(room.host_id, 2)
 
     def test_moves_are_checked_for_speed_and_obstacles(self):
-        room = world.Room("ABCD", 1)
+        room = world.Room("ABCD", 1, map_key="school")
         room.add(1, "me", now=0)
         p = room.players[1]
         x0, y0 = p.x, p.y
@@ -107,24 +128,25 @@ class WorldTests(SimpleTestCase):
         self.assertEqual((round(p.x, 3), round(p.y, 3)), (round(x0, 3), round(y0 - 0.3, 3)))
         self.assertFalse(room.move(1, "nan", 3, 0, True, now=0.3))
         self.assertFalse(room.move(1, None, 3, 0, True, now=0.3))
-        bunch = world.Room("BNCH", 3)                                            # 늦게 오다 몰려 온 위치
+        bunch = world.Room("BNCH", 3, map_key="school")                                            # 늦게 오다 몰려 온 위치
         bunch.add(3, "b", now=0)
         q = bunch.players[3]
         q.x, q.y, q.last = 20.0, 15.0, 0.0
         self.assertTrue(bunch.move(3, 20.0 - 0.8, 15.0, 0, True, now=0.25))
         self.assertTrue(bunch.move(3, 20.0 - 1.2, 15.0, 0, True, now=0.255))     # 바로 뒤에 붙어 와도 받는다
         self.assertFalse(bunch.move(3, 20.0 - 5.2, 15.0, 0, True, now=2.0))      # 오래 멈춰 있었어도 순간이동은 안 된다
-        far = world.Room("EFGH", 2)
+        far = world.Room("EFGH", 2, map_key="school")
         far.add(2, "x", now=0)
         far.players[2].x, far.players[2].y = 3.0, 15.5
         self.assertFalse(far.move(2, 3.0, 12.5, 0, True, now=10))                 # 교실 벽은 뚫고 지나갈 수 없다
         self.assertTrue(far.move(2, 3.0, 14.5, 0, True, now=10.5))
-        self.assertFalse(far.move(2, 0.5, 9.0, 0, True, now=20))                  # 빈 곳으로는 못 간다
+        far.players[2].x, far.players[2].y = 24.0, 14.0
+        self.assertFalse(far.move(2, 24.0, 12.4, 0, True, now=20))                # 빈 곳으로는 못 간다
 
 
 class CopsAndRobbersTests(SimpleTestCase):
     def room(self, n=3):
-        room = world.Room("COPS", 1)
+        room = world.Room("COPS", 1, map_key="school")
         for uid in range(1, n + 1):
             room.add(uid, f"p{uid}", now=0)
         room.rng.seed(1)
@@ -333,7 +355,7 @@ class CopsAndRobbersTests(SimpleTestCase):
 
 class BotTests(SimpleTestCase):
     def solo(self, bots=1):
-        room = world.Room("SOLO", 1)
+        room = world.Room("SOLO", 1, map_key="school")
         room.add(1, "me", now=0)
         for _ in range(bots):
             self.assertLess(room.add_bot(1, now=0), 0)
@@ -384,7 +406,7 @@ class BotTests(SimpleTestCase):
         jailed.jailed = True
         jailed.x, jailed.y = room.map.jail_spots[0]
         me.x, me.y = 40.5, 10.0                                      # 경찰(나)은 멀리 체육관에 가만히 있다
-        runner.x, runner.y = 20.5, 20.0
+        runner.x, runner.y = 30.5, 22.5
         self.run_until(room, lambda: not jailed.jailed, 0.1, limit=40)
         self.assertFalse(jailed.jailed, "도둑 봇이 구출하러 가지 않았다")
         me.x, me.y = runner.x + 1.2, runner.y
@@ -400,10 +422,10 @@ class BotTests(SimpleTestCase):
         me, bot = room.players[1], next(p for p in room.players.values() if p.bot)
         me.team, bot.team = "thief", "cop"
         bot.frozen_until = 0.0
-        bot.x, bot.y = 12.6, 4.0                                     # 2반, 1반과의 벽 바로 옆 (문은 y 6~8)
+        bot.x, bot.y = 12.6, 4.0                                     # 2반, 1반과의 벽 바로 옆 (문은 y 7~9)
         me.x, me.y = 11.4, 4.0                                       # 벽 너머 1반: 봇에게는 안 보인다
         self.assertFalse(room.map.can_see(bot.x, bot.y, me.x, me.y))
-        bot.seen = (me.uid, 11.4, 6.8, 0.0)                          # 문 쪽으로 들어가는 걸 마지막으로 봤다
+        bot.seen = (me.uid, 11.4, 8.0, 0.0)                          # 문 쪽으로 들어가는 걸 마지막으로 봤다
         self.run_until(room, lambda: me.jailed, room.last_update or 0.1, limit=20)
         self.assertTrue(me.jailed, "경찰 봇이 벽을 돌아 문으로 들어오지 못했다")
 
@@ -436,7 +458,7 @@ class BotTests(SimpleTestCase):
     def test_host_picks_the_map_in_the_lobby(self):
         room = self.solo(bots=1)
         room.add(2, "friend", now=0)
-        self.assertEqual(room.map.key, maps.DEFAULT_MAP)
+        self.assertEqual(world.Room("NEW", 1).map.key, maps.DEFAULT_MAP)
         self.assertTrue(room.set_map(2, "dorm", now=0))                   # 방장만
         self.assertTrue(room.set_map(1, "nowhere", now=0))
         self.assertEqual(room.set_map(1, "dorm", now=0), "")
