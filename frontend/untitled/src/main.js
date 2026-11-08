@@ -389,6 +389,10 @@ export function createRoomScene(container, { base, world }) {
       }
       return;
     }
+    if (k === 'e' && !e.target.closest('input, textarea') && meId) {
+      if (!e.repeat) arrestNow();
+      return;
+    }
     if (EMOTE_KEYS[k] && !e.target.closest('input, textarea') && meId) {
       if (emoteCb && !e.repeat) emoteCb(EMOTE_KEYS[k]);
       return;
@@ -507,7 +511,7 @@ export function createRoomScene(container, { base, world }) {
       v.copy(rec.actor.root.position).setY(6.2).project(camera);
       const age = rec.emote ? performance.now() / 1000 - rec.emote.born : 9;
       out[id] = { x: (v.x + 1) / 2 * container.clientWidth, y: (1 - v.y) / 2 * container.clientHeight, name: rec.name, me: id === meId,
-        online: rec.online !== false, team: rec.team, jailed: rec.jailed, emote: age < 1.8 ? rec.emote.e : null, emoteAge: age };
+        online: rec.online !== false, team: rec.team, jailed: rec.jailed, reach: id === reachId, emote: age < 1.8 ? rec.emote.e : null, emoteAge: age };
     }
     return out;
   }
@@ -555,15 +559,14 @@ export function createRoomScene(container, { base, world }) {
         a.root.rotation.y += Math.sin(nowS * 70) * 0.18;
         if (rec.ring) rec.ring.material.color.setHex(Math.floor(nowS * 20) % 2 ? 0x22d3ee : 0xffffff);
       }
-      const crouch = (rec.crouchUntil || 0) > nowS;
-      a.pose(crouch ? 'sit' : !stunned && ((mine ? myMoving : rec.moving) || dashing) ? 'walk' : 'idle');
+      const crouch = (rec.crouchUntil || 0) > nowS, grab = (rec.grabUntil || 0) > nowS;
+      a.pose(crouch ? 'sit' : grab ? 'work' : !stunned && ((mine ? myMoving : rec.moving) || dashing) ? 'walk' : 'idle');
       if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : stunned ? 3 : 1;
       a.update(dt);
     }
-    checkTags();
+    findReach();
     stepDarts();
     stepSight();
-    stepArtifacts(dt);
     stepPuffs(dt);
     if (me) focus.lerp(onFloor(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
@@ -576,20 +579,29 @@ export function createRoomScene(container, { base, world }) {
 
   // ── tagging: a cop tells the server the moment a thief touches them on this screen. Others are drawn slightly late, so the
   // server judges the claim against where that thief was over the last few tenths of a second (untitled_world.Room.tag). ──
-  let tagCb = null;
-  function checkTags() {
+  // ── arresting is an action, not a touch: a cop presses E (or the page's button) with a thief within world.arrest.reach on
+  // this screen. The server judges it against where that thief was over the last few tenths of a second (Room.arrest). ──
+  let arrestCb = null, arrestReady = 0, reachId = null;
+  function findReach() {                                    // the nearest thief I could grab right now (shown as "E" on the name tag)
+    reachId = null;
     const mine = people.get(meId);
-    if (!tagCb || !me || !mine || mine.team !== 'cop' || me.frozen > 0) return;
-    const now = performance.now() / 1000;
+    if (!me || !mine || mine.team !== 'cop' || me.frozen > 0) return;
+    let best = world.arrest.reach + 0.05;
     for (const [id, rec] of people) {
       if (id === meId || !rec.actor || rec.hidden || rec.team !== 'thief' || rec.jailed || rec.safe > 0) continue;
-      const p = rec.actor.root.position;
-      if (Math.hypot(p.x / CELL - me.x, p.z / CELL - me.y) > world.catch + 0.05 || now - (rec.tagAt || 0) < 0.25) continue;
-      rec.tagAt = now;
-      if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: true }); }   // my latest spot first
-      tagCb(id);
+      const p = rec.actor.root.position, d = Math.hypot(p.x / CELL - me.x, p.z / CELL - me.y);
+      if (d <= best) { best = d; reachId = id; }
     }
   }
+  function arrestNow() {
+    const mine = people.get(meId), now = performance.now() / 1000;
+    if (!arrestCb || !me || !mine || mine.team !== 'cop' || me.frozen > 0 || now < arrestReady) return;
+    arrestReady = now + world.arrest.cooldown;
+    mine.grabUntil = now + 0.35;                               // reach out right away; the server says if it caught anyone
+    if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: false }); }   // my latest spot first
+    arrestCb(reachId);
+  }
+
 
   // ── taser: a dart flies from the cop along the shot direction (server 'shot' event) until the server's 'tase' event says where it
   // stopped (a thief, a wall, or the end of its range); two thin wires trail back to the gun. A hit sets the thief sparking. ──
@@ -608,6 +620,9 @@ export function createRoomScene(container, { base, world }) {
         scene.add(m, wires);
         darts.push({ cop: ev.cop, x: ev.x, y: ev.y, dir: ev.dir, t0: now, end: null, endAt: 0, m, wires });
         if (ev.cop !== meId) muzzle(people.get(ev.cop));
+      } else if (ev.t === 'grab') {
+        const rec = people.get(ev.cop);
+        if (rec && ev.cop !== meId) rec.grabUntil = now + 0.35;
       } else if (ev.t === 'emote') {
         showEmote(ev.id, ev.e);
       } else if (ev.t === 'tase') {
@@ -750,62 +765,19 @@ export function createRoomScene(container, { base, world }) {
     sightTex.needsUpdate = true;
   }
 
-  // ── artifacts: a spinning gem on a pedestal with a light beam (seen through the dark), and a ring that fills while a thief
-  // steals it. The rescue pad gets the same kind of ring. ──
-  const artifacts = new Map();                                // id → { group, gem, ring, p }
-  const glow = (m) => { m.userData.noSight = true; return m; };
-  function progressRing(r0, r1, p, color) {
-    return new THREE.Mesh(new THREE.RingGeometry(r0, r1, 48, 1, Math.PI / 2, -Math.PI * 2 * Math.max(0.001, p)),
-      glow(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthWrite: false })));
-  }
-  function setArtifacts(list, padP) {
-    const seenIds = new Set();
-    for (const a of list || []) {
-      seenIds.add(a.id);
-      let rec = artifacts.get(a.id);
-      if (!rec) {
-        const group = new THREE.Group();
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.4, 1.0, 20), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 }));
-        base.position.y = 0.5;
-        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.0), glow(new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.9, metalness: 0.4, roughness: 0.25 })));
-        gem.position.y = 2.7; gem.castShadow = true;
-        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.9, 16, 16, 1, true), glow(new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide })));
-        beam.position.y = 8;
-        group.add(base, gem, beam);
-        group.position.copy(onFloor(a.x, a.y));
-        scene.add(group);
-        rec = { group, gem, ring: null, p: -1 };
-        artifacts.set(a.id, rec);
-        for (let k = 0; k < 5; k++) puff(a.x + (Math.random() - 0.5), a.y + (Math.random() - 0.5));
-      }
-      if (Math.abs(a.p - rec.p) > 0.01) {                     // redraw the steal ring
-        if (rec.ring) { rec.group.remove(rec.ring); rec.ring.geometry.dispose(); }
-        rec.ring = a.p > 0 ? progressRing(world.steal.radius * CELL - 0.6, world.steal.radius * CELL, a.p, 0xef4444) : null;
-        if (rec.ring) { rec.ring.rotation.x = -Math.PI / 2; rec.ring.position.y = 0.15; rec.group.add(rec.ring); }
-        rec.p = a.p;
-      }
-    }
-    for (const [id, rec] of artifacts) {
-      if (seenIds.has(id)) continue;
-      const p = rec.group.position;
-      for (let k = 0; k < 10; k++) puff(p.x / CELL + (Math.random() - 0.5) * 1.5, p.z / CELL + (Math.random() - 0.5) * 1.5);
-      scene.remove(rec.group);
-      artifacts.delete(id);
-    }
-    if (padRing) {
-      if (padFill) { scene.remove(padFill); padFill.geometry.dispose(); padFill = null; }
-      if (padP > 0) {
-        padFill = progressRing(world.pad.r * CELL - 0.7, world.pad.r * CELL + 0.4, padP, 0x22c55e);
-        padFill.rotation.x = -Math.PI / 2;
-        padFill.position.copy(onFloor(world.pad.cx, world.pad.cy, 0.12));
-        scene.add(padFill);
-      }
-    }
-  }
+  // ── rescue pad: a green ring fills while a thief stands on it (world.rescue seconds) ──
   let padFill = null;
-  function stepArtifacts(dt) {
-    const t = performance.now() / 1000;
-    for (const rec of artifacts.values()) { rec.gem.rotation.y += dt * 1.6; rec.gem.position.y = 2.7 + Math.sin(t * 2.2) * 0.25; }
+  function setPad(padP) {
+    if (!padRing) return;
+    if (padFill) { scene.remove(padFill); padFill.geometry.dispose(); padFill = null; }
+    if (padP > 0) {
+      padFill = new THREE.Mesh(new THREE.RingGeometry(world.pad.r * CELL - 0.7, world.pad.r * CELL + 0.4, 48, 1, Math.PI / 2, -Math.PI * 2 * padP),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthWrite: false }));
+      padFill.userData.noSight = true;
+      padFill.rotation.x = -Math.PI / 2;
+      padFill.position.copy(onFloor(world.pad.cx, world.pad.cy, 0.12));
+      scene.add(padFill);
+    }
   }
 
   // ── emotes: an emoji bubble over the head, or (teabag) a quick crouch. Keys 1–5 and C. ──
@@ -836,13 +808,14 @@ export function createRoomScene(container, { base, world }) {
 
   return {
     setPlayers, correct, clear, dispose, mapKey: world.key,
-    onTag(cb) { tagCb = cb; },
+    onArrest(cb) { arrestCb = cb; },
+    arrestNow,
     focus() { renderer.domElement.focus(); },
     onMove(cb) { moveCb = cb; },
     onDash(cb) { dashCb = cb; },
     onShot(cb) { shotCb = cb; },
     onEmote(cb) { emoteCb = cb; },
-    setArtifacts,
+    setPad,
     events: handleEvents,
     setPhase(phase) { roundOn = phase === 'countdown' || phase === 'playing'; },
     abilityState() {                                           // what Space does for me right now, and how long until it's ready

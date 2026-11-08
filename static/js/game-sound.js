@@ -122,10 +122,7 @@
         crRescue: (c, t0) => {
             [392, 523.25, 659.25, 783.99].forEach((f, i) => tone(c, f, t0 + i * 0.07, 0.2, { type: 'triangle', volume: 0.2 }));
         },
-        crSteal: (c, t0) => {
-            [1046.5, 1318.5, 1568].forEach((f, i) => tone(c, f, t0 + i * 0.06, 0.25, { type: 'sine', volume: 0.18 }));
-        },
-        crAppear: (c, t0) => tone(c, 880, t0, 0.3, { type: 'sine', slideTo: 1320, volume: 0.1 }),
+        crGrab: (c, t0) => noise(c, t0, 0.14, { freq: 1800, sweepTo: 700, q: 1.2, volume: 0.18 }),
         crTick: (c, t0, n) => tone(c, 600 + (n || 0) * 120, t0, 0.06, { type: 'square', volume: 0.08 }),
         crBeep: (c, t0) => tone(c, 660, t0, 0.12, { type: 'square', volume: 0.12 }),
         crGo: (c, t0) => tone(c, 990, t0, 0.3, { type: 'square', volume: 0.14 }),

@@ -36,6 +36,8 @@
     .ut-loading { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #4338ca; pointer-events: none; }
     .ut-tag.cop { background: #1d4ed8; }
     .ut-tag.thief { background: #b91c1c; }
+    .ut-tag.reach { outline: 3px solid #facc15; }
+    .ut-tag.reach b { display: inline-block; margin-right: 4px; padding: 0 5px; border-radius: 5px; background: #facc15; color: #111827; font: 900 11px ui-monospace, monospace; }
     .ut-tag.jailed { background: #475569; }
     .ut-tag.me { outline: 2px solid #fff; }
     .ut-game { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
@@ -135,7 +137,7 @@
             <span class="ut-pill timer" id="ut-timer" hidden>3:00</span>
             <span class="ut-pill" id="ut-role" hidden></span>
             <span class="ut-pill" id="ut-count" hidden></span>
-            <span class="ut-pill" id="ut-loot" hidden></span>
+            <button type="button" class="ut-btn" id="ut-arrest" hidden>🖐 잡기 <kbd>E</kbd></button>
             <button type="button" class="ut-btn sub" id="ut-mute" title="소리 켜기/끄기">🔊</button>
             <button type="button" class="ut-btn sub" id="ut-bot-add" hidden>🤖 봇 추가</button>
             <button type="button" class="ut-btn sub" id="ut-bot-remove" hidden>봇 빼기</button>
@@ -157,9 +159,9 @@
             <button type="button" data-e="cool">😎<kbd>5</kbd></button><button type="button" data-e="teabag">🫖 앉았다 일어나기<kbd>C</kbd></button>
         </div>
         <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 도둑은 대시, 경찰은 테이저 · <kbd>1</kbd>~<kbd>5</kbd> 이모티콘 · <kbd>C</kbd> 앉았다 일어나기<br>
-            <b>경찰과 도둑</b>: 판 사이에는 정사각형 대기실에 모이고, 방장이 대기실에서 다음 맵을 골라요. 도둑은 맵 여기저기에 나타나는 💎아티팩트 곁에 3초 동안 서 있어 훔쳐요.
-            제한 시간 안에 정해진 개수를 훔치면 도둑 승리, 시간이 다 되거나 도둑이 모두 갇히면 경찰 승리예요(인원이 많을수록 개수와 시간이 늘어요).
-            경찰은 닿으면 잡아 감옥에 보내고, 테이저 침으로 잠깐 감전시킬 수 있어요(날아가니 피할 수 있어요). 도둑은 감옥 앞 노란 발판에 3초 동안 서 있으면 갇힌 동료를 모두 구해요.
+            <b>경찰과 도둑</b>: 판 사이에는 정사각형 대기실에 모이고, 방장이 대기실에서 다음 맵을 골라요.
+            제한 시간 안에 도둑을 모두 가두면 경찰 승리, 한 명이라도 끝까지 남으면 도둑 승리예요(인원이 많을수록 시간이 늘어요).
+            경찰은 도둑 가까이에서 <kbd>E</kbd>(잡기)를 눌러야 잡아요(스치기만 해서는 안 잡혀요). 잡힌 도둑은 감옥으로 가고, 테이저 침으로 잠깐 감전시킬 수 있어요(날아가니 피할 수 있어요). 도둑은 감옥 앞 노란 발판에 3초 동안 서 있으면 갇힌 동료를 모두 구해요.
             벽 너머·높은 가구 뒤·멀리 있는 상대는 사각지대라 안 보여요.</p>
     </div>
 </div>
@@ -212,7 +214,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         scene3d.onDash(() => { send({ type: 'dash' }); sfx('crDash'); });
         scene3d.onShot((dir) => { send({ type: 'taser', dir: dir }); sfx('crShot'); });
         scene3d.onEmote((e) => send({ type: 'emote', e: e }));
-        scene3d.onTag((id) => send({ type: 'tag', id: id }));
+        scene3d.onArrest((id) => { send({ type: 'arrest', id: id }); sfx('crGrab'); });
         scene3d.onFrame(drawTags);
         setTimeout(() => scene3d && scene3d.focus(), 50);
         return scene3d;
@@ -243,7 +245,9 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
             let e = tagEls[id];
             if (!e) { e = document.createElement('div'); layer.appendChild(e); tagEls[id] = e; }
             e.className = 'ut-tag' + (a.me ? ' me' : '') + (a.online ? '' : ' off') + (a.jailed ? ' jailed' : a.team ? ' ' + a.team : '');
+            e.className += a.reach ? ' reach' : '';
             e.textContent = (a.team === 'cop' ? '🚓 ' : a.team === 'thief' ? (a.jailed ? '⛓ ' : '🦹 ') : '') + a.name + (a.online ? '' : ' (자리 비움)');
+            if (a.reach) { const k = document.createElement('b'); k.textContent = 'E'; e.prepend(k); }   // close enough to grab
             if (a.emote) {                               // emote bubble: pops in, floats up, fades out
                 const b = document.createElement('span');
                 b.className = 'ut-emoji';
@@ -284,14 +288,11 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         $('ut-role').textContent = mine.team === 'cop' ? '🚓 나는 경찰' : mine.jailed ? '⛓ 갇혔어요 · 동료를 기다려요' : '🦹 나는 도둑';
         $('ut-count').hidden = !inGame;
         $('ut-count').textContent = '도둑 ' + (thieves.length - jailed) + '명 도망 중 · ' + jailed + '명 갇힘';
-        $('ut-loot').hidden = !inGame;
-        $('ut-loot').textContent = '💎 ' + (st.stolen || 0) + ' / ' + (st.need || 0);
-        let prog = null;                                   // my own steal / rescue progress
+        $('ut-arrest').hidden = !(st.phase === 'playing' && mine.team === 'cop');
+        let prog = null;                                   // my own rescue progress
         if (st.phase === 'playing' && mine.team === 'thief' && !mine.jailed && mine.x != null) {
-            const a = (st.artifacts || []).find((q) => q.p > 0 && Math.hypot(q.x - mine.x, q.y - mine.y) <= RULES.steal.radius + 0.05);
             const pad = WORLDS[st.map] && WORLDS[st.map].pad;
-            if (a) prog = ['💎 훔치는 중', a.p];
-            else if (st.pad > 0 && pad && Math.hypot(pad.cx - mine.x, pad.cy - mine.y) <= pad.r) prog = ['🔓 구출 중', st.pad];
+            if (st.pad > 0 && pad && Math.hypot(pad.cx - mine.x, pad.cy - mine.y) <= pad.r) prog = ['🔓 구출 중', st.pad];
         }
         $('ut-progress').hidden = !prog;
         if (prog) {
@@ -327,9 +328,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
             const win = st.result.winner;
             $('ut-result-title').textContent = win === 'cop' ? '🚓 경찰 승리!' : '🦹 도둑 승리!';
             $('ut-result-title').style.color = win === 'cop' ? '#1d4ed8' : '#b91c1c';
-            $('ut-result-text').textContent = (mine.team === win ? '이겼어요! ' : mine.team ? '아쉽게 졌어요. ' : '')
-                + '아티팩트 ' + (st.result.stolen || 0) + ' / ' + (st.result.need || 0) + '개를 훔쳤어요'
-                + (win === 'cop' && st.result.free === 0 ? ' · 도둑이 모두 갇혔어요.' : '.');
+            $('ut-result-text').textContent = (mine.team === win ? '이겼어요! ' : mine.team ? '아쉽게 졌어요. ' : '') + '도둑 ' + st.result.thieves + '명 중 ' + st.result.free + '명이 끝까지 도망쳤어요.';
             const best = Object.entries(st.result.catches || {}).sort((a, b) => b[1] - a[1])[0];
             const who = best && st.players.find((p) => String(p.id) === String(best[0]));
             $('ut-result-catch').textContent = who && best[1] ? '최다 검거: ' + who.name + ' (' + best[1] + '명)' : '';
@@ -343,8 +342,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
             else if (ev.t === 'tase' && ev.thief != null) sfx('crZap');
             else if (ev.t === 'caught') sfx('crCaught');
             else if (ev.t === 'rescue') sfx('crRescue');
-            else if (ev.t === 'stolen') sfx('crSteal');
-            else if (ev.t === 'artifact' && st.phase === 'playing') sfx('crAppear');
+            else if (ev.t === 'grab' && ev.cop !== meId && seenBy(ev.cop)) sfx('crGrab');
             else if (ev.t === 'emote' && seenBy(ev.id)) sfx('pop');
             else if (ev.t === 'end') sfx(mine.team === ev.winner ? 'fanfare' : mine.team ? 'lose' : 'success');
             if (ev.t === 'caught') toast(ev.thief === meId ? '⛓ 잡혔어요! 동료가 구해 줄 거예요' : '🚓 ' + name(ev.cop) + '이(가) ' + name(ev.thief) + '을(를) 잡았어요', ev.thief === meId ? 'bad' : '');
@@ -352,7 +350,6 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
             else if (ev.t === 'go') toast('시작!');
             else if (ev.t === 'tase' && ev.thief != null) toast(ev.thief === meId ? '⚡ 테이저에 맞았어요! 잠깐 못 움직여요' : '⚡ ' + name(ev.cop) + '이(가) ' + name(ev.thief) + '을(를) 감전시켰어요', ev.thief === meId ? 'bad' : '');
             else if (ev.t === 'map') toast('🗺 다음 판 맵: ' + mapName(ev.map));
-            else if (ev.t === 'stolen') toast('💎 ' + name(ev.by) + '이(가) 아티팩트를 훔쳤어요 (' + ev.n + ' / ' + ev.need + ')');
         });
     }
     setInterval(() => {
@@ -384,7 +381,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
                     sc.setPhase(d.state.phase);
                     sc.setPlayers(d.state.players, meId);
                     sc.events(d.state.events);
-                    sc.setArtifacts(d.state.artifacts, d.state.pad);
+                    sc.setPad(d.state.pad);
                 }
                 renderChips(d.state.players); renderGame(d.state);
             }
@@ -437,6 +434,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         send({ type: 'create', name: $('ut-room-name').value.trim(), private: $('ut-private').checked });
     });
     $('ut-bot-add').addEventListener('click', () => send({ type: 'add_bot' }));
+    $('ut-arrest').addEventListener('click', () => { if (scene3d) { scene3d.arrestNow(); scene3d.focus(); } });
     $('ut-emotes').addEventListener('click', (e) => {
         const b = e.target.closest('[data-e]');
         if (b) { send({ type: 'emote', e: b.dataset.e }); if (scene3d) scene3d.focus(); }
