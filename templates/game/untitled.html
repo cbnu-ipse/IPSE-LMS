@@ -137,7 +137,7 @@
             <span class="ut-pill timer" id="ut-timer" hidden>3:00</span>
             <span class="ut-pill" id="ut-role" hidden></span>
             <span class="ut-pill" id="ut-count" hidden></span>
-            <button type="button" class="ut-btn" id="ut-arrest" hidden>🖐 잡기 <kbd>E</kbd></button>
+            <button type="button" class="ut-btn" id="ut-arrest" hidden>🖐 붙잡기(누르고 있기) <kbd>E</kbd></button>
             <button type="button" class="ut-btn sub" id="ut-mute" title="소리 켜기/끄기">🔊</button>
             <button type="button" class="ut-btn sub" id="ut-bot-add" hidden>🤖 봇 추가</button>
             <button type="button" class="ut-btn sub" id="ut-bot-remove" hidden>봇 빼기</button>
@@ -149,7 +149,7 @@
             <div class="ut-ping" id="ut-ping" title="서버까지 왕복 시간">핑 –</div>
             <div class="ut-tags" id="ut-tags"></div>
             <div class="ut-banner" id="ut-banner" hidden><b id="ut-banner-big"></b><span id="ut-banner-small"></span></div>
-            <div class="ut-dash" id="ut-dash" hidden><span id="ut-dash-name">대시</span> <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">준비</span></div>
+            <div class="ut-dash" id="ut-dash" hidden><span id="ut-dash-name">스태미나</span> <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">준비</span></div>
             <div class="ut-progress" id="ut-progress" hidden><span id="ut-progress-t"></span><i><u id="ut-progress-bar"></u></i></div>
             <div class="ut-result" id="ut-result" hidden><div><h2 id="ut-result-title"></h2><p id="ut-result-text"></p><p id="ut-result-catch"></p><p style="font-size:12px">잠시 뒤 대기실로 돌아가요</p></div></div>
         </div>
@@ -158,10 +158,11 @@
             <button type="button" data-e="wave">👋<kbd>3</kbd></button><button type="button" data-e="angry">😡<kbd>4</kbd></button>
             <button type="button" data-e="cool">😎<kbd>5</kbd></button><button type="button" data-e="teabag">🫖 앉았다 일어나기<kbd>C</kbd></button>
         </div>
-        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · <kbd>Space</kbd> 도둑은 대시, 경찰은 테이저 · <kbd>1</kbd>~<kbd>5</kbd> 이모티콘 · <kbd>C</kbd> 앉았다 일어나기<br>
+        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직여요 · 도둑: <kbd>Space</kbd>/<kbd>Shift</kbd> 누르고 있으면 달리기(스태미나) · 경찰: 마우스로 조준해 클릭(또는 <kbd>Space</kbd>)하면 테이저, <kbd>E</kbd> 누르고 있으면 붙잡기 · <kbd>1</kbd>~<kbd>5</kbd> 이모티콘 · <kbd>C</kbd> 앉았다 일어나기<br>
             <b>경찰과 도둑</b>: 판 사이에는 정사각형 대기실에 모이고, 방장이 대기실에서 다음 맵을 골라요.
             제한 시간 안에 도둑을 모두 가두면 경찰 승리, 한 명이라도 끝까지 남으면 도둑 승리예요(인원이 많을수록 시간이 늘어요).
-            경찰은 도둑 가까이에서 <kbd>E</kbd>(잡기)를 눌러야 잡아요(스치기만 해서는 안 잡혀요). 잡힌 도둑은 감옥으로 가고, 테이저 침으로 잠깐 감전시킬 수 있어요(날아가니 피할 수 있어요). 도둑은 감옥 앞 노란 발판에 3초 동안 서 있으면 갇힌 동료를 모두 구해요.
+            경찰은 도둑 가까이에서 <kbd>E</kbd>를 누른 채로 0.5초 동안 붙잡고 있어야 잡아요(스치기만 해서는 안 잡혀요). 붙잡힌 도둑은 아주 느려지지만, 달려서 벗어나거나 경찰이 손을 떼면 풀려나요.
+            잡힌 도둑은 감옥으로 가요. 경찰은 마우스로 겨눈 쪽으로 테이저 침을 쏴 잠깐 감전시킬 수 있어요. 도둑은 감옥 앞 노란 발판에 3초 동안 서 있으면 갇힌 동료를 모두 구해요.
             벽 너머·높은 가구 뒤·멀리 있는 상대는 사각지대라 안 보여요.</p>
     </div>
 </div>
@@ -211,7 +212,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         }
         scene3d.onMove((pos) => send({ type: 'move', ...pos }));
         $('ut-loading').textContent = '맵을 불러오는 중…';
-        scene3d.onDash(() => { send({ type: 'dash' }); sfx('crDash'); });
+        scene3d.onRelease(() => send({ type: 'release' }));
         scene3d.onShot((dir) => { send({ type: 'taser', dir: dir }); sfx('crShot'); });
         scene3d.onEmote((e) => send({ type: 'emote', e: e }));
         scene3d.onArrest((id) => { send({ type: 'arrest', id: id }); sfx('crGrab'); });
@@ -289,8 +290,12 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         $('ut-count').hidden = !inGame;
         $('ut-count').textContent = '도둑 ' + (thieves.length - jailed) + '명 도망 중 · ' + jailed + '명 갇힘';
         $('ut-arrest').hidden = !(st.phase === 'playing' && mine.team === 'cop');
-        let prog = null;                                   // my own rescue progress
-        if (st.phase === 'playing' && mine.team === 'thief' && !mine.jailed && mine.x != null) {
+        let prog = null;                                   // my own grab / rescue progress
+        if (st.phase === 'playing' && mine.grabbing != null) prog = ['🖐 붙잡는 중', mine.grab];
+        else if (st.phase === 'playing' && mine.grabbed) {
+            const by = st.players.find((p) => p.grabbing === meId);
+            prog = ['😱 붙잡혔어요! 달려서 벗어나요', by ? by.grab : 0];
+        } else if (st.phase === 'playing' && mine.team === 'thief' && !mine.jailed && mine.x != null) {
             const pad = WORLDS[st.map] && WORLDS[st.map].pad;
             if (st.pad > 0 && pad && Math.hypot(pad.cx - mine.x, pad.cy - mine.y) <= pad.r) prog = ['🔓 구출 중', st.pad];
         }
@@ -342,7 +347,8 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
             else if (ev.t === 'tase' && ev.thief != null) sfx('crZap');
             else if (ev.t === 'caught') sfx('crCaught');
             else if (ev.t === 'rescue') sfx('crRescue');
-            else if (ev.t === 'grab' && ev.cop !== meId && seenBy(ev.cop)) sfx('crGrab');
+            else if (ev.t === 'grab' && ev.ok && (ev.thief === meId || seenBy(ev.cop))) sfx('crGrab');
+            else if (ev.t === 'grab_break' && (ev.thief === meId || ev.cop === meId)) sfx('tap');
             else if (ev.t === 'emote' && seenBy(ev.id)) sfx('pop');
             else if (ev.t === 'end') sfx(mine.team === ev.winner ? 'fanfare' : mine.team ? 'lose' : 'success');
             if (ev.t === 'caught') toast(ev.thief === meId ? '⛓ 잡혔어요! 동료가 구해 줄 거예요' : '🚓 ' + name(ev.cop) + '이(가) ' + name(ev.thief) + '을(를) 잡았어요', ev.thief === meId ? 'bad' : '');
@@ -356,9 +362,15 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         if (!scene3d || !G) return;
         const d = scene3d.abilityState();
         if (!d.kind) return;
-        $('ut-dash-name').textContent = d.kind === 'taser' ? '⚡ 테이저' : '💨 대시';
-        $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / d.cooldown) * 100 : 100) + '%';
-        $('ut-dash-t').textContent = d.active ? '쌩!' : d.ready > 0 ? d.ready.toFixed(1) + '초' : 'Space';
+        if (d.kind === 'run') {                         // thieves: stamina bar
+            $('ut-dash-name').textContent = '🏃 스태미나';
+            $('ut-dash-bar').style.width = Math.round(d.stamina * 100) + '%';
+            $('ut-dash-t').textContent = d.active ? '달리는 중' : d.stamina < 0.05 ? '숨 고르는 중' : 'Space';
+        } else {                                        // cops: taser cooldown
+            $('ut-dash-name').textContent = '⚡ 테이저';
+            $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / d.cooldown) * 100 : 100) + '%';
+            $('ut-dash-t').textContent = d.ready > 0 ? d.ready.toFixed(1) + '초' : '클릭';
+        }
     }, 100);
 
     function showRoom(code) {
@@ -434,7 +446,8 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         send({ type: 'create', name: $('ut-room-name').value.trim(), private: $('ut-private').checked });
     });
     $('ut-bot-add').addEventListener('click', () => send({ type: 'add_bot' }));
-    $('ut-arrest').addEventListener('click', () => { if (scene3d) { scene3d.arrestNow(); scene3d.focus(); } });
+    $('ut-arrest').addEventListener('pointerdown', (e) => { e.preventDefault(); if (scene3d) { scene3d.arrestNow(); scene3d.focus(); } });   // hold to grab
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => $('ut-arrest').addEventListener(ev, () => { if (scene3d) scene3d.releaseGrab(); }));
     $('ut-emotes').addEventListener('click', (e) => {
         const b = e.target.closest('[data-e]');
         if (b) { send({ type: 'emote', e: b.dataset.e }); if (scene3d) scene3d.focus(); }

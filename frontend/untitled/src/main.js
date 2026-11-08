@@ -141,6 +141,7 @@ export function createRoomScene(container, { base, world }) {
       else g.position.copy(toWorld(piece.t + 0.5, piece.f, span.bottom));
       scene.add(g);
     }
+    await buildDoors();
     for (const d of world.decor) {
       const g = await furniture(base, d.model);
       if (dead) return;
@@ -292,8 +293,11 @@ export function createRoomScene(container, { base, world }) {
     const cartridge = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.075, 0.05), black); cartridge.position.set(0, 0, 0.16);
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.01), new THREE.MeshBasicMaterial({ color: 0x38bdf8 })); lamp.position.set(0, 0.025, 0.186);
     g.add(body, grip, cartridge, lamp);
-    g.position.set(-0.01, -0.13, 0.05);
-    g.scale.setScalar(1.6);                   // a bit oversized so it reads from the isometric camera
+    // held in the right hand: in bone space the arm runs along -x (T-pose) and the idle pose swings it 45° down, so the gun
+    // sits at the hand (-0.27, 0, 0.07) and is turned back 45° to stand upright; its barrel points forward (+z)
+    g.position.set(-0.27, 0.0, 0.07);
+    g.rotation.z = -Math.PI / 4;
+    g.scale.setScalar(1.4);                   // a bit oversized so it reads from the isometric camera
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     return g;
   }
@@ -304,7 +308,7 @@ export function createRoomScene(container, { base, world }) {
     if (rec.hat) { rec.hat.parent.remove(rec.hat); rec.hat = null; }
     if (rec.gun) { rec.gun.parent.remove(rec.gun); rec.gun = null; }
     if (team && head) { rec.hat = teamHat(team); head.add(rec.hat); }
-    if (team === 'cop' && arm) { rec.gun = taserGun(); arm.add(rec.gun); }    // cops carry a taser instead of dashing
+    if (team === 'cop' && arm) { rec.gun = taserGun(); arm.add(rec.gun); }    // cops carry a taser
   }
 
   // ── people ──
@@ -337,6 +341,9 @@ export function createRoomScene(container, { base, world }) {
       if (p.id === meId) {                                     // my own position is driven locally; adopt it at first and whenever the server moves me
         if (!me || p.tp !== me.tp) { me = { ...(me || {}), x: p.x, y: p.y, dir: p.dir, tp: p.tp }; }
         me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.team = p.team;
+        me.grabbed = !!p.grabbed; me.grabbing = p.grabbing != null;
+        const serverStamina = (p.stamina ?? 1) * world.run.stamina;    // keep my own running tally, but follow the server if it drifts
+        if (me.stamina == null || Math.abs(me.stamina - serverStamina) > 0.6) me.stamina = serverStamina;
         return;
       }
       if (p.hidden) { rec.hidden = true; rec.moving = false; return; }   // out of my sight: the server didn't say where
@@ -352,8 +359,9 @@ export function createRoomScene(container, { base, world }) {
       rec.snap = jump > 3;                                     // teleported (jail, rescue, new map): don't glide across the map
       rec.sampleAt = t;
       rec.x = p.x; rec.y = p.y; rec.dir = p.dir; rec.moving = p.moving;
-      if (p.dashing && !rec.dashing) rec.dashEnd = performance.now() / 1000 + world.dash.seconds;   // local expiry in case the "off" update is late
-      rec.dashing = !!p.dashing;
+      rec.running = !!p.running;
+      rec.grabbedNow = !!p.grabbed;
+      rec.grabbing = p.grabbing;
     });
     for (const [id, rec] of people) {
       if (seen.has(id)) continue;
@@ -368,29 +376,142 @@ export function createRoomScene(container, { base, world }) {
     me = null; meId = null;
   }
 
+  // ── doors: the leaf of Kenney's doorway model, hung in pairs (one per cell) on doorways one or two cells wide and cut to the
+  // walls' waist height, so they read as swinging saloon doors. They swing away from whoever comes near. Purely visual. ──
+  const doors = [];                                           // { group, base, k, o, f, cx, cy, cur, side }
+  async function buildDoors() {
+    if (!(world.doors || []).length) return;
+    const model = await furniture(base, 'doorway');
+    let leafMesh = null;
+    model.traverse((o) => { if (o.isMesh && o.name && o.name !== 'doorway') leafMesh = o; });
+    if (!leafMesh || dead) return;
+    const geo = leafMesh.geometry.clone();
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    geo.translate(-bb.min.x, -bb.min.y, -(bb.min.z + bb.max.z) / 2);     // hinge edge at x = 0, bottom at y = 0
+    const lw = bb.max.x - bb.min.x, lh = bb.max.y - bb.min.y, DOOR_H = LOW_WALL_H + 0.3;
+    for (const d of world.doors) {
+      const width = d.t1 - d.t0;
+      if (width > 2) continue;                                // wider openings are passages, not doorways
+      const per = width / (width === 2 ? 2 : 1);
+      const hinges = width === 2 ? [[d.t0, 1], [d.t1, -1]] : [[d.t0, 1]];
+      const mid = (d.t0 + d.t1) / 2;
+      const [cx, cy] = d.o === 'h' ? [mid, d.f] : [d.f, mid];
+      for (const [t, dirSign] of hinges) {
+        const mesh = new THREE.Mesh(geo, leafMesh.material);
+        mesh.castShadow = true;
+        mesh.scale.set(per * CELL / lw * 0.98, DOOR_H / lh, 1);
+        const group = new THREE.Group();
+        group.add(mesh);
+        const [hx, hy] = d.o === 'h' ? [t, d.f] : [d.f, t];
+        group.position.copy(toWorld(hx, hy, heightAt(cx + (d.o === 'v' ? 0.01 : 0), cy + (d.o === 'h' ? 0.01 : 0))));
+        // closed: an 'h' leaf points along +x (or -x from the far hinge), a 'v' leaf along +z (or -z)
+        const baseAngle = d.o === 'h' ? (dirSign > 0 ? 0 : Math.PI) : (dirSign > 0 ? -Math.PI / 2 : Math.PI / 2);
+        const k = d.o === 'h' ? dirSign : -dirSign;            // which way "away from the person" turns this leaf
+        group.rotation.y = baseAngle;
+        scene.add(group);
+        doors.push({ group, base: baseAngle, k, o: d.o, f: d.f, cx, cy, cur: 0, side: 1 });
+      }
+    }
+  }
+  function stepDoors(dt) {
+    for (const door of doors) {
+      let near = null, best = 1.6;
+      for (const [id, rec] of people) {                       // the nearest person I can see pushes the door open
+        if (!rec.actor || (rec.hidden && id !== meId)) continue;
+        const px = id === meId && me ? me.x : rec.actor.root.position.x / CELL, py = id === meId && me ? me.y : rec.actor.root.position.z / CELL;
+        const dd = Math.hypot(px - door.cx, py - door.cy);
+        if (dd < best) { best = dd; near = [px, py]; }
+      }
+      if (near) door.side = Math.sign((door.o === 'h' ? near[1] - door.f : near[0] - door.f)) || 1;
+      door.cur += ((near ? 1.35 : 0) - door.cur) * Math.min(1, dt * 9);
+      door.group.rotation.y = door.base + door.k * door.side * door.cur;
+    }
+  }
+
+  // ── mouse aim (cops): the taser shoots toward the cursor. A line on the floor shows where (yellow when ready). ──
+  const aim = { has: false, x: 0, y: 0 };
+  const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), aimHit = new THREE.Vector3();
+  function onPointerMove(e) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    ndc.set((e.clientX - rect.left) / rect.width * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    aimPlane.constant = -(me ? heightAt(me.x, me.y) : 0);  // the floor I stand on
+    if (raycaster.ray.intersectPlane(aimPlane, aimHit)) { aim.x = aimHit.x / CELL; aim.y = aimHit.z / CELL; aim.has = true; }
+  }
+  function onPointerDown(e) {
+    if (e.button !== 0 || !me || me.team !== 'cop') return;
+    onPointerMove(e);
+    fireTaser();
+  }
+  renderer.domElement.addEventListener('pointermove', onPointerMove);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  const aimLine = new THREE.Mesh(new THREE.BoxGeometry(1, 0.06, 0.3), new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.7, depthWrite: false }));
+  const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.15, 32), new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+  aimRing.rotation.x = -Math.PI / 2;
+  aimLine.userData.noSight = aimRing.userData.noSight = true;
+  aimLine.visible = aimRing.visible = false;
+  scene.add(aimLine, aimRing);
+  function stepAim() {
+    const show = roundOn && me && me.team === 'cop' && aim.has && !(me.frozen > 0);
+    aimLine.visible = aimRing.visible = !!show;
+    if (!show) return;
+    const dx = aim.x - me.x, dy = aim.y - me.y, len = Math.min(world.taser.range, Math.hypot(dx, dy)) || 0.01;
+    const a = Math.atan2(dx, dy), ex = me.x + Math.sin(a) * len, ey = me.y + Math.cos(a) * len;
+    const h = heightAt(me.x, me.y) + 0.15;
+    aimLine.scale.x = len * CELL;
+    aimLine.position.set((me.x + ex) / 2 * CELL, h, (me.y + ey) / 2 * CELL);
+    aimLine.rotation.y = a - Math.PI / 2;
+    aimRing.position.set(ex * CELL, heightAt(ex, ey) + 0.16, ey * CELL);
+    const ready = performance.now() / 1000 >= taserReady;
+    aimLine.material.color.setHex(ready ? 0xfacc15 : 0x94a3b8);
+    aimRing.material.color.setHex(ready ? 0xfacc15 : 0x94a3b8);
+  }
+
+  // ── grab rope: a line from each grabbing cop to the thief in their grip ──
+  const rope = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(8 * 2 * 3), 3)),
+    new THREE.LineBasicMaterial({ color: 0xfde047 }));
+  rope.frustumCulled = false;
+  scene.add(rope);
+  function stepRope() {
+    const pos = rope.geometry.attributes.position;
+    let n = 0;
+    for (const [id, rec] of people) {
+      const target = id === meId && me ? (me.grabbing ? [...people.entries()].find(([, r]) => r.grabbedNow)?.[0] : null) : rec.grabbing;
+      const t = target != null ? people.get(target) : null;
+      if (!rec.actor || !t || !t.actor || n >= 8) continue;
+      const a = rec.actor.root.position, b = t.actor.root.position;
+      pos.setXYZ(n * 2, a.x, a.y + 2.2, a.z); pos.setXYZ(n * 2 + 1, b.x, b.y + 2.6, b.z);
+      n++;
+    }
+    for (let k = n * 2; k < 16; k++) pos.setXYZ(k, 0, -999, 0);
+    pos.needsUpdate = true;
+  }
+
   // ── WASD: screen-relative (W = up the screen = toward the back corner) ──
   const keys = new Set();
   const MOVE_KEYS = { w: [-1, -1], arrowup: [-1, -1], s: [1, 1], arrowdown: [1, 1], a: [-1, 1], arrowleft: [-1, 1], d: [1, -1], arrowright: [1, -1] };
-  let dashUntil = 0, dashReady = 0, dashCb = null, taserReady = 0, shotCb = null;
+  let runHeld = false, running = false, taserReady = 0, shotCb = null;
+  function fireTaser() {                                      // cops: shoot toward the mouse (or where I face if the mouse never moved)
+    const now = performance.now() / 1000;
+    if (!me || me.team !== 'cop' || me.frozen > 0 || now < taserReady) return;
+    taserReady = now + world.taser.cooldown;
+    const dir = aim.has ? Math.atan2(aim.x - me.x, aim.y - me.y) : me.dir;
+    me.dir = dir;                                             // turn to face the shot
+    muzzle(people.get(meId));
+    if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: false, run: false }); }
+    if (shotCb) shotCb(+dir.toFixed(4));
+  }
   function onKeyDown(e) {
     const k = e.key.toLowerCase();
-    if (k === ' ' && !e.target.closest('input, textarea, button') && me) {
+    if ((k === ' ' || k === 'shift') && !e.target.closest('input, textarea, button') && me) {
       e.preventDefault();
-      const now = performance.now() / 1000;
-      if (me.frozen > 0 || me.jailed) return;
-      if (me.team === 'thief' && now >= dashReady) {          // thieves dash
-        dashUntil = now + world.dash.seconds;
-        dashReady = now + world.dash.cooldown;
-        if (dashCb) dashCb();
-      } else if (me.team === 'cop' && now >= taserReady) {    // cops fire the taser where they face
-        taserReady = now + world.taser.cooldown;
-        muzzle(people.get(meId));
-        if (shotCb) shotCb(+me.dir.toFixed(4));
-      }
+      if (me.team === 'thief') runHeld = true;                // thieves run while the key is held (stamina)
+      else if (k === ' ' && !e.repeat) fireTaser();
       return;
     }
     if (k === 'e' && !e.target.closest('input, textarea') && meId) {
-      if (!e.repeat) arrestNow();
+      if (!e.repeat) arrestNow();                             // hold E to keep grabbing
       return;
     }
     if (EMOTE_KEYS[k] && !e.target.closest('input, textarea') && meId) {
@@ -405,8 +526,13 @@ export function createRoomScene(container, { base, world }) {
     e.preventDefault();
     keys.add(k);
   }
-  const onKeyUp = (e) => keys.delete(e.key.toLowerCase());
-  const onBlur = () => keys.clear();
+  const onKeyUp = (e) => {
+    const k = e.key.toLowerCase();
+    keys.delete(k);
+    if (k === ' ' || k === 'shift') runHeld = false;
+    if (k === 'e') releaseGrab();
+  };
+  const onBlur = () => { keys.clear(); runHeld = false; releaseGrab(); };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlur);
@@ -419,9 +545,13 @@ export function createRoomScene(container, { base, world }) {
     const moving = len > 0;
     const frozen = me.frozen > 0;
     if (frozen) me.frozen = Math.max(0, me.frozen - dt);
+    // thieves run while Space/Shift is held and stamina lasts; stamina refills when not running (same rule as the server)
+    running = me.team === 'thief' && runHeld && moving && !frozen && !me.jailed && (me.stamina ?? 0) > 0;
+    if (running) me.stamina = Math.max(0, me.stamina - dt);
+    else if (me.stamina != null) me.stamina = Math.min(world.run.stamina, me.stamina + dt * world.run.regen);
     if (moving && !frozen) {
-      const boost = performance.now() / 1000 < dashUntil ? world.dash.mult : 1;
-      const dist = (me.speed || world.speed.lobby) * boost * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
+      const slow = me.grabbed ? world.arrest.slow : me.grabbing ? world.arrest.cop_slow : 1;
+      const dist = (me.speed || world.speed.lobby) * (running ? world.run.mult : 1) * slow * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
       // other players push me softly, but only ones I can see and whose spot I know (hidden opponents arrive without x/y)
       const others = [...people.entries()].filter(([id, r]) => id !== meId && !r.hidden && Number.isFinite(r.x) && Number.isFinite(r.y)).map(([, r]) => r);
       const sx = vx / len * dist / steps, sy = vy / len * dist / steps;
@@ -443,7 +573,7 @@ export function createRoomScene(container, { base, world }) {
     sinceSend += dt;
     if (moveCb && (moving && sinceSend >= SEND_EVERY || moving !== wasMoving)) {
       sinceSend = 0;
-      moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving });
+      moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving, run: running });
     }
     wasMoving = moving && !frozen;
     return moving && !frozen;
@@ -535,7 +665,7 @@ export function createRoomScene(container, { base, world }) {
       else a.root.position.lerp(target, Math.min(1, dt * 14));
       a.root.rotation.y = mine ? me.dir : rec.dir;
       const nowS = performance.now() / 1000;
-      const dashing = mine ? nowS < dashUntil : rec.dashing && nowS < (rec.dashEnd || 0);
+      const dashing = mine ? running : !!rec.running;          // running look: streaks, dust, bright ring
       if (rec.ring) {
         const flash = rec.safe > 0 && Math.floor(performance.now() / 150) % 2;
         rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team] || 0x4f46e5);
@@ -559,14 +689,18 @@ export function createRoomScene(container, { base, world }) {
         a.root.rotation.y += Math.sin(nowS * 70) * 0.18;
         if (rec.ring) rec.ring.material.color.setHex(Math.floor(nowS * 20) % 2 ? 0x22d3ee : 0xffffff);
       }
-      const crouch = (rec.crouchUntil || 0) > nowS, grab = (rec.grabUntil || 0) > nowS;
+      const crouch = (rec.crouchUntil || 0) > nowS, grab = (rec.grabUntil || 0) > nowS || (mine ? me.grabbing : rec.grabbing != null);
+      if ((mine ? me.grabbed : rec.grabbedNow) && !stunned) a.root.rotation.y += Math.sin(nowS * 40) * 0.25;   // squirming in a cop's grip
       a.pose(crouch ? 'sit' : grab ? 'work' : !stunned && ((mine ? myMoving : rec.moving) || dashing) ? 'walk' : 'idle');
-      if (a.mixer) a.mixer.timeScale = dashing ? 1.8 : stunned ? 3 : 1;
+      if (a.mixer) a.mixer.timeScale = dashing ? 1.6 : stunned ? 3 : 1;
       a.update(dt);
     }
     findReach();
     stepDarts();
     stepSight();
+    stepDoors(dt);
+    stepAim();
+    stepRope();
     stepPuffs(dt);
     if (me) focus.lerp(onFloor(me.x, me.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
@@ -585,7 +719,7 @@ export function createRoomScene(container, { base, world }) {
   function findReach() {                                    // the nearest thief I could grab right now (shown as "E" on the name tag)
     reachId = null;
     const mine = people.get(meId);
-    if (!me || !mine || mine.team !== 'cop' || me.frozen > 0) return;
+    if (!me || !mine || mine.team !== 'cop' || me.frozen > 0 || me.grabbing) return;
     let best = world.arrest.reach + 0.05;
     for (const [id, rec] of people) {
       if (id === meId || !rec.actor || rec.hidden || rec.team !== 'thief' || rec.jailed || rec.safe > 0) continue;
@@ -597,9 +731,16 @@ export function createRoomScene(container, { base, world }) {
     const mine = people.get(meId), now = performance.now() / 1000;
     if (!arrestCb || !me || !mine || mine.team !== 'cop' || me.frozen > 0 || now < arrestReady) return;
     arrestReady = now + world.arrest.cooldown;
-    mine.grabUntil = now + 0.35;                               // reach out right away; the server says if it caught anyone
-    if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: false }); }   // my latest spot first
+    mine.grabUntil = now + 0.35;                               // reach out right away; the server says if it got hold of anyone
+    grabHeld = true;
+    if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: false, run: false }); }   // my latest spot first
     arrestCb(reachId);
+  }
+  let grabHeld = false, releaseCb = null;
+  function releaseGrab() {                                    // letting go of E before the grab completes lets the thief go
+    if (!grabHeld) return;
+    grabHeld = false;
+    if (releaseCb) releaseCb();
   }
 
 
@@ -801,6 +942,8 @@ export function createRoomScene(container, { base, world }) {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', onBlur);
+    renderer.domElement.removeEventListener('pointermove', onPointerMove);
+    renderer.domElement.removeEventListener('pointerdown', onPointerDown);
     renderer.dispose();
     renderer.forceContextLoss();
     renderer.domElement.remove();
@@ -812,7 +955,9 @@ export function createRoomScene(container, { base, world }) {
     arrestNow,
     focus() { renderer.domElement.focus(); },
     onMove(cb) { moveCb = cb; },
-    onDash(cb) { dashCb = cb; },
+    onRelease(cb) { releaseCb = cb; },
+    releaseGrab,
+    fireTaser,
     onShot(cb) { shotCb = cb; },
     onEmote(cb) { emoteCb = cb; },
     setPad,
@@ -821,7 +966,7 @@ export function createRoomScene(container, { base, world }) {
     abilityState() {                                           // what Space does for me right now, and how long until it's ready
       const now = performance.now() / 1000, team = me && me.team;
       if (team === 'cop') return { kind: 'taser', ready: Math.max(0, taserReady - now), cooldown: world.taser.cooldown, active: false };
-      if (team === 'thief') return { kind: 'dash', ready: Math.max(0, dashReady - now), cooldown: world.dash.cooldown, active: now < dashUntil };
+      if (team === 'thief') return { kind: 'run', stamina: (me.stamina ?? world.run.stamina) / world.run.stamina, active: running };
       return { kind: null };
     },
     onFrame(cb) { frameCb = cb; },

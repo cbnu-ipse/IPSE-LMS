@@ -164,6 +164,13 @@ class CopsAndRobbersTests(SimpleTestCase):
         thieves = [p for p in room.players.values() if p.team == "thief"]
         return room, cop, thieves
 
+    def hold(self, room, cop, t, now):
+        """경찰이 도둑을 붙잡고(E) GRAB_SECONDS 넘게 놓지 않는다. 끝난 시각을 돌려준다."""
+        self.assertEqual(room.arrest(cop.uid, t.uid, now=now), t.uid)
+        end = now + world.GRAB_SECONDS + 0.05
+        room.update(now=end)
+        return end
+
     def place(self, p, x, y, now):
         p.teleport(x, y)
         p.last = now
@@ -195,8 +202,12 @@ class CopsAndRobbersTests(SimpleTestCase):
         room.update(now=now)
         self.assertFalse(t.jailed)                                          # 스치기만 해서는 안 잡힌다
         self.assertIsNone(room.arrest(t.uid, cop.uid, now=now))             # 도둑은 잡을 수 없다
-        self.assertEqual(room.arrest(cop.uid, None, now=now), t.uid)        # 잡기를 누르면 잡힌다
-        self.assertTrue(t.jailed)
+        self.assertEqual(room.arrest(cop.uid, None, now=now), t.uid)        # 잡기를 누르면 붙잡기 시작
+        room.update(now=now + world.GRAB_SECONDS / 2)
+        self.assertFalse(t.jailed)                                          # 아직 덜 붙잡았다
+        self.assertTrue(t.public(now + 0.3)["grabbed"])
+        room.update(now=now + world.GRAB_SECONDS + 0.05)
+        self.assertTrue(t.jailed)                                           # 0.5초 동안 붙잡고 있으면 잡힌다
         self.assertTrue(room.map.in_jail(t.x, t.y))
         self.assertEqual(t.tp, 2)                                           # 시작할 때 한 번, 잡혀서 한 번
         self.assertEqual(cop.catches, 1)
@@ -207,8 +218,7 @@ class CopsAndRobbersTests(SimpleTestCase):
         jailed, hero = thieves
         now = world.COUNTDOWN + world.HEAD_START + 1
         cop.x, cop.y = jailed.x + 0.4, jailed.y
-        room.arrest(cop.uid, jailed.uid, now=now)
-        room.update(now=now)
+        now = self.hold(room, cop, jailed, now)
         self.assertTrue(jailed.jailed)
         cop.x, cop.y = 40.5, 10.0
         hero.x, hero.y = room.map.pad["cx"], room.map.pad["cy"]
@@ -237,9 +247,7 @@ class CopsAndRobbersTests(SimpleTestCase):
         now = world.COUNTDOWN + world.HEAD_START + 1
         for t in thieves:
             cop.x, cop.y = t.x + 0.3, t.y
-            now += world.ARREST_COOLDOWN
-            room.arrest(cop.uid, t.uid, now=now)
-            room.update(now=now)
+            now = self.hold(room, cop, t, now + 0.1)
         self.assertEqual(room.phase, "result")
         self.assertEqual(room.result["winner"], "cop")
         room.update(now=now + world.RESULT_SECONDS + 0.1)
@@ -261,6 +269,40 @@ class CopsAndRobbersTests(SimpleTestCase):
         cop.x = t.x + 0.8
         self.assertIsNone(room.arrest(cop.uid, t.uid, now=now + 0.2))      # 바로 다시는 못 누른다
         self.assertEqual(room.arrest(cop.uid, t.uid, now=now + world.ARREST_COOLDOWN + 0.01), t.uid)
+
+    def test_letting_go_or_breaking_away_frees_the_thief(self):
+        room, cop, thieves = self.playing()
+        t = thieves[0]
+        now = world.COUNTDOWN + world.HEAD_START + 1
+        room.update(now=now)
+        self.place(cop, 10.0, 15.0, now)
+        self.place(t, 10.8, 15.0, now)
+        self.assertEqual(room.arrest(cop.uid, t.uid, now=now), t.uid)
+        room.release(cop.uid, now=now + 0.2)                                # E를 일찍 뗐다
+        room.update(now=now + 0.8)
+        self.assertFalse(t.jailed)
+        self.assertFalse(t.public(now + 0.8)["grabbed"])
+        now += 1.0
+        self.assertEqual(room.arrest(cop.uid, t.uid, now=now), t.uid)
+        t.x = cop.x + world.GRAB_KEEP + 0.2                                  # 달려서 벗어났다
+        room.update(now=now + 0.3)
+        room.update(now=now + 0.7)
+        self.assertFalse(t.jailed)
+        self.assertIn("grab_break", [e["t"] for e in room.take_events()])
+
+    def test_a_grabbed_thief_is_slowed_down(self):
+        room, cop, thieves = self.playing()
+        t = thieves[0]
+        now = world.COUNTDOWN + world.HEAD_START + 1
+        room.update(now=now)
+        self.place(cop, 10.0, 15.0, now)
+        self.place(t, 10.8, 15.0, now)
+        t.budget = 0.0
+        room.arrest(cop.uid, t.uid, now=now)
+        t.last = now + world.GRAB_GRACE
+        step = world.SPEED["thief"] * 0.2                                   # 0.2초에 평소 속도로 갈 거리
+        self.assertFalse(room.move(t.uid, t.x + step * 1.2, t.y, 0, True, now=now + world.GRAB_GRACE + 0.2))   # 붙잡힌 채로는 못 간다
+        self.assertTrue(room.move(t.uid, t.x + step * world.GRAB_SLOW, t.y, 0, True, now=now + world.GRAB_GRACE + 0.4))
 
     def test_more_players_get_more_time(self):
         self.assertLess(world.round_seconds(3), world.round_seconds(8))
@@ -288,20 +330,27 @@ class CopsAndRobbersTests(SimpleTestCase):
         self.assertFalse(room.emote(1, "<script>", now=2.0))
         self.assertEqual([(e["id"], e["e"]) for e in room.take_events()], [(1, "teabag"), (1, "laugh")])
 
-    def test_only_thieves_dash(self):
+    def test_only_thieves_run_and_running_uses_stamina(self):
         room, cop, thieves = self.playing()
         t = thieves[0]
-        self.place(t, 20.0, 15.0, 10.0)
-        self.assertFalse(room.move(t.uid, 20.0 + 1.6, 15.0, 0, True, now=10.15))   # 대시 없이는 너무 멀다
-        t.last = 10.0
-        self.assertTrue(room.dash(t.uid, now=10.0))
-        self.assertTrue(room.move(t.uid, 20.0 + 1.6, 15.0, 0, True, now=10.15))
-        self.assertTrue(t.public(10.3)["dashing"])                                   # 다른 사람 화면에도 대시가 보이도록 알린다
-        self.assertFalse(t.public(10.0 + world.DASH_SECONDS + 0.01)["dashing"])
-        self.assertFalse(room.dash(t.uid, now=11.0))                                 # 쿨타임
-        self.assertFalse(room.dash(cop.uid, now=20.0))                               # 경찰은 대시할 수 없다
-        lobby = self.room(2)
-        self.assertFalse(lobby.dash(1, now=1))                                       # 대기실에서도 (아직 도둑이 아니다)
+        self.place(t, 3.0, 15.0, 10.0)
+        fast = world.SPEED["thief"] * world.RUN_MULT * 0.1                          # 0.1초 동안 달린 거리
+        x, now = 3.0, 10.0
+        for _ in range(5):
+            now += 0.1
+            x += fast
+            self.assertTrue(room.move(t.uid, x, 15.0, 0, True, now=now, run=True))   # 달리면 빨리 갈 수 있다
+        self.assertTrue(t.public(now)["running"])
+        self.assertLess(t.stamina, world.STAMINA_MAX - 0.4)                          # 스태미나가 줄었다
+        t.stamina = 0.0
+        t.budget = 0.0
+        self.assertFalse(room.move(t.uid, x + fast * 1.6, 15.0, 0, True, now=now + 0.1, run=True))   # 다 쓰면 못 달린다 (여유를 넘는 거리)
+        before = t.stamina
+        room.move(t.uid, x, 15.0, 0, False, now=now + 1.1)
+        self.assertAlmostEqual(t.stamina, before + world.STAMINA_REGEN * 1.0, places=1)  # 안 달리면 다시 찬다
+        self.place(cop, 20.0, 15.0, 30.0)
+        cop.budget = 0.0
+        self.assertFalse(room.move(cop.uid, 20.0 + world.SPEED["cop"] * world.RUN_MULT * 0.3 * 1.3, 15.0, 0, True, now=30.3, run=True))   # 경찰은 못 달린다
 
     def test_taser_dart_stuns_a_thief_it_reaches(self):
         room, cop, thieves = self.playing()
@@ -311,13 +360,12 @@ class CopsAndRobbersTests(SimpleTestCase):
         other.x, other.y = 40.5, 10.0
         self.place(cop, 10.0, 15.0, now)
         self.place(t, 13.0, 15.0, now)
-        self.assertTrue(room.taser(cop.uid, EAST + 0.2, now=now))          # 조금 빗나가게 겨눠도 보정된다
+        self.assertTrue(room.taser(cop.uid, EAST + 0.08, now=now))         # 조금 빗나가게 겨눠도 보정된다
         hits = self.run_for(room, now, 0.8)
         self.assertEqual(hits[0]["thief"], t.uid)
         self.assertGreater(t.stun_until, now)
         self.assertGreater(t.public(now + 0.5)["stun"], 0)
         self.assertFalse(room.move(t.uid, t.x + 0.2, t.y, 0, True, now=now + 0.9))   # 감전된 동안은 못 움직인다
-        self.assertFalse(room.dash(t.uid, now=now + 0.9))
         self.assertFalse(room.taser(cop.uid, EAST, now=now + 1.0))         # 쿨타임
         self.assertFalse(room.taser(t.uid, EAST, now=now + 1.0))           # 도둑은 쏠 수 없다
         self.assertTrue(room.move(t.uid, t.x + 0.2, t.y, 0, True, now=now + world.STUN_SECONDS + 0.5))
@@ -377,6 +425,8 @@ class CopsAndRobbersTests(SimpleTestCase):
         room.update(now=now)
         self.assertFalse(t.jailed)                                       # 서버만 보면 닿지 않았다
         self.assertEqual(room.arrest(cop.uid, t.uid, now=now), t.uid)    # 경찰 화면에서는 손이 닿았다
+        t.x, t.y = cop.x + 0.8, cop.y
+        room.update(now=now + world.GRAB_SECONDS + 0.05)
         self.assertTrue(t.jailed)
         self.assertEqual(cop.catches, 1)
 

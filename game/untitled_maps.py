@@ -189,6 +189,7 @@ class GameMap:
                 "jail": self.jail, "pad": self.pad, "areas": self.areas,
                 "walls": [{"o": o, "f": f, "t": t} for o, f, t in self.wall_edges],
                 "fences": [{"o": o, "f": f, "t": t} for o, f, t in self.fence_edges],
+                "doors": [{"o": o, "f": f, "t0": t0, "t1": t1} for o, f, t0, t1 in self.doors],
                 "sight": [{"cx": s["cx"], "cy": s["cy"], "hx": s["hx"], "hy": s["hy"]} for s in self.sight],
                 "props": [{"model": m, "x": x, "y": y, "rot": r, "w": w, "d": d} for m, x, y, r, w, d in self.props],
                 "decor": [{"model": m, "x": x, "y": y, "rot": r} for m, x, y, r in self.decor]}

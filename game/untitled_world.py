@@ -7,14 +7,17 @@
 
 경찰과 도둑 (방장이 시작한다, 2명 이상)
 - 약 3분의 1(최소 1명)이 경찰, 나머지가 도둑. 경찰은 처음 HEAD_START초 동안 움직이지 못한다.
-- 잡기는 상호작용이다: 경찰이 도둑 가까이(ARREST_REACH)에서 잡기(E)를 누르면 도둑이 감옥(울타리로 막힌 방)으로 옮겨진다.
-  스치기만 해서는 잡히지 않는다. 헛손질하면 ARREST_COOLDOWN초 동안 다시 못 잡는다.
+- 잡기는 붙잡기다(폴가이즈처럼): 경찰이 도둑 가까이(ARREST_REACH)에서 잡기(E)를 누르면 붙잡기 시작하고, 누른 채로
+  GRAB_SECONDS초 동안 놓치지 않으면(GRAB_KEEP 안) 도둑이 감옥(울타리로 막힌 방)으로 간다. 붙잡힌 도둑은 GRAB_SLOW배,
+  붙잡은 경찰은 GRAB_COP_SLOW배로 느려진다. 떼거나 멀어지면 풀린다. 스치기만 해서는 잡히지 않는다.
+  헛손질하거나 놓치면 ARREST_COOLDOWN초 동안 다시 못 잡는다.
   경찰 화면에는 도둑이 조금 늦게 그려지므로(전송·방송 간격), 서버는 도둑이 최근 몇십 분의 1초(두 사람의 핑으로 정한다,
   tag_window) 동안 지나간 자리 중 하나라도 경찰 손 닿는 곳이었는지로 판정한다.
 - 잡히지 않은 도둑이 감옥 앞 구출 발판에 RESCUE_SECONDS초 동안 서 있으면 갇힌 도둑이 모두 발판 둘레로 풀려나고
   SAFE_SECONDS초 동안 잡히지 않는다. 발판에서 내려오면 처음부터 다시.
 - 제한 시간(인원에 따라 다르다, round_seconds) 안에 도둑을 모두 가두면 경찰 승리, 끝날 때 한 명이라도 밖에 있으면 도둑 승리.
-- 도둑만 대시(DASH_SECONDS 동안 DASH_MULT배 빠르게, DASH_COOLDOWN초마다 한 번)를 쓸 수 있다. 서버가 대시 시간을 기록해 속도 검사에 반영한다.
+- 도둑은 달릴 수 있다(RUN_MULT배): 스태미나(STAMINA_MAX초 분량)가 달리는 동안 줄고, 안 달리면 STAMINA_REGEN만큼 다시 찬다.
+  화면이 이동마다 "달리는 중"을 함께 보내고, 서버가 같은 계산으로 스태미나를 셈해 속도 검사에 반영한다.
 - 경찰은 대시 대신 테이저건을 쏜다: 바라보는 방향으로 침이 DART_SPEED로 TASER_RANGE칸까지 날아가고(벽에 막힌다),
   맞은 도둑은 STUN_SECONDS초 동안 감전돼 움직이지 못한다. TASER_COOLDOWN초마다 한 번. 날아가는 동안 피할 수 있다.
 - 사각지대: 게임 중에는 상대 팀이 내 캐릭터에서 보일 때(VIEW_RANGE칸 안이고 벽·높은 가구가 가리지 않을 때)만 그 위치를 보낸다 (visible_view).
@@ -35,14 +38,18 @@ SPEED = {"lobby": 4.0, "cop": 4.3, "thief": 4.0}     # 칸/초
 SLACK = 1.6                    # 네트워크 지연을 봐주는 속도 여유 배수
 BURST_SECONDS = 0.5            # 이동 허용량을 이만큼(초) 모아 둘 수 있다: 늦게 오다 한꺼번에 몰려 온 위치도 받는다
 ARREST_REACH = 1.2             # 경찰과 도둑의 중심이 이보다 가까울 때 잡기(E)를 누르면 잡힌다 (칸)
-ARREST_COOLDOWN = 0.5          # 잡기를 누른 뒤 다시 누를 수 있기까지 (초)
+ARREST_COOLDOWN = 0.5          # 헛손질하거나 놓친 뒤 다시 잡기를 누를 수 있기까지 (초)
+GRAB_SECONDS, GRAB_KEEP = 0.5, 1.9   # 이만큼(초) 붙잡고 있어야 잡힌다, 이보다 멀어지면 풀린다 (칸, 지연을 봐줘 넉넉히)
+GRAB_SLOW, GRAB_COP_SLOW = 0.35, 0.6 # 붙잡힌 도둑·붙잡은 경찰의 속도 배수
+GRAB_GRACE = 0.25                    # 붙잡힌 걸 화면이 알기 전까지 서버가 속도를 봐주는 시간 (초)
 # 경찰 화면의 "닿았다"를 판정할 때 되돌아보는 도둑의 지난 자리 (초): 두 사람 핑의 절반씩 + 서버 시계·화면 보간 지연(TAG_BASE),
 # 그리고 아래위 한도. 핑이 좋으면 조금만, 나쁘면 더 멀리 되돌아본다.
 TAG_BASE, TAG_MIN, TAG_MAX = 0.2, 0.15, 0.45
 RTT_DEFAULT = 0.1              # 핑을 아직 못 잰 사람의 왕복 지연 (초)
-DASH_MULT, DASH_SECONDS, DASH_COOLDOWN = 1.8, 0.8, 5.0
-TASER_RANGE, TASER_CONE = 6.0, 0.3   # 사거리(칸), 조준 보정 각(라디안)
-DART_SPEED, DART_HIT = 14.0, 0.4     # 테이저 침 속도(칸/초), 침과 도둑 중심이 이만큼 가까우면 맞는다(칸)
+RUN_MULT, STAMINA_MAX, STAMINA_REGEN = 1.6, 3.0, 0.6   # 달리기 속도 배수, 스태미나(달릴 수 있는 초), 안 달릴 때 1초에 차는 양
+RUN_SPAN = 0.3                 # 이동 한 번(화면은 0.1초마다 보낸다)에 달린 것으로 칠 수 있는 최대 시간 (초)
+TASER_RANGE, TASER_CONE = 11.0, 0.12  # 사거리(칸), 조준 보정 각(라디안, 마우스로 겨누므로 작게)
+DART_SPEED, DART_HIT = 32.0, 0.4     # 테이저 침 속도(칸/초), 침과 도둑 중심이 이만큼 가까우면 맞는다(칸)
 TASER_COOLDOWN, STUN_SECONDS = 5.0, 1.5
 COUNTDOWN, HEAD_START, SAFE_SECONDS, RESULT_SECONDS = 3.0, 5.0, 3.0, 8.0
 RESCUE_SECONDS = 3.0           # 구출 발판에 이만큼 서 있어야 동료가 풀려난다
@@ -51,7 +58,7 @@ EMOTES = ("laugh", "taunt", "wave", "angry", "cool", "teabag")
 EMOTE_GAP = 0.12               # 이모티콘 사이 최소 간격 (초)
 BOT_COP_HANDICAP = 0.92        # 혼자 연습할 때 경찰 봇이 너무 세지 않게 (사람 속도는 그대로)
 BOT_REACTION = 0.35            # 경찰 봇이 도둑 위치를 다시 보는 간격 (초)
-BOT_TASER_RANGE, BOT_AIM_ERROR = 4.5, 0.15   # 경찰 봇은 가까이서만 쏘고, 사람처럼 조준이 조금 빗나간다 (라디안)
+BOT_TASER_RANGE, BOT_AIM_ERROR = 7.0, 0.1   # 경찰 봇은 가까이서만 쏘고, 사람처럼 조준이 조금 빗나간다 (라디안)
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 MODELS = ["character-male-a", "character-female-a", "character-male-b", "character-female-b", "character-male-c", "character-female-c",
           "character-male-d", "character-female-d", "character-male-e", "character-female-e", "character-male-f", "character-female-f"]
@@ -64,7 +71,9 @@ def round_seconds(players):
 
 def rules_view():
     """모든 맵에 공통인 규칙 (화면용)."""
-    return {"speed": SPEED, "arrest": {"reach": ARREST_REACH, "cooldown": ARREST_COOLDOWN}, "dash": {"mult": DASH_MULT, "seconds": DASH_SECONDS, "cooldown": DASH_COOLDOWN},
+    return {"speed": SPEED, "arrest": {"reach": ARREST_REACH, "cooldown": ARREST_COOLDOWN, "seconds": GRAB_SECONDS, "keep": GRAB_KEEP,
+                                       "slow": GRAB_SLOW, "cop_slow": GRAB_COP_SLOW},
+            "run": {"mult": RUN_MULT, "stamina": STAMINA_MAX, "regen": STAMINA_REGEN},
             "taser": {"range": TASER_RANGE, "cooldown": TASER_COOLDOWN, "stun": STUN_SECONDS, "speed": DART_SPEED},
             "view": VIEW_RANGE, "rescue": RESCUE_SECONDS}
 
@@ -109,8 +118,10 @@ class Player:
         self.jailed = False
         self.safe_until = 0.0
         self.frozen_until = 0.0
-        self.dash_until = 0.0
-        self.dash_ready = 0.0
+        self.stamina = STAMINA_MAX       # 도둑의 달리기 스태미나 (초)
+        self.running = False
+        self.grab_target, self.grab_since = None, 0.0   # 경찰이 붙잡고 있는 도둑
+        self.grabbed_by = None                           # 도둑을 붙잡고 있는 경찰
         self.stun_until = 0.0           # 테이저에 맞아 감전된 동안 (frozen_until도 함께 늘린다)
         self.taser_ready = 0.0
         self.tp = 0                     # 서버가 옮길 때마다 1씩 늘어난다 (화면은 이걸 보고 내 위치를 맞춘다)
@@ -126,6 +137,15 @@ class Player:
         self.rtt = 0.0 if self.bot else RTT_DEFAULT   # 화면이 잰 왕복 지연 (초). 봇은 서버 안에 있어 0
         self.emote_at = -1.0
         self.arrest_ready = 0.0
+
+    def speed_now(self, now):
+        """붙잡기 중이면 느려진 속도 (붙잡힌 직후 GRAB_GRACE초는 화면이 아직 모르므로 봐준다)."""
+        base = self.speed()
+        if self.grabbed_by is not None and now - self.grab_since >= GRAB_GRACE:
+            return base * GRAB_SLOW
+        if self.grab_target is not None:
+            return base * GRAB_COP_SLOW
+        return base
 
     def speed(self):
         base = SPEED[self.team or "lobby"]
@@ -145,9 +165,11 @@ class Player:
         return {"id": self.uid, "name": self.name, "model": self.model, "x": round(self.x, 3), "y": round(self.y, 3),
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": self.jailed,
                 "safe": round(max(0.0, self.safe_until - now), 1), "frozen": round(max(0.0, self.frozen_until - now), 1),
-                "dash": round(max(0.0, self.dash_ready - now), 1), "speed": self.speed(), "tp": self.tp, "catches": self.catches,
+                "stamina": round(self.stamina / STAMINA_MAX, 2), "speed": self.speed(), "tp": self.tp, "catches": self.catches,
+                "grabbed": self.grabbed_by is not None, "grabbing": self.grab_target,
+                "grab": round(min(1.0, (now - self.grab_since) / GRAB_SECONDS), 2) if self.grab_target is not None else 0,
                 "stun": round(max(0.0, self.stun_until - now), 1), "taser": round(max(0.0, self.taser_ready - now), 1),
-                "bot": self.bot, "dashing": now < self.dash_until}
+                "bot": self.bot, "running": self.running}
 
 
 class Room:
@@ -244,7 +266,7 @@ class Room:
         return True
 
     # ── 이동 ───────────────────────────────────────────────────
-    def move(self, uid, x, y, direction, moving, now=None):
+    def move(self, uid, x, y, direction, moving, now=None, run=False):
         """화면이 보낸 위치를 받는다. 받으면 True, 받지 않으면 False (그 사람은 마지막 위치로 돌아간다)."""
         p = self.players.get(uid)
         now = time.monotonic() if now is None else now
@@ -257,9 +279,10 @@ class Room:
         if not all(math.isfinite(v) for v in (x, y, direction)):
             return False
         dt = max(0.0, now - p.last)
-        dash = min(dt, max(0.0, p.dash_until - p.last))                 # 이 구간 중 대시하던 시간
-        cap = p.speed() * SLACK * BURST_SECONDS * (DASH_MULT if now < p.dash_until + BURST_SECONDS else 1.0)
-        p.budget = min(cap, p.budget + p.speed() * (dt + dash * (DASH_MULT - 1)) * SLACK)
+        ran = self._spend_stamina(p, dt, bool(run) and bool(moving))   # 이 구간 중 달린 시간
+        speed = p.speed_now(now)
+        cap = speed * SLACK * BURST_SECONDS * (RUN_MULT if p.running else 1.0)
+        p.budget = min(cap, p.budget + speed * (dt + ran * (RUN_MULT - 1)) * SLACK)
         dist = math.hypot(x - p.x, y - p.y)
         frozen = now < p.frozen_until
         m = self.map
@@ -289,45 +312,82 @@ class Room:
     def tag_window(self, cop, thief):
         return min(TAG_MAX, max(TAG_MIN, (cop.rtt + thief.rtt) / 2 + TAG_BASE))
 
+    def _spend_stamina(self, p, dt, run):
+        """도둑이 달렸으면 스태미나를 쓰고(남은 만큼만) 달린 시간을 돌려준다. 안 달린 시간만큼은 다시 채운다.
+        멈춰 있는 동안은 화면이 위치를 보내지 않으므로, 한 번에 RUN_SPAN초까지만 달린 것으로 치고 나머지는 쉰 시간으로 본다."""
+        ran = 0.0
+        if p.team == "thief" and run and p.stamina > 0 and not p.jailed:
+            ran = min(dt, RUN_SPAN, p.stamina)
+            p.stamina -= ran
+        p.running = ran > 0
+        p.stamina = min(STAMINA_MAX, p.stamina + (dt - min(dt, RUN_SPAN) if ran else dt) * STAMINA_REGEN)
+        return ran
+
     def arrest(self, uid, target=None, now=None):
-        """경찰이 잡기(E)를 눌렀다. target은 경찰 화면에서 손 닿는 곳에 있던 도둑(없으면 가장 가까운 도둑).
-        도둑의 최근 자리 중 하나라도 손 닿는 곳이었으면 잡는다. 잡은 도둑의 id, 헛손질이면 None."""
+        """경찰이 잡기(E)를 눌렀다: 손 닿는 곳의 도둑을 붙잡기 시작한다 (target은 경찰 화면에서 손 닿던 도둑, 없으면 가장 가까운 도둑).
+        도둑의 최근 자리 중 하나라도 손 닿는 곳이었으면 붙잡는다. 붙잡은 도둑의 id, 헛손질이면 None.
+        잡히는 건 GRAB_SECONDS초 동안 놓치지 않았을 때다 (_grabs)."""
         now = time.monotonic() if now is None else now
         cop = self.players.get(uid)
-        if self.phase != "playing" or cop is None or cop.team != "cop" or now < cop.frozen_until or now < cop.arrest_ready:
+        if (self.phase != "playing" or cop is None or cop.team != "cop" or now < cop.frozen_until or now < cop.arrest_ready
+                or cop.grab_target is not None):
             return None
-        cop.arrest_ready = now + ARREST_COOLDOWN
 
         def reach(t):                                          # 핑만큼 되돌아본 도둑의 자리 중 경찰에게 가장 가까운 거리
             window = self.tag_window(cop, t)
             spots = [(x, y) for at, x, y in t.trail if now - at <= window] + [(t.x, t.y)]
             return min(math.hypot(x - cop.x, y - cop.y) for x, y in spots)
 
-        thieves = [t for t in self.players.values() if t.team == "thief" and not t.jailed and now >= t.safe_until]
+        thieves = [t for t in self.players.values() if t.team == "thief" and not t.jailed and now >= t.safe_until and t.grabbed_by is None]
         hint = self.players.get(target) if target is not None else None
-        caught = None
         if hint in thieves and reach(hint) <= ARREST_REACH:
             caught = hint
         else:
             near = [(reach(t), t) for t in thieves]
             near = [(d, t) for d, t in near if d <= ARREST_REACH]
             caught = min(near, key=lambda q: q[0])[1] if near else None
-        self.events.append({"t": "grab", "cop": uid, "ok": caught is not None})
+        self.events.append({"t": "grab", "cop": uid, "thief": caught.uid if caught else None, "ok": caught is not None})
         self.dirty = True
-        if caught is not None:
-            self._jail(caught, cop, now)
-            return caught.uid
-        return None
+        if caught is None:
+            cop.arrest_ready = now + ARREST_COOLDOWN
+            return None
+        cop.grab_target, cop.grab_since = caught.uid, now
+        caught.grabbed_by, caught.grab_since = cop.uid, now
+        return caught.uid
 
-    def dash(self, uid, now=None):
-        p = self.players.get(uid)
+    def release(self, uid, now=None):
+        """경찰이 잡기에서 손을 뗐다. 아직 덜 붙잡았으면 놓친다."""
         now = time.monotonic() if now is None else now
-        if p is None or p.team != "thief" or now < p.dash_ready or now < p.frozen_until or p.jailed:
-            return False                                       # 대시는 도둑만
-        p.dash_until = now + DASH_SECONDS
-        p.dash_ready = now + DASH_COOLDOWN
+        cop = self.players.get(uid)
+        if cop is not None and cop.grab_target is not None:
+            self._break_grab(cop, now)
+
+    def _break_grab(self, cop, now):
+        t = self.players.get(cop.grab_target)
+        if t is not None and t.grabbed_by == cop.uid:
+            t.grabbed_by = None
+        self.events.append({"t": "grab_break", "cop": cop.uid, "thief": cop.grab_target})
+        cop.grab_target = None
+        cop.arrest_ready = now + ARREST_COOLDOWN
         self.dirty = True
-        return True
+
+    def _grabs(self, now):
+        """붙잡기 진행: 멀어지거나 도둑이 갇히면 풀리고, GRAB_SECONDS초를 버티면 잡힌다."""
+        for t in self.players.values():                          # 붙잡던 경찰이 나갔거나 다른 일로 풀렸으면 정리한다
+            cop = self.players.get(t.grabbed_by) if t.grabbed_by is not None else None
+            if t.grabbed_by is not None and (cop is None or cop.grab_target != t.uid):
+                t.grabbed_by = None
+        for cop in self.players.values():
+            if cop.grab_target is None:
+                continue
+            t = self.players.get(cop.grab_target)
+            if t is None or t.jailed or cop.team != "cop" or math.hypot(t.x - cop.x, t.y - cop.y) > GRAB_KEEP:
+                self._break_grab(cop, now)
+                continue
+            self.dirty = True                                    # 진행 막대가 움직인다
+            if now - cop.grab_since >= GRAB_SECONDS:
+                cop.grab_target, t.grabbed_by = None, None
+                self._jail(t, cop, now)
 
     def taser(self, uid, direction, now=None):
         """경찰이 바라보는 방향(direction: 화면과 같은 atan2(dx, dy))으로 테이저 침을 쏜다. 쐈으면 True.
@@ -408,7 +468,8 @@ class Room:
         for i, p in enumerate(people):
             p.team = "cop" if i < cops else "thief"
             p.jailed, p.catches = False, 0
-            p.safe_until = p.dash_until = p.dash_ready = p.stun_until = p.taser_ready = p.arrest_ready = 0.0
+            p.safe_until = p.stun_until = p.taser_ready = p.arrest_ready = 0.0
+            p.stamina, p.running, p.grab_target, p.grabbed_by = STAMINA_MAX, False, None, None
             spots = self.map.cop_spawns if p.team == "cop" else self.map.thief_spawns
             index = i if p.team == "cop" else i - cops
             p.teleport(*spots[index % len(spots)])
@@ -434,6 +495,7 @@ class Room:
             self.events.append({"t": "go"})
             self.dirty = True
         elif self.phase == "playing":
+            self._grabs(now)
             self._rescue(now, dt)
             self._check_end(now)
             self.dirty = True                                           # 남은 시간이 흐르므로 매번 보낸다
@@ -453,10 +515,8 @@ class Room:
                     b.moving = False
                     self.dirty = True
                 continue
-            gx, gy, dash = goal
+            gx, gy, run = goal
             gx, gy = self._waypoint(b, gx, gy, now)
-            if dash and now >= b.dash_ready:
-                self.dash(b.uid, now)
             dx, dy = gx - b.x, gy - b.y
             dist = math.hypot(dx, dy)
             if dist < 0.15:
@@ -465,7 +525,8 @@ class Room:
             if now < b.detour_until:                          # 막혀서 잠깐 옆으로 돌아가는 중
                 dx, dy = b.detour
                 dist = 1.0
-            speed = b.speed() * (DASH_MULT if now < b.dash_until else 1.0)
+            ran = self._spend_stamina(b, dt, run and b.stamina > 0.2)
+            speed = b.speed_now(now) * (1 + (RUN_MULT - 1) * ran / dt if dt else 1)
             step = min(dist, speed * dt)
             others = [(p.x, p.y) for p in people if p is not b and not p.jailed]
             n = max(1, math.ceil(step / 0.08))
@@ -573,12 +634,12 @@ class Room:
         if jailed and d > 4.0 and pad_guard > 5.0:                # 발판을 지키는 경찰이 없고 쫓기지 않을 때만 구하러 간다
             return pad["cx"], pad["cy"], d < 2.5
         if near is not None and d < 7.0:                          # 경찰보다 먼저 닿을 수 있는 곳 중 경찰에게서 가장 먼 곳
-            dash_now = d < 3.0                                  # 테이저 사거리 안으로 들어온 경찰을 대시로 떼어 낸다
+            run_now = d < 4.0 or b.grabbed_by is not None       # 가까이 온 경찰은 달려서 떼어 낸다
             if b.flee is None or now - b.flee_at > 0.3 or math.hypot(b.flee[0] - b.x, b.flee[1] - b.y) < 0.4:
                 b.flee, b.flee_at = self._flee_spot(b, cops, now), now
             if b.flee is not None:
                 b.wander = None
-                return b.flee[0], b.flee[1], dash_now
+                return b.flee[0], b.flee[1], run_now
         return self._wander(b, cops, now)
 
     def _wander(self, b, cops, now):
@@ -653,7 +714,8 @@ class Room:
         self.map, self.pad_time = LOBBY, 0.0
         for i, p in enumerate(self.players.values()):
             p.team, p.jailed = None, False
-            p.safe_until = p.frozen_until = p.dash_until = p.dash_ready = p.stun_until = p.taser_ready = p.arrest_ready = 0.0
+            p.safe_until = p.frozen_until = p.stun_until = p.taser_ready = p.arrest_ready = 0.0
+            p.stamina, p.running, p.grab_target, p.grabbed_by = STAMINA_MAX, False, None, None
             p.teleport(*self.map.lobby_spawns[i % len(self.map.lobby_spawns)])
             p.last = now
         self.events.append({"t": "lobby"})

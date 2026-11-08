@@ -1123,7 +1123,7 @@ class JanggiConsumer(AsyncWebsocketConsumer):
 
 
 class UntitledConsumer(AsyncWebsocketConsumer):
-    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개·맵)·입장·나가기, 맵 고르기, 봇 넣고 빼기, 캐릭터 이동, 시작·대시(도둑)·테이저(경찰)·잡기(E)·이모티콘.
+    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개·맵)·입장·나가기, 맵 고르기, 봇 넣고 빼기, 캐릭터 이동, 시작·달리기(도둑)·테이저(경찰)·붙잡기(E 누르고 있기)·이모티콘.
     방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
 
     async def connect(self):
@@ -1199,10 +1199,10 @@ class UntitledConsumer(AsyncWebsocketConsumer):
                 room.remove_bot(user.id)
             untitled_hub.ensure_loop()
             await untitled_hub.broadcast(room)
-        elif kind == "dash":
+        elif kind == "release":
             room = untitled_hub.room_of(user.id)
             if room is not None:
-                room.dash(user.id)
+                room.release(user.id)
         elif kind == "taser":
             room = untitled_hub.room_of(user.id)
             if room is not None:
@@ -1229,7 +1229,8 @@ class UntitledConsumer(AsyncWebsocketConsumer):
                     await untitled_hub.broadcast(room)                # 잡았든 헛손질이든 바로 알린다
         elif kind == "move":
             room = untitled_hub.room_of(user.id)
-            if room is not None and not room.move(user.id, data.get("x"), data.get("y"), data.get("dir", 0), data.get("moving")):
+            if room is not None and not room.move(user.id, data.get("x"), data.get("y"), data.get("dir", 0), data.get("moving"),
+                                                  run=bool(data.get("run"))):
                 p = room.players.get(user.id)
                 if p is not None:                               # 받지 않은 위치: 마지막 위치로 되돌려 보낸다
                     await self._send({"type": "correct", "x": p.x, "y": p.y})
