@@ -9,4 +9,5 @@ websocket_urlpatterns = [
     re_path(r"^ws/gomoku/$", consumers.GomokuConsumer.as_asgi()),
     re_path(r"^ws/janggi/$", consumers.JanggiConsumer.as_asgi()),
     re_path(r"^ws/untitled/$", consumers.UntitledConsumer.as_asgi()),
+    re_path(r"^ws/gun/$", consumers.GunConsumer.as_asgi()),
 ]

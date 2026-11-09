@@ -178,6 +178,8 @@ class Player:
 
 
 class Room:
+    player_class = Player            # 하위 게임(총게임)이 자기 캐릭터 클래스를 쓴다
+
     def __init__(self, code, host_id, name="", private=False, map_key=DEFAULT_MAP):
         self.code, self.host_id = code, host_id
         self.choice = MAPS.get(map_key, MAPS[DEFAULT_MAP])     # 다음 판의 맵 (방장이 대기실에서 고른다)
@@ -212,7 +214,7 @@ class Room:
         model = next(m for m in MODELS if m not in used)
         spawns = self.map.lobby_spawns
         x, y = next(((sx, sy) for sx, sy in spawns if all((p.x - sx) ** 2 + (p.y - sy) ** 2 > 0.5 for p in self.players.values())), spawns[0])
-        self.players[uid] = Player(uid, name, model, x, y, now)          # 게임 중에 들어오면 다음 판까지 구경(대기)
+        self.players[uid] = self.player_class(uid, name, model, x, y, now)          # 게임 중에 들어오면 다음 판까지 구경(대기)
         self.dirty = True
         return True, ""
 
@@ -539,41 +541,50 @@ class Room:
                     b.moving = False
                     self.dirty = True
                 continue
-            gx, gy, run = goal
-            gx, gy = self._waypoint(b, gx, gy, now)
-            dx, dy = gx - b.x, gy - b.y
-            dist = math.hypot(dx, dy)
-            if dist < 0.15:
-                b.moving = False
-                continue
-            if now < b.detour_until:                          # 막혀서 잠깐 옆으로 돌아가는 중
-                dx, dy = b.detour
-                dist = 1.0
-            ran = self._spend_stamina(b, dt, run and b.stamina > 0.2)
-            speed = b.speed_now(now) * (1 + (RUN_MULT - 1) * ran / dt if dt else 1)
-            step = min(dist, speed * dt)
-            others = [(p.x, p.y) for p in people if p is not b and not p.jailed]
-            n = max(1, math.ceil(step / 0.08))
+            self._bot_move(b, goal, dt, now, people)
+
+    def _solid(self, p):
+        """다른 캐릭터가 밀어내야 하는 몸인가 (갇힌 도둑은 아니다)."""
+        return not p.jailed
+
+    def _bot_move(self, b, goal, dt, now, people):
+        """봇을 목표(x, y, 달릴지) 쪽으로 한 걸음 옮긴다: 길 찾기, 충돌 밀어내기, 막히면 비켜 가기."""
+        m = self.map
+        gx, gy, run = goal
+        gx, gy = self._waypoint(b, gx, gy, now)
+        dx, dy = gx - b.x, gy - b.y
+        dist = math.hypot(dx, dy)
+        if dist < 0.15:
+            b.moving = False
+            return
+        if now < b.detour_until:                          # 막혀서 잠깐 옆으로 돌아가는 중
+            dx, dy = b.detour
+            dist = 1.0
+        ran = self._spend_stamina(b, dt, run and b.stamina > 0.2)
+        speed = b.speed_now(now) * (1 + (RUN_MULT - 1) * ran / dt if dt else 1)
+        step = min(dist, speed * dt)
+        others = [(p.x, p.y) for p in people if p is not b and self._solid(p)]
+        n = max(1, math.ceil(step / 0.08))
+        x, y = b.x, b.y
+        for _ in range(n):
+            x += dx / dist * step / n
+            y += dy / dist * step / n
+            x, y = m.push_out(x, y, others)
+        if not m.free_at(x, y) or m.in_jail(x, y):
             x, y = b.x, b.y
-            for _ in range(n):
-                x += dx / dist * step / n
-                y += dy / dist * step / n
-                x, y = m.push_out(x, y, others)
-            if not m.free_at(x, y) or m.in_jail(x, y):
-                x, y = b.x, b.y
-            b.dir = math.atan2(x - b.x, y - b.y) if (x, y) != (b.x, b.y) else b.dir
-            b.x, b.y, b.moving = x, y, True
-            b.trail.append((now, x, y))
-            sx, sy, st = b.stuck_check
-            if now - st > 0.8:                                  # 0.8초 동안 거의 못 움직였으면 옆으로 비켜 간다
-                if math.hypot(b.x - sx, b.y - sy) < 0.35 and now >= b.detour_until:
-                    side = self.rng.choice((1, -1))
-                    b.detour = (-(gy - b.y) * side, (gx - b.x) * side)
-                    norm = math.hypot(*b.detour) or 1.0
-                    b.detour = (b.detour[0] / norm, b.detour[1] / norm)
-                    b.detour_until = now + 0.7
-                b.stuck_check = (b.x, b.y, now)
-            self.dirty = True
+        b.dir = math.atan2(x - b.x, y - b.y) if (x, y) != (b.x, b.y) else b.dir
+        b.x, b.y, b.moving = x, y, True
+        b.trail.append((now, x, y))
+        sx, sy, st = b.stuck_check
+        if now - st > 0.8:                                  # 0.8초 동안 거의 못 움직였으면 옆으로 비켜 간다
+            if math.hypot(b.x - sx, b.y - sy) < 0.35 and now >= b.detour_until:
+                side = self.rng.choice((1, -1))
+                b.detour = (-(gy - b.y) * side, (gx - b.x) * side)
+                norm = math.hypot(*b.detour) or 1.0
+                b.detour = (b.detour[0] / norm, b.detour[1] / norm)
+                b.detour_until = now + 0.7
+            b.stuck_check = (b.x, b.y, now)
+        self.dirty = True
 
     def _cop_map(self, cops, now):
         """모든 경찰에서 잰 격자 거리 지도. 0.3초마다 한 번만 새로 잰다."""

@@ -12,7 +12,7 @@ from .models import (
     HighLowSession, HighLowPlayLog, HIGHLOW_MIN_BET, HIGHLOW_MAX_BET, HIGHLOW_RTP,
     PokerChipWallet, POKER_CHIPS_PER_LEAF, PokerTable, HouseBank, GomokuMatch, JanggiMatch,
 )
-from . import gostop_engine, poker_engine, untitled_maps, untitled_world
+from . import gostop_engine, gun_world, poker_engine, untitled_maps, untitled_world
 from accounts.models import User
 from core.ranking_utils import group_top_ranks
 
@@ -452,6 +452,14 @@ def untitled_view(request):
     return render(request, "game/untitled.html", {
         "title": "경찰과 도둑", "bundle_version": _bundle_version("game/untitled3d/untitled3d.js"),
         "world_json": {"maps": untitled_world.maps_list(), "worlds": untitled_world.worlds_view(), "default": untitled_maps.DEFAULT_MAP},
+    })
+
+
+@login_required
+def gun_view(request):
+    return render(request, "game/gun.html", {
+        "title": "총게임", "bundle_version": _bundle_version("game/untitled3d/untitled3d.js"),
+        "world_json": {"maps": untitled_world.maps_list(), "worlds": gun_world.worlds_view(), "default": untitled_maps.DEFAULT_MAP},
     })
 
 
