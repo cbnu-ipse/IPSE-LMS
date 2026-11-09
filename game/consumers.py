@@ -1137,6 +1137,7 @@ class UntitledConsumer(AsyncWebsocketConsumer):
         self.group = None
         self.player_name = await database_sync_to_async(self._load_name)()     # 닉네임은 학생 정보(DB)에서 온다
         await self.accept()
+        self.hub.attach(user.id, self.channel_name)
         room = self.hub.room_of(user.id)
         if room is not None and user.id in room.players:      # 새로고침·재접속이면 하던 방으로 돌아간다
             ok, room = self.hub.join_room(user.id, self._name(), room.code)
@@ -1149,7 +1150,7 @@ class UntitledConsumer(AsyncWebsocketConsumer):
         if self.group:
             await self.channel_layer.group_discard(self.group, self.channel_name)
         if user and user.is_authenticated:
-            self.hub.disconnect(user.id)
+            self.hub.disconnect(user.id, self.channel_name)
 
     async def receive(self, text_data):
         try:
@@ -1158,7 +1159,7 @@ class UntitledConsumer(AsyncWebsocketConsumer):
             return
         user, kind = self.scope["user"], data.get("type")
         if kind == "__ping__":
-            await self._send({"type": "pong", "t": data.get("t")})      # t를 그대로 돌려줘 화면이 왕복 지연(핑)을 잰다
+            await self._send({"type": "pong", "t": data.get("t"), "srv": self.hub.stats()})      # t를 그대로 돌려줘 화면이 왕복 지연(핑)을 잰다, srv는 서버가 막혔는지 가리는 용도
             room = self.hub.room_of(user.id)
             if room is not None and data.get("rtt") is not None:
                 room.set_rtt(user.id, data.get("rtt"))                   # 잡기(tag) 판정이 얼마나 되돌아볼지 정하는 데 쓴다

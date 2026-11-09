@@ -880,6 +880,9 @@ export function createRoomScene(container, { base, world, mode }) {
       } else if (ev.t === 'grab') {
         const rec = people.get(ev.cop);
         if (rec && ev.cop !== meId) rec.grabUntil = now + 0.35;
+      } else if (ev.t === 'caught') {
+        const rec = people.get(ev.thief);                      // jailed while stunned: the sparks and shaking stop with the stun
+        if (rec) { rec.stunEnd = 0; sparks(rec, false); }
       } else if (ev.t === 'emote') {
         showEmote(ev.id, ev.e);
       } else if (ev.t === 'tase') {
