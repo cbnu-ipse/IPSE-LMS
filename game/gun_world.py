@@ -1,48 +1,55 @@
-"""총게임: 경찰과 도둑의 방·맵·이동 검증·사각지대·봇 엔진 위에서 하는 팀 데스매치 (DB를 쓰지 않는 순수 파이썬).
+"""총게임: 경찰과 도둑의 방·맵·이동 검증·사각지대·봇 엔진 위에서 하는 라운드제 팀 대전 (DB를 쓰지 않는 순수 파이썬).
 
 방, 맵 고르기, 이동 검증(속도 한도·벽·충돌), 핑 보정, 문, 이모티콘, 봇 길찾기는 untitled_world.Room을 그대로 쓴다.
-여기서는 규칙만 바꾼다.
+여기서는 규칙만 바꾼다. 발로란트·카스처럼 라운드마다 총을 사서 싸운다.
 
-팀 데스매치 (방장이 시작한다, 2명 이상 — 봇도 센다)
-- 레드·블루 두 팀으로 나눈다 (번갈아 가며, 섞어서). 제한 시간(MATCH_SECONDS) 안에 먼저 KILL_TARGET킬을 채우거나,
-  시간이 다 됐을 때 킬이 더 많은 팀이 이긴다. 같으면 무승부.
-- 체력은 HP_MAX. 0이 되면 쓰러지고 RESPAWN_SECONDS초 뒤 적에게서 먼 자리에서 되살아나며, SPAWN_PROTECT초 동안 맞지 않는다.
+라운드제 (방장이 시작한다, 2명 이상 — 봇도 센다)
+- 레드·블루 두 팀. 먼저 ROUNDS_TO_WIN라운드를 이긴 팀이 이긴다. SWAP_EVERY라운드마다 시작 자리(맵의 양 끝)를 서로 바꾼다.
+- 한 라운드: 구매 시간(BUY_SECONDS, 제자리에 서서 산다) → 교전(ROUND_SECONDS) → 잠깐 결과(ROUND_END_SECONDS).
+  교전 중에는 부활이 없고, 쓰러지면 살아 있는 팀원을 관전한다. 상대 팀이 모두 쓰러지면 이긴다.
+  시간이 다 되면 살아 있는 사람이 많은 팀이, 같으면 남은 체력 합이 많은 팀이 이긴다. 그것도 같으면 무승부(점수 없음).
+- 돈: 처음 START_MONEY. 라운드가 끝나면 이긴 팀 WIN_BONUS, 진 팀은 LOSS_BASE에서 연패마다 LOSS_STEP씩 늘어난 보너스(최대 LOSS_MAX연패분),
+  킬마다 무기별 보상(KILL_REWARD). MAX_MONEY까지 가질 수 있다. 같은 팀을 쏘는 일은 없다.
+- 구매 시간에 PRICES의 무기(주무기는 하나만, 새로 사면 바뀐다)와 방어구를 산다. 권총은 기본 무기이고 탄이 무한이다.
+  살아남은 사람은 다음 라운드에도 무기·방어구·탄을 그대로 갖고, 쓰러진 사람은 권총만 들고 다시 시작한다. 체력은 라운드마다 가득 찬다.
+- 방어구(ARMOR_MAX)가 있으면 받는 피해가 ARMOR_ABSORB만큼 줄고, 줄어든 만큼 방어구가 닳는다.
 - 총은 마우스로 겨눠 쏜다 (WEAPONS). 탄은 즉시 맞는 총알(히트스캔)이다: 쏜 사람 위치에서 방향으로 사거리까지 곧게 나가며,
-  시선을 막는 것(벽·높은 가구·닫힌 문)에 막힌다. 낮은 가구는 넘어간다. 같은 팀은 맞지 않는다.
-  경찰과 도둑의 체포처럼, 쏜 사람 화면에 보인 모습으로 판정하도록 맞는 사람이 최근 TAG_MAX초 안에 서 있던 자리 중 하나를 맞히면 맞은 것이다 (핑 보정).
-- 권총은 탄이 무한. 맵에 놓인 상자(PICKUPS)를 밟으면 총(탄 가득)이나 구급상자를 얻고, 한 자리에서 PICKUP_RESPAWN초 뒤 다시 나온다.
-  주무기는 하나만 들 수 있고(새로 주우면 바뀐다), 탄이 떨어지면 권총으로 돌아간다. 구급상자는 체력 MEDKIT_HEAL을 채운다.
+  시선을 막는 것(벽·높은 가구·닫힌 문)에 막힌다. 낮은 가구는 넘어간다. 같은 팀은 맞지 않는다. 움직이면서 쏘면 더 퍼진다(MOVE_SPREAD).
+  쏜 사람 화면에 보인 모습으로 판정하도록 맞는 사람이 최근 TAG_MAX초 안에 서 있던 자리 중 하나를 맞히면 맞은 것이다 (핑 보정).
 - 사각지대는 경찰과 도둑과 같다: 상대 팀은 보일 때만 위치를 보낸다. 안 보이는 곳에서 쏜 총알도 보내지 않는다.
-- 봇: 보이는 가장 가까운 적을 겨눠 쏘고(조금 빗나간다), 거리를 보며 다가가거나 옆으로 비킨다. 적이 안 보이면 상자를 줍거나 돌아다닌다.
+  쓰러진 사람은 관전 중인 팀원이 보는 것을 본다. 라운드가 끝난 뒤에는 모두 보인다.
+- 봇: 구매 시간에 가진 돈으로 무기를 사고, 보이는 가장 가까운 적을 겨눠 쏘며(조금 빗나간다) 다가가거나 옆으로 비킨다.
+  적이 안 보이면 상대 시작 자리 쪽을 향해 돌아다닌다.
 """
 import math
-import random
 
 from . import untitled_world as base
-from .untitled_maps import ALL_MAPS, LOBBY, MAPS, RADIUS
+from .untitled_maps import ALL_MAPS, LOBBY
 
 MAX_PLAYERS = base.MAX_PLAYERS
 TEAMS = ("red", "blue")
 HP_MAX = 100
 SPEED = 4.3                    # 칸/초 (모두 같다)
 HIT_RADIUS = 0.5               # 총알 선과 몸 중심이 이만큼 가까우면 맞는다 (칸)
-RESPAWN_SECONDS, SPAWN_PROTECT = 3.0, 2.0
-MATCH_SECONDS, KILL_TARGET = 180.0, 20
-COUNTDOWN, RESULT_SECONDS = 3.0, 8.0
-PICKUP_COUNT, PICKUP_RESPAWN, PICKUP_REACH = 7, 15.0, 0.9
-MEDKIT_HEAL = 50
-# dmg: 한 발(알)당, pellets: 한 번에 나가는 알 수, spread: 퍼짐(라디안), ammo: 주웠을 때 탄(None은 무한), cooldown: 연사 간격(초), auto: 누르고 있으면 연사
+MOVE_SPREAD = 0.05             # 움직이는 동안 더해지는 퍼짐 (라디안)
+ROUNDS_TO_WIN, SWAP_EVERY = 5, 3
+BUY_SECONDS, ROUND_SECONDS, ROUND_END_SECONDS, RESULT_SECONDS = 12.0, 75.0, 5.0, 8.0
+START_MONEY, MAX_MONEY = 800, 16000
+WIN_BONUS, LOSS_BASE, LOSS_STEP, LOSS_MAX = 3250, 1400, 500, 4
+KILL_REWARD = {"pistol": 300, "rifle": 300, "shotgun": 900, "sniper": 100}
+PRICES = {"shotgun": 1200, "rifle": 2700, "sniper": 4750, "armor": 650}
+ARMOR_MAX, ARMOR_ABSORB = 100, 0.5
+# dmg: 한 발(알)당, pellets: 한 번에 나가는 알 수, spread: 퍼짐(라디안), ammo: 산 직후 탄(None은 무한), cooldown: 연사 간격(초), auto: 누르고 있으면 연사
 WEAPONS = {
     "pistol": {"name": "권총", "dmg": 20, "pellets": 1, "spread": 0.0, "range": 14.0, "cooldown": 0.38, "ammo": None, "auto": False},
-    "rifle": {"name": "소총", "dmg": 11, "pellets": 1, "spread": 0.05, "range": 16.0, "cooldown": 0.12, "ammo": 36, "auto": True},
-    "shotgun": {"name": "샷건", "dmg": 11, "pellets": 6, "spread": 0.2, "range": 8.0, "cooldown": 0.85, "ammo": 8, "auto": False},
-    "sniper": {"name": "저격총", "dmg": 70, "pellets": 1, "spread": 0.0, "range": 20.0, "cooldown": 1.5, "ammo": 5, "auto": False},
+    "rifle": {"name": "소총", "dmg": 14, "pellets": 1, "spread": 0.05, "range": 16.0, "cooldown": 0.12, "ammo": 60, "auto": True},
+    "shotgun": {"name": "샷건", "dmg": 11, "pellets": 6, "spread": 0.2, "range": 8.0, "cooldown": 0.85, "ammo": 14, "auto": False},
+    "sniper": {"name": "저격총", "dmg": 70, "pellets": 1, "spread": 0.0, "range": 20.0, "cooldown": 1.5, "ammo": 10, "auto": False},
 }
-PICKUP_KINDS = ("rifle", "shotgun", "sniper", "medkit")
 VIEW_RANGE = base.VIEW_RANGE
 BOT_AIM_ERROR, BOT_REACTION = 0.09, 0.3     # 봇 조준이 빗나가는 정도(라디안)와, 적의 위치를 다시 보는 간격(초)
 BOT_FIRE_FRACTION = 0.85                    # 사거리의 이만큼 안에서만 쏜다
-RESULT_KEYS = ("red", "blue")
+PHASES_FOG = ("buy", "playing")             # 사각지대가 적용되는 단계 (결과 화면에서는 모두 보인다)
 
 
 def rules_view():
@@ -51,8 +58,8 @@ def rules_view():
             "arrest": {"reach": 0, "cooldown": 0, "seconds": 1, "keep": 0, "slow": 1, "cop_slow": 1},
             "taser": {"range": WEAPONS["pistol"]["range"], "cooldown": 1, "stun": 0, "speed": 40},
             "view": VIEW_RANGE, "rescue": 0,
-            "gun": {"hp": HP_MAX, "weapons": WEAPONS, "kill_target": KILL_TARGET, "respawn": RESPAWN_SECONDS, "protect": SPAWN_PROTECT,
-                    "pickup_reach": PICKUP_REACH, "medkit_heal": MEDKIT_HEAL}}
+            "gun": {"hp": HP_MAX, "weapons": WEAPONS, "prices": PRICES, "rounds_to_win": ROUNDS_TO_WIN, "move_spread": MOVE_SPREAD,
+                    "armor_max": ARMOR_MAX, "buy_seconds": BUY_SECONDS}}
 
 
 def worlds_view():
@@ -65,21 +72,26 @@ def worlds_view():
     return out
 
 
-HIDDEN_KEYS = ("id", "name", "model", "team", "online", "bot", "kills", "deaths")
+HIDDEN_KEYS = ("id", "name", "model", "team", "online", "bot", "kills", "deaths", "alive")
 
 
 def visible_view(state, viewer_id):
-    """viewer에게 보낼 상태: 게임 중에는 내게 안 보이는 상대 팀의 위치를 지우고, 그 사람이 쏜 총알도 뺀다."""
-    if state.get("phase") not in ("countdown", "playing"):
+    """viewer에게 보낼 상태: 구매·교전 중에는 내(쓰러졌다면 관전 중인 팀원)가 볼 수 없는 상대 팀의 위치를 지우고, 그 사람이 쏜 총알도 뺀다."""
+    if state.get("phase") not in PHASES_FOG:
         return state
     me = next((p for p in state["players"] if p["id"] == viewer_id), None)
     if me is None or me["team"] is None:
         return state
+    eye = me
+    if not me.get("alive", True):                                     # 쓰러졌으면 관전 중인 팀원의 눈으로 본다
+        eye = next((p for p in state["players"] if p["id"] == me.get("spec") and p.get("alive") and p.get("x") is not None), None)
+        if eye is None:
+            eye = next((p for p in state["players"] if p["team"] == me["team"] and p.get("alive") and p.get("x") is not None), me)
     m = ALL_MAPS[state["map"]]
     players, hidden = [], set()
     for p in state["players"]:
-        near = (p["x"] - me["x"]) ** 2 + (p["y"] - me["y"]) ** 2 <= VIEW_RANGE ** 2
-        if p["id"] == viewer_id or p["team"] == me["team"] or (near and m.can_see(me["x"], me["y"], p["x"], p["y"], state.get("doors", ()))):
+        near = (p["x"] - eye["x"]) ** 2 + (p["y"] - eye["y"]) ** 2 <= VIEW_RANGE ** 2
+        if p["id"] == viewer_id or p["team"] == me["team"] or (near and m.can_see(eye["x"], eye["y"], p["x"], p["y"], state.get("doors", ()))):
             players.append(p)
         else:
             players.append({**{k: p[k] for k in HIDDEN_KEYS}, "hidden": True})
@@ -92,16 +104,14 @@ class GunPlayer(base.Player):
     def __init__(self, uid, name, model, x, y, now):
         super().__init__(uid, name, model, x, y, now)
         self.hp = HP_MAX
+        self.armor = 0
+        self.money = 0
         self.weapon, self.ammo = "pistol", None
         self.fire_ready = 0.0
-        self.dead_until = 0.0            # 쓰러져 있는 동안 다시 살아날 시각 (0이면 살아 있다)
-        self.protect_until = 0.0
+        self.alive = True
+        self.spec = None                 # 쓰러졌을 때 보고 있는 팀원
         self.kills = self.deaths = 0
-        self.aim_noise = (0.0, 0.0)
         self.strafe = (1, 0.0)           # 봇이 옆으로 비키는 방향(±1)과 바꿀 시각
-
-    def alive(self, now):
-        return self.dead_until <= 0.0
 
     def speed(self):
         return SPEED if self.team else base.SPEED["lobby"]
@@ -113,10 +123,10 @@ class GunPlayer(base.Player):
         w = WEAPONS[self.weapon]
         return {"id": self.uid, "name": self.name, "model": self.model, "x": round(self.x, 3), "y": round(self.y, 3),
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": False,
-                "safe": round(max(0.0, self.protect_until - now), 1), "frozen": round(max(0.0, self.frozen_until - now), 1),
+                "safe": 0, "frozen": round(max(0.0, min(self.frozen_until - now, 99.0)), 1),
                 "speed": self.speed(), "tp": self.tp, "bot": self.bot, "running": False,
-                "hp": self.hp, "dead": round(max(0.0, self.dead_until - now), 1) if self.dead_until else 0, "weapon": self.weapon,
-                "ammo": self.ammo, "ready": round(max(0.0, self.fire_ready - now), 2), "auto": w["auto"],
+                "hp": self.hp, "armor": self.armor, "money": self.money, "alive": self.alive, "spec": self.spec,
+                "weapon": self.weapon, "ammo": self.ammo, "ready": round(max(0.0, self.fire_ready - now), 2), "auto": w["auto"],
                 "kills": self.kills, "deaths": self.deaths}
 
 
@@ -127,9 +137,11 @@ class GunRoom(base.Room):
         super().__init__(code, host_id, name or "총게임", private, map_key)
         self.name = (name or "").strip()[:24] or "총게임"
         self.score = {"red": 0, "blue": 0}
-        self.pickups = []                # {"id", "x", "y", "kind", "until"}: until은 먹혀서 다시 나올 시각 (0이면 놓여 있다)
+        self.round = 0
+        self.loss_streak = {"red": 0, "blue": 0}
+        self.round_result = None         # 방금 끝난 라운드: {"winner", "bonus": {...}}
 
-    # ── 규칙 바깥(경찰과 도둑 전용)은 쓰지 않는다 ───────────────
+    # ── 경찰과 도둑 전용 동작은 쓰지 않는다 ───────────────────
     def arrest(self, *args, **kwargs):
         return False
 
@@ -140,12 +152,12 @@ class GunRoom(base.Room):
         return False
 
     def _solid(self, p):
-        return p.dead_until <= 0.0
+        return p.alive
 
     def tag_window(self, shooter, target):
         return min(base.TAG_MAX, max(base.TAG_MIN, (shooter.rtt + target.rtt) / 2 + base.TAG_BASE))
 
-    # ── 시작·끝 ─────────────────────────────────────────────────
+    # ── 경기 ────────────────────────────────────────────────────
     def start(self, uid, now=None):
         now = base.time.monotonic() if now is None else now
         if uid != self.host_id:
@@ -157,86 +169,207 @@ class GunRoom(base.Room):
             return False, "두 명 이상 있어야 시작할 수 있어요."
         self.rng.shuffle(people)
         self.map, self.doors_open = self.choice, frozenset()
-        self.score = {"red": 0, "blue": 0}
-        self.round_seconds = MATCH_SECONDS
-        counts = {"red": 0, "blue": 0}
+        self.score, self.round, self.result, self.round_result = {"red": 0, "blue": 0}, 0, None, None
+        self.loss_streak = {"red": 0, "blue": 0}
         for i, p in enumerate(people):
             p.team = TEAMS[i % 2]
-            spots = self.map.cop_spawns if p.team == "red" else self.map.thief_spawns
-            p.hp, p.weapon, p.ammo = HP_MAX, "pistol", None
-            p.fire_ready = p.dead_until = p.protect_until = 0.0
+            p.money = START_MONEY
+            p.weapon, p.ammo, p.armor = "pistol", None, 0
             p.kills = p.deaths = 0
-            p.teleport(*spots[counts[p.team] % len(spots)])
-            counts[p.team] += 1
-            p.reset_bot_plan()
-            p.frozen_until = now + COUNTDOWN
-            p.last = now
-        self._place_pickups(now)
-        self.phase, self.phase_end, self.result = "countdown", now + COUNTDOWN, None
+            p.alive = True
         self.events.append({"t": "start"})
-        self.dirty = True
+        self._new_round(now)
         return True, ""
 
-    def _place_pickups(self, now):
-        m = self.map
-        spots = []
-        for _ in range(400):
-            x, y = self.rng.uniform(1, m.w - 1), self.rng.uniform(1, m.h - 1)
-            if m.walkable_at(x, y) and not m.in_jail(x, y) and all(math.hypot(x - sx, y - sy) > 5.0 for sx, sy in spots):
-                spots.append((x, y))
-            if len(spots) >= PICKUP_COUNT:
-                break
-        kinds = list(PICKUP_KINDS)
-        self.pickups = [{"id": i, "x": round(x, 2), "y": round(y, 2), "kind": kinds[i % len(kinds)], "until": 0.0}
-                        for i, (x, y) in enumerate(spots)]
+    def _spawns(self, team):
+        """이 팀이 이번 라운드에 시작하는 자리들 (SWAP_EVERY라운드마다 맵의 양 끝을 바꾼다)."""
+        side = ((self.round - 1) // SWAP_EVERY) % 2
+        red_side = self.map.cop_spawns if side == 0 else self.map.thief_spawns
+        blue_side = self.map.thief_spawns if side == 0 else self.map.cop_spawns
+        return red_side if team == "red" else blue_side
+
+    def _new_round(self, now):
+        """새 라운드의 구매 시간: 모두 자기 시작 자리에 서고 체력이 찬다. 쓰러졌던 사람은 권총만 든다."""
+        self.round += 1
+        self.round_result = None
+        used = {"red": 0, "blue": 0}
+        for p in self.players.values():
+            if p.team is None:
+                continue
+            if not p.alive:
+                p.weapon, p.ammo, p.armor = "pistol", None, 0
+            p.alive, p.hp, p.spec = True, HP_MAX, None
+            p.fire_ready = 0.0
+            spots = self._spawns(p.team)
+            p.teleport(*spots[used[p.team] % len(spots)])
+            used[p.team] += 1
+            p.reset_bot_plan()
+            p.frozen_until = now + BUY_SECONDS
+            p.last = now
+        self.phase, self.phase_end = "buy", now + BUY_SECONDS
+        self.events.append({"t": "round", "n": self.round})
+        self._bots_buy()
+        self.dirty = True
 
     def update(self, now=None):
         now = base.time.monotonic() if now is None else now
         dt = 0.0 if self.last_update is None else min(0.3, max(0.0, now - self.last_update))
         self.last_update = now
-        if self.phase in ("countdown", "playing") and dt:
+        if self.phase == "playing" and dt:
             self._bots(dt, now)
-        if self.phase == "countdown" and now >= self.phase_end:
-            self.phase, self.phase_end = "playing", now + self.round_seconds
+        if self.phase == "buy" and now >= self.phase_end:
+            self.phase, self.phase_end = "playing", now + ROUND_SECONDS
+            for p in self.players.values():
+                p.frozen_until = min(p.frozen_until, now)
             self.events.append({"t": "go"})
             self.dirty = True
         elif self.phase == "playing":
-            self._respawns(now)
-            self._pickups(now)
             self._doors()
-            self._check_end(now)
+            self._follow()
+            self._check_round(now)
             self.dirty = True                                           # 남은 시간이 흐르므로 매번 보낸다
+        elif self.phase == "round_end" and now >= self.phase_end:
+            if self.result is not None:
+                self.phase, self.phase_end = "result", now + RESULT_SECONDS
+            else:
+                self._new_round(now)
         elif self.phase == "result" and now >= self.phase_end:
             self._back_to_lobby(now)
 
-    def _check_end(self, now):
-        teams = {t: [p for p in self.players.values() if p.team == t] for t in TEAMS}
+    def _alive(self, team):
+        return [p for p in self.players.values() if p.team == team and p.alive]
+
+    def _check_round(self, now):
+        red, blue = self._alive("red"), self._alive("blue")
         winner = None
-        if not teams["red"] or not teams["blue"]:
-            winner = "blue" if not teams["red"] else "red"             # 한 팀이 다 나갔다
-        elif max(self.score.values()) >= KILL_TARGET:
-            winner = max(TEAMS, key=lambda t: self.score[t])
-        elif self.phase == "playing" and now >= self.phase_end:
-            a, b = self.score["red"], self.score["blue"]
-            winner = "red" if a > b else "blue" if b > a else "draw"
+        if not blue and not red:
+            winner = "draw"
+        elif not blue:
+            winner = "red"
+        elif not red:
+            winner = "blue"
+        elif now >= self.phase_end:
+            if len(red) != len(blue):
+                winner = "red" if len(red) > len(blue) else "blue"
+            else:
+                hr, hb = sum(p.hp for p in red), sum(p.hp for p in blue)
+                winner = "red" if hr > hb else "blue" if hb > hr else "draw"
         if winner:
-            self.phase, self.phase_end = "result", now + RESULT_SECONDS
-            self.result = {"winner": winner, "score": dict(self.score),
-                           "stats": {p.uid: {"kills": p.kills, "deaths": p.deaths, "team": p.team} for p in self.players.values() if p.team}}
-            self.events.append({"t": "end", "winner": winner})
-            self.dirty = True
+            self._end_round(winner, now)
+
+    def _end_round(self, winner, now):
+        bonus = {}
+        for team in TEAMS:
+            if winner == team:
+                gain, self.loss_streak[team] = WIN_BONUS, 0
+            else:
+                gain = LOSS_BASE + LOSS_STEP * min(self.loss_streak[team], LOSS_MAX)
+                self.loss_streak[team] += 1
+            bonus[team] = gain
+            for p in self.players.values():
+                if p.team == team:
+                    p.money = min(MAX_MONEY, p.money + gain)
+        if winner != "draw":
+            self.score[winner] += 1
+        self.round_result = {"winner": winner, "bonus": bonus, "round": self.round}
+        self.phase, self.phase_end = "round_end", now + ROUND_END_SECONDS
+        self.events.append({"t": "round_end", "winner": winner})
+        top = max(self.score.values())
+        if top >= ROUNDS_TO_WIN:
+            champ = max(TEAMS, key=lambda t: self.score[t])
+            self._finish(champ)
+        self.dirty = True
+
+    def _finish(self, champ):
+        self.result = {"winner": champ, "score": dict(self.score), "rounds": self.round,
+                       "stats": {p.uid: {"kills": p.kills, "deaths": p.deaths, "team": p.team} for p in self.players.values() if p.team}}
+        self.events.append({"t": "end", "winner": champ})
 
     def _back_to_lobby(self, now):
-        self.phase, self.result = "lobby", None
-        self.map, self.doors_open, self.pickups = LOBBY, frozenset(), []
+        self.phase, self.result, self.round_result = "lobby", None, None
+        self.map, self.doors_open = LOBBY, frozenset()
         for i, p in enumerate(self.players.values()):
             p.team = None
-            p.hp, p.weapon, p.ammo = HP_MAX, "pistol", None
-            p.fire_ready = p.dead_until = p.protect_until = p.frozen_until = 0.0
+            p.hp, p.armor, p.money, p.weapon, p.ammo, p.alive, p.spec = HP_MAX, 0, 0, "pistol", None, True, None
+            p.fire_ready = p.frozen_until = 0.0
             p.teleport(*self.map.lobby_spawns[i % len(self.map.lobby_spawns)])
             p.last = now
         self.events.append({"t": "lobby"})
         self.dirty = True
+
+    def _check_end(self, now):
+        """Room.remove가 부르는 자리: 총게임은 아래 remove에서 직접 판정한다."""
+
+    def remove(self, uid, now=None):
+        super().remove(uid, now)
+        now = base.time.monotonic() if now is None else now
+        if self.phase in ("buy", "playing", "round_end") and self.result is None:
+            teams = {t: [p for p in self.players.values() if p.team == t] for t in TEAMS}
+            if not teams["red"] or not teams["blue"]:                   # 한 팀이 다 나갔다: 남은 팀이 이긴다
+                self._finish("red" if teams["red"] else "blue")
+                self.phase, self.phase_end = "result", now + RESULT_SECONDS
+            elif self.phase == "playing":
+                self._check_round(now)
+            self.dirty = True
+
+    # ── 구매 ────────────────────────────────────────────────────
+    def buy(self, uid, item, now=None):
+        """구매 시간에 무기나 방어구를 산다. (성공 여부, 오류 문구)"""
+        p = self.players.get(uid)
+        if p is None or p.team is None or self.phase != "buy":
+            return False, "구매 시간에만 살 수 있어요."
+        price = PRICES.get(item)
+        if price is None:
+            return False, "없는 물건이에요."
+        if price > p.money:
+            return False, "돈이 모자라요."
+        if item == "armor":
+            if p.armor >= ARMOR_MAX:
+                return False, "방어구를 이미 입었어요."
+            p.armor = ARMOR_MAX
+        else:
+            if p.weapon == item and p.ammo == WEAPONS[item]["ammo"]:
+                return False, "이미 가지고 있어요."
+            p.weapon, p.ammo = item, WEAPONS[item]["ammo"]
+        p.money -= price
+        self.events.append({"t": "buy", "id": uid, "item": item})
+        self.dirty = True
+        return True, ""
+
+    def _bots_buy(self):
+        for p in self.players.values():
+            if not p.bot or p.team is None:
+                continue
+            if p.weapon == "pistol":
+                for item, chance in (("sniper", 0.25), ("rifle", 1.0), ("shotgun", 0.5)):
+                    if p.money >= PRICES[item] and self.rng.random() < chance:
+                        self.buy(p.uid, item)
+                        break
+            if p.armor == 0 and p.money >= PRICES["armor"]:
+                self.buy(p.uid, "armor")
+
+    # ── 관전 ────────────────────────────────────────────────────
+    def _follow(self):
+        """쓰러진 사람이 보고 있는 팀원이 쓰러졌거나 없으면 살아 있는 다른 팀원으로 옮긴다."""
+        for p in self.players.values():
+            if p.team is None or p.alive:
+                continue
+            mates = [q.uid for q in self._alive(p.team)]
+            if p.spec not in mates:
+                p.spec = mates[0] if mates else None
+
+    def spectate(self, uid, step=1):
+        """쓰러진 사람이 보는 팀원을 바꾼다 (step: 1이면 다음, -1이면 이전)."""
+        p = self.players.get(uid)
+        if p is None or p.alive or p.team is None or self.phase not in ("playing", "round_end"):
+            return False
+        mates = sorted(q.uid for q in self._alive(p.team))
+        if not mates:
+            return False
+        i = mates.index(p.spec) if p.spec in mates else -1
+        p.spec = mates[(i + (1 if step >= 0 else -1)) % len(mates)]
+        self.dirty = True
+        return True
 
     # ── 총 ──────────────────────────────────────────────────────
     def _ray_end(self, x, y, dx, dy, length):
@@ -257,7 +390,7 @@ class GunRoom(base.Room):
         """총을 쏜다. 쐈으면 True (맞혔든 빗나갔든)."""
         now = base.time.monotonic() if now is None else now
         p = self.players.get(uid)
-        if p is None or self.phase != "playing" or p.team is None or p.dead_until > 0 or now < p.fire_ready or now < p.frozen_until:
+        if p is None or self.phase != "playing" or p.team is None or not p.alive or now < p.fire_ready or now < p.frozen_until:
             return False
         try:
             direction = float(direction)
@@ -269,10 +402,11 @@ class GunRoom(base.Room):
         w = WEAPONS[wkey]
         p.fire_ready = now + w["cooldown"] * 0.92                       # 화면 시계와 조금 어긋나도 받도록 아주 조금 봐준다
         p.dir = direction
-        enemies = [q for q in self.players.values() if q.team and q.team != p.team and q.dead_until <= 0 and now >= q.protect_until]
+        spread = w["spread"] + (MOVE_SPREAD if p.moving else 0.0)
+        enemies = [q for q in self.players.values() if q.team and q.team != p.team and q.alive]
         damage, ends = {}, []
         for _ in range(w["pellets"]):
-            ang = direction + (self.rng.uniform(-w["spread"], w["spread"]) if w["spread"] else 0.0)
+            ang = direction + (self.rng.uniform(-spread, spread) if spread else 0.0)
             dx, dy = math.sin(ang), math.cos(ang)
             reach = self._ray_end(p.x, p.y, dx, dy, w["range"])
             best, best_s = None, reach
@@ -301,66 +435,27 @@ class GunRoom(base.Room):
         return True
 
     def _hurt(self, victim, dmg, shooter, now, wkey):
+        if victim.armor > 0:                                             # 방어구가 피해를 덜어 주고 그만큼 닳는다
+            soaked = min(victim.armor, round(dmg * ARMOR_ABSORB))
+            victim.armor -= soaked
+            dmg -= soaked
         victim.hp -= dmg
         self.events.append({"t": "hit", "id": victim.uid, "by": shooter.uid, "dmg": dmg})
         if victim.hp > 0:
             return
-        victim.hp = 0
+        victim.hp, victim.alive, victim.moving = 0, False, False
+        victim.frozen_until = now + 10 ** 6                              # 이번 라운드가 끝날 때까지 움직이지 못한다
         victim.deaths += 1
         shooter.kills += 1
-        self.score[shooter.team] += 1
-        victim.dead_until = now + RESPAWN_SECONDS
-        victim.frozen_until = victim.dead_until
-        victim.moving, victim.weapon, victim.ammo = False, "pistol", None
+        shooter.money = min(MAX_MONEY, shooter.money + KILL_REWARD.get(wkey, 300))
+        victim.spec = None
         self.events.append({"t": "kill", "killer": shooter.uid, "victim": victim.uid, "w": wkey})
-
-    def _respawns(self, now):
-        for p in self.players.values():
-            if p.dead_until > 0 and now >= p.dead_until:
-                p.dead_until, p.hp, p.fire_ready = 0.0, HP_MAX, 0.0
-                p.protect_until = now + SPAWN_PROTECT
-                p.frozen_until = 0.0
-                p.teleport(*self._spawn_spot(p))
-                p.last = now
-                p.reset_bot_plan()
-                self.events.append({"t": "respawn", "id": p.uid})
-
-    def _spawn_spot(self, p):
-        """되살아날 자리: 시작 자리들 중 적에게서 가장 먼 곳."""
-        m = self.map
-        foes = [(q.x, q.y) for q in self.players.values() if q.team and q.team != p.team and q.dead_until <= 0]
-        spots = list(m.cop_spawns) + list(m.thief_spawns)
-        if not foes:
-            return self.rng.choice(spots)
-        return max(spots, key=lambda s: min(math.hypot(s[0] - fx, s[1] - fy) for fx, fy in foes) + self.rng.uniform(0, 1.5))
-
-    def _pickups(self, now):
-        for item in self.pickups:
-            if item["until"]:
-                if now < item["until"]:
-                    continue
-                item["until"] = 0.0
-                self.events.append({"t": "spawn", "id": item["id"]})
-            for p in self.players.values():
-                if p.team is None or p.dead_until > 0 or math.hypot(p.x - item["x"], p.y - item["y"]) > PICKUP_REACH:
-                    continue
-                if item["kind"] == "medkit":
-                    if p.hp >= HP_MAX:
-                        continue                                          # 꽉 찬 사람은 아껴 둔다
-                    p.hp = min(HP_MAX, p.hp + MEDKIT_HEAL)
-                else:
-                    p.weapon, p.ammo = item["kind"], WEAPONS[item["kind"]]["ammo"]
-                    p.fire_ready = max(p.fire_ready, now + 0.25)
-                item["until"] = now + PICKUP_RESPAWN
-                self.events.append({"t": "pickup", "id": item["id"], "by": p.uid, "kind": item["kind"]})
-                self.dirty = True
-                break
 
     # ── 봇 ─────────────────────────────────────────────────────
     def _bots(self, dt, now):
         people = list(self.players.values())
         for b in people:
-            if not b.bot or b.team is None or b.dead_until > 0 or now < b.frozen_until:
+            if not b.bot or b.team is None or not b.alive or now < b.frozen_until:
                 continue
             goal = self._bot_goal(b, people, now)
             if goal is None:
@@ -372,7 +467,7 @@ class GunRoom(base.Room):
 
     def _bot_goal(self, b, people, now):
         m = self.map
-        foes = [q for q in people if q.team and q.team != b.team and q.dead_until <= 0 and now >= q.protect_until
+        foes = [q for q in people if q.team and q.team != b.team and q.alive
                 and math.hypot(q.x - b.x, q.y - b.y) <= VIEW_RANGE and m.can_see(b.x, b.y, q.x, q.y, self.doors_open)]
         if foes:
             t = min(foes, key=lambda q: (q.x - b.x) ** 2 + (q.y - b.y) ** 2)
@@ -401,12 +496,20 @@ class GunRoom(base.Room):
         if b.seen is not None and math.hypot(b.seen[1] - b.x, b.seen[2] - b.y) > 0.6:
             return b.seen[1], b.seen[2], False                                         # 마지막으로 본 자리로 가 본다
         b.seen = None
-        wanted = [i for i in self.pickups if not i["until"] and (b.weapon == "pistol" and i["kind"] != "medkit" or b.hp < HP_MAX * 0.6 and i["kind"] == "medkit")]
-        if wanted:
-            i = min(wanted, key=lambda i: math.hypot(i["x"] - b.x, i["y"] - b.y))
-            if math.hypot(i["x"] - b.x, i["y"] - b.y) < 14.0:
-                return i["x"], i["y"], False
-        return self._wander(b, [], now)
+        return self._hunt(b, now)
+
+    def _hunt(self, b, now):
+        """적이 안 보일 때: 상대 시작 자리 둘레의 걸을 수 있는 곳을 차례로 돌아본다."""
+        if b.wander is None or math.hypot(b.wander[0] - b.x, b.wander[1] - b.y) < 0.8 or self.rng.random() < 0.01:
+            other = "blue" if b.team == "red" else "red"
+            spots = self._spawns(other)
+            cx, cy = self.rng.choice(spots)
+            for _ in range(30):
+                wx, wy = cx + self.rng.uniform(-9, 9), cy + self.rng.uniform(-9, 9)
+                if self.map.walkable_at(wx, wy) and not self.map.in_jail(wx, wy):
+                    b.wander = (wx, wy)
+                    break
+        return (b.wander[0], b.wander[1], False) if b.wander else None
 
     # ── 상태 ────────────────────────────────────────────────────
     def snapshot(self, now=None):
@@ -414,9 +517,8 @@ class GunRoom(base.Room):
         return {"code": self.code, "name": self.name, "private": self.private, "host": self.host_id, "phase": self.phase,
                 "map": self.map.key, "choice": self.choice.key,
                 "left": round(max(0.0, self.phase_end - now), 1) if self.phase != "lobby" else None,
-                "doors": sorted(self.doors_open), "score": dict(self.score), "target": KILL_TARGET,
-                "pickups": [{"id": i["id"], "x": i["x"], "y": i["y"], "kind": i["kind"], "on": not i["until"]} for i in self.pickups],
-                "result": self.result, "players": [p.public(now) for p in self.players.values()]}
+                "doors": sorted(self.doors_open), "score": dict(self.score), "round": self.round, "target": ROUNDS_TO_WIN,
+                "round_result": self.round_result, "result": self.result, "players": [p.public(now) for p in self.players.values()]}
 
 
 new_code = base.new_code

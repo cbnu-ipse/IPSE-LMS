@@ -371,7 +371,7 @@ export function createRoomScene(container, { base, world, mode }) {
       const rec = people.get(p.id);
       rec.name = p.name; rec.online = p.online; rec.jailed = p.jailed; rec.safe = p.safe; rec.wantTeam = p.team;
       if (GUN) {
-        rec.hp = p.hp; rec.dead = p.dead || 0; rec.weapon = p.weapon;
+        rec.hp = p.hp; rec.dead = p.alive === false ? 1 : 0; rec.weapon = p.weapon;
         const arm = rec.actor && rec.actor.root.getObjectByName('arm-right');
         if (arm && rec.gun && rec.gunKind !== p.weapon && p.team) {          // picked up (or ran out of) a weapon: swap the model in hand
           arm.remove(rec.gun); rec.gunKind = p.weapon; rec.gun = blaster(p.weapon); arm.add(rec.gun);
@@ -383,7 +383,7 @@ export function createRoomScene(container, { base, world, mode }) {
         if (!me || p.tp !== me.tp) { me = { ...(me || {}), x: p.x, y: p.y, dir: p.dir, tp: p.tp }; }
         me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.team = p.team;
         me.grabbed = !!p.grabbed; me.grabbing = p.grabbing != null;
-        if (GUN) { me.hp = p.hp; me.dead = p.dead || 0; me.weapon = p.weapon; me.ammo = p.ammo; me.auto = !!p.auto; }
+        if (GUN) { me.hp = p.hp; me.dead = p.alive === false ? 1 : 0; me.weapon = p.weapon; me.ammo = p.ammo; me.auto = !!p.auto; }
         const serverStamina = (p.stamina ?? 1) * world.run.stamina;    // keep my own running tally, but follow the server if it drifts
         if (me.stamina == null || Math.abs(me.stamina - serverStamina) > 0.6) me.stamina = serverStamina;
         if (p.exhausted) me.exhausted = true;                         // worn out: no running until it refills (server rule)
@@ -504,19 +504,20 @@ export function createRoomScene(container, { base, world, mode }) {
     if (raycaster.ray.intersectPlane(aimPlane, aimHit)) { aim.x = aimHit.x / CELL; aim.y = aimHit.z / CELL; aim.has = true; }
   }
   function onPointerDown(e) {
+    if (GUN && e.button === 0 && me && me.dead > 0) { if (specCb) specCb(1); return; }      // fallen: a click switches to the next teammate
     if (e.button !== 0 || !me || !isShooter()) return;
     onPointerMove(e);
     if (GUN) { gunHeld = true; fireGun(); } else fireTaser();
   }
   const isShooter = () => GUN ? (me && (me.team === 'red' || me.team === 'blue')) : (me && me.team === 'cop');
   const gunStats = () => (world.gun.weapons[(me && me.weapon) || 'pistol']) || world.gun.weapons.pistol;
-  let gunHeld = false, gunReady = 0;
+  let gunHeld = false, gunReady = 0, specCb = null, specId = null, phaseNow = 'lobby';
   const onPointerUp = () => { gunHeld = false; };
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerUp);
   function fireGun() {                                        // aim at the mouse; weapons with auto keep firing while the button is held
     const now = performance.now() / 1000;
-    if (!me || !isShooter() || !roundOn || me.frozen > 0 || me.dead > 0 || now < gunReady) return;
+    if (!me || !isShooter() || phaseNow !== 'playing' || me.frozen > 0 || me.dead > 0 || now < gunReady) return;
     const st = gunStats();
     gunReady = now + st.cooldown;
     const dir = aim.has ? Math.atan2(aim.x - me.x, aim.y - me.y) : me.dir;
@@ -792,7 +793,8 @@ export function createRoomScene(container, { base, world, mode }) {
     stepAim();
     stepRope();
     stepPuffs(dt);
-    if (me) focus.lerp(onFloor(me.x, me.y), Math.min(1, dt * 5));
+    const eye = eyePos();
+    if (eye) focus.lerp(onFloor(eye.x, eye.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
     placeCamera();
     renderer.render(scene, camera);
@@ -1045,8 +1047,16 @@ export function createRoomScene(container, { base, world, mode }) {
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(sightify);
     });
   }
+  function eyePos() {                                         // where the sight cone is drawn from: me, or the teammate I'm spectating when I have fallen
+    if (GUN && me && me.dead > 0 && specId != null) {
+      const rec = people.get(specId);
+      if (rec && rec.actor) return { x: rec.actor.root.position.x / CELL, y: rec.actor.root.position.z / CELL };
+    }
+    return me;
+  }
   function stepSight() {
-    const on = roundOn && !!me && !!me.team;
+    const eye = eyePos();
+    const on = roundOn && !!eye && !!me.team;
     sightU.uSightOn.value = on ? 1 : 0;
     const now = performance.now();
     if (now - sightScanAt > 700) { sightScanAt = now; sightScan(); }
@@ -1064,7 +1074,7 @@ export function createRoomScene(container, { base, world, mode }) {
       const a = r / RAYS * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
       let after = -1;                                         // once a ray hits a wall, light a little more so the wall's face shows
       for (let d = 0; d <= R; d += STEP) {
-        const x = me.x + dx * d, y = me.y + dy * d;
+        const x = eye.x + dx * d, y = eye.y + dy * d;
         if (areaAt(x, y) < 0 && after < 0) after = 1;
         const v = d < R - FADE ? 1 : Math.max(0, (R - d) / FADE);
         light(x, y, v);
@@ -1146,7 +1156,9 @@ export function createRoomScene(container, { base, world, mode }) {
     setOpenDoors,
     setPickups,
     events: handleEvents,
-    setPhase(phase) { roundOn = phase === 'countdown' || phase === 'playing'; },
+    setPhase(phase) { phaseNow = phase; roundOn = phase === 'countdown' || phase === 'playing' || phase === 'buy'; },
+    setSpectate(id) { specId = id; },
+    onSpectate(cb) { specCb = cb; },
     abilityState() {                                           // what Space does for me right now, and how long until it's ready
       const now = performance.now() / 1000, team = me && me.team;
       if (GUN) { const st = gunStats(); return me && isShooter() ? { kind: 'gun', name: st.name, ammo: me.ammo, ready: Math.max(0, gunReady - now), cooldown: st.cooldown } : { kind: null }; }

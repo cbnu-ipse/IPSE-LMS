@@ -1266,7 +1266,7 @@ class UntitledConsumer(AsyncWebsocketConsumer):
 
 
 class GunConsumer(UntitledConsumer):
-    """총게임 방: 방·이동·이모티콘은 경찰과 도둑과 같고(부모), 총 쏘기(shoot: 마우스 방향)만 더한다. 방은 gun_hub의 메모리에 있다."""
+    """총게임 방: 방·이동·이모티콘은 경찰과 도둑과 같고(부모), 총 쏘기(shoot: 마우스 방향)·사기(buy)·관전 대상 바꾸기(spec)를 더한다. 방은 gun_hub의 메모리에 있다."""
 
     hub = gun_hub
     world = gun_world
@@ -1275,6 +1275,20 @@ class GunConsumer(UntitledConsumer):
         try:
             data = json.loads(text_data)
         except json.JSONDecodeError:
+            return
+        if data.get("type") == "buy":
+            room = self.hub.room_of(self.scope["user"].id)
+            if room is not None:
+                ok, message = room.buy(self.scope["user"].id, str(data.get("item") or ""))
+                if not ok:
+                    await self._send({"type": "error", "message": message})
+                elif room.dirty:
+                    await self.hub.broadcast(room)
+            return
+        if data.get("type") == "spec":
+            room = self.hub.room_of(self.scope["user"].id)
+            if room is not None and room.spectate(self.scope["user"].id, 1 if int(data.get("step") or 1) >= 0 else -1):
+                await self.hub.broadcast(room)
             return
         if data.get("type") == "shoot":
             room = self.hub.room_of(self.scope["user"].id)
