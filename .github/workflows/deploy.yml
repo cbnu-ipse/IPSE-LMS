@@ -54,6 +54,23 @@ jobs:
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
+      # Tailwind 실행 파일: 빌드 안에서 익명으로 내려받으면 GitHub가 504를 내는 일이 있어(배포가 막힘), 토큰으로 `gh`가 받아 Docker 빌드에 넘긴다.
+      # 받은 파일은 캐시해 두므로 보통은 다시 받지 않는다. 버전은 Dockerfile의 TAILWINDCSS_VERSION과 같게 둔다.
+      - name: Restore Tailwind binary cache
+        id: tailwind-cache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: docker/tailwind/tailwindcss-linux-x64
+          key: tailwindcss-v4.3.5-linux-x64
+
+      - name: Download Tailwind binary
+        if: steps.tailwind-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v4.3.5 -R tailwindlabs/tailwindcss -p tailwindcss-linux-x64 -D docker/tailwind --clobber
+          chmod +x docker/tailwind/tailwindcss-linux-x64
+
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:

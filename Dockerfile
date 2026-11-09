@@ -18,17 +18,33 @@ COPY requirements/production.txt requirements/production.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements/production.txt
 
-# pytailwindcss 설치 및 CSS 빌드
-# templates/, static/ 전체 복사 후 빌드해야 Tailwind v4가 클래스 스캔 가능
+# Tailwind 실행 파일(약 100MB) 준비.
+# GitHub 릴리스 주소(익명 다운로드)가 504를 내면 빌드가 통째로 깨졌다. 토큰으로 받는 `gh release download`는 그때도 됐으므로,
+# CI는 실행 파일을 미리 받아 docker/tailwind/ 에 둔다(.github/workflows/deploy.yml). 여기서는
+#   ① 그 파일이 있으면 그대로 쓰고,
+#   ② 없거나 이 플랫폼에서 안 돌면(로컬 `docker compose build` 등) pytailwindcss로 내려받는다 (버전 고정, 최대 10번 길게 다시 시도).
+# templates/·static/을 복사하기 전에 끝내서 템플릿이 바뀔 때마다 다시 받지 않는다(캐시된 층).
 RUN pip install --no-cache-dir pytailwindcss
+ARG TAILWINDCSS_VERSION=v4.3.5
+COPY docker/tailwind/ /tmp/tailwind/
+RUN set -e; \
+    if [ -f /tmp/tailwind/tailwindcss-linux-x64 ] \
+       && install -m 0755 /tmp/tailwind/tailwindcss-linux-x64 /usr/local/bin/tailwindcss-bin \
+       && /usr/local/bin/tailwindcss-bin --help > /dev/null 2>&1; then \
+        echo ">>> using the Tailwind binary supplied by CI"; \
+    else \
+        for i in 1 2 3 4 5 6 7 8 9 10; do \
+            python -c "import pytailwindcss; pytailwindcss.install('${TAILWINDCSS_VERSION}')" && break; \
+            [ "$i" -eq 10 ] && exit 1; \
+            echo "tailwind binary download failed (attempt $i), retrying..."; sleep $((i < 4 ? i * 15 : 60)); \
+        done; \
+        cp "$(python -c "from pytailwindcss.utils import get_bin_path; print(get_bin_path('${TAILWINDCSS_VERSION}'))")" /usr/local/bin/tailwindcss-bin; \
+    fi; \
+    rm -rf /tmp/tailwind
+# templates/, static/ 전체 복사 후 빌드해야 Tailwind v4가 클래스 스캔 가능
 COPY templates/ templates/
 COPY static/ static/
-# 첫 실행 때 GitHub에서 tailwind 실행 파일을 내려받는다. 일시적인 5xx로 빌드 전체가 깨지지 않게 몇 번 다시 시도한다.
-RUN for i in 1 2 3 4 5; do \
-        tailwindcss -i static/src/input.css -o static/css/tailwind.css --minify && break; \
-        [ "$i" -eq 5 ] && exit 1; \
-        echo "tailwind build failed (attempt $i), retrying..."; sleep $((i * 10)); \
-    done
+RUN tailwindcss-bin -i static/src/input.css -o static/css/tailwind.css --minify
 
 # ==========================================
 # Stage 2: runtime — 최소 이미지

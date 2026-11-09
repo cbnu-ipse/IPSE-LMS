@@ -178,3 +178,6 @@ backups/
 yhw_agent_project/
 # 3D scene build tooling (frontend/*)
 frontend/*/node_modules/
+
+# CI가 gh로 받아 Docker 빌드에 넘기는 Tailwind 실행 파일 (docker/tailwind/)
+docker/tailwind/tailwindcss-*
