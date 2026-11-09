@@ -687,6 +687,7 @@ class Room:
         taken = {(round(p.x, 1), round(p.y, 1)) for p in self.players.values() if p.jailed and p is not t}
         spot = next((s for s in spots if (round(s[0], 1), round(s[1], 1)) not in taken), spots[0])
         t.teleport(*spot)
+        t.stun_until, t.frozen_until = 0.0, min(t.frozen_until, now)         # 감전된 채로 잡혀도 감옥에서는 감전이 풀린 상태 (흔적을 남기지 않는다)
         t.last = now
         cop.catches += 1
         self.events.append({"t": "caught", "thief": t.uid, "cop": cop.uid})
