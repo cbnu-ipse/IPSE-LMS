@@ -418,9 +418,9 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         const layout = WORLDS[st.map] && WORLDS[st.map].gun_layout, where = $('ut-where');
         where.hidden = !(inGame && layout && mine.x != null && mine.alive !== false);
         if (!where.hidden) {
-            const at = (r) => mine.x >= r[0] && mine.x < r[2] && mine.y >= r[1] && mine.y < r[3];
-            const site = layout.sites.find((q) => at(q.rect));
-            const base = layout.bases.findIndex((b) => at(b.rect));
+            const at = (rs) => rs.some((r) => mine.x >= r[0] && mine.x < r[2] && mine.y >= r[1] && mine.y < r[3]);
+            const site = layout.sites.find((q) => at(q.rects));
+            const base = layout.bases.findIndex((b) => at(b.rects));
             where.textContent = '📍 ' + (site ? site.id + ' 사이트 · ' + site.name : base >= 0 ? (base === st.side ? '🔴 레드' : '🔵 블루') + ' 기지' : '통로');
         }
         const banner = $('ut-banner');

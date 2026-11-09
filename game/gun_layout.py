@@ -11,10 +11,12 @@ import math
 from .untitled_maps import LOBBY, MAPS, RADIUS, STEP
 
 # 영역 번호는 untitled_maps의 areas 순서 (맵을 고치면 여기도 맞춘다)
+# 기지와 사이트는 봇끼리 수십 판 돌려 한쪽 기지만 이기지 않는 쪽으로 골랐다 (첫째 기지 승률: 연구소 약 63%, 학교 약 52%, 기숙사 약 45%).
+# 문이 좁은 구석 방(학교 창고 등)은 지키기 쉬워 기지로 쓰면 크게 기운다.
 LAYOUT_AREAS = {
     "lab": {"bases": ([0], [14]), "sites": {"A": [7], "B": [8]}},                    # 헬기장 ↔ 지하 저장고, 실험실 / 서버실
-    "school": {"bases": ([12], [18]), "sites": {"A": [4], "B": [7, 8, 9, 10, 11]}},  # 3반 ↔ 창고, 2반 / 강당
-    "dorm": {"bases": ([9], [8]), "sites": {"A": [2], "B": [13]}},                   # 사감실 ↔ 104호, 102호 / 202호
+    "school": {"bases": ([7, 8, 9], [12]), "sites": {"A": [6], "B": [16]}},          # 강당 ↔ 3반, 교무실 / 지하 매점
+    "dorm": {"bases": ([1], [13]), "sites": {"A": [3, 4], "B": [11]}},               # 101호 ↔ 202호, 지하 휴게실 / 201호
 }
 LOBBY_PADS = {"red": (1.0, 5.0, 7.0, 13.0), "blue": (11.0, 5.0, 17.0, 13.0)}         # x0, y0, x1, y1 (대기실은 18×18)
 SPAWNS_PER_BASE = 8
@@ -66,6 +68,11 @@ def _spots(m, areas, count, spacing=1.8):
     return [(round(x, 2), round(y, 2)) for x, y in picked]
 
 
+def _rects(m, areas):
+    """영역마다의 [x0, y0, x1, y1] (여러 영역으로 된 곳은 빈 땅까지 덮지 않도록 따로 그린다)."""
+    return [[m.areas[k]["x0"], m.areas[k]["y0"], m.areas[k]["x1"], m.areas[k]["y1"]] for k in areas]
+
+
 def _rect(m, areas):
     xs0 = [m.areas[k]["x0"] for k in areas]
     ys0 = [m.areas[k]["y0"] for k in areas]
@@ -81,11 +88,11 @@ class Layout:
         self.map = m
         self.bases = []
         for areas in spec["bases"]:
-            self.bases.append({"areas": list(areas), "gates": _gates(m, areas), "spawns": _spots(m, areas, SPAWNS_PER_BASE), "rect": _rect(m, areas)})
-        self.sites = {sid: {"id": sid, "areas": list(areas), "rect": _rect(m, areas), "name": m.areas[areas[0]]["name"]} for sid, areas in spec["sites"].items()}
+            self.bases.append({"areas": list(areas), "gates": _gates(m, areas), "spawns": _spots(m, areas, SPAWNS_PER_BASE), "rect": _rect(m, areas), "rects": _rects(m, areas)})
+        self.sites = {sid: {"id": sid, "areas": list(areas), "rect": _rect(m, areas), "rects": _rects(m, areas), "name": m.areas[areas[0]]["name"]} for sid, areas in spec["sites"].items()}
 
     def view(self):
-        return {"bases": [{"areas": b["areas"], "gates": [list(g) for g in b["gates"]], "rect": b["rect"]} for b in self.bases],
+        return {"bases": [{"areas": b["areas"], "gates": [list(g) for g in b["gates"]], "rect": b["rect"], "rects": b["rects"]} for b in self.bases],
                 "sites": list(self.sites.values())}
 
 

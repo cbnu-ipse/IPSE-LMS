@@ -391,15 +391,19 @@ export function createRoomScene(container, { base, world, mode }) {
   const SITE_INK = { A: '#f59e0b', B: '#06b6d4' };
   if (GUN && world.gun_layout) {
     for (const base of world.gun_layout.bases) {
-      const [x0, y0, x1, y1] = base.rect;
-      baseTints.push(tintRect(x0, y0, x1, y1, 0x64748b, 0.16, heightAt((x0 + x1) / 2, (y0 + y1) / 2) + 0.12));
+      const tints = base.rects.map(([x0, y0, x1, y1]) => tintRect(x0, y0, x1, y1, 0x64748b, 0.16, heightAt((x0 + x1) / 2, (y0 + y1) / 2) + 0.12));
+      baseTints.push(tints);
     }
     for (const site of world.gun_layout.sites) {
-      const [x0, y0, x1, y1] = site.rect, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, h = heightAt(cx, cy) + 0.14;
-      const ink = SITE_INK[site.id] || '#f59e0b';
-      tintRect(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, parseInt(ink.slice(1), 16), 0.12, h);
-      outline(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, parseInt(ink.slice(1), 16), h + 0.02);
-      bigLetter(site.id, '', cx - (x1 - x0) * 0.2, cy - (y1 - y0) * 0.2, h + 0.04, ink, 16);      // off to a corner so it doesn't sit on the room's name
+      const ink = SITE_INK[site.id] || '#f59e0b', color = parseInt(ink.slice(1), 16);
+      for (const [x0, y0, x1, y1] of site.rects) {              // one patch per area so a site made of several areas doesn't cover the void between them
+        const h = heightAt((x0 + x1) / 2, (y0 + y1) / 2) + 0.14;
+        tintRect(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, color, 0.12, h);
+        outline(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, color, h + 0.02);
+      }
+      const big = site.rects.reduce((a, r) => ((r[2] - r[0]) * (r[3] - r[1]) > (a[2] - a[0]) * (a[3] - a[1]) ? r : a));     // the letter goes in the biggest patch
+      const [x0, y0, x1, y1] = big, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      bigLetter(site.id, '', cx - (x1 - x0) * 0.2, cy - (y1 - y0) * 0.2, heightAt(cx, cy) + 0.18, ink, 16);      // off to a corner so it doesn't sit on the room's name
     }
   }
   if (GUN && world.gun_pads) {                                // the lobby: stand on a side to join that team
@@ -435,7 +439,7 @@ export function createRoomScene(container, { base, world, mode }) {
     gateGroup.children.forEach((m, i) => { m.material.opacity = 0.45 + 0.2 * Math.sin(t * 5 + i); });
   }
   function setSide(side) {                                    // which base is red this round: tint them
-    baseTints.forEach((m, i) => m.material.color.setHex((i === side) === true ? 0xdc2626 : 0x2563eb));
+    baseTints.forEach((tints, i) => tints.forEach((m) => m.material.color.setHex(i === side ? 0xdc2626 : 0x2563eb)));
   }
 
   // ── people ──

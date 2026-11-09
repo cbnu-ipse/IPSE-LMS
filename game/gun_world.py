@@ -550,7 +550,9 @@ class GunRoom(base.Room):
     # ── 봇 ─────────────────────────────────────────────────────
     def _bots(self, dt, now):
         people = list(self.players.values())
-        for b in people:
+        order = list(people)
+        self.rng.shuffle(order)                  # 먼저 처리되는 팀이 늦게 처리되는 팀에게 지는 쏠림이 없게 매번 순서를 섞는다
+        for b in order:
             if not b.bot or b.team is None or not b.alive or now < b.frozen_until:
                 continue
             goal = self._bot_goal(b, people, now)
