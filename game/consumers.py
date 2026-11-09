@@ -8,7 +8,7 @@ from channels.layers import get_channel_layer
 from django.db import close_old_connections
 from django.utils import timezone
 
-from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, yacht_engine
+from . import gomoku_engine, gostop_engine, janggi_engine, poker_engine, untitled_hub, untitled_world, yacht_engine
 
 logger = logging.getLogger(__name__)
 
@@ -1120,3 +1120,144 @@ class JanggiConsumer(AsyncWebsocketConsumer):
     async def _send_state(self):
         state = await database_sync_to_async(janggi_engine.get_state_for)(self.scope["user"])
         await self.send(text_data=json.dumps(state, ensure_ascii=False))
+
+
+class UntitledConsumer(AsyncWebsocketConsumer):
+    """경찰과 도둑 방: 열린 방 목록, 만들기(이름·비공개·맵)·입장·나가기, 맵 고르기, 봇 넣고 빼기, 캐릭터 이동, 시작·달리기(도둑)·테이저(경찰)·붙잡기(E 누르고 있기)·이모티콘.
+    방은 untitled_hub의 메모리에 있고 DB는 쓰지 않는다."""
+
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+        self.group = None
+        self.player_name = await database_sync_to_async(self._load_name)()     # 닉네임은 학생 정보(DB)에서 온다
+        await self.accept()
+        room = untitled_hub.room_of(user.id)
+        if room is not None and user.id in room.players:      # 새로고침·재접속이면 하던 방으로 돌아간다
+            ok, room = untitled_hub.join_room(user.id, self._name(), room.code)
+            await self._enter(room)
+        else:
+            await self._send({"type": "hello", "room": None})
+
+    async def disconnect(self, close_code):
+        user = self.scope.get("user")
+        if self.group:
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+        if user and user.is_authenticated:
+            untitled_hub.disconnect(user.id)
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        user, kind = self.scope["user"], data.get("type")
+        if kind == "__ping__":
+            await self._send({"type": "pong", "t": data.get("t")})      # t를 그대로 돌려줘 화면이 왕복 지연(핑)을 잰다
+            room = untitled_hub.room_of(user.id)
+            if room is not None and data.get("rtt") is not None:
+                room.set_rtt(user.id, data.get("rtt"))                   # 잡기(tag) 판정이 얼마나 되돌아볼지 정하는 데 쓴다
+        elif kind == "list":
+            await self._send({"type": "rooms", "rooms": untitled_hub.list_rooms()})
+        elif kind == "create":
+            room = untitled_hub.create_room(user.id, self._name(), str(data.get("name") or "")[:24], bool(data.get("private")),
+                                            str(data.get("map") or ""))
+            await self._leave_group()
+            await self._enter(room)
+        elif kind == "join":
+            ok, room = untitled_hub.join_room(user.id, self._name(), data.get("code"))
+            if not ok:
+                await self._send({"type": "error", "message": room})
+                return
+            await self._leave_group()
+            await self._enter(room)
+        elif kind == "leave":
+            await self._leave_group()
+            untitled_hub.leave(user.id)
+            await self._send({"type": "hello", "room": None})
+        elif kind == "start":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                ok, message = room.start(user.id)
+                if not ok:
+                    await self._send({"type": "error", "message": message})
+                    return
+                untitled_hub.ensure_loop()
+                await untitled_hub.broadcast(room)
+        elif kind in ("add_bot", "remove_bot"):
+            room = untitled_hub.room_of(user.id)
+            if room is None:
+                return
+            if kind == "add_bot":
+                result = room.add_bot(user.id)
+                if isinstance(result, str):
+                    await self._send({"type": "error", "message": result})
+                    return
+            else:
+                room.remove_bot(user.id)
+            untitled_hub.ensure_loop()
+            await untitled_hub.broadcast(room)
+        elif kind == "release":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                room.release(user.id)
+        elif kind == "taser":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                room.taser(user.id, data.get("dir"))
+                if room.dirty:
+                    await untitled_hub.broadcast(room)                # 쏜 것(맞혔든 빗나갔든)을 바로 알린다
+        elif kind == "emote":
+            room = untitled_hub.room_of(user.id)
+            if room is not None and room.emote(user.id, str(data.get("e") or "")):
+                await untitled_hub.broadcast(room)
+        elif kind == "map":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                message = room.set_map(user.id, str(data.get("map") or ""))
+                if message:
+                    await self._send({"type": "error", "message": message})
+                    return
+                await untitled_hub.broadcast(room)
+        elif kind == "arrest":
+            room = untitled_hub.room_of(user.id)
+            if room is not None:
+                room.arrest(user.id, data.get("id"))
+                if room.dirty:
+                    await untitled_hub.broadcast(room)                # 잡았든 헛손질이든 바로 알린다
+        elif kind == "move":
+            room = untitled_hub.room_of(user.id)
+            if room is not None and not room.move(user.id, data.get("x"), data.get("y"), data.get("dir", 0), data.get("moving"),
+                                                  run=bool(data.get("run"))):
+                p = room.players.get(user.id)
+                if p is not None:                               # 받지 않은 위치: 마지막 위치로 되돌려 보낸다
+                    await self._send({"type": "correct", "x": p.x, "y": p.y})
+
+    async def untitled_state(self, event):
+        state = untitled_world.visible_view(event["state"], self.scope["user"].id)   # 사각지대에 있는 상대는 위치를 빼고 보낸다
+        await self._send({"type": "state", "state": state})
+
+    async def _enter(self, room):
+        self.group = untitled_hub.group_name(room.code)
+        await self.channel_layer.group_add(self.group, self.channel_name)
+        untitled_hub.ensure_loop()
+        await self._send({"type": "hello", "room": room.code, "me": self.scope["user"].id})
+        await untitled_hub.broadcast(room)
+
+    async def _leave_group(self):
+        if self.group:
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+            self.group = None
+
+    def _load_name(self):
+        user = self.scope["user"]
+        return (user.display_name or user.username)[:16]
+
+    def _name(self):
+        return self.player_name
+
+    async def _send(self, payload):
+        await self.send(text_data=json.dumps(payload, ensure_ascii=False))
+

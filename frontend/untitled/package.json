@@ -1,0 +1,18 @@
+{
+  "name": "ipse-untitled",
+  "private": true,
+  "version": "0.1.0",
+  "description": "3D scene for the [untitled] room game (built into static/game/untitled3d)",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "models": "node tools/copy-models.mjs"
+  },
+  "dependencies": {
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "vite": "5.4.11"
+  }
+}
