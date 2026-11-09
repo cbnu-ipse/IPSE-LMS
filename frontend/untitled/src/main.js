@@ -413,27 +413,40 @@ export function createRoomScene(container, { base, world }) {
         const k = d.o === 'h' ? dirSign : -dirSign;            // which way "away from the person" turns this leaf
         group.rotation.y = baseAngle;
         scene.add(group);
-        doors.push({ group, base: baseAngle, k, o: d.o, f: d.f, cx, cy, ang: 0, vel: 0 });
+        doors.push({ group, base: baseAngle, k, o: d.o, f: d.f, cx, cy, hx, hy, len: per * 0.98, ang: 0, vel: 0 });
       }
     }
   }
-  const DOOR_MAX = 1.45, DOOR_R = 2.0;                         // max swing (rad), and how far away someone starts to push a door
+  // Each leaf is a massless rigid bar on a spring hinge. It only moves when a person's body actually touches it: the contact point is
+  // pushed out of the body (the person is never blocked), the leaf keeps the swing speed, then the hinge spring and damping bring it
+  // back to shut with a small overshoot.
+  const DOOR_MAX = 1.7, DOOR_THICK = 0.06;                    // max swing (rad), half thickness of the leaf in cells
   function stepDoors(dt) {
     const step = Math.min(dt, 0.04);
     for (const door of doors) {
-      let target = 0;
-      for (const [id, rec] of people) {                       // everyone I can see pushes the door; the strongest push wins
+      const phi = -door.base - door.k * door.ang;              // leaf direction in plan (x, y) coordinates
+      const c = Math.cos(phi), sn = Math.sin(phi), ux = -sn, uy = c;       // leaf direction and its swing tangent
+      let dAng = 0, best = 0;
+      for (const [id, rec] of people) {
         if (!rec.actor || (rec.hidden && id !== meId)) continue;
         const px = id === meId && me ? me.x : rec.actor.root.position.x / CELL, py = id === meId && me ? me.y : rec.actor.root.position.z / CELL;
-        const dist = Math.hypot(px - door.cx, py - door.cy);
-        if (dist > DOOR_R) continue;
-        const across = door.o === 'h' ? py - door.f : px - door.f;           // which side of the door's plane they are on
-        const push = -Math.max(-1, Math.min(1, across / 0.6)) * DOOR_MAX * Math.min(1, (DOOR_R - dist) / (DOOR_R - 0.5));
-        if (Math.abs(push) > Math.abs(target)) target = push;
+        const rx = px - door.hx, ry = py - door.hy;
+        if (Math.abs(rx) > door.len + R + 0.2 || Math.abs(ry) > door.len + R + 0.2) continue;
+        const t = Math.max(0, Math.min(door.len, rx * c + ry * sn));      // closest point on the leaf
+        const qx = door.hx + c * t, qy = door.hy + sn * t;
+        let ox = qx - px, oy = qy - py;                         // from the body to the leaf
+        const d = Math.hypot(ox, oy);
+        const pen = R + DOOR_THICK - d;
+        if (pen <= 0 || t < 0.05) continue;
+        if (d > 1e-4) { ox /= d; oy /= d; } else { ox = ux; oy = uy; }
+        const along = ox * ux + oy * uy;                        // how much of the push turns the leaf
+        const dphi = pen * along / t;
+        if (Math.abs(dphi) > Math.abs(best)) { best = dphi; dAng = -door.k * dphi; }
       }
-      door.vel += (140 * (target - door.ang) - 9 * door.vel) * step;      // spring + damping: swings through and wobbles shut
+      if (dAng) { door.ang += dAng; door.vel = Math.max(-6, Math.min(6, dAng / step)); }
+      door.vel += (60 * (0 - door.ang) - 7 * door.vel) * step;            // spring hinge back to shut, damped
       door.ang += door.vel * step;
-      door.ang = Math.max(-DOOR_MAX * 1.2, Math.min(DOOR_MAX * 1.2, door.ang));
+      if (Math.abs(door.ang) > DOOR_MAX) { door.ang = Math.sign(door.ang) * DOOR_MAX; door.vel = 0; }
       door.group.rotation.y = door.base + door.k * door.ang;
     }
   }
