@@ -23,7 +23,12 @@ RUN pip install --no-cache-dir --upgrade pip \
 RUN pip install --no-cache-dir pytailwindcss
 COPY templates/ templates/
 COPY static/ static/
-RUN tailwindcss -i static/src/input.css -o static/css/tailwind.css --minify
+# 첫 실행 때 GitHub에서 tailwind 실행 파일을 내려받는다. 일시적인 5xx로 빌드 전체가 깨지지 않게 몇 번 다시 시도한다.
+RUN for i in 1 2 3 4 5; do \
+        tailwindcss -i static/src/input.css -o static/css/tailwind.css --minify && break; \
+        [ "$i" -eq 5 ] && exit 1; \
+        echo "tailwind build failed (attempt $i), retrying..."; sleep $((i * 10)); \
+    done
 
 # ==========================================
 # Stage 2: runtime — 최소 이미지
