@@ -304,8 +304,9 @@ class CopsAndRobbersTests(SimpleTestCase):
         self.assertFalse(room.move(t.uid, t.x + step * 1.2, t.y, 0, True, now=now + world.GRAB_GRACE + 0.2))   # 붙잡힌 채로는 못 간다
         self.assertTrue(room.move(t.uid, t.x + step * world.GRAB_SLOW, t.y, 0, True, now=now + world.GRAB_GRACE + 0.4))
 
-    def test_more_players_get_more_time(self):
-        self.assertLess(world.round_seconds(3), world.round_seconds(8))
+    def test_round_lasts_one_minute(self):
+        self.assertEqual(world.round_seconds(3), 60.0)
+        self.assertEqual(world.round_seconds(8), 60.0)
 
     def test_lobby_is_a_fixed_square_and_the_round_moves_to_the_chosen_map(self):
         room = self.room(3)

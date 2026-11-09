@@ -15,7 +15,7 @@
   tag_window) 동안 지나간 자리 중 하나라도 경찰 손 닿는 곳이었는지로 판정한다.
 - 잡히지 않은 도둑이 감옥 앞 구출 발판에 RESCUE_SECONDS초 동안 서 있으면 갇힌 도둑이 모두 발판 둘레로 풀려나고
   SAFE_SECONDS초 동안 잡히지 않는다. 발판에서 내려오면 처음부터 다시.
-- 제한 시간(인원에 따라 다르다, round_seconds) 안에 도둑을 모두 가두면 경찰 승리, 끝날 때 한 명이라도 밖에 있으면 도둑 승리.
+- 제한 시간(1분, round_seconds) 안에 도둑을 모두 가두면 경찰 승리, 끝날 때 한 명이라도 밖에 있으면 도둑 승리.
 - 도둑은 달릴 수 있다(RUN_MULT배): 스태미나(STAMINA_MAX초 분량)가 달리는 동안 줄고, 안 달리면 STAMINA_REGEN만큼 다시 찬다.
   다 쓰면 탈진해서 STAMINA_RECOVER만큼 찰 때까지는 키를 계속 눌러도 달려지지 않는다 (바닥에서 찔끔찔끔 달리는 것을 막는다).
   화면이 이동마다 "달리는 중"을 함께 보내고, 서버가 같은 계산으로 스태미나를 셈해 속도 검사에 반영한다.
@@ -69,8 +69,8 @@ MODELS = ["character-male-a", "character-female-a", "character-male-b", "charact
 
 
 def round_seconds(players):
-    """제한 시간: 인원이 많을수록 길다 (2명 140초 … 8명 200초)."""
-    return 120.0 + 10.0 * players
+    """제한 시간: 인원과 상관없이 1분."""
+    return 60.0
 
 
 def rules_view():
