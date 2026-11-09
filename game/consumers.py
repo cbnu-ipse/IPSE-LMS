@@ -1267,7 +1267,7 @@ class UntitledConsumer(AsyncWebsocketConsumer):
 
 
 class GunConsumer(UntitledConsumer):
-    """총게임 방: 방·이동·이모티콘은 경찰과 도둑과 같고(부모), 총 쏘기(shoot: 마우스 방향)·사기(buy)·관전 대상 바꾸기(spec)를 더한다. 방은 gun_hub의 메모리에 있다."""
+    """총게임 방: 방·이동·이모티콘은 경찰과 도둑과 같고(부모), 총 쏘기(shoot: 마우스 방향)·사기(buy)·관전 대상 바꾸기(spec)·팀 옮기기(team)·팀을 정해 봇 넣기(add_bot)를 더한다. 방은 gun_hub의 메모리에 있다."""
 
     hub = gun_hub
     world = gun_world
@@ -1276,6 +1276,25 @@ class GunConsumer(UntitledConsumer):
         try:
             data = json.loads(text_data)
         except json.JSONDecodeError:
+            return
+        if data.get("type") == "team":
+            room = self.hub.room_of(self.scope["user"].id)
+            if room is not None:
+                message = room.set_team(self.scope["user"].id, data.get("team"))
+                if message:
+                    await self._send({"type": "error", "message": message})
+                else:
+                    await self.hub.broadcast(room)
+            return
+        if data.get("type") == "add_bot":                                   # 팀을 정해 봇을 넣는다
+            room = self.hub.room_of(self.scope["user"].id)
+            if room is not None:
+                result = room.add_bot(self.scope["user"].id, team=data.get("team"))
+                if isinstance(result, str):
+                    await self._send({"type": "error", "message": result})
+                else:
+                    self.hub.ensure_loop()
+                    await self.hub.broadcast(room)
             return
         if data.get("type") == "buy":
             room = self.hub.room_of(self.scope["user"].id)

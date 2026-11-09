@@ -3,9 +3,14 @@
 방, 맵 고르기, 이동 검증(속도 한도·벽·충돌), 핑 보정, 문, 이모티콘, 봇 길찾기는 untitled_world.Room을 그대로 쓴다.
 여기서는 규칙만 바꾼다. 발로란트·카스처럼 라운드마다 총을 사서 싸운다.
 
+대기실: 대기실 왼쪽 레드 자리·오른쪽 블루 자리에 서면 그 팀이 된다(버튼으로도 옮길 수 있다). 방장은 팀마다 봇을 넣는다.
+  어느 자리에도 안 선 사람은 시작할 때 사람이 적은 팀으로 들어간다. 두 팀 모두 한 명 이상이어야 시작한다.
+
 라운드제 (방장이 시작한다, 2명 이상 — 봇도 센다)
 - 레드·블루 두 팀. 먼저 ROUNDS_TO_WIN라운드를 이긴 팀이 이긴다. SWAP_EVERY라운드마다 시작 자리(맵의 양 끝)를 서로 바꾼다.
 - 한 라운드: 구매 시간(BUY_SECONDS, 제자리에 서서 산다) → 교전(ROUND_SECONDS) → 잠깐 결과(ROUND_END_SECONDS).
+  구매 시간에는 자기 기지(맵마다 정해진 구역) 안에서 움직일 수 있지만 나갈 수는 없다(기지 출구가 잠긴다). 교전이 시작되면 열린다.
+  맵에는 A·B 사이트가 있어 위치를 안내하는 데 쓴다 (gun_layout).
   교전 중에는 부활이 없고, 쓰러지면 살아 있는 팀원을 관전한다. 상대 팀이 모두 쓰러지면 이긴다.
   시간이 다 되면 살아 있는 사람이 많은 팀이, 같으면 남은 체력 합이 많은 팀이 이긴다. 그것도 같으면 무승부(점수 없음).
 - 돈: 처음 START_MONEY. 라운드가 끝나면 이긴 팀 WIN_BONUS, 진 팀은 LOSS_BASE에서 연패마다 LOSS_STEP씩 늘어난 보너스(최대 LOSS_MAX연패분),
@@ -23,6 +28,7 @@
 """
 import math
 
+from . import gun_layout as lay
 from . import untitled_world as base
 from .untitled_maps import ALL_MAPS, LOBBY
 
@@ -68,6 +74,8 @@ def worlds_view():
     for key, m in ALL_MAPS.items():
         view = m.view(rules_view())
         view["pad"] = None
+        view["gun_layout"] = lay.LAYOUTS[key].view() if key in lay.LAYOUTS else None
+        view["gun_pads"] = lay.LOBBY_PADS if key == LOBBY.key else None
         out[key] = view
     return out
 
@@ -110,6 +118,7 @@ class GunPlayer(base.Player):
         self.fire_ready = 0.0
         self.alive = True
         self.spec = None                 # 쓰러졌을 때 보고 있는 팀원
+        self.pref = None                 # 대기실에서 서 있는 팀 자리 ("red"/"blue"/None)
         self.kills = self.deaths = 0
         self.strafe = (1, 0.0)           # 봇이 옆으로 비키는 방향(±1)과 바꿀 시각
 
@@ -125,7 +134,7 @@ class GunPlayer(base.Player):
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": False,
                 "safe": 0, "frozen": round(max(0.0, min(self.frozen_until - now, 99.0)), 1),
                 "speed": self.speed(), "tp": self.tp, "bot": self.bot, "running": False,
-                "hp": self.hp, "armor": self.armor, "money": self.money, "alive": self.alive, "spec": self.spec,
+                "hp": self.hp, "armor": self.armor, "money": self.money, "alive": self.alive, "spec": self.spec, "pref": self.pref,
                 "weapon": self.weapon, "ammo": self.ammo, "ready": round(max(0.0, self.fire_ready - now), 2), "auto": w["auto"],
                 "kills": self.kills, "deaths": self.deaths}
 
@@ -140,6 +149,17 @@ class GunRoom(base.Room):
         self.round = 0
         self.loss_streak = {"red": 0, "blue": 0}
         self.round_result = None         # 방금 끝난 라운드: {"winner", "bonus": {...}}
+
+    def add(self, uid, name, now=None):
+        """대기실에서는 어느 팀 자리도 아닌 가운데에서 시작한다 (경찰과 도둑의 대기실 고리는 팀 자리에 걸친다). 재접속은 제자리."""
+        known = uid in self.players
+        ok, message = super().add(uid, name, now)
+        p = self.players.get(uid)
+        if ok and not known and p is not None and self.phase == "lobby":
+            taken = [(q.x, q.y) for q in self.players.values() if q is not p]
+            p.x, p.y = next((s for s in lay.LOBBY_NEUTRAL if all(math.hypot(s[0] - x, s[1] - y) > 0.9 for x, y in taken)), lay.LOBBY_NEUTRAL[0])
+            p.pref = None
+        return ok, message
 
     # ── 경찰과 도둑 전용 동작은 쓰지 않는다 ───────────────────
     def arrest(self, *args, **kwargs):
@@ -167,26 +187,56 @@ class GunRoom(base.Room):
         people = list(self.players.values())
         if len(people) < 2:
             return False, "두 명 이상 있어야 시작할 수 있어요."
-        self.rng.shuffle(people)
+        teams = {"red": [p for p in people if p.pref == "red"], "blue": [p for p in people if p.pref == "blue"]}
+        neutral = [p for p in people if p.pref is None]
+        self.rng.shuffle(neutral)
+        for p in neutral:                                                  # 자리에 안 선 사람은 적은 팀으로
+            a, b = len(teams["red"]), len(teams["blue"])
+            teams["red" if a < b or (a == b and self.rng.random() < 0.5) else "blue"].append(p)
+        if not teams["red"] or not teams["blue"]:
+            return False, "레드와 블루 팀에 각각 한 명 이상 있어야 해요. 자리를 옮기거나 봇을 넣어 주세요."
         self.map, self.doors_open = self.choice, frozenset()
         self.score, self.round, self.result, self.round_result = {"red": 0, "blue": 0}, 0, None, None
         self.loss_streak = {"red": 0, "blue": 0}
-        for i, p in enumerate(people):
-            p.team = TEAMS[i % 2]
-            p.money = START_MONEY
-            p.weapon, p.ammo, p.armor = "pistol", None, 0
-            p.kills = p.deaths = 0
-            p.alive = True
+        for team, members in teams.items():
+            for p in members:
+                p.team, p.pref = team, None
+                p.money = START_MONEY
+                p.weapon, p.ammo, p.armor = "pistol", None, 0
+                p.kills = p.deaths = 0
+                p.alive = True
         self.events.append({"t": "start"})
         self._new_round(now)
         return True, ""
 
+    def _side(self):
+        """0이면 레드가 첫째 기지, 1이면 블루가 첫째 기지 (SWAP_EVERY라운드마다 바뀐다)."""
+        return ((self.round - 1) // SWAP_EVERY) % 2
+
+    def _base(self, team):
+        """이번 라운드에 이 팀이 쓰는 기지: gun_layout의 {"areas", "gates", "spawns", "rect"}."""
+        bases = lay.LAYOUTS[self.map.key].bases
+        return bases[self._side() if team == "red" else 1 - self._side()]
+
     def _spawns(self, team):
-        """이 팀이 이번 라운드에 시작하는 자리들 (SWAP_EVERY라운드마다 맵의 양 끝을 바꾼다)."""
-        side = ((self.round - 1) // SWAP_EVERY) % 2
-        red_side = self.map.cop_spawns if side == 0 else self.map.thief_spawns
-        blue_side = self.map.thief_spawns if side == 0 else self.map.cop_spawns
-        return red_side if team == "red" else blue_side
+        return self._base(team)["spawns"]
+
+    def _locks(self):
+        """구매 시간 동안 잠긴 기지 출구 (화면이 막이를 그리고 그 밖으로 못 나가게 한다)."""
+        if self.phase != "buy":
+            return None
+        return {t: {"areas": self._base(t)["areas"], "gates": [list(g) for g in self._base(t)["gates"]]} for t in TEAMS}
+
+    def move(self, uid, x, y, direction, moving, now=None, run=False):
+        p = self.players.get(uid)
+        if p is not None and p.team is not None and self.phase == "buy":      # 구매 시간에는 기지 안에서만
+            try:
+                fx, fy = float(x), float(y)
+            except (TypeError, ValueError):
+                return False
+            if not lay.inside(self.map, self._base(p.team)["areas"], fx, fy):
+                return False
+        return super().move(uid, x, y, direction, moving, now=now, run=run)
 
     def _new_round(self, now):
         """새 라운드의 구매 시간: 모두 자기 시작 자리에 서고 체력이 찬다. 쓰러졌던 사람은 권총만 든다."""
@@ -204,7 +254,7 @@ class GunRoom(base.Room):
             p.teleport(*spots[used[p.team] % len(spots)])
             used[p.team] += 1
             p.reset_bot_plan()
-            p.frozen_until = now + BUY_SECONDS
+            p.frozen_until = 0.0
             p.last = now
         self.phase, self.phase_end = "buy", now + BUY_SECONDS
         self.events.append({"t": "round", "n": self.round})
@@ -217,10 +267,10 @@ class GunRoom(base.Room):
         self.last_update = now
         if self.phase == "playing" and dt:
             self._bots(dt, now)
+        if self.phase == "lobby":
+            self._pads()
         if self.phase == "buy" and now >= self.phase_end:
             self.phase, self.phase_end = "playing", now + ROUND_SECONDS
-            for p in self.players.values():
-                p.frozen_until = min(p.frozen_until, now)
             self.events.append({"t": "go"})
             self.dirty = True
         elif self.phase == "playing":
@@ -286,13 +336,23 @@ class GunRoom(base.Room):
         self.events.append({"t": "end", "winner": champ})
 
     def _back_to_lobby(self, now):
+        """경기가 끝나면 대기실로: 같은 팀끼리 그 팀 자리에 모여 다시 할 수 있다."""
         self.phase, self.result, self.round_result = "lobby", None, None
         self.map, self.doors_open = LOBBY, frozenset()
+        used = {"red": 0, "blue": 0}
         for i, p in enumerate(self.players.values()):
+            team = p.team
             p.team = None
             p.hp, p.armor, p.money, p.weapon, p.ammo, p.alive, p.spec = HP_MAX, 0, 0, "pistol", None, True, None
             p.fire_ready = p.frozen_until = 0.0
-            p.teleport(*self.map.lobby_spawns[i % len(self.map.lobby_spawns)])
+            if team in lay.LOBBY_SPOTS:
+                spots = lay.LOBBY_SPOTS[team]
+                p.teleport(*spots[used[team] % len(spots)])
+                used[team] += 1
+                p.pref = team
+            else:
+                p.teleport(*lay.LOBBY_NEUTRAL[i % len(lay.LOBBY_NEUTRAL)])
+                p.pref = None
             p.last = now
         self.events.append({"t": "lobby"})
         self.dirty = True
@@ -311,6 +371,42 @@ class GunRoom(base.Room):
             elif self.phase == "playing":
                 self._check_round(now)
             self.dirty = True
+
+    # ── 대기실 팀 자리 ──────────────────────────────────────────
+    def _pads(self):
+        """대기실에서 누가 어느 팀 자리에 서 있는지 갱신한다."""
+        for p in self.players.values():
+            pref = lay.lobby_pref(p.x, p.y)
+            if pref != p.pref:
+                p.pref = pref
+                self.dirty = True
+
+    def _to_pad(self, p, team):
+        """p를 team 자리의 비어 있는 곳으로 옮긴다 (team이 None이면 대기실 가운데로)."""
+        if team is None:
+            x, y = self.rng.choice(LOBBY.lobby_spawns)
+        else:
+            others = [(q.x, q.y) for q in self.players.values() if q is not p]
+            spots = lay.LOBBY_SPOTS[team]
+            x, y = max(spots, key=lambda s: min((math.hypot(s[0] - ox, s[1] - oy) for ox, oy in others), default=9.0))
+        p.teleport(x, y)
+        p.pref = team
+        self.dirty = True
+
+    def set_team(self, uid, team, now=None):
+        """대기실에서 team("red"/"blue", 그 밖은 자리에서 내려오기)으로 옮긴다. 성공하면 "", 아니면 오류 문구."""
+        p = self.players.get(uid)
+        if p is None or self.phase != "lobby":
+            return "대기실에서만 팀을 옮길 수 있어요."
+        self._to_pad(p, team if team in TEAMS else None)
+        return ""
+
+    def add_bot(self, uid, now=None, team=None):
+        """방장이 대기실에서 봇을 넣는다 (team을 주면 그 팀 자리에 선다)."""
+        result = super().add_bot(uid, now)
+        if isinstance(result, int) and team in TEAMS:
+            self._to_pad(self.players[result], team)
+        return result
 
     # ── 구매 ────────────────────────────────────────────────────
     def buy(self, uid, item, now=None):
@@ -499,13 +595,17 @@ class GunRoom(base.Room):
         return self._hunt(b, now)
 
     def _hunt(self, b, now):
-        """적이 안 보일 때: 상대 시작 자리 둘레의 걸을 수 있는 곳을 차례로 돌아본다."""
+        """적이 안 보일 때: 사이트(A·B)나 상대 기지 둘레의 걸을 수 있는 곳을 차례로 돌아본다."""
         if b.wander is None or math.hypot(b.wander[0] - b.x, b.wander[1] - b.y) < 0.8 or self.rng.random() < 0.01:
-            other = "blue" if b.team == "red" else "red"
-            spots = self._spawns(other)
-            cx, cy = self.rng.choice(spots)
+            layout = lay.LAYOUTS[self.map.key]
+            if self.rng.random() < 0.6:
+                x0, y0, x1, y1 = self.rng.choice(list(layout.sites.values()))["rect"]
+                cx, cy, spread = (x0 + x1) / 2, (y0 + y1) / 2, max(2.0, min(x1 - x0, y1 - y0) / 2 - 1)
+            else:
+                cx, cy = self.rng.choice(self._spawns("blue" if b.team == "red" else "red"))
+                spread = 6.0
             for _ in range(30):
-                wx, wy = cx + self.rng.uniform(-9, 9), cy + self.rng.uniform(-9, 9)
+                wx, wy = cx + self.rng.uniform(-spread, spread), cy + self.rng.uniform(-spread, spread)
                 if self.map.walkable_at(wx, wy) and not self.map.in_jail(wx, wy):
                     b.wander = (wx, wy)
                     break
@@ -518,6 +618,7 @@ class GunRoom(base.Room):
                 "map": self.map.key, "choice": self.choice.key,
                 "left": round(max(0.0, self.phase_end - now), 1) if self.phase != "lobby" else None,
                 "doors": sorted(self.doors_open), "score": dict(self.score), "round": self.round, "target": ROUNDS_TO_WIN,
+                "side": self._side() if self.round else 0, "lock": self._locks() if self.round else None,
                 "round_result": self.round_result, "result": self.result, "players": [p.public(now) for p in self.players.values()]}
 
 

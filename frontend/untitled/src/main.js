@@ -242,7 +242,14 @@ export function createRoomScene(container, { base, world, mode }) {
     }
     return pos;
   }
+  let lockInfo = null, lockKey = '', lockSets = null;         // gun mode: during the buy phase each team may not leave its base (server: gun_world.move)
+  const lockedOut = (x, y) => {
+    if (!lockSets || !me || !me.team || !lockSets[me.team]) return false;
+    const set = lockSets[me.team];
+    return ![[0, 0], [R, 0], [-R, 0], [0, R], [0, -R]].every(([dx, dy]) => set.has(areaAt(x + dx, y + dy)));
+  };
   function blockedAt(x, y) {                                 // used only to refuse a server correction that would leave us inside something
+    if (lockedOut(x, y)) return true;
     return SHAPES.some((s) => (s.kind === 'circle' ? Math.hypot(x - s.cx, y - s.cy) < s.r + R - 1e-3
       : Math.hypot(Math.max(Math.abs(x - s.cx) - s.hx, 0), Math.max(Math.abs(y - s.cy) - s.hy, 0)) < R - 1e-3));
   }
@@ -345,6 +352,92 @@ export function createRoomScene(container, { base, world, mode }) {
     if (GUN && (team === 'red' || team === 'blue') && arm) { rec.gunKind = rec.weapon || 'pistol'; rec.gun = blaster(rec.gunKind); arm.add(rec.gun); }
   }
 
+  // ── gun mode map marks: base tints, A/B site markers on the floor, the lobby's red/blue pads, and the buy-phase gates ──
+  const marks = new THREE.Group();
+  scene.add(marks);
+  const baseTints = [];
+  function tintRect(x0, y0, x1, y1, color, opacity, h) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry((x1 - x0) * CELL, (y1 - y0) * CELL),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.copy(toWorld((x0 + x1) / 2, (y0 + y1) / 2, h));
+    m.userData.noSight = true;
+    marks.add(m);
+    return m;
+  }
+  function outline(x0, y0, x1, y1, color, h) {
+    const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]].map(([x, y]) => toWorld(x, y, h));
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+    l.userData.noSight = true;
+    marks.add(l);
+  }
+  function bigLetter(text, sub, x, y, h, ink, size = 14) {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const g = c.getContext('2d');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = ink; g.globalAlpha = 0.85;
+    g.font = '900 300px "Pretendard", "Noto Sans KR", sans-serif';
+    g.fillText(text, 256, 230);
+    if (sub) { g.font = '900 64px "Pretendard", "Noto Sans KR", sans-serif'; g.fillText(sub, 256, 440); }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI / 4;
+    m.position.copy(toWorld(x, y, h));
+    m.userData.noSight = true;                                // site and pad marks stay readable outside the sight cone
+    marks.add(m);
+  }
+  const SITE_INK = { A: '#f59e0b', B: '#06b6d4' };
+  if (GUN && world.gun_layout) {
+    for (const base of world.gun_layout.bases) {
+      const [x0, y0, x1, y1] = base.rect;
+      baseTints.push(tintRect(x0, y0, x1, y1, 0x64748b, 0.16, heightAt((x0 + x1) / 2, (y0 + y1) / 2) + 0.12));
+    }
+    for (const site of world.gun_layout.sites) {
+      const [x0, y0, x1, y1] = site.rect, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, h = heightAt(cx, cy) + 0.14;
+      const ink = SITE_INK[site.id] || '#f59e0b';
+      tintRect(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, parseInt(ink.slice(1), 16), 0.12, h);
+      outline(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, parseInt(ink.slice(1), 16), h + 0.02);
+      bigLetter(site.id, '', cx - (x1 - x0) * 0.2, cy - (y1 - y0) * 0.2, h + 0.04, ink, 16);      // off to a corner so it doesn't sit on the room's name
+    }
+  }
+  if (GUN && world.gun_pads) {                                // the lobby: stand on a side to join that team
+    for (const [team, [x0, y0, x1, y1]] of Object.entries(world.gun_pads)) {
+      const color = team === 'red' ? 0xdc2626 : 0x2563eb;
+      tintRect(x0, y0, x1, y1, color, 0.28, 0.14);
+      outline(x0, y0, x1, y1, color, 0.18);
+      bigLetter(team === 'red' ? 'RED' : 'BLUE', team === 'red' ? '레드팀 자리' : '블루팀 자리', (x0 + x1) / 2, (y0 + y1) / 2, 0.2, team === 'red' ? '#b91c1c' : '#1d4ed8', 10);
+    }
+  }
+  const gateGroup = new THREE.Group();
+  scene.add(gateGroup);
+  function setLock(lock) {
+    const key = lock ? JSON.stringify(lock) : '';
+    if (key === lockKey) return;
+    lockKey = key; lockInfo = lock;
+    lockSets = lock ? { red: new Set(lock.red.areas), blue: new Set(lock.blue.areas) } : null;
+    while (gateGroup.children.length) { const g = gateGroup.children[0]; gateGroup.remove(g); g.geometry.dispose(); g.material.dispose(); }
+    if (!lock) return;
+    for (const team of ['red', 'blue']) {
+      for (const [o, f, t0, t1] of lock[team].gates) {
+        const len = (t1 - t0) * CELL, mid = (t0 + t1) / 2, [cx, cy] = o === 'h' ? [mid, f] : [f, mid];
+        const m = new THREE.Mesh(new THREE.BoxGeometry(o === 'h' ? len : 0.5, 7, o === 'h' ? 0.5 : len),
+          new THREE.MeshBasicMaterial({ color: team === 'red' ? 0xef4444 : 0x3b82f6, transparent: true, opacity: 0.55, depthWrite: false }));
+        m.position.copy(toWorld(cx, cy, heightAt(cx, cy) + 3.5));
+        m.userData.noSight = true;
+        gateGroup.add(m);
+      }
+    }
+  }
+  function stepGates() {
+    const t = performance.now() / 1000;
+    gateGroup.children.forEach((m, i) => { m.material.opacity = 0.45 + 0.2 * Math.sin(t * 5 + i); });
+  }
+  function setSide(side) {                                    // which base is red this round: tint them
+    baseTints.forEach((m, i) => m.material.color.setHex((i === side) === true ? 0xdc2626 : 0x2563eb));
+  }
+
   // ── people ──
   const people = new Map();            // id → { actor, target, dir, moving, name }
   let meId = null, me = null;
@@ -371,7 +464,7 @@ export function createRoomScene(container, { base, world, mode }) {
       const rec = people.get(p.id);
       rec.name = p.name; rec.online = p.online; rec.jailed = p.jailed; rec.safe = p.safe; rec.wantTeam = p.team;
       if (GUN) {
-        rec.hp = p.hp; rec.dead = p.alive === false ? 1 : 0; rec.weapon = p.weapon;
+        rec.hp = p.hp; rec.dead = p.alive === false ? 1 : 0; rec.weapon = p.weapon; rec.pref = p.pref;
         const arm = rec.actor && rec.actor.root.getObjectByName('arm-right');
         if (arm && rec.gun && rec.gunKind !== p.weapon && p.team) {          // picked up (or ran out of) a weapon: swap the model in hand
           arm.remove(rec.gun); rec.gunKind = p.weapon; rec.gun = blaster(p.weapon); arm.add(rec.gun);
@@ -754,11 +847,11 @@ export function createRoomScene(container, { base, world, mode }) {
       const dashing = mine ? running : !!rec.running;          // running look: streaks, dust, bright ring
       if (rec.ring) {
         const flash = rec.safe > 0 && Math.floor(performance.now() / 150) % 2;
-        rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team] || 0x4f46e5);
+        rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team || rec.pref] || 0x4f46e5);
         if (dashing) rec.ring.material.color.lerp(WHITE, 0.45);
         rec.ring.scale.setScalar(dashing ? 1.45 : 1);
         rec.ring.material.opacity = dashing ? 1 : 0.8;
-        rec.ring.visible = !!rec.team || hitboxes.visible || mine || dashing;
+        rec.ring.visible = !!rec.team || !!rec.pref || hitboxes.visible || mine || dashing;
       }
       if (dashing && !rec.wasDashing) burst(tx, ty, rec.jailed ? 0x94a3b8 : TEAM_RING[rec.team] || 0x6366f1);
       rec.wasDashing = dashing;
@@ -792,6 +885,7 @@ export function createRoomScene(container, { base, world, mode }) {
     stepDoors(dt);
     stepAim();
     stepRope();
+    if (GUN) stepGates();
     stepPuffs(dt);
     const eye = eyePos();
     if (eye) focus.lerp(onFloor(eye.x, eye.y), Math.min(1, dt * 5));
@@ -1158,6 +1252,8 @@ export function createRoomScene(container, { base, world, mode }) {
     setPad,
     setOpenDoors,
     setPickups,
+    setLock,
+    setSide,
     events: handleEvents,
     setPhase(phase) { phaseNow = phase; roundOn = phase === 'countdown' || phase === 'playing' || phase === 'buy'; },
     setSpectate(id) { specId = id; },

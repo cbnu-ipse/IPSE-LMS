@@ -5,6 +5,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from . import gun_hub as hub
+from . import gun_layout as lay
 from . import gun_world as gw
 from . import untitled_maps as maps
 
@@ -159,9 +160,156 @@ class BuyTests(SimpleTestCase):
         self.p.money = 9000
         self.assertFalse(self.room.buy(1, "rifle")[0])                          # 교전 중에는 못 산다
 
-    def test_players_are_held_in_place_while_buying(self):
-        x, y = self.p.x, self.p.y
-        self.assertFalse(self.room.move(1, x + 1.0, y, 0, True, now=1.0))
+
+class LayoutTests(SimpleTestCase):
+    def test_every_map_has_two_sealable_bases_and_two_reachable_sites(self):
+        for key, layout in lay.LAYOUTS.items():
+            with self.subTest(key):
+                m = layout.map
+                self.assertEqual(len(layout.bases), 2)
+                self.assertEqual(sorted(layout.sites), ["A", "B"])
+                seen = m.grid_dist([layout.bases[0]["spawns"][0]])
+                for base in layout.bases:
+                    self.assertGreaterEqual(len(base["spawns"]), 8)
+                    self.assertTrue(base["gates"])                                    # 나가는 길이 있고, 그 길이 잠긴다
+                    for x, y in base["spawns"]:
+                        self.assertTrue(m.free_at(x, y) and lay.inside(m, base["areas"], x, y), (x, y))
+                        self.assertIn(m.node(x, y), seen)                             # 기지끼리 길이 이어져 있다
+                    for o, f, t0, t1 in base["gates"]:                                # 잠금 선은 기지 가장자리에 놓인다
+                        mid = (t0 + t1) / 2
+                        a, b = ((f - 0.5, mid), (f + 0.5, mid)) if o == "v" else ((mid, f - 0.5), (mid, f + 0.5))
+                        self.assertNotEqual(m.area_at(*a) in base["areas"], m.area_at(*b) in base["areas"])
+                for site in layout.sites.values():
+                    x0, y0, x1, y1 = site["rect"]
+                    self.assertTrue(any(m.node(x + 0.5, y + 0.5) in seen for x in range(x0, x1) for y in range(y0, y1) if m.walkable_at(x + 0.5, y + 0.5)))
+                self.assertFalse(set(layout.bases[0]["areas"]) & set(layout.bases[1]["areas"]))
+
+    def test_lobby_has_a_red_side_and_a_blue_side(self):
+        for team, spots in lay.LOBBY_SPOTS.items():
+            self.assertGreaterEqual(len(spots), 8)
+            for x, y in spots:
+                self.assertTrue(maps.LOBBY.free_at(x, y))
+                self.assertEqual(lay.lobby_pref(x, y), team)
+        self.assertIsNone(lay.lobby_pref(9.0, 9.0))
+
+
+class LobbyTests(SimpleTestCase):
+    def room(self, n=2):
+        room = gw.GunRoom("TEST", 1)
+        for uid in range(1, n + 1):
+            room.add(uid, f"p{uid}", now=0.0)
+        return room
+
+    def test_standing_on_a_pad_picks_that_team(self):
+        room = self.room()
+        p = room.players[1]
+        put(p, *lay.LOBBY_SPOTS["red"][0])
+        room.update(now=0.1)
+        self.assertEqual(p.public(0.1)["pref"], "red")
+        put(p, 9.0, 9.0)
+        room.update(now=0.2)
+        self.assertIsNone(p.pref)
+
+    def test_new_players_start_in_the_middle_not_on_a_pad_and_reconnecting_keeps_the_spot(self):
+        room = self.room(8)
+        self.assertTrue(all(p.pref is None for p in room.players.values()))
+        room.set_team(3, "blue")
+        spot = (room.players[3].x, room.players[3].y)
+        room.add(3, "p3")                                                         # 재접속
+        self.assertEqual((room.players[3].x, room.players[3].y), spot)
+        self.assertEqual(room.players[3].pref, "blue")
+
+    def test_buttons_move_you_onto_the_team_pad(self):
+        room = self.room()
+        self.assertEqual(room.set_team(2, "blue"), "")
+        self.assertEqual((room.players[2].pref, lay.lobby_pref(room.players[2].x, room.players[2].y)), ("blue", "blue"))
+        room.set_team(2, None)
+        self.assertIsNone(room.players[2].pref)
+        self.assertTrue(room.set_team(2, "red") == "")
+        room.phase = "buy"
+        self.assertNotEqual(room.set_team(2, "blue"), "")
+
+    def test_start_uses_the_pad_teams_and_balances_those_standing_in_the_middle(self):
+        room = self.room(5)
+        room.set_team(1, "red")
+        room.set_team(2, "red")
+        room.set_team(3, "red")
+        self.assertTrue(room.start(1, now=0.0)[0])
+        teams = {uid: p.team for uid, p in room.players.items()}
+        self.assertEqual([teams[1], teams[2], teams[3]], ["red"] * 3)
+        self.assertEqual((teams[4], teams[5]), ("blue", "blue"))                  # 자리에 안 선 둘은 적은 팀으로
+
+    def test_start_refuses_when_a_whole_team_is_empty(self):
+        room = self.room(2)
+        room.set_team(1, "red")
+        room.set_team(2, "red")
+        ok, msg = room.start(1, now=0.0)
+        self.assertFalse(ok)
+        self.assertIn("각각", msg)
+        room.set_team(2, "blue")
+        self.assertTrue(room.start(1, now=0.0)[0])
+
+    def test_bots_join_the_chosen_team_and_everyone_returns_to_their_pad(self):
+        room = self.room(1)
+        room.set_team(1, "red")
+        bot = room.add_bot(1, team="blue")
+        self.assertEqual(room.players[bot].pref, "blue")
+        self.assertTrue(room.start(1, now=0.0)[0])
+        self.assertEqual((room.players[1].team, room.players[bot].team), ("red", "blue"))
+        room._back_to_lobby(100.0)
+        room.update(now=100.1)
+        self.assertEqual((room.players[1].pref, room.players[bot].pref), ("red", "blue"))
+        self.assertTrue(room.start(1, now=101.0)[0])                              # 같은 팀으로 바로 다시 시작
+
+
+class BuyLockTests(SimpleTestCase):
+    def setUp(self):
+        self.room = gw.GunRoom("TEST", 1)
+        for uid in (1, 2):
+            self.room.add(uid, f"p{uid}", now=0.0)
+        self.room.set_team(1, "red")
+        self.room.set_team(2, "blue")
+        self.room.start(1, now=0.0)
+        self.p = self.room.players[1]
+
+    def test_you_can_walk_around_your_base_while_buying(self):
+        base = self.room._base("red")
+        a, b = base["spawns"][0], base["spawns"][1]
+        put(self.p, *a)
+        self.p.last = 0.0
+        self.assertTrue(self.room.move(1, b[0], b[1], 0, True, now=3.0))
+        self.assertEqual((self.p.x, self.p.y), tuple(b))
+
+    def test_you_cannot_leave_the_base_until_the_round_starts(self):
+        base = self.room._base("red")
+        o, f, t0, t1 = base["gates"][0]
+        mid = (t0 + t1) / 2
+        step = 1.0 if o == "h" else 1.0
+        inside_pt, outside_pt = ((mid, f - step), (mid, f + step)) if o == "h" else ((f - step, mid), (f + step, mid))
+        if not lay.inside(self.room.map, base["areas"], *inside_pt):
+            inside_pt, outside_pt = outside_pt, inside_pt
+        put(self.p, *inside_pt)
+        self.p.last = 0.0
+        self.assertFalse(self.room.move(1, outside_pt[0], outside_pt[1], 0, True, now=4.0))      # 잠긴 출구
+        self.room.update(now=gw.BUY_SECONDS + 0.1)                                              # 교전 시작: 열린다
+        self.assertEqual(self.room.phase, "playing")
+        put(self.p, *inside_pt)
+        self.p.last = gw.BUY_SECONDS + 0.1
+        self.assertTrue(self.room.move(1, outside_pt[0], outside_pt[1], 0, True, now=gw.BUY_SECONDS + 4.0))
+
+    def test_snapshot_lists_the_locked_gates_only_while_buying(self):
+        snap = self.room.snapshot(1.0)
+        self.assertEqual(set(snap["lock"]), {"red", "blue"})
+        self.assertEqual(snap["lock"]["red"]["areas"], self.room._base("red")["areas"])
+        self.assertTrue(snap["lock"]["red"]["gates"])
+        self.room.update(now=gw.BUY_SECONDS + 0.1)
+        self.assertIsNone(self.room.snapshot(gw.BUY_SECONDS + 0.2)["lock"])
+
+    def test_the_two_teams_start_in_different_bases_and_swap_sides_later(self):
+        red, blue = self.room._base("red"), self.room._base("blue")
+        self.assertNotEqual(red["areas"], blue["areas"])
+        self.room.round = gw.SWAP_EVERY + 1
+        self.assertEqual(self.room._base("red")["areas"], blue["areas"])
 
 
 class RoundTests(SimpleTestCase):
@@ -211,9 +359,8 @@ class RoundTests(SimpleTestCase):
     def test_sides_swap_every_few_rounds(self):
         room, now = playing(2)
         red = next(p for p in room.players.values() if p.team == "red")
-        first = (red.x, red.y)
         spots = room._spawns("red")
-        self.assertIn(first, [tuple(s) for s in spots])
+        self.assertIn((red.x, red.y), [tuple(s) for s in spots])
         room.round = gw.SWAP_EVERY + 1
         self.assertNotEqual(room._spawns("red"), spots)
 
