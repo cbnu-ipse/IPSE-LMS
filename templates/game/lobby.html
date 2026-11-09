@@ -29,9 +29,9 @@
             <!-- 플레이/카탈로그 메인 영역 -->
             <div class="flex-grow flex flex-col">
                 <!-- 1) 게임 카탈로그 리스트 -->
-                <div class="flex gap-2 mb-5" role="tablist">
-                    <button type="button" class="gen-tab gen-tab--active" data-gen="1" role="tab" onclick="genSwitch(1)">1세대 <span class="gen-sub">2D 미니게임</span></button>
-                    <button type="button" class="gen-tab" data-gen="2" role="tab" onclick="genSwitch(2)">2세대 <span class="gen-sub">3D 실험작</span></button>
+                <div class="gen-tabs" role="tablist">
+                    <button type="button" class="gen-tab gen-tab--active" data-gen="1" role="tab" onclick="genSwitch(1)">I</button>
+                    <button type="button" class="gen-tab" data-gen="2" role="tab" onclick="genSwitch(2)">II</button>
                 </div>
                 <div id="catalog-container" data-gen-pane="1" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     
@@ -513,11 +513,10 @@
     color: #ffffff;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
-.gen-tab { padding: 8px 16px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; font-weight: 700; font-size: 13px; color: #64748b; transition: all .15s; }
-.gen-tab .gen-sub { font-weight: 500; font-size: 10px; color: #94a3b8; margin-left: 4px; }
-.gen-tab:hover { background: #f8fafc; }
-.gen-tab--active { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
-.gen-tab--active .gen-sub { color: #b45309; }
+.gen-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #cbd0d8; }
+.gen-tab { min-width: 48px; padding: 4px 14px 6px; margin-bottom: -2px; border: 0; border-bottom: 3px solid transparent; background: none; font-weight: 700; font-size: 14px; letter-spacing: .05em; color: #4b5563; transition: color .15s, border-color .15s; }
+.gen-tab:hover { color: #0b3a7a; }
+.gen-tab--active { color: #0b3a7a; border-bottom-color: #0b3a7a; }
 .game-badge.playable {
     background-color: #10b981;
 }
