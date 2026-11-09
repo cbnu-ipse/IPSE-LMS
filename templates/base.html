@@ -48,6 +48,8 @@
     {% if treat_event_active %}<link rel="stylesheet" href="{% static 'css/halloween.css' %}?v={{ static_version }}">{% endif %}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+    /* 스크롤바가 생기고 사라질 때(탭 전환 등으로 페이지 길이가 달라질 때) 화면 전체가 좌우로 밀리지 않게 자리를 항상 비워 둔다 */
+    html { scrollbar-gutter: stable; }
     /* ── 컴포넌트 단위 skeleton (홈 일정 위젯 등) ── */
     @keyframes sk-shimmer {
         100% { transform: translateX(100%); }
@@ -973,6 +975,7 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
       (function(){
         const loader = document.getElementById('page-loader');
         const LOADER_DELAY_MS = 300;     // 이보다 빨리 열리는 이동은 로더 없이 전환만 보인다
+        const SOFT_GIVE_UP_MS = 4000;    // beforeunload로 예약한 로더는 4초 안에 새 문서가 안 오면 거둔다 (다운로드 등)
         const GIVE_UP_MS = 15000;        // 이동이 취소되거나 다운로드라 문서가 안 바뀌어도 화면이 막힌 채 남지 않게 한다
         let showTimer = null, giveUpTimer = null;
         window.isPageLoading = false;
@@ -991,7 +994,7 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
         const leafFill = document.getElementById('sk-leaf-fill');
 
         function revealLoader() {
-          if (!loader || !window.isPageLoading) return;
+          if (!loader) return;
           window.__loaderStartedAt = Date.now();
           if (leafFill) { leafFill.style.transition = ''; leafFill.style.clipPath = 'inset(100% 0 0 0)'; }
           loader.style.opacity = '';
@@ -999,12 +1002,14 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
           window.__runLoaderAnimation();
         }
 
-        function showLoader() {
+        // soft: 문서가 떠나는지 확신할 수 없을 때(beforeunload)의 로더. 파일 다운로드면 문서가 안 바뀌므로 금방 거두고, 그동안 클릭도 막지 않는다.
+        function showLoader(soft) {
           if (!loader) return;
-          window.isPageLoading = true;
+          soft = soft === true;
+          window.isPageLoading = !soft;
           clearTimeout(showTimer); clearTimeout(giveUpTimer);
-          showTimer = setTimeout(revealLoader, LOADER_DELAY_MS);
-          giveUpTimer = setTimeout(hideLoader, GIVE_UP_MS);
+          showTimer = setTimeout(function() { window.isPageLoading = !soft; revealLoader(); }, LOADER_DELAY_MS);
+          giveUpTimer = setTimeout(hideLoader, soft ? SOFT_GIVE_UP_MS : GIVE_UP_MS);
         }
 
         function hideLoader() {
@@ -1022,7 +1027,15 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
           if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
           if (window.isPageLoading) { e.preventDefault(); e.stopPropagation(); return; }
           const a = e.target.closest('a[href]');
-          if (!a) return;
+          if (!a) {
+            // 링크가 아니라 onclick="location.href=..." 로 이동하는 행·카드(커뮤니티 글 목록 등)도 로딩창을 보인다
+            const nav = e.target.closest('[onclick]');
+            if (nav && /(window\.)?location(\.href\s*=|\.assign\(|\.replace\()/.test(nav.getAttribute('onclick') || '')) {
+              showLoader();
+              setTimeout(function() { if (e.defaultPrevented) hideLoader(); }, 0);
+            }
+            return;
+          }
           const href = a.getAttribute('href');
           if (!href || href.startsWith('#') || href.startsWith('javascript') || a.target === '_blank' || a.hasAttribute('download')) return;
           if (!isSameSite(href)) return;
@@ -1056,6 +1069,10 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
             }
           }
         });
+
+        // 위 두 경우가 아닌 이동(스크립트가 location을 바꾸는 경우: 달력 일정 클릭, 저장 뒤 이동 등)도 문서가 떠나기 직전에 로더를 예약한다.
+        // 새 문서가 금방 오면 로더 없이 넘어가고, 오래 걸릴 때만 보인다. (iOS Safari는 이 이벤트를 안 줄 수 있어 위 클릭 처리가 따로 있다)
+        window.addEventListener('beforeunload', function() { if (!window.isPageLoading) showLoader(true); });
 
         window.showLoader = showLoader;       // 다른 스크립트가 이동을 시작할 때 쓸 수 있다 (오래 걸릴 때만 보인다)
       })();
