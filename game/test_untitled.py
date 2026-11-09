@@ -352,6 +352,95 @@ class CopsAndRobbersTests(SimpleTestCase):
         cop.budget = 0.0
         self.assertFalse(room.move(cop.uid, 20.0 + world.SPEED["cop"] * world.RUN_MULT * 0.3 * 1.3, 15.0, 0, True, now=30.3, run=True))   # 경찰은 못 달린다
 
+    def test_running_cannot_continue_on_an_empty_gauge(self):
+        room, cop, thieves = self.playing()
+        t = thieves[0]
+        self.place(t, 3.0, 15.0, 10.0)
+        ran_total, now = 0.0, 10.0
+        t.stamina = 0.0
+        t.exhausted = True
+        for _ in range(15):                                                   # 1.5초 동안 달리기 키를 계속 누르고 있다
+            now += 0.1
+            ran_total += room._spend_stamina(t, 0.1, True)
+        self.assertLess(ran_total, 0.05)                                      # 게이지가 비어 있으면 안 달려진다 (예전엔 0.45초나 달려졌다)
+        self.assertFalse(t.running)
+        for _ in range(30):                                                   # 충분히 차면(1초분) 그때 다시 달리기 시작하고, 또 다 쓰면 멈춘다
+            now += 0.1
+            ran_total += room._spend_stamina(t, 0.1, True)
+        self.assertGreater(ran_total, 0.3)
+        self.assertLess(ran_total, world.STAMINA_RECOVER + 0.3)
+        t.stamina, t.exhausted = world.STAMINA_MAX, False                    # 가득 찬 상태에서 끝까지 달리면 탈진한다
+        for _ in range(60):
+            now += 0.1
+            room._spend_stamina(t, 0.1, True)
+        self.assertTrue(t.exhausted)
+        self.assertTrue(t.public(now)["exhausted"])
+        while t.stamina < world.STAMINA_RECOVER - 0.2:                        # 충분히 차기 전에는 계속 못 달린다
+            self.assertEqual(room._spend_stamina(t, 0.1, True), 0.0)
+        for _ in range(30):                                                   # 쉬면 다시 달릴 수 있다
+            room._spend_stamina(t, 0.1, False)
+        self.assertFalse(t.exhausted)
+        self.assertGreater(room._spend_stamina(t, 0.1, True), 0.0)
+
+    def test_more_thieves_on_the_pad_free_the_prisoner_faster(self):
+        def seconds_to_free(helpers):
+            room, cop, thieves = self.playing(n=8)
+            jailed, rest = thieves[0], thieves[1:]
+            now = world.COUNTDOWN + world.HEAD_START + 1
+            room.update(now=now)
+            self.place(cop, 40.5, 10.0, now)
+            room._jail(jailed, cop, now)
+            for h in rest[:helpers]:
+                self.place(h, room.map.pad["cx"], room.map.pad["cy"], now)
+            t = now
+            while jailed.jailed and t < now + 10:
+                t += 0.1
+                room.update(now=t)
+            return t - now, room
+        one, _ = seconds_to_free(1)
+        two, room2 = seconds_to_free(2)
+        three, _ = seconds_to_free(3)
+        self.assertAlmostEqual(one, world.RESCUE_SECONDS, delta=0.35)
+        self.assertAlmostEqual(two, world.RESCUE_SECONDS / 2, delta=0.35)           # 2명이면 2배 빠르게
+        self.assertAlmostEqual(three, world.RESCUE_SECONDS / 3, delta=0.35)
+
+    def test_pad_count_is_reported(self):
+        room, cop, thieves = self.playing(n=4)
+        now = world.COUNTDOWN + world.HEAD_START + 1
+        room.update(now=now)
+        self.place(cop, 40.5, 10.0, now)
+        room._jail(thieves[0], cop, now)
+        for h in thieves[1:]:
+            self.place(h, room.map.pad["cx"], room.map.pad["cy"], now)
+        room.update(now=now + 0.1)
+        self.assertEqual(room.snapshot(now + 0.1)["pad_n"], 2)
+
+    def test_closed_doors_block_sight_and_open_when_someone_stands_by(self):
+        door = next(d for d in SCHOOL.door_boxes if (d["cx"], d["cy"]) == (7.0, 13))        # 1반 문 (y=13, x 6~8)
+        inside, hall = (3.0, 10.0), (3.0, 15.0)
+        self.assertTrue(SCHOOL.can_see(7.0, 12.0, 7.0, 14.0, {door["id"]}))                 # 열린 문은 보인다
+        self.assertFalse(SCHOOL.can_see(7.0, 12.0, 7.0, 14.0))                              # 닫힌 문은 시선을 막는다
+        self.assertFalse(SCHOOL.can_see(*inside, *hall))
+        self.assertEqual(SCHOOL.open_door_ids([(7.0, 14.0)]), frozenset({door["id"]}))     # 문 곁에 사람이 있으면 열린다
+        self.assertEqual(SCHOOL.open_door_ids([(20.0, 15.0)]), frozenset())
+        self.assertTrue(SCHOOL.free_at(7.0, 13.0))                                          # 문은 이동을 막지 않는다
+
+    def test_a_door_hides_players_until_someone_opens_it(self):
+        room, cop, thieves = self.playing()
+        t = thieves[0]
+        now = world.COUNTDOWN + world.HEAD_START + 1
+        room.update(now=now)
+        self.place(cop, 7.0, 15.0, now)                                       # 복도
+        self.place(t, 7.0, 11.5, now)                                         # 문(y=13) 너머 교실
+        thieves[1].x, thieves[1].y = 40.5, 10.0
+        hidden = {p["id"]: p for p in world.visible_view(room.snapshot(now), cop.uid)["players"]}
+        self.assertTrue(hidden[t.uid].get("hidden"))                          # 닫힌 문 너머는 안 보인다
+        self.place(t, 7.0, 12.4, now)                                         # 문 가까이 와서 문을 연다
+        room.update(now=now + 0.1)
+        self.assertTrue(room.snapshot(now + 0.1)["doors"])
+        seen = {p["id"]: p for p in world.visible_view(room.snapshot(now + 0.1), cop.uid)["players"]}
+        self.assertFalse(seen[t.uid].get("hidden"))                           # 열리면 보인다
+
     def test_taser_dart_stuns_a_thief_it_reaches(self):
         room, cop, thieves = self.playing()
         t, other = thieves

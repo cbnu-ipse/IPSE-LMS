@@ -17,9 +17,12 @@
   SAFE_SECONDS초 동안 잡히지 않는다. 발판에서 내려오면 처음부터 다시.
 - 제한 시간(인원에 따라 다르다, round_seconds) 안에 도둑을 모두 가두면 경찰 승리, 끝날 때 한 명이라도 밖에 있으면 도둑 승리.
 - 도둑은 달릴 수 있다(RUN_MULT배): 스태미나(STAMINA_MAX초 분량)가 달리는 동안 줄고, 안 달리면 STAMINA_REGEN만큼 다시 찬다.
+  다 쓰면 탈진해서 STAMINA_RECOVER만큼 찰 때까지는 키를 계속 눌러도 달려지지 않는다 (바닥에서 찔끔찔끔 달리는 것을 막는다).
   화면이 이동마다 "달리는 중"을 함께 보내고, 서버가 같은 계산으로 스태미나를 셈해 속도 검사에 반영한다.
 - 경찰은 대시 대신 테이저건을 쏜다: 바라보는 방향으로 침이 DART_SPEED로 TASER_RANGE칸까지 날아가고(벽에 막힌다),
   맞은 도둑은 STUN_SECONDS초 동안 감전돼 움직이지 못한다. TASER_COOLDOWN초마다 한 번. 날아가는 동안 피할 수 있다.
+- 문: 1~2칸 폭의 출입구에는 문이 달린다. 닫혀 있으면 시선을 막고(열린 문은 막지 않는다), 곁(DOOR_OPEN_RADIUS)에 누가 서 있으면 열린다.
+  이동은 막지 않는다. 구출 발판에 서 있는 도둑이 n명이면 게이지가 n배 빠르게 찬다.
 - 사각지대: 게임 중에는 상대 팀이 내 캐릭터에서 보일 때(VIEW_RANGE칸 안이고 벽·높은 가구가 가리지 않을 때)만 그 위치를 보낸다 (visible_view).
 - 이모티콘: 언제든 EMOTES 중 하나를 띄울 수 있다(놀리기용 앉았다 일어나기 "teabag" 포함). 너무 잦으면 무시한다.
 
@@ -48,6 +51,7 @@ TAG_BASE, TAG_MIN, TAG_MAX = 0.2, 0.15, 0.45
 RTT_DEFAULT = 0.1              # 핑을 아직 못 잰 사람의 왕복 지연 (초)
 RUN_MULT, STAMINA_MAX, STAMINA_REGEN = 1.6, 3.0, 0.6   # 달리기 속도 배수, 스태미나(달릴 수 있는 초), 안 달릴 때 1초에 차는 양
 RUN_SPAN = 0.3                 # 이동 한 번(화면은 0.1초마다 보낸다)에 달린 것으로 칠 수 있는 최대 시간 (초)
+STAMINA_RECOVER = 1.0          # 스태미나를 다 쓰면 탈진해서, 이만큼(초 분량) 찰 때까지는 달릴 수 없다
 TASER_RANGE, TASER_CONE = 11.0, 0.12  # 사거리(칸), 조준 보정 각(라디안, 마우스로 겨누므로 작게)
 DART_SPEED, DART_HIT = 32.0, 0.4     # 테이저 침 속도(칸/초), 침과 도둑 중심이 이만큼 가까우면 맞는다(칸)
 TASER_COOLDOWN, STUN_SECONDS = 5.0, 1.5
@@ -73,7 +77,7 @@ def rules_view():
     """모든 맵에 공통인 규칙 (화면용)."""
     return {"speed": SPEED, "arrest": {"reach": ARREST_REACH, "cooldown": ARREST_COOLDOWN, "seconds": GRAB_SECONDS, "keep": GRAB_KEEP,
                                        "slow": GRAB_SLOW, "cop_slow": GRAB_COP_SLOW},
-            "run": {"mult": RUN_MULT, "stamina": STAMINA_MAX, "regen": STAMINA_REGEN},
+            "run": {"mult": RUN_MULT, "stamina": STAMINA_MAX, "regen": STAMINA_REGEN, "recover": STAMINA_RECOVER},
             "taser": {"range": TASER_RANGE, "cooldown": TASER_COOLDOWN, "stun": STUN_SECONDS, "speed": DART_SPEED},
             "view": VIEW_RANGE, "rescue": RESCUE_SECONDS}
 
@@ -92,7 +96,7 @@ def visible_view(state, viewer_id):
     players = []
     for p in state["players"]:
         near = (p["x"] - me["x"]) ** 2 + (p["y"] - me["y"]) ** 2 <= VIEW_RANGE ** 2
-        if p["id"] == viewer_id or p["team"] == me["team"] or (near and m.can_see(me["x"], me["y"], p["x"], p["y"])):
+        if p["id"] == viewer_id or p["team"] == me["team"] or (near and m.can_see(me["x"], me["y"], p["x"], p["y"], state.get("doors", ()))):
             players.append(p)
         else:
             players.append({**{k: p[k] for k in HIDDEN_KEYS}, "hidden": True})
@@ -119,6 +123,7 @@ class Player:
         self.safe_until = 0.0
         self.frozen_until = 0.0
         self.stamina = STAMINA_MAX       # 도둑의 달리기 스태미나 (초)
+        self.exhausted = False           # 다 써서 STAMINA_RECOVER까지 차기 전에는 달릴 수 없다
         self.running = False
         self.grab_target, self.grab_since = None, 0.0   # 경찰이 붙잡고 있는 도둑
         self.grabbed_by = None                           # 도둑을 붙잡고 있는 경찰
@@ -165,7 +170,7 @@ class Player:
         return {"id": self.uid, "name": self.name, "model": self.model, "x": round(self.x, 3), "y": round(self.y, 3),
                 "dir": round(self.dir, 3), "moving": self.moving, "online": self.connected, "team": self.team, "jailed": self.jailed,
                 "safe": round(max(0.0, self.safe_until - now), 1), "frozen": round(max(0.0, self.frozen_until - now), 1),
-                "stamina": round(self.stamina / STAMINA_MAX, 2), "speed": self.speed(), "tp": self.tp, "catches": self.catches,
+                "stamina": round(self.stamina / STAMINA_MAX, 2), "exhausted": self.exhausted, "speed": self.speed(), "tp": self.tp, "catches": self.catches,
                 "grabbed": self.grabbed_by is not None, "grabbing": self.grab_target,
                 "grab": round(min(1.0, (now - self.grab_since) / GRAB_SECONDS), 2) if self.grab_target is not None else 0,
                 "stun": round(max(0.0, self.stun_until - now), 1), "taser": round(max(0.0, self.taser_ready - now), 1),
@@ -190,7 +195,9 @@ class Room:
         self.rng = random.Random()
         self.darts = []                 # 날아가는 테이저 침
         self.round_seconds = 0.0
-        self.pad_time = 0.0             # 누군가 구출 발판에 서 있은 시간 (초)
+        self.doors_open = frozenset()   # 지금 열려 있는 문 번호들 (곁에 사람이 있는 문)
+        self.pad_time = 0.0             # 구출 발판 게이지 (초): 서 있는 도둑 수만큼 배로 찬다
+        self.pad_n = 0                  # 지금 발판에 서 있는 도둑 수
         self._cop_dist, self._cop_map_at = {}, None
 
     # ── 방 ─────────────────────────────────────────────────────
@@ -314,11 +321,16 @@ class Room:
 
     def _spend_stamina(self, p, dt, run):
         """도둑이 달렸으면 스태미나를 쓰고(남은 만큼만) 달린 시간을 돌려준다. 안 달린 시간만큼은 다시 채운다.
-        멈춰 있는 동안은 화면이 위치를 보내지 않으므로, 한 번에 RUN_SPAN초까지만 달린 것으로 치고 나머지는 쉰 시간으로 본다."""
+        멈춰 있는 동안은 화면이 위치를 보내지 않으므로, 한 번에 RUN_SPAN초까지만 달린 것으로 치고 나머지는 쉰 시간으로 본다.
+        다 쓰면 탈진: STAMINA_RECOVER까지 찰 때까지는 run을 계속 눌러도 달려지지 않는다."""
+        if p.exhausted and p.stamina >= STAMINA_RECOVER:
+            p.exhausted = False
         ran = 0.0
-        if p.team == "thief" and run and p.stamina > 0 and not p.jailed:
+        if p.team == "thief" and run and p.stamina > 0 and not p.exhausted and not p.jailed:
             ran = min(dt, RUN_SPAN, p.stamina)
             p.stamina -= ran
+            if p.stamina <= 1e-6:
+                p.stamina, p.exhausted = 0.0, True
         p.running = ran > 0
         p.stamina = min(STAMINA_MAX, p.stamina + (dt - min(dt, RUN_SPAN) if ran else dt) * STAMINA_REGEN)
         return ran
@@ -371,6 +383,16 @@ class Room:
         cop.arrest_ready = now + ARREST_COOLDOWN
         self.dirty = True
 
+    def _doors(self):
+        """곁에 사람이 있는 문이 열린다. 달라지면 모두에게 알린다 (닫힌 문은 사각지대를 만든다)."""
+        m = self.map
+        if not m.door_boxes:
+            return
+        opened = m.open_door_ids([(p.x, p.y) for p in self.players.values()])
+        if opened != self.doors_open:
+            self.doors_open = opened
+            self.dirty = True
+
     def _grabs(self, now):
         """붙잡기 진행: 멀어지거나 도둑이 갇히면 풀리고, GRAB_SECONDS초를 버티면 잡힌다."""
         for t in self.players.values():                          # 붙잡던 경찰이 나갔거나 다른 일로 풀렸으면 정리한다
@@ -410,7 +432,7 @@ class Room:
             vx, vy = t.x - cop.x, t.y - cop.y
             d = math.hypot(vx, vy)
             off = abs((math.atan2(vx, vy) - direction + math.pi) % (2 * math.pi) - math.pi)
-            if 0 < d <= TASER_RANGE and off <= TASER_CONE and d < best_d and m.can_see(cop.x, cop.y, t.x, t.y):
+            if 0 < d <= TASER_RANGE and off <= TASER_CONE and d < best_d and m.can_see(cop.x, cop.y, t.x, t.y, self.doors_open):
                 best, best_d = t, d
         if best is not None:
             direction = math.atan2(best.x - cop.x, best.y - cop.y)
@@ -431,7 +453,7 @@ class Room:
             hit, done = None, False
             for _ in range(n):
                 nx, ny = d["x"] + d["dx"] * step / n, d["y"] + d["dy"] * step / n
-                if m.area_at(nx, ny) < 0 or not m.can_see(d["x"], d["y"], nx, ny):
+                if m.area_at(nx, ny) < 0 or not m.can_see(d["x"], d["y"], nx, ny, self.doors_open):
                     done = True
                     break
                 d["x"], d["y"], d["flown"] = nx, ny, d["flown"] + step / n
@@ -465,11 +487,12 @@ class Room:
         cops = max(1, round(len(people) / 3))
         self.map, self._cop_dist, self._cop_map_at = self.choice, {}, None
         self.round_seconds, self.pad_time = round_seconds(len(people)), 0.0
+        self.pad_n, self.doors_open = 0, frozenset()
         for i, p in enumerate(people):
             p.team = "cop" if i < cops else "thief"
             p.jailed, p.catches = False, 0
             p.safe_until = p.stun_until = p.taser_ready = p.arrest_ready = 0.0
-            p.stamina, p.running, p.grab_target, p.grabbed_by = STAMINA_MAX, False, None, None
+            p.stamina, p.exhausted, p.running, p.grab_target, p.grabbed_by = STAMINA_MAX, False, False, None, None
             spots = self.map.cop_spawns if p.team == "cop" else self.map.thief_spawns
             index = i if p.team == "cop" else i - cops
             p.teleport(*spots[index % len(spots)])
@@ -496,6 +519,7 @@ class Room:
             self.dirty = True
         elif self.phase == "playing":
             self._grabs(now)
+            self._doors()
             self._rescue(now, dt)
             self._check_end(now)
             self.dirty = True                                           # 남은 시간이 흐르므로 매번 보낸다
@@ -603,7 +627,7 @@ class Room:
         if b.team == "cop":
             prey = [p for p in people if p.team == "thief" and not p.jailed and now >= p.safe_until]
             visible = [p for p in prey if math.hypot(p.x - b.x, p.y - b.y) <= VIEW_RANGE
-                       and m.can_see(b.x, b.y, p.x, p.y)]                    # 경찰 봇도 사각지대 너머는 못 본다
+                       and m.can_see(b.x, b.y, p.x, p.y, self.doors_open)]                    # 경찰 봇도 사각지대 너머는 못 본다
             if visible:
                 t = min(visible, key=lambda p: (p.x - b.x) ** 2 + (p.y - b.y) ** 2)
                 seen = b.seen
@@ -671,13 +695,16 @@ class Room:
     def _rescue(self, now, dt):
         jailed = [p for p in self.players.values() if p.jailed]
         m, pad = self.map, self.map.pad
-        hero = next((p for p in self.players.values() if p.team == "thief" and not p.jailed and now >= p.stun_until
-                     and m.on_pad(p.x, p.y)), None)
-        if not jailed or hero is None:
+        heroes = [p for p in self.players.values() if p.team == "thief" and not p.jailed and now >= p.stun_until and m.on_pad(p.x, p.y)]
+        n = len(heroes) if jailed else 0
+        if n != self.pad_n:
+            self.pad_n, self.dirty = n, True
+        if not jailed or not heroes:
             if self.pad_time:
                 self.pad_time, self.dirty = 0.0, True
             return
-        self.pad_time += dt                                       # 발판에 계속 서 있어야 한다
+        hero = heroes[0]
+        self.pad_time += dt * len(heroes)                         # 발판에 서 있는 도둑이 n명이면 n배 빠르게 찬다
         if self.pad_time < RESCUE_SECONDS:
             return
         self.pad_time = 0.0
@@ -690,7 +717,7 @@ class Room:
             t.safe_until = now + SAFE_SECONDS
             t.teleport(x, y)
             t.last = now
-        self.events.append({"t": "rescue", "by": hero.uid, "count": len(jailed)})
+        self.events.append({"t": "rescue", "by": hero.uid, "count": len(jailed), "helpers": len(heroes)})
 
     def _check_end(self, now):
         cops = [p for p in self.players.values() if p.team == "cop"]
@@ -712,10 +739,11 @@ class Room:
     def _back_to_lobby(self, now):
         self.phase, self.result, self.darts = "lobby", None, []
         self.map, self.pad_time = LOBBY, 0.0
+        self.pad_n, self.doors_open = 0, frozenset()
         for i, p in enumerate(self.players.values()):
             p.team, p.jailed = None, False
             p.safe_until = p.frozen_until = p.stun_until = p.taser_ready = p.arrest_ready = 0.0
-            p.stamina, p.running, p.grab_target, p.grabbed_by = STAMINA_MAX, False, None, None
+            p.stamina, p.exhausted, p.running, p.grab_target, p.grabbed_by = STAMINA_MAX, False, False, None, None
             p.teleport(*self.map.lobby_spawns[i % len(self.map.lobby_spawns)])
             p.last = now
         self.events.append({"t": "lobby"})
@@ -735,7 +763,7 @@ class Room:
         return {"code": self.code, "name": self.name, "private": self.private, "host": self.host_id, "phase": self.phase,
                 "map": self.map.key, "choice": self.choice.key,
                 "left": round(max(0.0, self.phase_end - now), 1) if self.phase != "lobby" else None,
-                "pad": round(min(1.0, self.pad_time / RESCUE_SECONDS), 2),
+                "pad": round(min(1.0, self.pad_time / RESCUE_SECONDS), 2), "pad_n": self.pad_n, "doors": sorted(self.doors_open),
                 "result": self.result, "players": [p.public(now) for p in self.players.values()]}
 
 

@@ -51,6 +51,7 @@
     .ut-dash { position: absolute; left: 12px; bottom: 12px; z-index: 5; background: rgba(15, 23, 42, .85); color: #fff; border-radius: 12px; padding: 6px 10px; font-size: 13px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
     .ut-dash i { display: block; width: 70px; height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
     .ut-dash i u { display: block; height: 100%; background: #facc15; }
+    .ut-dash.tired i u { background: #ef4444; }
     .ut-result { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(15, 23, 42, .45); }
     .ut-result[hidden] { display: none; }
     .ut-result > div { background: #fff; border-radius: 20px; padding: 20px 26px; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, .35); min-width: 260px; }
@@ -162,7 +163,7 @@
             <b>경찰과 도둑</b>: 판 사이에는 정사각형 대기실에 모이고, 방장이 대기실에서 다음 맵을 골라요.
             제한 시간 안에 도둑을 모두 가두면 경찰 승리, 한 명이라도 끝까지 남으면 도둑 승리예요(인원이 많을수록 시간이 늘어요).
             경찰은 도둑 가까이에서 <kbd>E</kbd>를 누른 채로 0.5초 동안 붙잡고 있어야 잡아요(스치기만 해서는 안 잡혀요). 붙잡힌 도둑은 아주 느려지지만, 달려서 벗어나거나 경찰이 손을 떼면 풀려나요.
-            잡힌 도둑은 감옥으로 가요. 경찰은 마우스로 겨눈 쪽으로 테이저 침을 쏴 잠깐 감전시킬 수 있어요. 도둑은 감옥 앞 노란 발판에 3초 동안 서 있으면 갇힌 동료를 모두 구해요.
+            잡힌 도둑은 감옥으로 가요. 경찰은 마우스로 겨눈 쪽으로 테이저 침을 쏴 잠깐 감전시킬 수 있어요. 도둑은 감옥 앞 노란 발판에 3초 동안 서 있으면 갇힌 동료를 모두 구해요(여럿이 서 있으면 인원수만큼 빨라져요).
             벽 너머·높은 가구 뒤·멀리 있는 상대는 사각지대라 안 보여요.</p>
     </div>
 </div>
@@ -297,7 +298,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
             prog = ['😱 붙잡혔어요! 달려서 벗어나요', by ? by.grab : 0];
         } else if (st.phase === 'playing' && mine.team === 'thief' && !mine.jailed && mine.x != null) {
             const pad = WORLDS[st.map] && WORLDS[st.map].pad;
-            if (st.pad > 0 && pad && Math.hypot(pad.cx - mine.x, pad.cy - mine.y) <= pad.r) prog = ['🔓 구출 중', st.pad];
+            if (st.pad > 0 && pad && Math.hypot(pad.cx - mine.x, pad.cy - mine.y) <= pad.r) prog = ['🔓 구출 중' + (st.pad_n > 1 ? ' ×' + st.pad_n + ' (' + st.pad_n + '배 빠르게)' : ''), st.pad];
         }
         $('ut-progress').hidden = !prog;
         if (prog) {
@@ -365,7 +366,8 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
         if (d.kind === 'run') {                         // thieves: stamina bar
             $('ut-dash-name').textContent = '🏃 스태미나';
             $('ut-dash-bar').style.width = Math.round(d.stamina * 100) + '%';
-            $('ut-dash-t').textContent = d.active ? '달리는 중' : d.stamina < 0.05 ? '숨 고르는 중' : 'Space';
+            $('ut-dash-t').textContent = d.active ? '달리는 중' : d.exhausted ? '숨 고르는 중' : 'Space';
+            $('ut-dash').classList.toggle('tired', !!d.exhausted);
         } else {                                        // cops: taser cooldown
             $('ut-dash-name').textContent = '⚡ 테이저';
             $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / d.cooldown) * 100 : 100) + '%';
@@ -394,6 +396,7 @@ import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v=
                     sc.setPlayers(d.state.players, meId);
                     sc.events(d.state.events);
                     sc.setPad(d.state.pad);
+                    sc.setOpenDoors(d.state.doors);
                 }
                 renderChips(d.state.players); renderGame(d.state);
             }

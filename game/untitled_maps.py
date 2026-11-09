@@ -16,6 +16,9 @@ TOUCH = 2e-3                   # 맞닿음 허용 오차: 화면은 밀어낸 �
 WALL_T = 0.12                  # 벽 두께의 절반 (칸)
 FENCE_T = 0.12                 # 감옥 울타리 두께의 절반 (칸)
 STEP = 0.5                     # 봇 길찾기 격자 간격 (칸)
+DOOR_MAX_WIDTH = 2             # 이 폭(칸) 이하로 뚫린 곳에는 문이 달린다
+DOOR_T = 0.08                  # 문짝 두께의 절반 (칸)
+DOOR_OPEN_RADIUS = 1.3         # 문 가운데에서 이 거리(칸) 안에 누가 있으면 문이 열린다
 
 # Kenney Furniture Kit 모델의 바닥 크기 (모델 단위, 돌리기 전 가로 x · 세로 z). 한 칸 = 5 모델 단위.
 CELL_UNITS = 5.0
@@ -86,6 +89,13 @@ class GameMap:
         self.shapes = self._shapes()
         self.walls = [s for s in self.shapes if s["model"] in ("wall", "fence")]
         self.sight = [s for s in self.shapes if s["model"] == "wall" or (s["model"] in SIGHT_MODELS and s["kind"] == "box")]
+        # 문(1~2칸짜리 문 자리): 닫혀 있으면 시선을 막고, 곁에 사람이 있으면 열려서 너머가 보인다. 이동은 막지 않는다.
+        self.door_boxes = []
+        for k, (o, f, t0, t1) in enumerate(self.doors):
+            if t1 - t0 <= DOOR_MAX_WIDTH:
+                mid = (t0 + t1) / 2
+                self.door_boxes.append({"id": k, "cx": mid if o == "h" else f, "cy": f if o == "h" else mid,
+                                        "hx": (t1 - t0) / 2 if o == "h" else DOOR_T, "hy": DOOR_T if o == "h" else (t1 - t0) / 2})
         self._buckets = self._bucket_shapes()
         self.gx, self.gy = int(self.w / STEP), int(self.h / STEP)
         self.walk = [[self.free_at((i + 0.5) * STEP, (j + 0.5) * STEP) and not self.in_jail((i + 0.5) * STEP, (j + 0.5) * STEP)
@@ -189,8 +199,10 @@ class GameMap:
                 "jail": self.jail, "pad": self.pad, "areas": self.areas,
                 "walls": [{"o": o, "f": f, "t": t} for o, f, t in self.wall_edges],
                 "fences": [{"o": o, "f": f, "t": t} for o, f, t in self.fence_edges],
-                "doors": [{"o": o, "f": f, "t0": t0, "t1": t1} for o, f, t0, t1 in self.doors],
+                "doors": [{"id": k, "o": o, "f": f, "t0": t0, "t1": t1} for k, (o, f, t0, t1) in enumerate(self.doors) if t1 - t0 <= DOOR_MAX_WIDTH],
+                "door_open_radius": DOOR_OPEN_RADIUS,
                 "sight": [{"cx": s["cx"], "cy": s["cy"], "hx": s["hx"], "hy": s["hy"]} for s in self.sight],
+                "door_sight": [{"id": d["id"], "cx": d["cx"], "cy": d["cy"], "hx": d["hx"], "hy": d["hy"]} for d in self.door_boxes],
                 "props": [{"model": m, "x": x, "y": y, "rot": r, "w": w, "d": d} for m, x, y, r, w, d in self.props],
                 "decor": [{"model": m, "x": x, "y": y, "rot": r} for m, x, y, r in self.decor]}
 
@@ -213,15 +225,20 @@ class GameMap:
         j = self.jail
         return j is not None and j["x0"] < x < j["x1"] and j["y0"] < y < j["y1"]
 
-    def can_see(self, x0, y0, x1, y1):
-        """(x0, y0)에서 (x1, y1)이 보이는가: 그 사이를 벽·높은 가구가 가리지 않는다."""
+    def can_see(self, x0, y0, x1, y1, open_doors=()):
+        """(x0, y0)에서 (x1, y1)이 보이는가: 그 사이를 벽·높은 가구·닫힌 문이 가리지 않는다. open_doors: 열려 있는 문 번호들."""
         lo_x, hi_x, lo_y, hi_y = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
-        for s in self.sight:
+        for s in self.sight + [d for d in self.door_boxes if d["id"] not in open_doors]:
             if s["cx"] + s["hx"] < lo_x or s["cx"] - s["hx"] > hi_x or s["cy"] + s["hy"] < lo_y or s["cy"] - s["hy"] > hi_y:
                 continue
             if _seg_hits_box(x0, y0, x1, y1, s):
                 return False
         return True
+
+    def open_door_ids(self, spots):
+        """사람들이 서 있는 자리(spots) 곁에서 열려 있는 문 번호들."""
+        r2 = DOOR_OPEN_RADIUS ** 2
+        return frozenset(d["id"] for d in self.door_boxes if any((x - d["cx"]) ** 2 + (y - d["cy"]) ** 2 <= r2 for x, y in spots))
 
     def on_pad(self, x, y):
         return self.pad is not None and (x - self.pad["cx"]) ** 2 + (y - self.pad["cy"]) ** 2 <= self.pad["r"] ** 2

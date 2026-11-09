@@ -344,6 +344,7 @@ export function createRoomScene(container, { base, world }) {
         me.grabbed = !!p.grabbed; me.grabbing = p.grabbing != null;
         const serverStamina = (p.stamina ?? 1) * world.run.stamina;    // keep my own running tally, but follow the server if it drifts
         if (me.stamina == null || Math.abs(me.stamina - serverStamina) > 0.6) me.stamina = serverStamina;
+        if (p.exhausted) me.exhausted = true;                         // worn out: no running until it refills (server rule)
         return;
       }
       if (p.hidden) { rec.hidden = true; rec.moving = false; return; }   // out of my sight: the server didn't say where
@@ -377,8 +378,10 @@ export function createRoomScene(container, { base, world }) {
   }
 
   // ── doors: the leaf of Kenney's doorway model, hung in pairs (one per cell) on doorways one or two cells wide and cut to the
-  // walls' waist height, so they read as swinging saloon doors. They swing away from whoever comes near. Purely visual. ──
-  const doors = [];                                           // { group, base, k, o, f, cx, cy, cur, side }
+  // walls' waist height. Each leaf is a damped spring: a person walking through pushes it away from them (the closer, the harder;
+  // it swings through as they cross the door's plane), and once they are past it swings back, overshoots a little and settles
+  // shut. Closed doors block sight (see the sight section; the server tells us which are open). ──
+  const doors = [];                                           // { group, base, k, o, f, cx, cy, ang, vel }
   async function buildDoors() {
     if (!(world.doors || []).length) return;
     const model = await furniture(base, 'doorway');
@@ -410,22 +413,28 @@ export function createRoomScene(container, { base, world }) {
         const k = d.o === 'h' ? dirSign : -dirSign;            // which way "away from the person" turns this leaf
         group.rotation.y = baseAngle;
         scene.add(group);
-        doors.push({ group, base: baseAngle, k, o: d.o, f: d.f, cx, cy, cur: 0, side: 1 });
+        doors.push({ group, base: baseAngle, k, o: d.o, f: d.f, cx, cy, ang: 0, vel: 0 });
       }
     }
   }
+  const DOOR_MAX = 1.45, DOOR_R = 2.0;                         // max swing (rad), and how far away someone starts to push a door
   function stepDoors(dt) {
+    const step = Math.min(dt, 0.04);
     for (const door of doors) {
-      let near = null, best = 1.6;
-      for (const [id, rec] of people) {                       // the nearest person I can see pushes the door open
+      let target = 0;
+      for (const [id, rec] of people) {                       // everyone I can see pushes the door; the strongest push wins
         if (!rec.actor || (rec.hidden && id !== meId)) continue;
         const px = id === meId && me ? me.x : rec.actor.root.position.x / CELL, py = id === meId && me ? me.y : rec.actor.root.position.z / CELL;
-        const dd = Math.hypot(px - door.cx, py - door.cy);
-        if (dd < best) { best = dd; near = [px, py]; }
+        const dist = Math.hypot(px - door.cx, py - door.cy);
+        if (dist > DOOR_R) continue;
+        const across = door.o === 'h' ? py - door.f : px - door.f;           // which side of the door's plane they are on
+        const push = -Math.max(-1, Math.min(1, across / 0.6)) * DOOR_MAX * Math.min(1, (DOOR_R - dist) / (DOOR_R - 0.5));
+        if (Math.abs(push) > Math.abs(target)) target = push;
       }
-      if (near) door.side = Math.sign((door.o === 'h' ? near[1] - door.f : near[0] - door.f)) || 1;
-      door.cur += ((near ? 1.35 : 0) - door.cur) * Math.min(1, dt * 9);
-      door.group.rotation.y = door.base + door.k * door.side * door.cur;
+      door.vel += (140 * (target - door.ang) - 9 * door.vel) * step;      // spring + damping: swings through and wobbles shut
+      door.ang += door.vel * step;
+      door.ang = Math.max(-DOOR_MAX * 1.2, Math.min(DOOR_MAX * 1.2, door.ang));
+      door.group.rotation.y = door.base + door.k * door.ang;
     }
   }
 
@@ -546,9 +555,12 @@ export function createRoomScene(container, { base, world }) {
     const frozen = me.frozen > 0;
     if (frozen) me.frozen = Math.max(0, me.frozen - dt);
     // thieves run while Space/Shift is held and stamina lasts; stamina refills when not running (same rule as the server)
-    running = me.team === 'thief' && runHeld && moving && !frozen && !me.jailed && (me.stamina ?? 0) > 0;
-    if (running) me.stamina = Math.max(0, me.stamina - dt);
-    else if (me.stamina != null) me.stamina = Math.min(world.run.stamina, me.stamina + dt * world.run.regen);
+    if (me.exhausted && (me.stamina ?? 0) >= world.run.recover) me.exhausted = false;
+    running = me.team === 'thief' && runHeld && moving && !frozen && !me.jailed && !me.exhausted && (me.stamina ?? 0) > 0;
+    if (running) {
+      me.stamina = Math.max(0, me.stamina - dt);
+      if (me.stamina <= 0) me.exhausted = true;                   // used it all up: it has to recover before running again
+    } else if (me.stamina != null) me.stamina = Math.min(world.run.stamina, me.stamina + dt * world.run.regen);
     if (moving && !frozen) {
       const slow = me.grabbed ? world.arrest.slow : me.grabbing ? world.arrest.cop_slow : 1;
       const dist = (me.speed || world.speed.lobby) * (running ? world.run.mult : 1) * slow * dt, steps = Math.max(1, Math.ceil(dist / 0.08));
@@ -838,11 +850,28 @@ export function createRoomScene(container, { base, world }) {
   sightTex.magFilter = THREE.LinearFilter; sightTex.minFilter = THREE.LinearFilter; sightTex.needsUpdate = true;
   const sightU = SIGHT;
   SIGHT.uSight.value = sightTex; SIGHT.uSightOn.value = 0; SIGHT.uSightSize.value.set(WX, WZ);
-  const opaque = new Uint8Array(FX * FY);                     // quarter-cell grid of what blocks sight
-  for (const b of world.sight || []) {
+  const opaqueBase = new Uint8Array(FX * FY);                 // quarter-cell grid of what always blocks sight (walls, tall furniture)
+  const opaque = new Uint8Array(FX * FY);                     // opaqueBase plus the doors that are shut right now
+  const cellsOf = (b) => {
+    const out = [];
     for (let i = Math.max(0, Math.floor((b.cx - b.hx) * SUB)); i < Math.min(FX, Math.ceil((b.cx + b.hx) * SUB)); i++) {
-      for (let j = Math.max(0, Math.floor((b.cy - b.hy) * SUB)); j < Math.min(FY, Math.ceil((b.cy + b.hy) * SUB)); j++) opaque[j * FX + i] = 1;
+      for (let j = Math.max(0, Math.floor((b.cy - b.hy) * SUB)); j < Math.min(FY, Math.ceil((b.cy + b.hy) * SUB)); j++) out.push(j * FX + i);
     }
+    return out;
+  };
+  for (const b of world.sight || []) for (const k of cellsOf(b)) opaqueBase[k] = 1;
+  const doorCells = new Map((world.door_sight || []).map((d) => [d.id, cellsOf(d)]));
+  let openDoors = new Set();
+  function applyDoorSight() {
+    opaque.set(opaqueBase);
+    for (const [id, cells] of doorCells) if (!openDoors.has(id)) for (const k of cells) opaque[k] = 1;
+  }
+  applyDoorSight();
+  function setOpenDoors(list) {                               // from the server: doors with someone next to them (open = see-through)
+    const next = new Set(list || []);
+    if (next.size === openDoors.size && [...next].every((id) => openDoors.has(id))) return;
+    openDoors = next;
+    applyDoorSight();
   }
   function sightify(material) {
     if (!material || material.userData.sight || material.userData.noSight || material.isLineBasicMaterial || material.isSpriteMaterial) return;
@@ -961,12 +990,13 @@ export function createRoomScene(container, { base, world }) {
     onShot(cb) { shotCb = cb; },
     onEmote(cb) { emoteCb = cb; },
     setPad,
+    setOpenDoors,
     events: handleEvents,
     setPhase(phase) { roundOn = phase === 'countdown' || phase === 'playing'; },
     abilityState() {                                           // what Space does for me right now, and how long until it's ready
       const now = performance.now() / 1000, team = me && me.team;
       if (team === 'cop') return { kind: 'taser', ready: Math.max(0, taserReady - now), cooldown: world.taser.cooldown, active: false };
-      if (team === 'thief') return { kind: 'run', stamina: (me.stamina ?? world.run.stamina) / world.run.stamina, active: running };
+      if (team === 'thief') return { kind: 'run', stamina: (me.stamina ?? world.run.stamina) / world.run.stamina, active: running, exhausted: !!me.exhausted };
       return { kind: null };
     },
     onFrame(cb) { frameCb = cb; },
