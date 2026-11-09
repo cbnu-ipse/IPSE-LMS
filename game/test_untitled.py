@@ -442,6 +442,22 @@ class CopsAndRobbersTests(SimpleTestCase):
         seen = {p["id"]: p for p in world.visible_view(room.snapshot(now + 0.1), cop.uid)["players"]}
         self.assertFalse(seen[t.uid].get("hidden"))                           # 열리면 보인다
 
+    def test_a_stunned_thief_who_gets_jailed_is_no_longer_stunned(self):
+        room, cop, thieves = self.playing()
+        t, other = thieves
+        now = world.COUNTDOWN + world.HEAD_START + 1
+        room.update(now=now)
+        other.x, other.y = 40.5, 10.0
+        self.place(cop, 10.0, 15.0, now)
+        self.place(t, 11.0, 15.0, now)
+        t.stun_until = t.frozen_until = now + 1.5                          # 감전된 채로
+        self.assertEqual(room.arrest(cop.uid, t.uid, now=now), t.uid)
+        room.update(now=now + world.GRAB_SECONDS + 0.05)
+        self.assertTrue(t.jailed)
+        self.assertEqual(t.stun_until, 0.0)
+        self.assertEqual(t.public(now + 0.7)["stun"], 0)                   # 화면에 감전 표시(불꽃)를 더 보내지 않는다
+        self.assertLessEqual(t.frozen_until, now + 0.7)
+
     def test_taser_dart_stuns_a_thief_it_reaches(self):
         room, cop, thieves = self.playing()
         t, other = thieves
@@ -678,12 +694,28 @@ class HubTests(SimpleTestCase):
     def setUp(self):
         self.addCleanup(hub.ROOMS.clear)
         self.addCleanup(hub.USER_ROOM.clear)
+        self.addCleanup(hub.SOCKETS.clear)
 
     def test_a_room_can_be_created_on_any_map(self):
         room = hub.create_room(1, "a", "기숙사 방", map_key="dorm")
         self.assertEqual(room.choice.key, "dorm")
         self.assertEqual(hub.list_rooms()[0]["map"], "기숙사")
         self.assertEqual(hub.create_room(2, "b", map_key="bogus").choice.key, maps.DEFAULT_MAP)
+
+    def test_a_late_close_of_the_old_socket_does_not_take_a_reconnected_player_offline(self):
+        room = hub.create_room(1, "a")
+        hub.create_room(2, "b")
+        hub.attach(1, "old")
+        hub.attach(1, "new")                                              # 재접속: 새 연결이 열렸다
+        hub.disconnect(1, "old")                                          # 옛 연결이 늦게 닫혔다
+        self.assertTrue(hub.ROOMS[room.code].players[1].connected)
+        self.assertIsNone(room.idle_since)
+        hub.disconnect(1, "new")                                          # 마지막 연결이 닫히면 그때 오프라인
+        self.assertFalse(room.players[1].connected)
+
+    def test_stats_report_how_late_the_clock_ran(self):
+        stats = hub.stats()
+        self.assertEqual(set(stats), {"lag", "work", "rooms"})
 
     def test_create_join_leave(self):
         room = hub.create_room(1, "a")
