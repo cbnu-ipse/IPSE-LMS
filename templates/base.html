@@ -42,8 +42,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="IPSE">
-    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={% now 'U' %}">
-    <link rel="stylesheet" href="{% static 'css/mobile.css' %}?v={% now 'U' %}">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}?v={{ static_version }}">
+    <link rel="stylesheet" href="{% static 'css/mobile.css' %}?v={{ static_version }}">
     <link rel="stylesheet" href="{% static 'css/theme.css' %}?v={{ static_version }}">
     {% if treat_event_active %}<link rel="stylesheet" href="{% static 'css/halloween.css' %}?v={{ static_version }}">{% endif %}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -87,7 +87,9 @@
         align-items: center;
         justify-content: center;
         transition: opacity 0.25s ease-out;
+        animation: pl-in 0.05s linear both;      /* 보이는 순간 아주 빠르게 나타난다 (display가 바뀔 때마다 다시 재생) */
     }
+    @keyframes pl-in { from { opacity: 0; } to { opacity: 1; } }
     /* 페이지 이동 전환 (MPA View Transitions): 새 화면이 준비될 때까지 브라우저가 이전 화면을 그대로 보여 주다가 짧게 교차한다.
        지원하지 않는 브라우저는 효과 없이 그냥 이동한다. 내비게이션 바는 따로 이름을 붙여 본문만 바뀌는 것처럼 보이게 한다. */
     @view-transition { navigation: auto; }
@@ -972,9 +974,12 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
     {% block extra_js %}{% endblock %}
     <script>
       // 페이지 전환 로딩: 링크·폼으로 이동을 시작한 뒤 LOADER_DELAY_MS가 지나도 새 화면이 안 오면 그때 로더를 보인다.
+      // 서버가 빨리 답해도 새 화면이 그려질 때까지(CSS·글꼴을 받고 그리는 동안, 폰에서 길다) 브라우저는 옛 화면을 그대로 멈춰 보여 주고,
+      // 그 사이에는 이 문서의 스크립트가 이미 멈춘 뒤다. 그래서 로더는 이동이 시작되자마자(아주 짧은 지연 뒤) 옛 화면에 올려 두어야
+      // 멈춘 화면 대신 로더가 보인다. 예전에 300ms로 미뤘을 때는 서버가 300ms 안에 답하는 폰에서 로더가 한 번도 안 떴다.
       (function(){
         const loader = document.getElementById('page-loader');
-        const LOADER_DELAY_MS = 300;     // 이보다 빨리 열리는 이동은 로더 없이 전환만 보인다
+        const LOADER_DELAY_MS = 30;      // 이보다 빨리 열리는 이동(미리 가져온 화면 등)은 로더 없이 전환만 보인다
         const SOFT_GIVE_UP_MS = 4000;    // beforeunload로 예약한 로더는 4초 안에 새 문서가 안 오면 거둔다 (다운로드 등)
         const GIVE_UP_MS = 15000;        // 이동이 취소되거나 다운로드라 문서가 안 바뀌어도 화면이 막힌 채 남지 않게 한다
         let showTimer = null, giveUpTimer = null;
@@ -1040,13 +1045,8 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
           if (!href || href.startsWith('#') || href.startsWith('javascript') || a.target === '_blank' || a.hasAttribute('download')) return;
           if (!isSameSite(href)) return;
 
-          const isMobileSize = window.innerWidth < 768;
-          const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
-          try {
-            const urlObj = new URL(href, window.location.origin);
-            if (restrictedPaths.some(p => urlObj.pathname.startsWith(p)) && isMobileSize) return;
-          } catch(err) { return; }
-
+          // 이동하는 곳이 어디든(모바일의 학습·문제·대회 포함) 느리면 로딩창을 보인다. 예전에 모바일에서 이 페이지들을 막던 시절의
+          // 예외가 남아 있어 모바일에서 로딩창이 아예 안 뜨던 적이 있다.
           showLoader();
           setTimeout(function() { if (e.defaultPrevented) hideLoader(); }, 0);      // 다른 스크립트가 이동을 막았다면 로딩 상태를 풀어 준다
         }, { capture: true });
