@@ -275,6 +275,45 @@ EXAM_SUMMARY_INSTRUCTIONS = (
 )
 
 
+# 과제: 올린 문제지·과제 안내문의 모든 문항을 문항별로 푼다. 결과는 요약과 같은 자리(summary)에 마크다운으로 저장되어 학습 화면에서 한 문항씩 넘겨 본다
+ASSIGNMENT_MAX_CHARS = 30000    # 과제 한 개에서 풀이하는 글자 수 상한 (문제지는 대개 짧다). 넘으면 쪼개서 올리게 한다
+
+ASSIGNMENT_INSTRUCTIONS = (
+    "학생이 올린 과제(문제지·과제 안내문)의 모든 문항을 풀이합니다. 학생이 풀이를 읽고 스스로 이해할 수 있게 마크다운으로 쓰세요.\n"
+    "구조 (학생은 한 화면에 한 문항씩 넘겨 가며 읽습니다)\n"
+    "- 문항마다 `## 1번` 처럼 자료에 적힌 문항 번호(없으면 순서대로)를 제목으로 씁니다. 소문항은 `### (1)` 으로 나눕니다.\n"
+    "- 제목 바로 아래에 문제의 핵심을 `> ` 인용 한 줄로 줄여 적고, 이어서 풀이 과정을 단계마다 번호 목록(`1.`)으로 씁니다.\n"
+    "- 마지막 줄은 `**답:** …` 으로 결과를 분명하게 적습니다.\n"
+    "- 계산·증명은 중간 단계를 생략하지 않습니다. 코드를 요구하면 코드 블록으로 쓰고 한 줄씩 왜 그런지 짧게 덧붙입니다.\n"
+    "- 서술형·토론형 문항은 핵심 논점을 목록으로 정리한 모범 답안을 씁니다.\n"
+    "- 수식은 LaTeX를 `$...$`로 감쌉니다 (예: $\\bar{x}$). 수식을 백틱으로 한 번 더 감싸지 마세요. 금액·일반 글에는 `$`를 쓰지 않습니다.\n"
+    "- 핵심 용어는 **굵게**, 꼭 기억할 한 구절은 ==형광펜==.\n"
+    "내용\n"
+    "- 자료에 있는 모든 문항을 빠뜨리지 않고 순서대로 풉니다. 문항이 아닌 안내문(제출 방법·마감 등)은 풀이하지 않습니다.\n"
+    "- 자료만으로 풀 수 없는 문항(그림·데이터가 빠졌거나 글자가 깨짐)은 억지로 답하지 말고 `답:`에 무엇이 부족한지 적습니다.\n"
+    "- 확실하지 않은 부분은 가정을 먼저 밝힙니다. 풀이문만 출력합니다."
+)
+
+
+def assignment_too_long(text):
+    return len(text) > ASSIGNMENT_MAX_CHARS
+
+
+def generate_solution(extracted_text, user=None, on_text=None):
+    """올린 과제의 문항별 풀이(마크다운)를 만든다. 본문이 없으면 호출 없이 빈 문자열. 한 번의 호출이고 크레딧은 AI_COST_ASSIGNMENT.
+    on_text(글자 조각)를 주면 만들어지는 대로 넘긴다 (요약과 같은 스트리밍 화면)."""
+    if not extracted_text.strip():
+        return ""
+    messages = [
+        {"role": "system", "content": ASSIGNMENT_INSTRUCTIONS},
+        {"role": "user", "content": core_ai.untrusted("과제", extracted_text[:ASSIGNMENT_MAX_CHARS])},
+    ]
+    cost = core_ai.cost_for("assignment")
+    if on_text:
+        return core_ai.stream_complete("assignment", messages, user=user, cost=cost, on_delta=on_text)
+    return core_ai.complete("assignment", messages, user=user, cost=cost)
+
+
 def summary_chunk_count(text):
     """이 본문을 요약할 때 드는 크레딧 단위 수 (글자 수 / SUMMARY_CHUNK_CHARS 올림, AI를 부르지 않고 센다). 사전 확인·비용 표시에 쓴다."""
     if not text.strip():

@@ -67,7 +67,7 @@ SYSTEM = (
 
 def usable(document):
     """노트의 재료로 쓸 수 있는 자료인지: 노트가 아니고, 요약이나 본문이 있어야 한다."""
-    return (document.document_type not in (PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK)
+    return (document.document_type not in (PersonalDocument.DocumentType.NOTE, PersonalDocument.DocumentType.MOCK, PersonalDocument.DocumentType.ASSIGNMENT)
             and bool(document.summary.strip() or document.extracted_text.strip()))
 
 

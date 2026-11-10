@@ -142,7 +142,7 @@
                         <p class="text-sm font-bold text-slate-700 truncate w-full">{{ document.title }}</p>
                         <p class="text-[11px] text-slate-400">{{ document.uploaded_at|date:"Y-m-d" }}</p>
                         <p class="text-[11px] flex flex-wrap items-center justify-center gap-1">
-                            <span class="px-1.5 py-0.5 rounded-md font-bold {% if document.document_type == 'exam' %}bg-violet-50 text-violet-700 border border-violet-100{% elif document.document_type == 'mock' %}bg-sky-50 text-sky-700 border border-sky-100{% elif document.document_type == 'note' %}bg-amber-50 text-amber-700 border border-amber-100{% else %}bg-slate-50 text-slate-500 border border-slate-100{% endif %}">{{ document.get_document_type_display }}</span>
+                            <span class="px-1.5 py-0.5 rounded-md font-bold {% if document.document_type == 'exam' %}bg-violet-50 text-violet-700 border border-violet-100{% elif document.document_type == 'mock' %}bg-sky-50 text-sky-700 border border-sky-100{% elif document.document_type == 'note' %}bg-amber-50 text-amber-700 border border-amber-100{% elif document.document_type == 'assignment' %}bg-emerald-50 text-emerald-700 border border-emerald-100{% else %}bg-slate-50 text-slate-500 border border-slate-100{% endif %}">{{ document.get_document_type_display }}</span>
                             {% if document.course_name or document.professor %}<span class="text-slate-400 truncate max-w-full">{{ document.course_name }}{% if document.course_name and document.professor %} · {% endif %}{% if document.professor %}{{ document.professor }}{% endif %}</span>{% endif %}
                         </p>
                     </a>
@@ -260,8 +260,9 @@
             <div class="up-field">
                 <span class="up-label">자료 구분 <small>파일을 보고 미리 골라 뒀어요. 맞지 않으면 바꿔 주세요</small></span>
                 <div class="up-types" role="radiogroup" aria-label="자료 구분">
-                    <button type="button" class="up-type" role="radio" aria-checked="false" data-type="lecture"><b>수업 자료</b><small>강의를 만드는 데 쓰여요 (강의 자료, 과제 안내 등)</small></button>
+                    <button type="button" class="up-type" role="radio" aria-checked="false" data-type="lecture"><b>수업 자료</b><small>강의를 만드는 데 쓰여요 (강의 자료, 교재 등)</small></button>
                     <button type="button" class="up-type" role="radio" aria-checked="false" data-type="exam"><b>족보</b><small>기출 문제나 모의고사 같은 시험 자료예요</small></button>
+                    <button type="button" class="up-type" role="radio" aria-checked="false" data-type="assignment"><b>과제</b><small>올리면 문항별 풀이를 만들어 줘요 (다른 기능에는 쓰이지 않아요)</small></button>
                 </div>
                 <div style="display:none">{{ form.document_type }}</div>
                 <p id="type-suggest" class="hidden text-xs rounded-lg px-3 py-2"></p>
@@ -292,7 +293,7 @@
     .up-field { display: grid; gap: 6px; min-width: 0; }
     .up-field label, .up-label { font-size: 13px; font-weight: 700; color: #334155; }
     .up-field small { font-weight: 400; color: #94a3b8; margin-left: 6px; font-size: 11.5px; }
-    .up-types { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .up-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
     .up-type { text-align: left; border: 2px solid #e2e8f0; background: #fff; border-radius: 14px; padding: 11px 12px; cursor: pointer; display: grid; gap: 2px; }
     .up-type b { font-size: 14px; color: #1e293b; }
     .up-type small { font-size: 11.5px; color: #64748b; margin: 0; line-height: 1.4; }
@@ -351,6 +352,7 @@
     const costEl = document.getElementById('upload-cost'), noteEl = document.getElementById('upload-note'), errEl = document.getElementById('upload-error');
     const idleCost = costEl.innerHTML, ucEstimate = document.getElementById('uc-estimate');
     let seq = 0;
+    const typeSelect = form.elements['document_type'];
     const gauge = (n) => '<span class="inline-flex items-center gap-0.5 ml-1 font-semibold opacity-90"><i class="fa-solid fa-gauge-high" style="font-size:.85em"></i>' + n + '%</span>';
     function idle() { seq++; submitBtn.disabled = false; costEl.innerHTML = idleCost; noteEl.textContent = ''; ucEstimate.classList.add('hidden'); }
     // 파일을 고르면 뜨는 입력 창(hover UI): 구분·과목·교수 같은 나머지 입력은 모두 여기에 있다
@@ -372,14 +374,30 @@
         pick.hidden = true; document.body.style.overflow = '';
         if (clearFile) { fileInput.value = ''; idle(); hideErrors(); }
     }
+    let lastEstimate = null;
     function describe(d) {
+        if (typeSelect.value === 'assignment' && d.assignment_label) return { badge: d.assignment_label, text: '과제 풀이 한 번: 이번 주 한도의 약 ' + d.assignment_label + '%' };
         if (d.kind === 'image') return { badge: d.min_label + '~' + d.max_label, text: '이미지 글자 읽기 + 요약: 이번 주 한도의 ' + d.min_label + '~' + d.max_label + '% (읽어 봐야 정확해져요)' };
         return { badge: d.est_label, text: '글자 ' + d.chars.toLocaleString() + '자 → 요약 ' + d.chunks + '조각' + ' · 이번 주 한도의 약 ' + d.est_label + '%' };
+    }
+    function renderCost() {     // 고른 자료 구분에 맞는 예상 사용량을 보여 준다 (과제는 풀이, 나머지는 요약 기준)
+        const d = lastEstimate;
+        if (!d) return;
+        const info = describe(d);
+        costEl.innerHTML = gauge(info.badge);
+        const usedNote = d.used_label === null ? '' : ' · 지금까지 ' + d.used_label + '% 사용';
+        const what = typeSelect.value === 'assignment' ? '풀이는' : '요약은';
+        noteEl.textContent = info.text + usedNote + (d.enough ? '' : ' — 이번 주 한도와 크레딧이 모자라요(' + what + ' 월요일 0시 이후 시작할 수 있어요)');
+        noteEl.className = 'text-xs ' + (d.enough ? 'text-slate-500' : 'text-amber-700 font-bold');
+        ucEstimate.textContent = '예상 사용량 ' + info.badge + '% · ' + info.text;
+        ucEstimate.classList.remove('hidden');
+        if (typeSelect.value === 'assignment' && d.assignment_too_long) { upErr.textContent = '과제는 글자 {{ assignment_max_chars }}자까지 풀이할 수 있어요 (이 파일은 ' + d.chars.toLocaleString() + '자). 문제를 나눠서 올려주세요.'; upErr.hidden = false; }
+        else if (typeSelect.value !== 'assignment') { upErr.hidden = true; }
     }
     // 자료 구분: 처음엔 '선택 안 함'. 파일을 고르면 서버가 짐작한 구분을 미리 골라 주고(사용자가 직접 바꾼 뒤에는 건드리지 않는다), 직접 고르지 않으면 올릴 수 없다
     const typeBox = document.getElementById('type-suggest');
     let typeTouched = false;
-    const TYPE_NAMES = { exam: '족보', lecture: '수업 자료' };
+    const TYPE_NAMES = { exam: '족보', lecture: '수업 자료', assignment: '과제' };
     function applySuggestion(sug) {
         if (typeTouched || !form.elements['document_type']) return;
         const select = form.elements['document_type'];
@@ -395,7 +413,7 @@
         syncType();
     }
     fileInput.addEventListener('change', async () => {
-        hideErrors(); typeTouched = false; typeBox.className = 'hidden';
+        hideErrors(); typeTouched = false; typeBox.className = 'hidden'; lastEstimate = null;
         const file = fileInput.files[0];
         if (!file) { idle(); return; }
         // 서버로 보내기 전에 막는다: 크기와 형식을 확인해 통과해야 입력 창이 뜬다 (폰에서는 accept가 형식을 걸러 주지 않는 경우가 있다)
@@ -421,22 +439,16 @@
             if (mine !== seq) return;               // 그 사이 다른 파일을 골랐다
             if (!res.ok || !d.ok) { closePick(true); fail(d.error || '비용을 계산하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
             applySuggestion(d.suggest);
-            const info = describe(d);
-            costEl.innerHTML = gauge(info.badge);
-            const usedNote = d.used_label === null ? '' : ' · 지금까지 ' + d.used_label + '% 사용';
-            noteEl.textContent = info.text + usedNote + (d.enough ? '' : ' — 이번 주 한도와 크레딧이 모자라요(요약은 월요일 0시 이후 시작할 수 있어요)');
-            noteEl.className = 'text-xs ' + (d.enough ? 'text-slate-500' : 'text-amber-700 font-bold');
-            ucEstimate.textContent = '예상 사용량 ' + info.badge + '% · ' + info.text;
-            ucEstimate.classList.remove('hidden');
+            lastEstimate = d;
+            renderCost();
             submitBtn.disabled = false;
         } catch (e) {
             if (mine !== seq) return;
             idle(); noteEl.textContent = '비용을 계산하지 못했어요. 업로드는 할 수 있고, 정확한 비용은 글자를 읽은 뒤 알려 드려요.';
         }
     });
-    const typeSelect = form.elements['document_type'];
-    typeSelect.addEventListener('change', () => { typeTouched = true; syncType(); });
-    typeBtns.forEach((b) => b.addEventListener('click', () => { typeSelect.value = b.dataset.type; typeTouched = true; upErr.hidden = true; syncType(); }));
+    typeSelect.addEventListener('change', () => { typeTouched = true; syncType(); renderCost(); });
+    typeBtns.forEach((b) => b.addEventListener('click', () => { typeSelect.value = b.dataset.type; typeTouched = true; upErr.hidden = true; syncType(); renderCost(); }));
     document.getElementById('up-cancel').addEventListener('click', () => closePick(true));
     document.getElementById('up-close').addEventListener('click', () => closePick(true));
     pick.addEventListener('click', (e) => { if (e.target === pick) closePick(true); });
@@ -487,6 +499,7 @@
         hideErrors();
         if (!form.elements['file'].files[0]) { fail('파일을 먼저 골라주세요.'); return; }
         if (!typeSelect.value) { fail('자료 구분을 선택해주세요.'); return; }
+        if (typeSelect.value === 'assignment' && lastEstimate && lastEstimate.assignment_too_long) { renderCost(); return; }
         if (!val('course_name')) { fail('과목 이름을 입력해주세요.'); form.elements['course_name'].focus(); return; }
         if (!val('professor')) { fail('교수 이름을 입력해주세요.'); form.elements['professor'].focus(); return; }
         const file = form.elements['file'].files[0];
