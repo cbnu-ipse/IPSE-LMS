@@ -164,11 +164,20 @@ class PageTransitionTests(TestCase):
         self.assertIn("view-transition-name: site-nav", html)
         self.assertIn("prefers-reduced-motion: reduce", html)
 
-    def test_the_loader_appears_only_when_navigation_is_slow(self):
+    def test_the_loader_goes_up_right_after_the_tap_so_it_is_on_the_frame_the_browser_holds(self):
         html = self.html()
-        self.assertIn("LOADER_DELAY_MS = 300", html)
+        self.assertIn("LOADER_DELAY_MS = 30;", html)                  # 서버가 빨리 답해도 새 화면이 그려질 때까지 옛 화면(로더 포함)이 멈춰 보인다
+        self.assertIn("animation: pl-in", html)
         self.assertNotIn("pageLoaderActive')", html.replace("removeItem('pageLoaderActive')", ""))    # 새 문서에서 이어 그리지 않는다
         self.assertNotIn("e.key === 'F5'", html)                                                       # 새로고침 단축키를 가로채지 않는다
+
+    def test_big_stylesheets_are_cached_between_pages(self):
+        html = self.html()
+        head = html[:html.index("</head>")]
+        self.assertNotIn("{% now", head)
+        from django.conf import settings
+        for name in ("tailwind", "mobile"):                            # 서버를 다시 켤 때만 바뀌는 값이라 화면을 옮겨 다녀도 캐시에서 쓴다 (요청마다 바뀌면 매번 다시 받는다)
+            self.assertIn(f"css/{name}.css?v={settings.STATIC_VERSION}", head)
 
     def test_the_loader_is_not_skipped_for_any_destination_on_phones(self):
         html = self.html()
