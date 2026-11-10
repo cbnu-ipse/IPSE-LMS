@@ -170,6 +170,12 @@ class PageTransitionTests(TestCase):
         self.assertNotIn("pageLoaderActive')", html.replace("removeItem('pageLoaderActive')", ""))    # 새 문서에서 이어 그리지 않는다
         self.assertNotIn("e.key === 'F5'", html)                                                       # 새로고침 단축키를 가로채지 않는다
 
+    def test_the_loader_is_not_skipped_for_any_destination_on_phones(self):
+        html = self.html()
+        self.assertNotIn("restrictedPaths", html)                    # 모바일에서 학습·문제·대회 링크만 로딩창을 건너뛰던 옛 예외
+        self.assertNotIn("isMobileSize", html)
+        self.assertNotIn("window.innerWidth < 768", html[html.index("page-loader"):])
+
     def test_only_side_effect_free_list_pages_are_prefetched(self):
         html = self.html()
         start = html.index('<script type="speculationrules">') + len('<script type="speculationrules">')

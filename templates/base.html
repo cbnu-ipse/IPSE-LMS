@@ -1040,13 +1040,8 @@ document.getElementById('grant-received-ok').addEventListener('click', function 
           if (!href || href.startsWith('#') || href.startsWith('javascript') || a.target === '_blank' || a.hasAttribute('download')) return;
           if (!isSameSite(href)) return;
 
-          const isMobileSize = window.innerWidth < 768;
-          const restrictedPaths = ['/course/', '/problems/', '/contest/', '/quiz/'];
-          try {
-            const urlObj = new URL(href, window.location.origin);
-            if (restrictedPaths.some(p => urlObj.pathname.startsWith(p)) && isMobileSize) return;
-          } catch(err) { return; }
-
+          // 이동하는 곳이 어디든(모바일의 학습·문제·대회 포함) 느리면 로딩창을 보인다. 예전에 모바일에서 이 페이지들을 막던 시절의
+          // 예외가 남아 있어 모바일에서 로딩창이 아예 안 뜨던 적이 있다.
           showLoader();
           setTimeout(function() { if (e.defaultPrevented) hideLoader(); }, 0);      // 다른 스크립트가 이동을 막았다면 로딩 상태를 풀어 준다
         }, { capture: true });
