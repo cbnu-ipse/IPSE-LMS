@@ -426,6 +426,40 @@ def document_move(request, pk):
 
 
 @login_required
+def note_pdf(request, pk):
+    """요약 노트의 모든 쪽 이미지를 한 PDF로 묶어 내려준다 (AI를 부르지 않는다)."""
+    from urllib.parse import quote
+
+    from django.http import HttpResponse
+    from PIL import Image
+
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False, document_type=PersonalDocument.DocumentType.NOTE)
+    if document.user != request.user:
+        return HttpResponseForbidden("본인의 자료만 받을 수 있습니다.")
+    if document.summary_status != ProcessingStatus.DONE or not document.file:
+        raise Http404("완성된 노트만 PDF로 받을 수 있습니다.")
+    storage = document.file.storage
+    pages = []
+    try:
+        for name in document.page_names():
+            with storage.open(name, "rb") as fh:
+                img = Image.open(fh)
+                img.load()
+            pages.append(img.convert("RGB"))
+    except Exception:
+        logger.exception("노트 %s PDF 만들기 실패", pk)
+        raise Http404("노트 이미지를 읽지 못했습니다.")
+    if not pages:
+        raise Http404("노트 이미지가 없습니다.")
+    buf = io.BytesIO()
+    pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:], resolution=150.0)
+    response = HttpResponse(buf.getvalue(), content_type="application/pdf")
+    filename = re.sub(r'[\\/:*?"<>|\r\n]+', " ", document.title).strip() or "note"
+    response["Content-Disposition"] = f"attachment; filename=\"note.pdf\"; filename*=UTF-8''{quote(filename)}.pdf"
+    return response
+
+
+@login_required
 def document_preview(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:

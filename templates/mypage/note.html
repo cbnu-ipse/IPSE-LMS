@@ -13,6 +13,7 @@
         {% else %}
         <a href="{{ document.file.url }}" download="{{ document.title }}.png" class="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition"><i class="fa-solid fa-download mr-1"></i>이미지 저장</a>
         {% endif %}
+        {% if document.document_type == 'note' %}<a href="{% url 'mypage:note_pdf' document.pk %}" class="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white transition" title="모든 쪽을 PDF 한 파일로 저장해요"><i class="fa-solid fa-file-pdf mr-1"></i>PDF 저장</a>{% endif %}
         {% if document.document_type == 'note' %}<button type="button" class="js-share-board text-xs font-bold px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-60" data-url="{% url 'mypage:share_note' document.pk %}" data-csrf="{{ csrf_token }}" title="자유게시판에 올리고 게시글 링크를 복사해요"><i class="fa-solid fa-share-nodes mr-1"></i>게시판에 올리기</button>{% endif %}
         {% endif %}
     </div>
