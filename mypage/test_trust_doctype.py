@@ -28,6 +28,51 @@ class SuggestTests(TestCase):
         out = doctype.suggest("ch1.txt", LECTURE_TEXT)
         self.assertEqual(out["type"], "lecture")
 
+    # 실제로 오탐이 나던 형태를 본뜬 글 (저작권이 있는 실제 자료는 넣지 않았다)
+    MUSIC_NOTES = "\n".join(
+        ["고전주의 음악", "1. 시대적 배경 & 고전주의"] + [f"{i}) 항목 {i} - 선율과 화성이 단순하고 명료한 곡의 형식을 강조하고 이름 없는 작곡가들의 문제 의식이 반영됨" for i in range(1, 8)]
+        + ["3. 오페라", "1) 오페라 부파 : 희극적, 대중적 / 친근하고 재미있는 소재", "2) 오페라 세리아 : 엄숙, 비극적 / 그리스신화 소재", "Example: 모차르트의 피가로의 결혼은 finally 해피엔딩"]
+        + ["하이든은 교향곡의 아버지로 불리며 많은 교향곡을 남겼다. 모차르트는 신동으로 알려졌고 오페라와 협주곡에서도 이름을 떨쳤다."] * 12
+        + ["앞으로도 계속 희가극만 쓰세요."])
+    HWPX_LIKE_EXAM = ("2026 1학기 분산컴퓨팅 모의 중간고사 Part I. 아래 문제에 답하시오.1. Flynn 의 컴퓨터 분류에 대해 설명하시오. 2. 분산시스템과 병렬처리 컴퓨터의 차이는 무엇인가? "
+                      "하드웨어 관점에서 설명하시오. 3. 순수 분산시스템이란 무엇을 의미하는가?4. 분산시스템 설계의 쟁점은 무엇인가?5. 어드레싱 방법은 어떤 것들이 있는가? 장단점은? "
+                      "(1) 설명하시오(2) 설명하시오(3) 설명하시오 Part II. 빈 괄호를 채우세요. 1. Mobile systems such as (1 ) and (2 ) come into play")
+
+    def test_lecture_notes_with_outline_numbers_and_common_words_are_not_exams(self):
+        out = doctype.suggest("music1.pdf", self.MUSIC_NOTES)
+        self.assertEqual(out["type"], "lecture")
+        self.assertTrue(out["reasons"])
+
+    def test_a_numbered_list_alone_is_not_an_exam_signal(self):
+        features = doctype.compute_features("notes.txt", "\n".join(f"{i}. 개념 {i}" for i in range(1, 9)))
+        self.assertFalse(features["numbered_questions"])
+        self.assertFalse(features["sub_questions"])
+
+    def test_an_exam_without_line_breaks_is_still_recognised_by_its_question_wording(self):
+        text = self.HWPX_LIKE_EXAM
+        self.assertNotIn("\n", text)
+        features = doctype.compute_features("midterm.hwpx", text)
+        self.assertTrue(features["question_cues"])
+        self.assertTrue(features["exam_markers"])
+        self.assertEqual(doctype.suggest("midterm.hwpx", text)["type"], "exam")
+
+    def test_english_exam_words_match_whole_words_only(self):
+        self.assertEqual(doctype._keyword_hits("Example and finally and examples", ["Exam", "Final"]), [])
+        self.assertEqual(doctype._keyword_hits("the Final Exam sheet", ["Exam", "Final", "Midterm"]), ["Exam", "Final"])
+        self.assertEqual(doctype._keyword_hits("정답은 3번입니다", ["정답"]), ["정답"])       # 한글은 조사가 붙으므로 부분 일치
+
+    def test_everyday_words_alone_do_not_make_an_exam(self):
+        self.assertNotIn("이름", doctype.DEFAULT_RULES["keywords"]["exam"])
+        self.assertNotIn("문제", doctype.DEFAULT_RULES["keywords"]["exam"])
+
+    def test_a_scanned_pdf_alone_gets_no_suggestion_but_scanned_questions_still_look_like_an_exam(self):
+        features = doctype.compute_features("page.pdf", "", pages=10)
+        self.assertTrue(features["scanned_pdf"])
+        exam, lecture, _ = doctype.score(features, "", doctype.DEFAULT_RULES)
+        self.assertLess(exam - lecture, doctype.DEFAULT_RULES["margin"])                # 교재를 스캔한 것일 수도 있다
+        exam, lecture, _ = doctype.score({**features, "question_cues": True}, "", doctype.DEFAULT_RULES)
+        self.assertGreaterEqual(exam - lecture, doctype.DEFAULT_RULES["margin"])
+
     def test_slide_files_are_course_material_and_images_lean_towards_exams(self):
         self.assertEqual(doctype.suggest("slides.pptx", "")["type"], "lecture")
         self.assertEqual(doctype.suggest("scan.jpg", "")["type"], "")            # 이미지 하나만으로는 확신하지 않는다 (1.0 < 기준 1.5)
