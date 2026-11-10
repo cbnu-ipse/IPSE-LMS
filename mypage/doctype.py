@@ -5,7 +5,10 @@
 - 판단 규칙의 값(특징별 점수, 단어 목록, 기준치)은 DocTypeRules에 적어 둔다. 없으면 이 파일의 DEFAULT_RULES를 쓴다.
   규칙값은 AI가 지금까지 확인된 자료(강의자가 올렸거나 '맞음'으로 검토된 것)의 특징을 살펴 다시 써 준다 (refresh_rules, `manage.py refresh_doc_rules`).
   AI는 특징별 점수와 단어 목록만 바꿀 수 있고, 어떤 특징을 계산하는지는 코드에 고정돼 있다 (sanitize_rules가 범위를 제한한다).
-- 점수: 특징마다 족보 점수·수업 자료 점수를 더하고, 단어(정답·풀이 / 학습목표·목차 …)가 나오면 그만큼 더한다. 차이가 기준치(margin) 이상일 때만 한쪽을 권한다.
+- 점수: 특징마다 족보 점수·수업 자료 점수를 더하고, 단어(정답·배점 / 학습목표·목차 …)가 나오면 그만큼 더한다. 차이가 기준치(margin) 이상일 때만 한쪽을 권한다.
+- 족보의 가장 믿을 만한 단서는 "문제를 내는 말투"다: ~하시오, ~쓰시오, 빈 괄호를 채우세요, Part I, 다음 중 …. 번호 목록(1. 2. 3.)이나 (1)(2)(3)은
+  수업 노트·목차에도 흔해서 이런 말투와 함께 있을 때만 족보 점수를 준다. 시험 말투·배점·정답 표시가 하나도 없는 긴 설명글은 수업 자료 쪽으로 본다.
+- 줄바꿈이 없는 본문(hwpx를 한 줄로 읽은 경우 등)에서도 판단되도록 말투 단서는 줄 단위가 아니라 글 전체에서 센다.
 """
 import io
 import logging
@@ -24,18 +27,22 @@ DEFAULT_RULES = {
     "keyword_cap": 5,
     "features": {
         "image_file": {"exam": 1.0, "lecture": 0.0},
-        "scanned_pdf": {"exam": 2.0, "lecture": 0.0},
+        "scanned_pdf": {"exam": 1.0, "lecture": 0.0},          # 스캔본 하나만으로는 기준(margin)을 못 넘는다: 스캔한 교재 쪽도 수업 자료이므로 사용자가 고르게 한다
         "slide_file": {"exam": 0.0, "lecture": 3.0},
         "slide_like_text": {"exam": 0.0, "lecture": 2.0},
+        "question_cues": {"exam": 3.0, "lecture": 0.0},
+        "exam_markers": {"exam": 2.0, "lecture": 0.0},
         "numbered_questions": {"exam": 2.5, "lecture": 0.0},
         "sub_questions": {"exam": 1.5, "lecture": 0.0},
         "score_marks": {"exam": 2.0, "lecture": 0.0},
+        "explanatory": {"exam": 0.0, "lecture": 2.5},
         "headings": {"exam": 0.0, "lecture": 1.5},
         "long_text": {"exam": 0.0, "lecture": 1.0},
         "short_lines": {"exam": 0.0, "lecture": 1.0},
     },
     "keywords": {
-        EXAM: ["정답", "풀이", "해설", "배점", "중간고사", "기말고사", "시험", "학번", "이름", "답안", "문제", "Midterm", "Final", "Exam", "Quiz", "Solution"],
+        # 이름·문제·풀이·시험·Solution처럼 강의 자료·과제 보고서에도 흔한 말은 뺐다 (음악 감상 강의 노트가 이런 단어 몇 개로 족보가 되던 문제)
+        EXAM: ["정답", "해설", "배점", "중간고사", "기말고사", "모의고사", "기출", "답안", "수험번호", "Midterm", "Final Exam", "Answer Key"],
         LECTURE: ["학습목표", "목차", "개요", "요약", "정의", "예제", "강의", "슬라이드", "참고문헌", "Chapter", "Lecture", "Outline", "Contents", "Reference"],
     },
 }
@@ -45,11 +52,14 @@ FEATURE_REASONS = {
     "scanned_pdf": {EXAM: "글자가 거의 없는 스캔본 PDF예요"},
     "slide_file": {LECTURE: "발표 슬라이드(PPT) 파일이에요"},
     "slide_like_text": {LECTURE: "한 쪽에 글이 적은 슬라이드형 PDF예요"},
-    "numbered_questions": {EXAM: "문제 번호 형식(1. 2. 3.)이 여러 개 있어요"},
+    "question_cues": {EXAM: "‘~하시오’ 같은 문제 말투가 여러 개 있어요"},
+    "exam_markers": {EXAM: "‘Part I’·‘빈 괄호’·‘다음 중’ 같은 시험지 표시가 있어요"},
+    "numbered_questions": {EXAM: "문제 번호 형식(1. 2. 3.)에 문제 말투가 함께 있어요"},
     "sub_questions": {EXAM: "소문항 (1)(2)(3)이 여러 개 있어요"},
     "score_marks": {EXAM: "배점(○점) 표시가 여러 개 있어요"},
     "headings": {LECTURE: "장·절 제목 구조가 있어요"},
     "long_text": {LECTURE: "분량이 긴 설명형 자료예요"},
+    "explanatory": {LECTURE: "문제·배점·정답 표시 없이 설명으로 이어지는 글이에요"},
     "short_lines": {LECTURE: "짧은 줄(요점 나열)이 많아요"},
 }
 FEATURE_NAMES = tuple(DEFAULT_RULES["features"])
@@ -58,6 +68,14 @@ _NUMBERED = re.compile(r"^\s*(\d{1,2}\s*[.)]\s|문\s?\d+|Q\s?\d+|\[\s*\d+\s*점\
 _SUB = re.compile(r"^\s*([(（]\s?\d{1,2}\s?[)）]|[①-⑩]|\(\s?[a-dA-D]\s?\))")
 _SCORE = re.compile(r"[\[(（]\s*\d+\s*점\s*[\])）]|\d+\s*점")
 _HEADING = re.compile(r"^\s*(#{1,3}\s|제\s?\d+\s?(장|강|절)|Chapter\s?\d+|\d+\.\d+\s)", re.I)
+# 문제를 내는 말투 (줄이 아니라 글 전체에서 센다). 명령형 끝맺음은 강의 자료에 거의 없고, "~인가?" 꼴 질문은 강의 슬라이드 제목에도 나오므로 따로 센다.
+_CUE_STRONG = re.compile(
+    r"(?:하시오|쓰시오|구하시오|고르시오|서술하시오|설명하시오|비교하시오|논하시오|답하시오|채우시오|말하시오|나열하시오|증명하시오|보이시오|계산하시오|기술하시오"
+    r"|쓰세요|채우세요|고르세요|구하세요|답하세요|서술하세요|Answer the following|Fill in the blanks?|True or False|Multiple choice|Which of the following|Choose the correct)", re.I)
+_CUE_QUESTION = re.compile(r"(?:는가|인가|은가|을까|ㄹ까|할까|입니까|습니까)\s*[?？]")
+# 시험지에 나오는 표시: Part I/II, 빈 괄호·빈칸, 다음 중, O/X·참/거짓, 단답·서술·객관·주관식, 문제 N, [정답]
+_MARKER = re.compile(
+    r"(?:\bPart\s+(?:I{1,3}|IV|V|\d)\b|빈\s?괄호|빈\s?칸|다음\s?중|(?:단답|서술|객관|주관)\s?(?:형|식)|\bO\s?/\s?X\b|참\s?[/·]\s?거짓|문제\s?\d+\s*[.)번]|\[\s*정답\s*\])", re.I)
 
 
 def inspect_bytes(name, data):
@@ -84,15 +102,27 @@ def compute_features(name, text, pages=None, slides=None):
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     lengths = [len(ln) for ln in lines]
     per_page = len(text) / pages if pages else None
+    cue_strong = len(_CUE_STRONG.findall(text))
+    cue_question = len(_CUE_QUESTION.findall(text))
+    has_cues = cue_strong >= 3 or (cue_strong >= 1 and cue_strong + cue_question >= 4)
+    markers = len(_MARKER.findall(text))
+    score_marks = len(_SCORE.findall(text)) >= 3
+    numbered = sum(1 for ln in lines if _NUMBERED.match(ln)) >= 3
+    sub = sum(1 for ln in lines if _SUB.match(ln)) >= 3
+    # 번호 목록·소문항은 수업 노트에도 흔하다: 문제 말투가 함께 있을 때만 시험 단서로 본다
+    exam_like = has_cues or markers >= 2 or score_marks
     return {
         "image_file": ext in ("jpg", "jpeg", "png"),
         "scanned_pdf": ext == "pdf" and bool(pages) and per_page < SCAN_CHARS_PER_PAGE,
         "slide_file": ext in ("ppt", "pptx"),
         "slide_like_text": ext == "pdf" and bool(pages) and pages >= 8 and SCAN_CHARS_PER_PAGE <= per_page < 700
                            and bool(lengths) and statistics.median(lengths) < 40,
-        "numbered_questions": sum(1 for ln in lines if _NUMBERED.match(ln)) >= 3,
-        "sub_questions": sum(1 for ln in lines if _SUB.match(ln)) >= 3,
-        "score_marks": len(_SCORE.findall(text)) >= 3,
+        "question_cues": has_cues,
+        "exam_markers": markers >= 2,
+        "numbered_questions": numbered and has_cues,
+        "sub_questions": sub and has_cues,
+        "score_marks": score_marks,
+        "explanatory": len(text) >= 1200 and not exam_like,
         "headings": sum(1 for ln in lines if _HEADING.match(ln)) >= 4,
         "long_text": len(text) >= 15000,
         "short_lines": len(lines) >= 30 and statistics.median(lengths) < 28,
@@ -100,8 +130,17 @@ def compute_features(name, text, pages=None, slides=None):
 
 
 def _keyword_hits(text, words):
+    """글에 나오는 단어들. 영어 단어는 단어 경계로 찾는다 (Exam이 Example 안에서, Final이 finally 안에서 걸리지 않게). 한글은 조사가 붙으므로 부분 일치."""
     low = text.lower()
-    return [w for w in words if w.lower() in low]
+    hits = []
+    for w in words:
+        lw = w.lower()
+        if re.fullmatch(r"[a-z][a-z ]*", lw):
+            if re.search(r"(?<![a-z])" + re.escape(lw) + r"(?![a-z])", low):
+                hits.append(w)
+        elif lw in low:
+            hits.append(w)
+    return hits
 
 
 def score(features, text, rules=None):
