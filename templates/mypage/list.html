@@ -75,35 +75,18 @@
         <!-- 우측: 업로드 + 파일/폴더 그리드 -->
         <main class="lg:col-span-9 space-y-6" data-ml="main">
             <div class="ml-actions" data-ml="actions">
-                <button type="button" id="ml-upload-open" class="ml-btn ml-btn-primary"><i class="fa-solid fa-plus"></i>자료 올리기</button>
+                <label for="{{ form.file.id_for_label }}" id="ml-upload-open" class="ml-btn ml-btn-primary" style="cursor:pointer"><i class="fa-solid fa-plus"></i>자료 올리기</label>
                 <button type="button" id="ml-folder-toggle" class="ml-btn"><i class="fa-solid fa-folder-plus"></i>폴더 만들기</button>
             </div>
             <div class="ml-backdrop" id="ml-backdrop"></div>
             <div data-ml="upload" class="bg-white rounded-2xl border border-slate-100 p-6">
                 <h2 class="text-sm font-bold text-slate-700 mb-4">자료 업로드{% if current_folder %} · {{ current_folder.name }}{% endif %}</h2>
-                <button type="button" id="ml-upload-close" class="ml-close" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
-                <form method="post" enctype="multipart/form-data" class="space-y-3" id="upload-form">
+                <form method="post" enctype="multipart/form-data" class="space-y-3" id="upload-form" novalidate>
                     {% csrf_token %}
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        {{ form.title }}
-                        {{ form.file }}
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {{ form.document_type }}
-                        {{ form.course_name }}
-                        {{ form.professor }}
-                    </div>
-                    <datalist id="subject-options">{% for name in subject_choices %}<option value="{{ name }}">{% endfor %}</datalist>
-                    <datalist id="professor-options">{% for name in professor_choices %}<option value="{{ name }}">{% endfor %}</datalist>
-                    <p id="type-suggest" class="hidden text-xs rounded-lg px-3 py-2"></p>
-                    <p class="text-[11px] text-slate-400"><b>수업 자료</b>는 강의를 만드는 데 쓰입니다. 구분·과목·교수 이름은 필수이며 <b>올린 뒤에는 고칠 수 없어요.</b> 자료 구분은 파일을 고르면 서버가 파일을 보고 짐작해 미리 골라 줘요 (맞지 않으면 바꿔 주세요).</p>
-                    <div class="flex flex-wrap items-center gap-3">
-                        <button type="submit" id="upload-submit" class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-bold px-5 py-2.5 rounded-xl transition">업로드<span id="upload-cost"></span></button>
-                        <p id="upload-note" class="text-xs text-slate-400"></p>
-                    </div>
-                    <p id="upload-error" class="hidden text-xs font-bold text-rose-600"></p>
+                    <div class="flex">{{ form.file }}</div>
                 </form>
-                <p class="text-xs text-slate-400 mt-2">PDF, DOC, DOCX, PPT, PPTX, TXT, MD, RTF, HWP, HWPX, JPG, PNG · 최대 20MB · 글자 약 {{ summary_max_chars }}자 이하(넘으면 PDF를 장별로 쪼개서 올려주세요) · AI가 자료의 주제를 분류하고, 한 주제에 자료가 충분히 모이면 강의 초안을 만듭니다</p>
+                <p id="upload-error" class="hidden text-xs font-bold text-rose-600 mt-2"></p>
+                <p class="text-xs text-slate-400 mt-2">파일을 고르면 자료 구분·과목·교수를 정하는 창이 떠요. PDF, DOC, DOCX, PPT, PPTX, TXT, MD, RTF, HWP, HWPX, JPG, PNG · 최대 20MB · 글자 약 {{ summary_max_chars }}자 이하(넘으면 PDF를 장별로 쪼개서 올려주세요) · AI가 자료의 주제를 분류하고, 한 주제에 자료가 충분히 모이면 강의 초안을 만듭니다</p>
             </div>
 
             {% if can_review %}<a href="{% url 'mypage:review_list' %}" class="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-1.5 mb-3 hover:bg-violet-100"><i class="fa-solid fa-clipboard-check"></i>족보 검토{% if review_pending %} ({{ review_pending }}){% endif %}</a>{% endif %}
@@ -263,7 +246,72 @@
 })();
 </script>
 
-<div id="upload-confirm" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-labelledby="upload-confirm-title">
+<div id="upload-pick" class="up-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="up-title">
+    <div class="up-panel">
+        <div class="up-head">
+            <div style="min-width:0">
+                <h3 id="up-title">이 자료를 어떻게 올릴까요?</h3>
+                <p id="up-file" class="up-file"></p>
+            </div>
+            <button type="button" id="up-close" class="up-x" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="up-body">
+            <div class="up-field"><label for="{{ form.title.id_for_label }}">자료명 <small>비우면 파일 이름을 써요</small></label>{{ form.title }}</div>
+            <div class="up-field">
+                <span class="up-label">자료 구분 <small>파일을 보고 미리 골라 뒀어요. 맞지 않으면 바꿔 주세요</small></span>
+                <div class="up-types" role="radiogroup" aria-label="자료 구분">
+                    <button type="button" class="up-type" role="radio" aria-checked="false" data-type="lecture"><b>수업 자료</b><small>강의를 만드는 데 쓰여요 (강의 자료, 과제 안내 등)</small></button>
+                    <button type="button" class="up-type" role="radio" aria-checked="false" data-type="exam"><b>족보</b><small>기출 문제나 모의고사 같은 시험 자료예요</small></button>
+                </div>
+                <div style="display:none">{{ form.document_type }}</div>
+                <p id="type-suggest" class="hidden text-xs rounded-lg px-3 py-2"></p>
+            </div>
+            <div class="up-field"><label for="{{ form.course_name.id_for_label }}">과목 이름</label>{{ form.course_name }}</div>
+            <div class="up-field"><label for="{{ form.professor.id_for_label }}">교수 이름</label>{{ form.professor }}</div>
+            <datalist id="subject-options">{% for name in subject_choices %}<option value="{{ name }}">{% endfor %}</datalist>
+            <datalist id="professor-options">{% for name in professor_choices %}<option value="{{ name }}">{% endfor %}</datalist>
+            <p class="up-warn">구분·과목·교수 이름은 <b>올린 뒤에는 고칠 수 없어요.</b></p>
+            <p id="upload-note" class="text-xs text-slate-400"></p>
+            <p id="up-error" class="text-xs font-bold text-rose-600" hidden></p>
+        </div>
+        <div class="up-foot">
+            <button type="button" id="up-cancel" class="up-btn up-btn-sub">취소</button>
+            <button type="submit" form="upload-form" id="upload-submit" class="up-btn up-btn-main">올리기<span id="upload-cost"></span></button>
+        </div>
+    </div>
+</div>
+<style>
+    .up-overlay { position: fixed; inset: 0; z-index: 55; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, .55); }
+    .up-overlay[hidden] { display: none; }
+    .up-panel { background: #fff; border-radius: 20px; width: 100%; max-width: 520px; max-height: min(92vh, 760px); display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(15, 23, 42, .35); }
+    .up-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 18px 20px 12px; }
+    .up-head h3 { margin: 0; font-size: 17px; font-weight: 800; color: #1e293b; }
+    .up-file { margin: 4px 0 0; font-size: 12.5px; color: #64748b; overflow-wrap: anywhere; }
+    .up-x { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 99px; border: 0; background: #f1f5f9; color: #475569; cursor: pointer; }
+    .up-body { padding: 4px 20px 10px; overflow-y: auto; display: grid; gap: 14px; -webkit-overflow-scrolling: touch; }
+    .up-field { display: grid; gap: 6px; min-width: 0; }
+    .up-field label, .up-label { font-size: 13px; font-weight: 700; color: #334155; }
+    .up-field small { font-weight: 400; color: #94a3b8; margin-left: 6px; font-size: 11.5px; }
+    .up-types { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .up-type { text-align: left; border: 2px solid #e2e8f0; background: #fff; border-radius: 14px; padding: 11px 12px; cursor: pointer; display: grid; gap: 2px; }
+    .up-type b { font-size: 14px; color: #1e293b; }
+    .up-type small { font-size: 11.5px; color: #64748b; margin: 0; line-height: 1.4; }
+    .up-type.on { border-color: #059669; background: #ecfdf5; }
+    .up-type:focus-visible, .up-btn:focus-visible, .up-x:focus-visible { outline: 2px solid #059669; outline-offset: 2px; }
+    .up-warn { margin: 0; font-size: 12px; color: #e11d48; }
+    .up-foot { display: flex; gap: 10px; padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #f1f5f9; }
+    .up-btn { border-radius: 12px; font-weight: 800; font-size: 15px; min-height: 46px; padding: 0 18px; cursor: pointer; border: 1px solid transparent; }
+    .up-btn-sub { flex: 0 0 auto; background: #fff; border-color: #cbd5e1; color: #334155; }
+    .up-btn-main { flex: 1 1 auto; background: #059669; color: #fff; }
+    .up-btn-main:hover:not(:disabled) { background: #047857; }
+    .up-btn-main:disabled { opacity: .6; cursor: wait; }
+    @media (max-width: 639px) {
+        .up-overlay { align-items: flex-end; padding: 0; }
+        .up-panel { max-width: none; border-radius: 22px 22px 0 0; max-height: 92vh; }
+        .up-types { grid-template-columns: 1fr; }
+    }
+</style>
+<div id="upload-confirm" style="z-index: 56" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-labelledby="upload-confirm-title">
     <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
         <h3 id="upload-confirm-title" class="text-lg font-bold text-slate-800 mb-1">이대로 올릴까요?</h3>
         <p class="text-xs text-rose-600 font-medium mb-4">올린 뒤에는 자료 구분·과목·교수 이름을 고칠 수 없어요. 한 번 더 확인해주세요.</p>
@@ -305,7 +353,25 @@
     let seq = 0;
     const gauge = (n) => '<span class="inline-flex items-center gap-0.5 ml-1 font-semibold opacity-90"><i class="fa-solid fa-gauge-high" style="font-size:.85em"></i>' + n + '%</span>';
     function idle() { seq++; submitBtn.disabled = false; costEl.innerHTML = idleCost; noteEl.textContent = ''; ucEstimate.classList.add('hidden'); }
-    function fail(message) { errEl.textContent = message; errEl.classList.remove('hidden'); }
+    // 파일을 고르면 뜨는 입력 창(hover UI): 구분·과목·교수 같은 나머지 입력은 모두 여기에 있다
+    const pick = document.getElementById('upload-pick'), upErr = document.getElementById('up-error'), upFile = document.getElementById('up-file');
+    const typeBtns = Array.from(pick.querySelectorAll('.up-type'));
+    const pickOpen = () => !pick.hidden;
+    function hideErrors() { errEl.classList.add('hidden'); upErr.hidden = true; }
+    function fail(message) {   // 창이 열려 있으면 창 안에, 아니면 카드 아래에(카드가 안 보이는 폰에서는 알림으로) 보여 준다
+        if (pickOpen()) { upErr.textContent = message; upErr.hidden = false; return; }
+        errEl.textContent = message; errEl.classList.remove('hidden');
+        if (errEl.offsetParent === null && window.showToast) window.showToast(message, 'error');
+    }
+    function syncType() { const v = form.elements['document_type'].value; typeBtns.forEach((b) => { const on = b.dataset.type === v; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); }); }
+    function openPick(file) {
+        upFile.textContent = file.name + ' · ' + (file.size / 1048576).toFixed(1) + 'MB';
+        hideErrors(); pick.hidden = false; document.body.style.overflow = 'hidden'; syncType();
+    }
+    function closePick(clearFile) {
+        pick.hidden = true; document.body.style.overflow = '';
+        if (clearFile) { fileInput.value = ''; idle(); hideErrors(); }
+    }
     function describe(d) {
         if (d.kind === 'image') return { badge: d.min_label + '~' + d.max_label, text: '이미지 글자 읽기 + 요약: 이번 주 한도의 ' + d.min_label + '~' + d.max_label + '% (읽어 봐야 정확해져요)' };
         return { badge: d.est_label, text: '글자 ' + d.chars.toLocaleString() + '자 → 요약 ' + d.chunks + '조각' + ' · 이번 주 한도의 약 ' + d.est_label + '%' };
@@ -326,16 +392,25 @@
             typeBox.className = 'text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-700';
             typeBox.textContent = '족보인지 수업 자료인지 파일만으로는 잘 모르겠어요. 자료 구분을 직접 골라 주세요.';
         }
+        syncType();
     }
     fileInput.addEventListener('change', async () => {
-        errEl.classList.add('hidden'); typeTouched = false; typeBox.className = 'hidden';
+        hideErrors(); typeTouched = false; typeBox.className = 'hidden';
         const file = fileInput.files[0];
         if (!file) { idle(); return; }
-        if (file.size > MAX_BYTES) {   // 서버로 보내기 전에 막는다 (accept 속성은 확장자만 거른다)
+        // 서버로 보내기 전에 막는다: 크기와 형식을 확인해 통과해야 입력 창이 뜬다 (폰에서는 accept가 형식을 걸러 주지 않는 경우가 있다)
+        const allowed = (fileInput.accept || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+        if (allowed.length && !allowed.some((ext) => file.name.toLowerCase().endsWith(ext))) {
+            fileInput.value = ''; idle();
+            fail('올릴 수 없는 형식이에요. ' + allowed.map((x) => x.replace('.', '').toUpperCase()).join(', ') + ' 파일만 올릴 수 있어요.');
+            return;
+        }
+        if (file.size > MAX_BYTES) {
             fileInput.value = ''; idle();
             fail('파일은 ' + Math.floor(MAX_BYTES / 1048576) + 'MB를 넘을 수 없습니다 (선택한 파일 ' + (file.size / 1048576).toFixed(1) + 'MB). 다른 파일을 골라주세요.');
             return;
         }
+        openPick(file);
         const mine = ++seq;
         submitBtn.disabled = true; costEl.innerHTML = '<span class="ml-1 font-semibold opacity-90">· 계산 중…</span>'; noteEl.textContent = '글자를 읽어 예상 사용량을 계산하고 있어요';
         ucEstimate.classList.add('hidden');
@@ -344,7 +419,7 @@
             const res = await fetch(ESTIMATE_URL, { method: 'POST', body, credentials: 'same-origin', headers: { 'X-CSRFToken': CSRF } });
             const d = await res.json().catch(() => ({}));
             if (mine !== seq) return;               // 그 사이 다른 파일을 골랐다
-            if (!res.ok || !d.ok) { fileInput.value = ''; idle(); fail(d.error || '비용을 계산하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
+            if (!res.ok || !d.ok) { closePick(true); fail(d.error || '비용을 계산하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
             applySuggestion(d.suggest);
             const info = describe(d);
             costEl.innerHTML = gauge(info.badge);
@@ -360,7 +435,12 @@
         }
     });
     const typeSelect = form.elements['document_type'];
-    typeSelect.addEventListener('change', () => { typeTouched = true; });
+    typeSelect.addEventListener('change', () => { typeTouched = true; syncType(); });
+    typeBtns.forEach((b) => b.addEventListener('click', () => { typeSelect.value = b.dataset.type; typeTouched = true; upErr.hidden = true; syncType(); }));
+    document.getElementById('up-cancel').addEventListener('click', () => closePick(true));
+    document.getElementById('up-close').addEventListener('click', () => closePick(true));
+    pick.addEventListener('click', (e) => { if (e.target === pick) closePick(true); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && pickOpen() && modal.classList.contains('hidden')) closePick(true); });
     const show = () => { modal.classList.remove('hidden'); modal.classList.add('flex'); };
     const hide = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
     // 과목·교수: 이미 있는 이름이면 확인 표시, 비슷한 이름이 있으면 '혹시 이 과목인가요?', 아니면 새로 만들어진다고 알려 준다
@@ -404,8 +484,11 @@
     form.addEventListener('submit', (e) => {
         if (form.dataset.confirmed === '1') return;
         e.preventDefault();
-        if (!typeSelect.value) { fail('자료 구분을 선택해주세요.'); typeSelect.focus(); return; }
-        errEl.classList.add('hidden');
+        hideErrors();
+        if (!form.elements['file'].files[0]) { fail('파일을 먼저 골라주세요.'); return; }
+        if (!typeSelect.value) { fail('자료 구분을 선택해주세요.'); return; }
+        if (!val('course_name')) { fail('과목 이름을 입력해주세요.'); form.elements['course_name'].focus(); return; }
+        if (!val('professor')) { fail('교수 이름을 입력해주세요.'); form.elements['professor'].focus(); return; }
         const file = form.elements['file'].files[0];
         document.getElementById('uc-title').textContent = val('title') || (file ? file.name.replace(/\.[^.]+$/, '') : '');
         document.getElementById('uc-file').textContent = file ? `${file.name} (${(file.size / 1048576).toFixed(1)}MB)` : '';
@@ -485,21 +568,9 @@ document.addEventListener('click', (e) => {
 });
 </script>
 <script>
-// 모바일: 자료 올리기는 하단 시트로 열고, 폴더 만들기는 눌렀을 때만 입력칸이 보인다 (static/css/mobile.css)
+// 모바일: 폴더 만들기는 눌렀을 때만 입력칸이 보인다 (static/css/mobile.css). 자료 올리기 버튼은 파일 선택창을 바로 연다 (label)
 (function () {
-    var sheet = document.querySelector('[data-ml=upload]'), backdrop = document.getElementById('ml-backdrop');
-    var openBtn = document.getElementById('ml-upload-open'), closeBtn = document.getElementById('ml-upload-close');
     var folderBtn = document.getElementById('ml-folder-toggle'), folderBox = document.querySelector('[data-ml=newfolder]');
-    if (!sheet || !openBtn) return;
-    function setSheet(on) {
-        sheet.classList.toggle('ml-open', on); backdrop.classList.toggle('ml-open', on);
-        document.body.style.overflow = on ? 'hidden' : '';
-    }
-    openBtn.addEventListener('click', function () { setSheet(true); });
-    closeBtn.addEventListener('click', function () { setSheet(false); });
-    backdrop.addEventListener('click', function () { setSheet(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setSheet(false); });
-    window.addEventListener('resize', function () { if (window.innerWidth >= 1024) setSheet(false); });
     if (folderBtn && folderBox) {
         folderBtn.addEventListener('click', function () {
             var on = !folderBox.classList.contains('ml-open');
