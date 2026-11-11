@@ -31,6 +31,7 @@ from .ai import (
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
 from . import answer_scan, doctype, focus
+from . import convert as doc_convert
 from . import folders as folder_tree_mod
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import DiscardedQuestion, GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
@@ -84,6 +85,21 @@ def _generate_summary_bg(document_id):
     with background_slot():          # 분류·개념 태그·강의 초안도 AI를 부르므로 같은 상한을 지킨다 (요약 자리는 먼저 놓는다)
         _classify_and_build(document_id)
     connection.close()
+
+
+def _convert_bg(document_id):
+    """PPT·Word를 PDF로 바꿔 원문 칸에 원본 모양으로 보이게 한다 (AI를 부르지 않는다. 실패해도 요약에는 영향이 없다)."""
+    try:
+        doc_convert.convert_document(PersonalDocument.objects.get(pk=document_id))
+    except Exception:
+        logger.exception("문서 %s PDF 변환 실패", document_id)
+    finally:
+        connection.close()
+
+
+def _start_conversion(document):
+    if doc_convert.needs_conversion(document.file.name if document.file else ""):
+        threading.Thread(target=_convert_bg, args=(document.pk,), daemon=True).start()
 
 
 def _course_after_upload_bg(document_id):
@@ -210,6 +226,7 @@ def document_list(request, folder_id=None):
                 apply_info()
                 document.save()
                 _record_doctype(document, document.extracted_text, raw_upload)
+                _start_conversion(document)
                 if document.document_type != ASSIGNMENT:
                     threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 " + ("풀이를" if document.document_type == ASSIGNMENT else "요약을") + " 바로 불러왔습니다.")
@@ -275,6 +292,7 @@ def document_list(request, folder_id=None):
                 return redirect(request.path)
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
+            _start_conversion(document)
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
             messages.success(request, {ASSIGNMENT: "과제가 업로드되었습니다. 풀이는 잠시 후 생성됩니다.",
                                        EXAM: "족보가 업로드되었습니다. 분석은 잠시 후 생성됩니다."}.get(
@@ -564,9 +582,13 @@ def document_preview(request, pk):
             return redirect(exam.get_absolute_url())          # 완성된 모의고사는 바로 시험 화면으로
         return render(request, "mypage/note.html", {"document": document})   # 생성 중·실패 안내
 
-    is_pdf = document.file.name.lower().endswith(".pdf")
-    is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))     # 이미지는 읽어 낸 글자 대신 원본을 그대로 보여 준다
-    source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
+    file_name = document.file.name.lower() if document.file else ""
+    convert_state = doc_convert.state(document)          # PPT·Word는 PDF로 바꿔 원본 모양으로 보여 준다 (mypage/convert.py)
+    converted = convert_state == "ready"
+    is_pdf = file_name.endswith(".pdf") or converted
+    is_image = file_name.endswith((".jpg", ".jpeg", ".png"))     # 이미지는 읽어 낸 글자 대신 원본을 그대로 보여 준다
+    source_pdf_url = (document.file.url if file_name.endswith(".pdf") else doc_convert.pdf_url(document)) if is_pdf else ""
+    source_pages = pdf_page_texts(document, doc_convert.pdf_name(document.pk) if converted else None) if is_pdf and document.summary.strip() else []
     has_quiz = document.document_type not in NO_QUIZ_TYPES
     active_panel = request.GET.get("panel", "summary")
     if active_panel not in ("summary", "quiz") or not has_quiz:
@@ -588,6 +610,9 @@ def document_preview(request, pk):
     return render(request, "mypage/preview.html", {
         "document": document,
         "is_pdf": is_pdf,
+        "source_pdf_url": source_pdf_url,
+        "source_converting": convert_state == "pending",
+        "source_converted": not is_pdf and not is_image and convert_state != "pending" and not file_name.endswith((".txt", ".md")),
         "is_image": is_image,
         "source_pages": source_pages,
         "active_panel": active_panel,
@@ -834,6 +859,7 @@ def _document_state(document):
         "has_summary": bool(document.summary.strip()),
         "can_resummarize": _can_resummarize(document),
         "questions": [[q.pk, q.status] for q in document.questions.order_by("pk")],
+        "source": doc_convert.state(document),        # PPT·Word를 PDF로 바꾸는 중이면 끝나는 순간 화면을 새로 읽는다
     }
 
 

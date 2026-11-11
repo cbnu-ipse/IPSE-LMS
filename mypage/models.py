@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.urls import reverse
 
 
@@ -401,3 +403,12 @@ class DiscardedQuestion(models.Model):
         indexes = [models.Index(fields=["user", "course_code", "-created_at"], name="discard_user_course")]
         verbose_name = "버린 문제"
         verbose_name_plural = "버린 문제"
+
+
+@receiver(post_delete, sender=PersonalDocument)
+def _remove_converted_pdf(sender, instance, **kwargs):
+    """자료 행을 정말 지우면(관리자·계정 삭제) 변환해 둔 PDF도 지운다. 사용자 화면의 '삭제'는 숨김 처리라 파일을 남긴다."""
+    from . import convert
+
+    if instance.file:
+        convert.delete_files(instance.file.storage, instance.pk)

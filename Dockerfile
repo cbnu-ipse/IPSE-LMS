@@ -58,9 +58,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 런타임 시스템 의존성
+# libreoffice-impress/writer + fonts-noto-cjk: 올린 PPT·Word를 PDF로 바꿔 원문 칸에 원본 모양으로 보여 준다 (mypage/convert.py).
+# 이미지가 약 500MB 늘어난다. 한글 폰트(Noto CJK)가 없으면 변환한 PDF의 한글이 깨진다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     cron \
+    libreoffice-impress \
+    libreoffice-writer \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 # builder에서 설치된 패키지 복사
