@@ -32,6 +32,7 @@ from .ai import (
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
 from . import answer_scan, doctype, focus
 from . import folders as folder_tree_mod
+from . import images as doc_images
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import DiscardedQuestion, GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .stream import SummaryPublisher
@@ -84,6 +85,22 @@ def _generate_summary_bg(document_id):
     with background_slot():          # 분류·개념 태그·강의 초안도 AI를 부르므로 같은 상한을 지킨다 (요약 자리는 먼저 놓는다)
         _classify_and_build(document_id)
     connection.close()
+
+
+def _extract_images_bg(document_id):
+    """PPTX·DOCX 안의 그림을 뽑아 저장한다 (AI를 부르지 않는다. 실패해도 요약에는 영향이 없다)."""
+    try:
+        with extract_slot():
+            doc_images.extract_for_document(PersonalDocument.objects.get(pk=document_id))
+    except Exception:
+        logger.exception("문서 %s 그림 뽑기 실패", document_id)
+    finally:
+        connection.close()
+
+
+def _start_image_extraction(document):
+    if doc_images.is_office_name(document.file.name if document.file else ""):
+        threading.Thread(target=_extract_images_bg, args=(document.pk,), daemon=True).start()
 
 
 def _course_after_upload_bg(document_id):
@@ -210,6 +227,7 @@ def document_list(request, folder_id=None):
                 apply_info()
                 document.save()
                 _record_doctype(document, document.extracted_text, raw_upload)
+                _start_image_extraction(document)
                 if document.document_type != ASSIGNMENT:
                     threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
                 messages.success(request, "자료가 업로드되었습니다. 같은 자료의 " + ("풀이를" if document.document_type == ASSIGNMENT else "요약을") + " 바로 불러왔습니다.")
@@ -275,6 +293,7 @@ def document_list(request, folder_id=None):
                 return redirect(request.path)
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
+            _start_image_extraction(document)
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
             messages.success(request, {ASSIGNMENT: "과제가 업로드되었습니다. 풀이는 잠시 후 생성됩니다.",
                                        EXAM: "족보가 업로드되었습니다. 분석은 잠시 후 생성됩니다."}.get(
@@ -513,6 +532,45 @@ def document_move(request, pk):
     return redirect(request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else "mypage:document_list")
 
 
+def _images_document(request, pk):
+    document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
+    if document.user != request.user:
+        return None, HttpResponseForbidden("본인의 자료만 볼 수 있습니다.")
+    return document, None
+
+
+@login_required
+def document_images(request, pk):
+    """PPTX·DOCX에서 뽑은 그림 모아보기 (슬라이드·문서 순서)."""
+    document, denied = _images_document(request, pk)
+    if denied:
+        return denied
+    index = doc_images.load_index(document)
+    return render(request, "mypage/images.html", {
+        "document": document, "images": doc_images.image_list(document), "index": index,
+        "is_office": doc_images.is_office_name(document.file.name if document.file else ""),
+        "skipped": sum((index or {}).get("skipped", {}).values()),
+    })
+
+
+@login_required
+def document_images_zip(request, pk):
+    """뽑은 그림 전체를 ZIP 하나로 내려준다 (파일 이름: slide04_1.png 처럼 슬라이드 번호_순번)."""
+    from urllib.parse import quote
+
+    from django.http import HttpResponse
+
+    document, denied = _images_document(request, pk)
+    if denied:
+        return denied
+    if not doc_images.image_list(document):
+        raise Http404("저장된 그림이 없습니다.")
+    response = HttpResponse(doc_images.zip_bytes(document), content_type="application/zip")
+    name = re.sub(r'[\\/:*?"<>|\r\n]+', " ", document.title).strip() or "images"
+    response["Content-Disposition"] = f"attachment; filename=\"images.zip\"; filename*=UTF-8''{quote(name)}_images.zip"
+    return response
+
+
 @login_required
 def note_pdf(request, pk):
     """요약 노트의 모든 쪽 이미지를 한 PDF로 묶어 내려준다 (AI를 부르지 않는다)."""
@@ -590,6 +648,8 @@ def document_preview(request, pk):
         "is_pdf": is_pdf,
         "is_image": is_image,
         "source_pages": source_pages,
+        "office_images": doc_images.image_list(document),
+        "source_converted": not is_pdf and not is_image and not (document.file.name.lower().endswith((".txt", ".md")) if document.file else True),
         "active_panel": active_panel,
         "has_quiz": has_quiz,
         "kind_label": kind_label,

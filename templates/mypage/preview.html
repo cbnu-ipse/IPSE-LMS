@@ -17,6 +17,11 @@
     .ms-head h1 { flex: 1; min-width: 0; font-size: 1.05rem; font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
     .ms-toggle { flex-shrink: 0; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 6px 12px; font-size: .75rem; font-weight: 800; color: #475569; cursor: pointer; }
     .ms-toggle:hover { background: #f1f5f9; }
+    .ms-src-note { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 2; margin: 0; padding: 8px 12px; border-radius: 10px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: .75rem; font-weight: 700; }
+    .ms-figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+    .ms-figs figure { margin: 0; }
+    .ms-figs img { width: 100%; max-height: 220px; object-fit: contain; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; }
+    .ms-figs figcaption { margin-top: 3px; font-size: .68rem; font-weight: 700; color: #94a3b8; text-align: center; }
     .ms-msg { flex-shrink: 0; }
     .ms-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 12px; }
     .ms-grid.src-closed { grid-template-columns: minmax(0, 1fr); }
@@ -25,6 +30,7 @@
     .ms-src > .ms-img { flex: 1; width: 100%; min-height: 0; overflow: auto; border-radius: 12px; text-align: center; }
     .ms-src > .ms-img img { max-width: 100%; height: auto; display: inline-block; }
     .ms-src > iframe, .ms-src > pre, .ms-src > .ms-text { flex: 1; width: 100%; height: 100%; border: 0; border-radius: 12px; }
+    .ms-src.has-note > pre, .ms-src.has-note > .ms-text { padding-top: 70px; }     /* 위에 겹쳐 놓은 안내(.ms-src-note) 아래에서 글이 시작되게 */
     .ms-src > pre, .ms-src > .ms-text { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; font-size: .85rem; line-height: 1.7; color: #334155; margin: 0; position: relative; }
     /* 요약과 연결된 원문 위치 표시 */
     .ms-unit { padding: 4px 10px; margin: 0 -10px; border-left: 3px solid transparent; border-radius: 6px; transition: background .25s, border-color .25s; }
@@ -69,6 +75,7 @@
         <a href="{% if document.folder %}{% url 'mypage:document_list' folder_id=document.folder.pk %}{% else %}{% url 'mypage:document_list' %}{% endif %}" class="text-xs font-bold text-slate-400 hover:text-slate-600 shrink-0">&larr; 내 자료</a>
         <h1>{{ document.title }}</h1>
         <span class="text-[11px] font-bold text-slate-400 shrink-0"><i class="fa-solid fa-tag mr-1"></i>{{ document.get_document_type_display }}{% if document.course_name %} · {{ document.course_name }}{% endif %}{% if document.professor %} · {{ document.professor }}{% endif %}</span>
+        {% if office_images %}<a href="{% url 'mypage:document_images' document.pk %}" id="ms-images" class="ms-toggle" style="text-decoration:none" title="이 자료에 들어 있던 그림을 한곳에서 보고 저장해요"><i class="fa-regular fa-images mr-1"></i>그림 {{ office_images|length }}개</a>{% endif %}
         <button type="button" id="ms-toggle" class="ms-toggle" aria-expanded="true"><i class="fa-regular fa-file-pdf mr-1"></i><span>원문 닫기</span></button>
     </div>
 
@@ -83,12 +90,13 @@
     {% endif %}
 
     <div class="ms-grid" id="ms-grid">
-        <div class="ms-src" id="ms-src">
+        <div class="ms-src{% if source_converted %} has-note{% endif %}" id="ms-src">
             {% if is_pdf %}
                 <iframe src="{{ document.file.url }}" title="원문"></iframe>
             {% elif is_image %}
                 <div class="ms-img"><img src="{{ document.file.url }}" alt="{{ document.title }} 원본 이미지"></div>
             {% else %}
+                {% if source_converted %}<p class="ms-src-note">원본 모양이 아니라 글자만 뽑아 보여 드려요. 슬라이드·표 모양까지 보려면 PDF로 저장해서 올려주세요.</p>{% endif %}
                 <pre>{{ document.extracted_text|default:"미리볼 수 있는 텍스트가 없습니다." }}</pre>
             {% endif %}
         </div>
@@ -487,6 +495,10 @@
 </script>
 {% if source_pages %}{{ source_pages|json_script:"ms-pdf-pages" }}{% endif %}
 <script src="{% static 'js/source-sync.js' %}?v={{ static_version }}"></script>
+{% if office_images %}
+{{ office_images|json_script:"doc-images" }}
+<script src="{% static 'js/summary-images.js' %}?v={{ static_version }}"></script>
+{% endif %}
 {% endif %}
 <script>
 // AI 어시스턴트에게 '지금 보고 있는 내용'을 알려 준다: 요약 화면이면 지금 보는 요약 조각, 퀴즈 화면이면 지금 보는 문제 카드.

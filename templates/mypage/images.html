@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}{{ document.title }} 그림 | IPSE LMS{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 py-10">
+    <div class="flex items-center justify-between gap-3 mb-2">
+        <a href="{{ document.get_absolute_url }}" class="text-xs font-bold text-slate-400 hover:text-slate-600">&larr; 학습 화면</a>
+        <h1 class="flex-1 text-lg font-bold text-slate-800 truncate">{{ document.title }} · 그림</h1>
+        {% if images %}<a id="images-zip" href="{% url 'mypage:document_images_zip' document.pk %}" class="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white transition"><i class="fa-solid fa-file-zipper mr-1"></i>전체 저장 (ZIP)</a>{% endif %}
+    </div>
+    {% if images %}
+    <p class="text-xs text-slate-400 mb-5">{% if index.kind == 'pptx' %}슬라이드{% else %}문서{% endif %}에 들어 있던 그림 {{ images|length }}개예요. 파일 이름의 번호는 {% if index.kind == 'pptx' %}슬라이드 번호_순번{% else %}나온 순서{% endif %}입니다.{% if skipped %} 아이콘·반복되는 로고·벡터 그림 {{ skipped }}개는 뺐어요.{% endif %}</p>
+    <div id="image-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px">
+        {% for img in images %}
+        <figure class="bg-white rounded-2xl border border-slate-100 p-3 shadow-sm" style="margin:0">
+            <a href="{{ img.url }}" target="_blank" rel="noopener" title="크게 보기"><img src="{{ img.url }}" alt="{{ img.name }}" loading="lazy" style="width:100%;height:150px;object-fit:contain;background:#f8fafc;border-radius:10px"></a>
+            <figcaption class="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                <span class="truncate" title="{{ img.name }}">{% if img.slide %}슬라이드 {{ img.slide }} · {% endif %}{{ img.name }}</span>
+                <a href="{{ img.url }}" download="{{ img.name }}" class="shrink-0 font-bold text-emerald-600 hover:text-emerald-700" aria-label="{{ img.name }} 저장"><i class="fa-solid fa-download"></i></a>
+            </figcaption>
+        </figure>
+        {% endfor %}
+    </div>
+    {% elif not is_office %}
+    <p class="text-sm text-slate-500 py-16 text-center">PPTX·DOCX 자료에서만 그림을 뽑아요. PDF·이미지 자료는 원문 칸에서 그림을 그대로 볼 수 있어요.</p>
+    {% elif index is None %}
+    <p class="text-sm text-slate-500 py-16 text-center">아직 그림을 뽑지 않았어요. 올린 직후에는 잠시 걸리니 조금 뒤에 새로고침해 주세요.<br><span class="text-xs text-slate-400">예전에 올린 자료는 운영진이 한꺼번에 뽑아 드려요.</span></p>
+    {% else %}
+    <p class="text-sm text-slate-500 py-16 text-center">뽑을 만한 그림이 없었어요.{% if skipped %} (아이콘·반복되는 로고·벡터 그림 {{ skipped }}개는 뺐어요){% endif %}</p>
+    {% endif %}
+</section>
+{% endblock %}
