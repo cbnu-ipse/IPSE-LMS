@@ -7,7 +7,7 @@ from django.db import connection
 from assistant.guardrails import detect_prompt_injection
 from core.concurrency import background_slot
 
-from .ai import extract_text, generate_summary
+from .ai import extract_text, generate_solution, generate_summary
 from .models import PersonalDocument, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,8 @@ def regenerate_document(document_id, reextract=True):
         if detect_prompt_injection(text):
             raise ValueError("프롬프트 인젝션으로 의심되는 내용이 있어 중단했습니다.")
         PersonalDocument.objects.filter(pk=document_id).update(extracted_text=text, summary_status=ProcessingStatus.PROCESSING)
-        summary = generate_summary(text, user=None)
+        summary = (generate_solution(text, user=None) if document.document_type == PersonalDocument.DocumentType.ASSIGNMENT
+                   else generate_summary(text, user=None))
         if not summary.strip():
             raise ValueError("요약이 비어 있습니다.")
         PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)

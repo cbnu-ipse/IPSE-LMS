@@ -122,6 +122,8 @@ def after_summary(document_id, force=False):
 
 
     document = PersonalDocument.objects.select_related("user").get(pk=document_id)
+    if document.document_type == PersonalDocument.DocumentType.ASSIGNMENT:
+        return []          # 과제 풀이는 주제 분류·개념 태그·강의 초안·출제 스타일에 쓰지 않는다 (저장만 한다)
     if not document.summary.strip():
         return None
     names = classify_document(document, force=force)

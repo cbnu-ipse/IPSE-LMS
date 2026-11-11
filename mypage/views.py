@@ -26,7 +26,7 @@ from core import usage
 from core.ai import AIQuotaExceeded, check_quota, cost_for, ocr_cost, require_quota
 
 from .ai import (
-    LEGACY_SUMMARY_CHARS, SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, generate_one_question, generate_summary, grade_answer, is_duplicate_question,
+    ASSIGNMENT_MAX_CHARS, LEGACY_SUMMARY_CHARS, SUMMARY_CHUNK_CHARS, SUMMARY_MAX_CHARS, SUMMARY_MAX_CHUNKS, clean_question_text, extract_text, assignment_too_long, generate_one_question, generate_solution, generate_summary, grade_answer, is_duplicate_question,
     pdf_page_texts, summary_chunk_count, summary_too_long, too_long_message,
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
@@ -46,6 +46,17 @@ STALE_AFTER = timedelta(minutes=3)  # 이 시간이 지나도 '생성 중'이면
 
 _summarizing = set()  # 이 프로세스에서 요약을 만드는 중인 문서 (오래된 '생성 중'과 진짜 진행 중을 구별한다)
 
+ASSIGNMENT = PersonalDocument.DocumentType.ASSIGNMENT
+EXAM = PersonalDocument.DocumentType.EXAM
+NO_QUIZ_TYPES = (EXAM, ASSIGNMENT)         # 족보는 '분석', 과제는 '풀이'를 보여 주고 퀴즈는 만들지 않는다
+# 화면에 쓰는 이름: (이름, 목적격). 수업 자료는 요약
+KIND_LABELS = {EXAM: ("분석", "분석을"), ASSIGNMENT: ("풀이", "풀이를")}
+
+
+def _ai_task(document_type):
+    """자료 구분별로 올릴 때 쓰는 AI 작업: 과제는 풀이(assignment), 나머지는 요약(summary)."""
+    return "assignment" if document_type == ASSIGNMENT else "summary"
+
 
 def _generate_summary_bg(document_id):
     _summarizing.add(document_id)
@@ -54,8 +65,11 @@ def _generate_summary_bg(document_id):
         with background_slot():      # 업로드가 몰려도 AI를 부르는 작업은 동시에 몇 개만 (core/concurrency.py)
             document = PersonalDocument.objects.select_related("user").get(pk=document_id)
             publisher = SummaryPublisher(document_id)       # 만들어지는 대로 열어 둔 학습 화면에 보낸다 (mypage/stream.py)
-            summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type,
-                                       on_text=publisher.push)
+            if document.document_type == ASSIGNMENT:      # 과제는 요약 대신 문항별 풀이를 같은 자리(summary)에 만든다
+                summary = generate_solution(document.extracted_text, user=document.user, on_text=publisher.push)
+            else:
+                summary = generate_summary(document.extracted_text, user=document.user, kind=document.document_type,
+                                           on_text=publisher.push)
             PersonalDocument.objects.filter(pk=document_id).update(summary=summary, summary_status=ProcessingStatus.DONE)
             publisher.finish("done")
     except Exception:
@@ -134,6 +148,8 @@ def _record_doctype(document, text, data=None):
     """올린 자료의 구분을 규칙으로 짐작해 남기고, 사용자가 고른 구분과 같으면 신뢰도를 조금 올린다 (accounts/trust.py)."""
     from accounts import trust
 
+    if document.document_type == ASSIGNMENT:      # 과제는 족보/수업 자료 짐작과 신뢰도 계산에 넣지 않는다
+        return
     try:
         guess = doctype.suggest(document.file.name, text, data)
         PersonalDocument.objects.filter(pk=document.pk).update(suggested_type=guess["type"], type_confidence=guess["confidence"])
@@ -159,6 +175,8 @@ def document_list(request, folder_id=None):
             document.folder = folder
             if not document.title:
                 document.title = os.path.splitext(document.file.name)[0]
+            if document.document_type == ASSIGNMENT:     # 과제는 강의 자료가 아니다 (강의 생성 등 다른 기능에서 빠진다)
+                document.is_course_material = False
             if request.user.is_lecturer:         # 강의자가 올린 자료는 확인된 것으로 본다
                 document.review_status = PersonalDocument.ReviewStatus.APPROVED
                 document.reviewed_at = timezone.now()
@@ -192,8 +210,9 @@ def document_list(request, folder_id=None):
                 apply_info()
                 document.save()
                 _record_doctype(document, document.extracted_text, raw_upload)
-                threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
-                messages.success(request, "자료가 업로드되었습니다. 같은 자료의 요약을 바로 불러왔습니다.")
+                if document.document_type != ASSIGNMENT:
+                    threading.Thread(target=_course_after_upload_bg, args=(document.pk,), daemon=True).start()
+                messages.success(request, "자료가 업로드되었습니다. 같은 자료의 " + ("풀이를" if document.document_type == ASSIGNMENT else "요약을") + " 바로 불러왔습니다.")
                 return redirect(request.path)
             in_flight = PersonalDocument.objects.filter(user=request.user, summary_status=ProcessingStatus.PROCESSING,
                                                         uploaded_at__gte=timezone.now() - STALE_AFTER).count()
@@ -204,7 +223,7 @@ def document_list(request, folder_id=None):
             is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))
             try:
                 # 이미지는 글자 읽기(크기당) + 요약 최소 1조각, 그 밖에는 요약 최소 1조각을 할 한도가 남아 있어야 시작한다
-                require_quota(request.user, (ocr_cost(upload.size) if is_image else 0) + cost_for("summary"))
+                require_quota(request.user, (ocr_cost(upload.size) if is_image else 0) + cost_for(_ai_task(document.document_type)))
             except AIQuotaExceeded as exc:
                 messages.error(request, f"자료를 올리지 못했습니다. {exc}")
                 return redirect(request.path)
@@ -237,19 +256,29 @@ def document_list(request, folder_id=None):
                 document.delete()
                 messages.error(request, "자료를 올리지 못했습니다. " + too_long_message(len(extracted_text)))
                 return redirect(request.path)
+            if document.document_type == ASSIGNMENT and assignment_too_long(extracted_text):
+                document.file.delete(save=False)
+                document.delete()
+                messages.error(request, f"자료를 올리지 못했습니다. 과제는 글자 {ASSIGNMENT_MAX_CHARS:,}자까지 풀이할 수 있어요 "
+                                        f"(이 파일은 {len(extracted_text):,}자). 문제를 나눠서 올려주세요.")
+                return redirect(request.path)
             document.extracted_text = extracted_text
             _record_doctype(document, extracted_text, raw_upload)
             try:    # 본문을 읽은 뒤 전체 조각 수로 필요한 사용량을 미리 확인한다 (AI를 부르지 않고 글자 수로 센다)
-                require_quota(request.user, summary_chunk_count(extracted_text) * cost_for("summary"))
+                require_quota(request.user, cost_for("assignment") if document.document_type == ASSIGNMENT
+                              else summary_chunk_count(extracted_text) * cost_for("summary"))
             except AIQuotaExceeded as exc:
                 document.summary_status = ProcessingStatus.PENDING
                 document.save(update_fields=["extracted_text", "summary_status"])
-                messages.warning(request, f"자료를 올렸지만 요약은 시작하지 않았습니다. {exc} 충전한 뒤 '요약 시작'을 눌러주세요.")
+                what, topic = ("풀이", "풀이는") if document.document_type == ASSIGNMENT else ("요약", "요약은")
+                messages.warning(request, f"자료를 올렸지만 {topic} 시작하지 않았습니다. {exc} 충전한 뒤 '{what} 시작'을 눌러주세요.")
                 return redirect(request.path)
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
-            messages.success(request, "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다.")
+            messages.success(request, {ASSIGNMENT: "과제가 업로드되었습니다. 풀이는 잠시 후 생성됩니다.",
+                                       EXAM: "족보가 업로드되었습니다. 분석은 잠시 후 생성됩니다."}.get(
+                document.document_type, "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다."))
             return redirect(request.path)
         if {"document_type", "course_name", "professor"} & set(form.errors):
             messages.error(request, "자료 구분, 과목 이름, 교수 이름을 모두 입력해주세요. 올린 뒤에는 고칠 수 없습니다.")
@@ -285,6 +314,7 @@ def document_list(request, folder_id=None):
         "can_review": request.user.is_lecturer or request.user.is_superuser,
         "review_pending": len(_review_queue()) if (request.user.is_lecturer or request.user.is_superuser) else 0,
         "max_upload_bytes": MAX_UPLOAD_SIZE,
+        "assignment_max_chars": f"{ASSIGNMENT_MAX_CHARS:,}",
         "subject_choices": subject_choices(),
         "professor_choices": professor_choices(),
         "folder_form": PersonalFolderForm(),
@@ -323,7 +353,8 @@ def upload_estimate(request):
     info = {"ok": True, "suggest": doctype.suggest(name, "", data)}      # 이미지는 글자를 읽기 전이라 파일 모양만으로 짐작한다
     if name.endswith((".jpg", ".jpeg", ".png")):
         ocr = ocr_cost(len(data))
-        info.update(kind="image", min_label=usage.percent_label(ocr + unit),
+        info.update(kind="image", assignment_label=usage.percent_label(ocr + cost_for("assignment")),
+                    min_label=usage.percent_label(ocr + unit),
                     max_label=usage.percent_label(ocr + unit * SUMMARY_MAX_CHUNKS))
         need = ocr + unit
     else:
@@ -343,7 +374,8 @@ def upload_estimate(request):
             return JsonResponse({"ok": False, "too_long": True, "error": too_long_message(len(text))}, status=422)
         info["suggest"] = doctype.suggest(name, text, data)
         chunks = summary_chunk_count(text)
-        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit))
+        info.update(kind="text", chunks=chunks, chars=len(text), est_label=usage.percent_label(chunks * unit),
+                    assignment_label=usage.percent_label(cost_for("assignment")), assignment_too_long=assignment_too_long(text))
         need = chunks * unit
     current = usage.info(request.user)                              # 한도가 없는 사용자(강의자 등)는 None
     info["used_label"] = current["label"] if current else None
@@ -535,9 +567,11 @@ def document_preview(request, pk):
     is_pdf = document.file.name.lower().endswith(".pdf")
     is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))     # 이미지는 읽어 낸 글자 대신 원본을 그대로 보여 준다
     source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
+    has_quiz = document.document_type not in NO_QUIZ_TYPES
     active_panel = request.GET.get("panel", "summary")
-    if active_panel not in ("summary", "quiz"):
+    if active_panel not in ("summary", "quiz") or not has_quiz:
         active_panel = "summary"
+    kind_label, kind_obj = KIND_LABELS.get(document.document_type, ("요약", "요약을"))
 
     # 생성에 실패한 문제는 빈 카드로 남기지 않고 목록에서 뺀다
     current_questions = list(document.questions.exclude(status=ProcessingStatus.FAILED))
@@ -557,6 +591,9 @@ def document_preview(request, pk):
         "is_image": is_image,
         "source_pages": source_pages,
         "active_panel": active_panel,
+        "has_quiz": has_quiz,
+        "kind_label": kind_label,
+        "kind_obj": kind_obj,
         "current_questions": current_questions,
         "current_question": current_questions[q_index] if current_questions else None,
         "q_index": q_index,
@@ -575,6 +612,9 @@ def generate_question_view(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 문제를 생성할 수 있습니다.")
+    if document.document_type in NO_QUIZ_TYPES:
+        messages.info(request, "족보와 과제는 퀴즈를 만들지 않습니다.")
+        return redirect(document.get_absolute_url())
     question_type = request.POST.get("question_type")
     if question_type not in dict(GeneratedQuestion.QuestionType.choices):
         raise Http404("존재하지 않는 문제 유형입니다.")
@@ -630,6 +670,8 @@ def submit_answer_view(request, pk, question_id):
     question = get_object_or_404(GeneratedQuestion, pk=question_id, document_id=pk, document__is_deleted=False)
     if question.document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
+    if question.document.document_type in NO_QUIZ_TYPES:
+        return HttpResponseBadRequest("족보와 과제는 퀴즈를 풀 수 없습니다.")
 
     redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&q={request.GET.get('q', 0)}"
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
@@ -720,6 +762,8 @@ def _can_resummarize(document):
         return True
     if document.summary_status == ProcessingStatus.PROCESSING:
         return document.pk not in _summarizing and document.uploaded_at < timezone.now() - STALE_AFTER
+    if document.document_type == ASSIGNMENT:
+        return not document.summary.strip()     # 옛 요약 길이 기준은 과제 풀이에 해당하지 않는다
     return not document.summary.strip() or len(document.extracted_text) > LEGACY_SUMMARY_CHARS
 
 
@@ -735,7 +779,7 @@ def document_resummarize(request, pk):
         messages.info(request, "이미 요약이 있거나 생성 중입니다.")
         return back
     try:
-        check_quota(request.user, "summary")
+        check_quota(request.user, _ai_task(document.document_type))
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back
@@ -756,8 +800,12 @@ def document_resummarize(request, pk):
     if summary_too_long(text):
         messages.error(request, too_long_message(len(text)))
         return back
+    if document.document_type == ASSIGNMENT and assignment_too_long(text):
+        messages.error(request, f"과제는 글자 {ASSIGNMENT_MAX_CHARS:,}자까지 풀이할 수 있어요 (이 파일은 {len(text):,}자).")
+        return back
     try:    # 전체 조각 수로 필요한 사용량을 미리 확인한다 (모자라면 시작하지 않는다)
-        require_quota(request.user, summary_chunk_count(text) * cost_for("summary"))
+        require_quota(request.user, cost_for("assignment") if document.document_type == ASSIGNMENT
+                      else summary_chunk_count(text) * cost_for("summary"))
     except AIQuotaExceeded as exc:
         messages.error(request, str(exc))
         return back
@@ -773,6 +821,8 @@ def document_resummarize(request, pk):
 
 def _summary_cost(document):
     """이 자료를 요약할 때의 예상 사용량 점수: 읽어 둔 본문이 있으면 조각 수 × 조각당 비용, 아직 없으면 최소(1조각) 비용."""
+    if document.document_type == ASSIGNMENT:
+        return cost_for("assignment")
     chunks = summary_chunk_count(document.extracted_text) if document.extracted_text.strip() else 1
     return max(chunks, 1) * cost_for("summary")
 

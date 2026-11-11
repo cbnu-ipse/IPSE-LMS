@@ -91,6 +91,7 @@ class PersonalDocument(models.Model):
         EXAM = "exam", "족보"                # 기출·모의고사: 교수님 출제 스타일을 배워 문제 만들 때 쓴다
         NOTE = "note", "요약 노트"            # 선택한 자료로 AI가 만든 요약 노트(손글씨 이미지). 올리는 자료가 아니라 만들어지는 것
         MOCK = "mock", "모의고사"             # 선택한 자료로 AI가 출제한 모의고사. 개인 탭에 만들어지는 자료이고 시험은 MockExam에 있다
+        ASSIGNMENT = "assignment", "과제"     # 올리면 AI가 문항별 풀이를 만든다(summary에 저장). 강의 생성·족보 스타일·모의 출제·개념 분석에는 쓰지 않는다
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_documents")
     folder = models.ForeignKey(PersonalFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="documents")

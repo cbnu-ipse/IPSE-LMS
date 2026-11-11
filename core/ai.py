@@ -46,6 +46,7 @@ MAX_OUTPUT_TOKENS = {
     "doctype_rules": 2500,
     "scope": 800,
     "answer_scan": 3000,
+    "assignment": 8000,
 }
 
 
