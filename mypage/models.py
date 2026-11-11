@@ -65,6 +65,9 @@ class Concept(models.Model):
 
 class PersonalFolder(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_folders")
+    # 비어 있으면 루트에 있는 폴더. 깊이 제한·순환 방지·하위가 있으면 삭제 막기는 화면 쪽(views, mypage/folders.py)에서 확인한다
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="children",
+                               verbose_name="상위 폴더")
     name = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
 

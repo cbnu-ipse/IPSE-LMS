@@ -26,7 +26,8 @@
                     </div>
                     <div class="min-w-0">
                         <h3 class="font-bold text-slate-800 text-sm truncate">{% if current_folder %}{{ current_folder.name }}{% else %}전체 자료{% endif %}</h3>
-                        <p class="text-[11px] text-slate-400 font-medium">{{ documents|length }}개 자료</p>
+                        <p class="text-[11px] text-slate-400 font-medium">{{ documents|length }}개 자료{% if subfolders %} · 폴더 {{ subfolders|length }}개{% endif %}</p>
+
                     </div>
                 </div>
             </div>
@@ -39,13 +40,14 @@
                             <i class="fa-solid fa-house w-4 {% if not current_folder %}text-emerald-600{% else %}text-slate-400{% endif %}"></i>전체 (루트)
                         </a>
                     </li>
-                    {% for f in folders %}
-                    <li class="flex items-center group">
+                    {% for f in folder_tree %}
+                    <li class="folder-li flex items-center group" style="--indent:{{ f.indent }}">
                         <a href="{% url 'mypage:document_list' folder_id=f.pk %}" class="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition {% if current_folder.pk == f.pk %}bg-emerald-50 text-emerald-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
                             <i class="fa-solid fa-folder text-amber-400 w-4"></i><span class="truncate">{{ f.name }}</span>
                         </a>
                         <button type="button" data-rename-url="{% url 'mypage:folder_rename' f.pk %}" data-rename-field="name" data-rename-value="{{ f.name }}" class="shrink-0 px-2 py-2 text-slate-400 hover:text-slate-600 text-xs lg:opacity-0 lg:group-hover:opacity-100 transition" title="이름 바꾸기" aria-label="{{ f.name }} 이름 바꾸기"><i class="fa-solid fa-pen"></i></button>
-                        <form method="post" action="{% url 'mypage:folder_delete' f.pk %}" onsubmit="return confirm('\'{{ f.name|escapejs }}\' 폴더를 삭제하시겠습니까? 안의 자료는 루트로 이동합니다.');" class="shrink-0 lg:opacity-0 lg:group-hover:opacity-100 transition">
+                        <button type="button" data-move-url="{% url 'mypage:folder_move' f.pk %}" data-move-field="parent" data-move-folder="{{ f.parent_id|default_if_none:'' }}" data-move-exclude="{% for i in f.subtree_ids %}{{ i }}{% if not forloop.last %},{% endif %}{% endfor %}" data-move-height="{{ f.height }}" class="shrink-0 px-2 py-2 text-slate-400 hover:text-slate-600 text-xs lg:opacity-0 lg:group-hover:opacity-100 transition" title="폴더 옮기기" aria-label="{{ f.name }} 폴더 옮기기"><i class="fa-solid fa-folder-tree"></i></button>
+                        <form method="post" action="{% url 'mypage:folder_delete' f.pk %}" onsubmit="return confirm('\'{{ f.name|escapejs }}\' 폴더를 삭제하시겠습니까? 안의 자료는 {% if f.parent_id %}위 폴더{% else %}루트{% endif %}로 이동합니다 (하위 폴더가 있으면 삭제할 수 없어요).');" class="shrink-0 lg:opacity-0 lg:group-hover:opacity-100 transition">
                             {% csrf_token %}
                             <button type="submit" class="px-2 py-2 text-rose-400 hover:text-rose-600 text-xs" title="폴더 삭제" aria-label="{{ f.name }} 폴더 삭제"><i class="fa-solid fa-trash-can"></i></button>
                         </form>
@@ -54,17 +56,23 @@
                 </ul>
 
                 <div data-ml="newfolder" class="border-t border-slate-100 pt-4">
+                    {% if can_add_subfolder %}
                     <form method="post" action="{% url 'mypage:folder_create' %}" class="flex gap-2">
                         {% csrf_token %}
+                        {% if current_folder %}<input type="hidden" name="parent" value="{{ current_folder.pk }}">{% endif %}
                         {{ folder_form.name }}
                         <button type="submit" class="shrink-0 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded-xl transition">
                             <i class="fa-solid fa-plus"></i>
                         </button>
                     </form>
+                    <p id="folder-create-where" class="text-[11px] text-slate-400 mt-2 px-1">{% if current_folder %}「{{ current_folder.name }}」 안에 만들어져요{% else %}맨 위(루트)에 만들어져요{% endif %}</p>
+                    {% else %}
+                    <p id="folder-depth-note" class="text-[11px] text-slate-400 px-1">폴더는 {{ max_folder_depth }}단계까지만 만들 수 있어요. 다른 폴더로 이동해서 만들어 주세요.</p>
+                    {% endif %}
                 </div>
 
                 {% if current_folder %}
-                <form method="post" action="{% url 'mypage:folder_delete' current_folder.pk %}" onsubmit="return confirm('폴더를 삭제하시겠습니까? 안의 자료는 루트로 이동합니다.');" class="pt-2 border-t border-slate-100">
+                <form method="post" action="{% url 'mypage:folder_delete' current_folder.pk %}" onsubmit="return confirm('폴더를 삭제하시겠습니까? 안의 자료는 {% if current_folder.parent_id %}위 폴더{% else %}루트{% endif %}로 이동합니다 (하위 폴더가 있으면 삭제할 수 없어요).');" class="pt-2 border-t border-slate-100">
                     {% csrf_token %}
                     <button type="submit" class="w-full text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-2">이 폴더 삭제</button>
                 </form>
@@ -74,6 +82,12 @@
 
         <!-- 우측: 업로드 + 파일/폴더 그리드 -->
         <main class="lg:col-span-9 space-y-6" data-ml="main">
+            {% if current_folder %}
+            <nav id="folder-breadcrumb" aria-label="폴더 경로" style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px" class="text-xs font-semibold text-slate-500">
+                <a href="{% url 'mypage:document_list' %}" class="hover:text-emerald-600"><i class="fa-solid fa-house text-slate-400"></i> 전체</a>
+                {% for b in breadcrumb %}<span class="text-slate-300">/</span>{% if not forloop.last %}<a href="{% url 'mypage:document_list' folder_id=b.pk %}" class="hover:text-emerald-600">{{ b.name }}</a>{% else %}<span class="text-slate-800" aria-current="page">{{ b.name }}</span>{% endif %}{% endfor %}
+            </nav>
+            {% endif %}
             <div class="ml-actions" data-ml="actions">
                 <label for="{{ form.file.id_for_label }}" id="ml-upload-open" class="ml-btn ml-btn-primary" style="cursor:pointer"><i class="fa-solid fa-plus"></i>자료 올리기</label>
                 <button type="button" id="ml-folder-toggle" class="ml-btn"><i class="fa-solid fa-folder-plus"></i>폴더 만들기</button>
@@ -101,22 +115,21 @@
             </div>
             {% endif %}
             <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" id="doc-grid">
-                {% if not current_folder %}
-                    {% for f in folders %}
+                    {% for f in subfolders %}
                     <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group">
                         <a href="{% url 'mypage:document_list' folder_id=f.pk %}" class="flex flex-col items-center text-center gap-2">
                             <i class="fa-solid fa-folder text-amber-400 text-3xl"></i>
                             <p class="text-sm font-bold text-slate-700 truncate w-full">{{ f.name }}</p>
-                            <p class="text-[11px] text-slate-400">{{ f.doc_count }}개</p>
+                            <p class="text-[11px] text-slate-400">{{ f.doc_count }}개{% if f.children %} · 폴더 {{ f.children|length }}개{% endif %}</p>
                         </a>
                         <button type="button" data-rename-url="{% url 'mypage:folder_rename' f.pk %}" data-rename-field="name" data-rename-value="{{ f.name }}" class="absolute top-2 left-2 text-xs text-slate-400 hover:text-slate-600 px-2 py-1 lg:opacity-0 lg:group-hover:opacity-100 transition" title="이름 바꾸기" aria-label="{{ f.name }} 이름 바꾸기"><i class="fa-solid fa-pen"></i></button>
-                        <form method="post" action="{% url 'mypage:folder_delete' f.pk %}" onsubmit="return confirm('\'{{ f.name|escapejs }}\' 폴더를 삭제하시겠습니까? 안의 자료는 루트로 이동합니다.');" class="absolute top-2 right-2 lg:opacity-0 lg:group-hover:opacity-100 transition">
+                        <button type="button" data-move-url="{% url 'mypage:folder_move' f.pk %}" data-move-field="parent" data-move-folder="{{ f.parent_id|default_if_none:'' }}" data-move-exclude="{% for i in f.subtree_ids %}{{ i }}{% if not forloop.last %},{% endif %}{% endfor %}" data-move-height="{{ f.height }}" class="absolute top-2 left-9 text-xs text-slate-400 hover:text-slate-600 px-2 py-1 lg:opacity-0 lg:group-hover:opacity-100 transition" title="폴더 옮기기" aria-label="{{ f.name }} 폴더 옮기기"><i class="fa-solid fa-folder-tree"></i></button>
+                        <form method="post" action="{% url 'mypage:folder_delete' f.pk %}" onsubmit="return confirm('\'{{ f.name|escapejs }}\' 폴더를 삭제하시겠습니까? 안의 자료는 {% if f.parent_id %}위 폴더{% else %}루트{% endif %}로 이동합니다 (하위 폴더가 있으면 삭제할 수 없어요).');" class="absolute top-2 right-2 lg:opacity-0 lg:group-hover:opacity-100 transition">
                             {% csrf_token %}
                             <button type="submit" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1" title="폴더 삭제" aria-label="{{ f.name }} 폴더 삭제"><i class="fa-solid fa-trash-can"></i></button>
                         </form>
                     </div>
                     {% endfor %}
-                {% endif %}
                 {% for document in documents %}
                 <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.document_type != 'mock' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}" data-doc-type="{{ document.document_type }}"{% endif %}{% if document.document_type == 'note' or document.document_type == 'mock' %}{% if document.summary_status == 'processing' %} data-note-processing="1"{% endif %}{% endif %}>
                     <a href="{% url 'mypage:document_preview' document.pk %}" class="flex flex-col items-center text-center gap-2">
@@ -164,9 +177,9 @@
                 {% endfor %}
             </div>
 
-            {% if not documents and current_folder %}
+            {% if not documents and not subfolders and current_folder %}
                 <p class="text-sm text-slate-400 text-center py-10">이 폴더에는 아직 자료가 없습니다.</p>
-            {% elif not documents and not folders %}
+            {% elif not documents and not subfolders %}
                 <p class="text-sm text-slate-400 text-center py-10">아직 올린 자료가 없습니다.</p>
             {% endif %}
         </main>
@@ -339,6 +352,16 @@
         <div class="mt-4 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div id="upload-loading-bar" class="h-full w-1/3 rounded-full bg-emerald-500" style="animation: upload-slide 1.2s ease-in-out infinite"></div></div>
     </div>
 </div>
+<style>
+    @media (min-width: 1024px) { .folder-li { padding-left: calc(var(--indent, 0) * 12px); } }   /* 폴더 트리 들여쓰기 (모바일은 가로 칩이라 없음) */
+</style>
+<script>
+// 가로 칩 줄(모바일)에서 지금 보는 폴더가 화면 안에 오게 한다
+(function () {
+    var cur = document.querySelector('[data-ml=aside] li > a.bg-emerald-50'), list = cur && cur.closest('ul');
+    if (cur && list && list.scrollWidth > list.clientWidth) list.scrollTo({ left: Math.max(0, cur.closest('li').offsetLeft - 16) });
+})();
+</script>
 <style>@keyframes upload-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }</style>
 <script>
 // 업로드 전 한 번 더 확인: 입력한 정보를 보여 주고 확인해야 실제로 올린다 (올린 뒤에는 고칠 수 없다)
@@ -531,8 +554,8 @@
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
         <h3 class="text-lg font-bold text-slate-800">어느 폴더로 옮길까요?</h3>
         <select name="folder" id="move-select" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm">
-            <option value="">맨 위 (폴더 밖)</option>
-            {% for f in folders %}<option value="{{ f.pk }}">{{ f.name }}</option>{% endfor %}
+            <option value="" data-depth="0">맨 위 (폴더 밖)</option>
+            {% for f in folder_tree %}<option value="{{ f.pk }}" data-depth="{{ f.depth }}">{{ f.path }}</option>{% endfor %}
         </select>
         <div class="flex justify-end gap-2">
             <button type="button" id="move-cancel" class="text-sm font-bold text-slate-500 px-4 py-2">취소</button>
@@ -544,12 +567,19 @@
 // 폴더 이동 버튼: 폴더를 고르면 위치만 바뀐다 (AI 호출 없음)
 (function () {
     const modal = document.getElementById('move-modal'), form = document.getElementById('move-form'), select = document.getElementById('move-select');
+    const MAX_DEPTH = {{ max_folder_depth }};
     const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-move-url]');
         if (!btn) return;
         e.preventDefault();
         form.action = btn.dataset.moveUrl;
+        select.name = btn.dataset.moveField || 'folder';       // 자료는 folder, 폴더는 parent(상위 폴더)로 보낸다
+        // 폴더를 옮길 때: 자기와 그 아래 폴더, 그리고 깊이 제한을 넘는 곳은 고를 수 없게 한다 (서버도 다시 확인한다)
+        const exclude = (btn.dataset.moveExclude || '').split(',').filter(Boolean), height = parseInt(btn.dataset.moveHeight || '0', 10);
+        Array.from(select.options).forEach((o) => {
+            o.disabled = !!height && (exclude.includes(o.value) || parseInt(o.dataset.depth || '0', 10) + height > MAX_DEPTH);
+        });
         select.value = btn.dataset.moveFolder || '';
         modal.classList.remove('hidden'); modal.classList.add('flex');
         select.focus();
