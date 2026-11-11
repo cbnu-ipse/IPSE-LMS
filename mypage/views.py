@@ -47,6 +47,10 @@ STALE_AFTER = timedelta(minutes=3)  # 이 시간이 지나도 '생성 중'이면
 _summarizing = set()  # 이 프로세스에서 요약을 만드는 중인 문서 (오래된 '생성 중'과 진짜 진행 중을 구별한다)
 
 ASSIGNMENT = PersonalDocument.DocumentType.ASSIGNMENT
+EXAM = PersonalDocument.DocumentType.EXAM
+NO_QUIZ_TYPES = (EXAM, ASSIGNMENT)         # 족보는 '분석', 과제는 '풀이'를 보여 주고 퀴즈는 만들지 않는다
+# 화면에 쓰는 이름: (이름, 목적격). 수업 자료는 요약
+KIND_LABELS = {EXAM: ("분석", "분석을"), ASSIGNMENT: ("풀이", "풀이를")}
 
 
 def _ai_task(document_type):
@@ -272,8 +276,9 @@ def document_list(request, folder_id=None):
             document.summary_status = ProcessingStatus.PROCESSING
             document.save(update_fields=["extracted_text", "summary_status"])
             threading.Thread(target=_generate_summary_bg, args=(document.pk,), daemon=True).start()
-            messages.success(request, "과제가 업로드되었습니다. 풀이는 잠시 후 생성됩니다." if document.document_type == ASSIGNMENT
-                             else "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다.")
+            messages.success(request, {ASSIGNMENT: "과제가 업로드되었습니다. 풀이는 잠시 후 생성됩니다.",
+                                       EXAM: "족보가 업로드되었습니다. 분석은 잠시 후 생성됩니다."}.get(
+                document.document_type, "자료가 업로드되었습니다. 요약은 잠시 후 생성됩니다."))
             return redirect(request.path)
         if {"document_type", "course_name", "professor"} & set(form.errors):
             messages.error(request, "자료 구분, 과목 이름, 교수 이름을 모두 입력해주세요. 올린 뒤에는 고칠 수 없습니다.")
@@ -562,9 +567,11 @@ def document_preview(request, pk):
     is_pdf = document.file.name.lower().endswith(".pdf")
     is_image = document.file.name.lower().endswith((".jpg", ".jpeg", ".png"))     # 이미지는 읽어 낸 글자 대신 원본을 그대로 보여 준다
     source_pages = pdf_page_texts(document) if is_pdf and document.summary.strip() else []
+    has_quiz = document.document_type not in NO_QUIZ_TYPES
     active_panel = request.GET.get("panel", "summary")
-    if active_panel not in ("summary", "quiz"):
+    if active_panel not in ("summary", "quiz") or not has_quiz:
         active_panel = "summary"
+    kind_label, kind_obj = KIND_LABELS.get(document.document_type, ("요약", "요약을"))
 
     # 생성에 실패한 문제는 빈 카드로 남기지 않고 목록에서 뺀다
     current_questions = list(document.questions.exclude(status=ProcessingStatus.FAILED))
@@ -584,6 +591,9 @@ def document_preview(request, pk):
         "is_image": is_image,
         "source_pages": source_pages,
         "active_panel": active_panel,
+        "has_quiz": has_quiz,
+        "kind_label": kind_label,
+        "kind_obj": kind_obj,
         "current_questions": current_questions,
         "current_question": current_questions[q_index] if current_questions else None,
         "q_index": q_index,
@@ -602,6 +612,9 @@ def generate_question_view(request, pk):
     document = get_object_or_404(PersonalDocument, pk=pk, is_deleted=False)
     if document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 문제를 생성할 수 있습니다.")
+    if document.document_type in NO_QUIZ_TYPES:
+        messages.info(request, "족보와 과제는 퀴즈를 만들지 않습니다.")
+        return redirect(document.get_absolute_url())
     question_type = request.POST.get("question_type")
     if question_type not in dict(GeneratedQuestion.QuestionType.choices):
         raise Http404("존재하지 않는 문제 유형입니다.")
@@ -657,6 +670,8 @@ def submit_answer_view(request, pk, question_id):
     question = get_object_or_404(GeneratedQuestion, pk=question_id, document_id=pk, document__is_deleted=False)
     if question.document.user != request.user:
         return HttpResponseForbidden("본인의 자료만 답을 제출할 수 있습니다.")
+    if question.document.document_type in NO_QUIZ_TYPES:
+        return HttpResponseBadRequest("족보와 과제는 퀴즈를 풀 수 없습니다.")
 
     redirect_base = f"{question.document.get_absolute_url()}?panel=quiz&q={request.GET.get('q', 0)}"
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"

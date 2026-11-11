@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('mypage', '0026_note_extra_pages'),
+        ('mypage', '0027_folder_parent'),
     ]
 
     operations = [
