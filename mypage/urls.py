@@ -11,6 +11,7 @@ urlpatterns = [
     path("folder/create/", views.folder_create, name="folder_create"),
     path("folder/<int:pk>/rename/", views.folder_rename, name="folder_rename"),
     path("folder/<int:pk>/delete/", views.folder_delete, name="folder_delete"),
+    path("folder/<int:pk>/move/", views.folder_move, name="folder_move"),
     path("folder/<int:folder_id>/", views.document_list, name="document_list"),
     path("cram/create/", views.cram_note_create, name="cram_note_create"),
     path("mock/create/", views.mock_exam_create, name="mock_exam_create"),
