@@ -31,6 +31,7 @@ from .ai import (
 )
 from .cram import MAX_SOURCES as CRAM_MAX_SOURCES
 from . import answer_scan, doctype, focus
+from . import folders as folder_tree_mod
 from .forms import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, PersonalDocumentUploadForm, PersonalFolderForm
 from .models import DiscardedQuestion, GeneratedQuestion, MockExam, PersonalDocument, PersonalFolder, ProcessingStatus
 from .stream import SummaryPublisher
@@ -262,15 +263,19 @@ def document_list(request, folder_id=None):
         summary_status=ProcessingStatus.PROCESSING, uploaded_at__lt=timezone.now() - NOTE_STALE_AFTER).update(
         summary_status=ProcessingStatus.FAILED,
         summary="노트를 만드는 도중 서버가 다시 시작되는 등으로 작업이 중단됐습니다. 다시 만들어주세요. ")
-    folders = PersonalFolder.objects.filter(user=request.user).annotate(
-        doc_count=Count("documents", filter=Q(documents__is_deleted=False))
-    )
+    tree, nodes, roots = folder_tree_mod.build_tree(request.user)
+    current_node = nodes.get(folder.pk) if folder else None
+    subfolders = current_node.children if current_node else roots          # 지금 보는 폴더 바로 아래의 폴더
     documents = list(PersonalDocument.objects.filter(user=request.user, folder=folder, is_deleted=False))
     for doc in documents:   # 요약을 (다시) 시작하는 버튼에 보일 정확한 비용: 본문을 읽었으면 조각 수 × 조각당 비용
         doc.resummary_cost = _summary_cost(doc)
     return render(request, "mypage/list.html", {
         "documents": documents,
-        "folders": folders,
+        "folder_tree": tree,
+        "subfolders": subfolders,
+        "breadcrumb": folder_tree_mod.breadcrumb(nodes, folder),
+        "can_add_subfolder": folder_tree_mod.can_hold_child(nodes, folder.pk if folder else None),
+        "max_folder_depth": folder_tree_mod.MAX_FOLDER_DEPTH,
         "current_folder": folder,
         "form": form,
         "summary_chunk_chars": SUMMARY_CHUNK_CHARS,
@@ -350,14 +355,27 @@ def upload_estimate(request):
 @require_POST
 def folder_create(request):
     form = PersonalFolderForm(request.POST)
-    if form.is_valid():
-        folder = form.save(commit=False)
-        folder.user = request.user
-        folder.save()
-        messages.success(request, "폴더가 생성되었습니다.")
-        return redirect("mypage:document_list", folder_id=folder.pk)
-    messages.error(request, "폴더 이름을 확인해주세요.")
-    return redirect("mypage:document_list")
+    back = request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else None
+    if not form.is_valid():
+        messages.error(request, "폴더 이름을 확인해주세요.")
+        return redirect(back or "mypage:document_list")
+    _, nodes, _ = folder_tree_mod.build_tree(request.user)
+    raw = request.POST.get("parent", "")
+    parent = None
+    if raw:
+        parent = nodes.get(int(raw)) if raw.isdigit() else None
+        if parent is None:
+            messages.error(request, "상위 폴더를 찾지 못했습니다.")
+            return redirect(back or "mypage:document_list")
+    if not folder_tree_mod.can_hold_child(nodes, parent.pk if parent else None):
+        messages.error(request, f"폴더는 {folder_tree_mod.MAX_FOLDER_DEPTH}단계까지만 만들 수 있습니다.")
+        return redirect(back or "mypage:document_list")
+    folder = form.save(commit=False)
+    folder.user = request.user
+    folder.parent_id = parent.pk if parent else None
+    folder.save()
+    messages.success(request, "폴더가 생성되었습니다.")
+    return redirect("mypage:document_list", folder_id=folder.pk)
 
 
 @login_required
@@ -366,9 +384,47 @@ def folder_delete(request, pk):
     folder = get_object_or_404(PersonalFolder, pk=pk)
     if folder.user != request.user:
         return HttpResponseForbidden("본인의 폴더만 삭제할 수 있습니다.")
+    if folder.children.exists():       # 하위 폴더가 있으면 지우지 않는다 (먼저 옮기거나 지워야 한다)
+        messages.error(request, "안에 하위 폴더가 있어 삭제할 수 없습니다. 하위 폴더를 먼저 옮기거나 삭제해주세요.")
+        return redirect("mypage:document_list", folder_id=folder.pk)
+    parent_id = folder.parent_id
+    PersonalDocument.objects.filter(folder=folder).update(folder=parent_id)      # 안의 자료는 바로 위 폴더로 (루트 폴더면 루트로)
     folder.delete()
-    messages.success(request, "폴더가 삭제되었습니다. 안에 있던 자료는 루트로 이동했습니다.")
+    messages.success(request, "폴더가 삭제되었습니다. 안에 있던 자료는 " + ("위 폴더로" if parent_id else "루트로") + " 이동했습니다.")
+    if parent_id:
+        return redirect("mypage:document_list", folder_id=parent_id)
     return redirect("mypage:document_list")
+
+
+@login_required
+@require_POST
+def folder_move(request, pk):
+    """폴더를 다른 폴더 안(또는 맨 위)으로 옮긴다. 위치만 바꾸므로 AI를 부르지 않는다. 자기 자신·하위 폴더 안으로는 옮길 수 없고 깊이 제한을 지킨다."""
+    folder = get_object_or_404(PersonalFolder, pk=pk)
+    if folder.user != request.user:
+        return HttpResponseForbidden("본인의 폴더만 옮길 수 있습니다.")
+    back = request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else None
+    _, nodes, _ = folder_tree_mod.build_tree(request.user)
+    node = nodes[folder.pk]
+    raw = request.POST.get("parent", "")
+    target = None
+    if raw:
+        target = nodes.get(int(raw)) if raw.isdigit() else None
+        if target is None:
+            messages.error(request, "옮길 폴더를 찾지 못했습니다.")
+            return redirect(back or "mypage:document_list")
+    if target is not None and target.pk in node.subtree_ids:
+        messages.error(request, "폴더를 자기 자신이나 그 안의 폴더로는 옮길 수 없습니다.")
+        return redirect(back or "mypage:document_list")
+    if not folder_tree_mod.can_hold_child(nodes, target.pk if target else None, node.height):
+        messages.error(request, f"폴더는 {folder_tree_mod.MAX_FOLDER_DEPTH}단계까지만 만들 수 있어 그곳으로 옮길 수 없습니다.")
+        return redirect(back or "mypage:document_list")
+    new_parent = target.pk if target else None
+    if folder.parent_id != new_parent:
+        folder.parent_id = new_parent
+        folder.save(update_fields=["parent"])
+    messages.success(request, f"폴더 「{folder.name}」을(를) {target.name if target else '맨 위(루트)'}(으)로 옮겼습니다.")
+    return redirect(back or "mypage:document_list")
 
 
 @login_required
