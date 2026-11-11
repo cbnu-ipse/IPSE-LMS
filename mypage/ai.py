@@ -115,17 +115,19 @@ PDF_PAGE_CHARS = 2500       # 요약과 위치를 맞출 때 쓰는 페이지당
 PDF_MAX_PAGES = 400
 
 
-def pdf_page_texts(document):
-    """PDF 원문의 페이지별 글 (요약 조각이 원문 몇 쪽인지 맞추는 데 쓴다). 읽지 못하면 빈 목록. 문서당 하루 캐시."""
+def pdf_page_texts(document, storage_name=None):
+    """PDF 원문의 페이지별 글 (요약 조각이 원문 몇 쪽인지 맞추는 데 쓴다). 읽지 못하면 빈 목록. 문서당 하루 캐시.
+    storage_name을 주면 자료 파일 대신 저장소의 그 PDF(PPT·Word를 변환한 것)를 읽는다."""
     from django.core.cache import cache
 
-    key = f"pdfpages:{document.pk}:{document.content_hash or document.uploaded_at.timestamp()}"
+    key = f"pdfpages:{document.pk}:{document.content_hash or document.uploaded_at.timestamp()}:{storage_name or ''}"
     pages = cache.get(key)
     if pages is None:
         try:
             from pypdf import PdfReader
 
-            with document.file.open("rb") as fh:
+            opener = document.file.storage.open(storage_name, "rb") if storage_name else document.file.open("rb")
+            with opener as fh:
                 reader = PdfReader(fh)
                 pages = [(page.extract_text() or "")[:PDF_PAGE_CHARS] for page in reader.pages[:PDF_MAX_PAGES]]
         except Exception:

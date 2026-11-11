@@ -17,6 +17,8 @@
     .ms-head h1 { flex: 1; min-width: 0; font-size: 1.05rem; font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
     .ms-toggle { flex-shrink: 0; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 6px 12px; font-size: .75rem; font-weight: 800; color: #475569; cursor: pointer; }
     .ms-toggle:hover { background: #f1f5f9; }
+    .ms-src-note { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 2; margin: 0; padding: 8px 12px; border-radius: 10px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: .75rem; font-weight: 700; }
+    .ms-src.has-note > pre, .ms-src.has-note > .ms-text { padding-top: 70px; }     /* 위에 겹쳐 놓은 안내(.ms-src-note) 아래에서 글이 시작되게 */
     .ms-msg { flex-shrink: 0; }
     .ms-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 12px; }
     .ms-grid.src-closed { grid-template-columns: minmax(0, 1fr); }
@@ -83,12 +85,14 @@
     {% endif %}
 
     <div class="ms-grid" id="ms-grid">
-        <div class="ms-src" id="ms-src">
+        <div class="ms-src{% if source_converting or source_converted %} has-note{% endif %}" id="ms-src">
             {% if is_pdf %}
-                <iframe src="{{ document.file.url }}" title="원문"></iframe>
+                <iframe src="{{ source_pdf_url }}" title="원문"></iframe>
             {% elif is_image %}
                 <div class="ms-img"><img src="{{ document.file.url }}" alt="{{ document.title }} 원본 이미지"></div>
             {% else %}
+                {% if source_converting %}<p class="ms-src-note"><i class="fa-solid fa-spinner fa-spin mr-1"></i>슬라이드·문서를 원본 모양으로 바꾸는 중이에요. 끝나면 이 화면이 저절로 바뀝니다. (그 전에는 글자만 보여요)</p>
+                {% elif source_converted %}<p class="ms-src-note">원본 모양이 아니라 글자만 뽑아 보여 드려요. 원본 모양 그대로 보려면 PDF로 저장해서 올려주세요.</p>{% endif %}
                 <pre>{{ document.extracted_text|default:"미리볼 수 있는 텍스트가 없습니다." }}</pre>
             {% endif %}
         </div>
@@ -326,7 +330,7 @@
 
     // 요약·문제 생성 중이면 상태만 가볍게 확인하고, 바뀌었을 때만 화면을 새로 읽는다 (사이트 로딩 화면을 쓰지 않는다)
     const initial = JSON.parse(document.getElementById('ms-initial-state').textContent);
-    const waiting = (initial.summary_status === 'processing' && !initial.can_resummarize) ||
+    const waiting = (initial.summary_status === 'processing' && !initial.can_resummarize) || initial.source === 'pending' ||
                     initial.questions.some((q) => q[1] === 'processing');
     // 요약이 만들어지는 중이면 글자를 만드는 대로 받아 바로 보여 준다 (WebSocket, mypage/stream.py). 안 되면 아래 상태 확인이 대신한다
     const streamBox = document.getElementById('stream-content');
