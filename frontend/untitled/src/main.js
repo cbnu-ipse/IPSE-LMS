@@ -4,6 +4,8 @@
 // player is a circle, props are circles or boxes sized from the real models; overlaps are pushed out so the player slides around things.
 // During a round whatever the local player can't see is shaded dark (sight shader), and the server leaves out opponents we can't see.
 // Space: thieves dash, cops fire the taser.
+// mode 'gun' (templates/game/gun.html, the team deathmatch on the same engine): everyone aims with the mouse and clicks to shoot (hitscan
+// tracers from the server's 'gshot' events), pickups lie on the map, red/blue teams, health and respawns come from the server.
 // Build: `npm run build` here → static/game/untitled3d/untitled3d.js.
 import * as THREE from 'three';
 import { furniture } from './assets.js';
@@ -41,7 +43,8 @@ function floorLabel(text, ink) {                // zone name painted flat on the
 // lobby was showing must read the same uniforms when the game map takes over. Only one scene is alive at a time.
 const SIGHT = { uSight: { value: null }, uSightOn: { value: 0 }, uSightSize: { value: new THREE.Vector2(1, 1) } };
 
-export function createRoomScene(container, { base, world }) {
+export function createRoomScene(container, { base, world, mode }) {
+  const GUN = mode === 'gun';
   const MW = world.w, MH = world.h;                           // map size in cells (not square)
   const WX = MW * CELL, WZ = MH * CELL, WMAX = Math.max(WX, WZ);
   let dead = false;
@@ -239,7 +242,14 @@ export function createRoomScene(container, { base, world }) {
     }
     return pos;
   }
+  let lockInfo = null, lockKey = '', lockSets = null;         // gun mode: during the buy phase each team may not leave its base (server: gun_world.move)
+  const lockedOut = (x, y) => {
+    if (!lockSets || !me || !me.team || !lockSets[me.team]) return false;
+    const set = lockSets[me.team];
+    return ![[0, 0], [R, 0], [-R, 0], [0, R], [0, -R]].every(([dx, dy]) => set.has(areaAt(x + dx, y + dy)));
+  };
   function blockedAt(x, y) {                                 // used only to refuse a server correction that would leave us inside something
+    if (lockedOut(x, y)) return true;
     return SHAPES.some((s) => (s.kind === 'circle' ? Math.hypot(x - s.cx, y - s.cy) < s.r + R - 1e-3
       : Math.hypot(Math.max(Math.abs(x - s.cx) - s.hx, 0), Math.max(Math.abs(y - s.cy) - s.hy, 0)) < R - 1e-3));
   }
@@ -262,7 +272,7 @@ export function createRoomScene(container, { base, world }) {
   const ringMat = new THREE.MeshBasicMaterial({ color: 0x4f46e5, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
 
   // ── team look: a blue police cap or a black beanie on the head bone (model units), and the colour of the ring underfoot ──
-  const TEAM_RING = { cop: 0x2563eb, thief: 0xdc2626 };
+  const TEAM_RING = { cop: 0x2563eb, thief: 0xdc2626, red: 0xdc2626, blue: 0x2563eb };
   const WHITE = new THREE.Color(0xffffff);
   function teamHat(team) {
     const g = new THREE.Group();
@@ -274,6 +284,13 @@ export function createRoomScene(container, { base, world }) {
       const badge = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.6 }));
       badge.position.set(0, 0.01, 0.215);
       g.add(crown, visor, badge);
+    } else if (team === 'red' || team === 'blue') {
+      const mat = new THREE.MeshStandardMaterial({ color: team === 'red' ? 0xdc2626 : 0x2563eb, roughness: 0.55 });
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.235, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+      cap.scale.y = 0.7;
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.14), mat);
+      brim.position.set(0, -0.03, 0.2);
+      g.add(cap, brim);
     } else if (team === 'thief') {
       const black = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 });
       const cap = new THREE.Mesh(new THREE.SphereGeometry(0.235, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), black);
@@ -301,6 +318,29 @@ export function createRoomScene(container, { base, world }) {
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     return g;
   }
+  const GUN_LOOK = {                                          // [body length, body height, colour, barrel length] per weapon
+    pistol: [0.17, 0.07, 0x334155, 0.0], rifle: [0.34, 0.07, 0x15803d, 0.1], shotgun: [0.3, 0.09, 0xc2410c, 0.08], sniper: [0.42, 0.06, 0x7e22ce, 0.16],
+  };
+  function blaster(kind) {                    // a held gun, shaped by weapon: same hand placement as the taser (barrel along +z)
+    const [len, hgt, color, barrel] = GUN_LOOK[kind] || GUN_LOOK.pistol;
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.06, hgt, len), new THREE.MeshStandardMaterial({ color, roughness: 0.45 }));
+    body.position.set(0, 0, len / 2 - 0.02);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 0.05), new THREE.MeshStandardMaterial({ color: 0x111827 }));
+    grip.position.set(0, -0.06, 0.0); grip.rotation.x = -0.25;
+    g.add(body, grip);
+    if (barrel) {
+      const tube = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, barrel), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+      tube.position.set(0, 0.01, len - 0.02 + barrel / 2);
+      g.add(tube);
+    }
+    g.userData.muzzle = len + barrel;
+    g.position.set(-0.27, 0.0, 0.07);
+    g.rotation.z = -Math.PI / 4;
+    g.scale.setScalar(1.4);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    return g;
+  }
   function dressFor(rec, team) {
     if (!rec.actor || rec.team === team) return;
     rec.team = team;
@@ -309,6 +349,97 @@ export function createRoomScene(container, { base, world }) {
     if (rec.gun) { rec.gun.parent.remove(rec.gun); rec.gun = null; }
     if (team && head) { rec.hat = teamHat(team); head.add(rec.hat); }
     if (team === 'cop' && arm) { rec.gun = taserGun(); arm.add(rec.gun); }    // cops carry a taser
+    if (GUN && (team === 'red' || team === 'blue') && arm) { rec.gunKind = rec.weapon || 'pistol'; rec.gun = blaster(rec.gunKind); arm.add(rec.gun); }
+  }
+
+  // ── gun mode map marks: base tints, A/B site markers on the floor, the lobby's red/blue pads, and the buy-phase gates ──
+  const marks = new THREE.Group();
+  scene.add(marks);
+  const baseTints = [];
+  function tintRect(x0, y0, x1, y1, color, opacity, h) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry((x1 - x0) * CELL, (y1 - y0) * CELL),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.copy(toWorld((x0 + x1) / 2, (y0 + y1) / 2, h));
+    m.userData.noSight = true;
+    marks.add(m);
+    return m;
+  }
+  function outline(x0, y0, x1, y1, color, h) {
+    const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]].map(([x, y]) => toWorld(x, y, h));
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+    l.userData.noSight = true;
+    marks.add(l);
+  }
+  function bigLetter(text, sub, x, y, h, ink, size = 14) {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const g = c.getContext('2d');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = ink; g.globalAlpha = 0.85;
+    g.font = '900 300px "Pretendard", "Noto Sans KR", sans-serif';
+    g.fillText(text, 256, 230);
+    if (sub) { g.font = '900 64px "Pretendard", "Noto Sans KR", sans-serif'; g.fillText(sub, 256, 440); }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI / 4;
+    m.position.copy(toWorld(x, y, h));
+    m.userData.noSight = true;                                // site and pad marks stay readable outside the sight cone
+    marks.add(m);
+  }
+  const SITE_INK = { A: '#f59e0b', B: '#06b6d4' };
+  if (GUN && world.gun_layout) {
+    for (const base of world.gun_layout.bases) {
+      const tints = base.rects.map(([x0, y0, x1, y1]) => tintRect(x0, y0, x1, y1, 0x64748b, 0.16, heightAt((x0 + x1) / 2, (y0 + y1) / 2) + 0.12));
+      baseTints.push(tints);
+    }
+    for (const site of world.gun_layout.sites) {
+      const ink = SITE_INK[site.id] || '#f59e0b', color = parseInt(ink.slice(1), 16);
+      for (const [x0, y0, x1, y1] of site.rects) {              // one patch per area so a site made of several areas doesn't cover the void between them
+        const h = heightAt((x0 + x1) / 2, (y0 + y1) / 2) + 0.14;
+        tintRect(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, color, 0.12, h);
+        outline(x0 + 0.3, y0 + 0.3, x1 - 0.3, y1 - 0.3, color, h + 0.02);
+      }
+      const big = site.rects.reduce((a, r) => ((r[2] - r[0]) * (r[3] - r[1]) > (a[2] - a[0]) * (a[3] - a[1]) ? r : a));     // the letter goes in the biggest patch
+      const [x0, y0, x1, y1] = big, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      bigLetter(site.id, '', cx - (x1 - x0) * 0.2, cy - (y1 - y0) * 0.2, heightAt(cx, cy) + 0.18, ink, 16);      // off to a corner so it doesn't sit on the room's name
+    }
+  }
+  if (GUN && world.gun_pads) {                                // the lobby: stand on a side to join that team
+    for (const [team, [x0, y0, x1, y1]] of Object.entries(world.gun_pads)) {
+      const color = team === 'red' ? 0xdc2626 : 0x2563eb;
+      tintRect(x0, y0, x1, y1, color, 0.28, 0.14);
+      outline(x0, y0, x1, y1, color, 0.18);
+      bigLetter(team === 'red' ? 'RED' : 'BLUE', team === 'red' ? '레드팀 자리' : '블루팀 자리', (x0 + x1) / 2, (y0 + y1) / 2, 0.2, team === 'red' ? '#b91c1c' : '#1d4ed8', 10);
+    }
+  }
+  const gateGroup = new THREE.Group();
+  scene.add(gateGroup);
+  function setLock(lock) {
+    const key = lock ? JSON.stringify(lock) : '';
+    if (key === lockKey) return;
+    lockKey = key; lockInfo = lock;
+    lockSets = lock ? { red: new Set(lock.red.areas), blue: new Set(lock.blue.areas) } : null;
+    while (gateGroup.children.length) { const g = gateGroup.children[0]; gateGroup.remove(g); g.geometry.dispose(); g.material.dispose(); }
+    if (!lock) return;
+    for (const team of ['red', 'blue']) {
+      for (const [o, f, t0, t1] of lock[team].gates) {
+        const len = (t1 - t0) * CELL, mid = (t0 + t1) / 2, [cx, cy] = o === 'h' ? [mid, f] : [f, mid];
+        const m = new THREE.Mesh(new THREE.BoxGeometry(o === 'h' ? len : 0.5, 7, o === 'h' ? 0.5 : len),
+          new THREE.MeshBasicMaterial({ color: team === 'red' ? 0xef4444 : 0x3b82f6, transparent: true, opacity: 0.55, depthWrite: false }));
+        m.position.copy(toWorld(cx, cy, heightAt(cx, cy) + 3.5));
+        m.userData.noSight = true;
+        gateGroup.add(m);
+      }
+    }
+  }
+  function stepGates() {
+    const t = performance.now() / 1000;
+    gateGroup.children.forEach((m, i) => { m.material.opacity = 0.45 + 0.2 * Math.sin(t * 5 + i); });
+  }
+  function setSide(side) {                                    // which base is red this round: tint them
+    baseTints.forEach((tints, i) => tints.forEach((m) => m.material.color.setHex(i === side ? 0xdc2626 : 0x2563eb)));
   }
 
   // ── people ──
@@ -336,12 +467,20 @@ export function createRoomScene(container, { base, world }) {
       if (!people.has(p.id)) spawn(p);
       const rec = people.get(p.id);
       rec.name = p.name; rec.online = p.online; rec.jailed = p.jailed; rec.safe = p.safe; rec.wantTeam = p.team;
+      if (GUN) {
+        rec.hp = p.hp; rec.dead = p.alive === false ? 1 : 0; rec.weapon = p.weapon; rec.pref = p.pref;
+        const arm = rec.actor && rec.actor.root.getObjectByName('arm-right');
+        if (arm && rec.gun && rec.gunKind !== p.weapon && p.team) {          // picked up (or ran out of) a weapon: swap the model in hand
+          arm.remove(rec.gun); rec.gunKind = p.weapon; rec.gun = blaster(p.weapon); arm.add(rec.gun);
+        }
+      }
       dressFor(rec, p.team);
       if (p.stun > 0) rec.stunEnd = performance.now() / 1000 + p.stun;
       if (p.id === meId) {                                     // my own position is driven locally; adopt it at first and whenever the server moves me
         if (!me || p.tp !== me.tp) { me = { ...(me || {}), x: p.x, y: p.y, dir: p.dir, tp: p.tp }; }
         me.speed = p.speed; me.frozen = p.frozen; me.jailed = p.jailed; me.team = p.team;
         me.grabbed = !!p.grabbed; me.grabbing = p.grabbing != null;
+        if (GUN) { me.hp = p.hp; me.dead = p.alive === false ? 1 : 0; me.weapon = p.weapon; me.ammo = p.ammo; me.auto = !!p.auto; }
         const serverStamina = (p.stamina ?? 1) * world.run.stamina;    // keep my own running tally, but follow the server if it drifts
         if (me.stamina == null || Math.abs(me.stamina - serverStamina) > 0.6) me.stamina = serverStamina;
         if (p.exhausted) me.exhausted = true;                         // worn out: no running until it refills (server rule)
@@ -462,9 +601,27 @@ export function createRoomScene(container, { base, world }) {
     if (raycaster.ray.intersectPlane(aimPlane, aimHit)) { aim.x = aimHit.x / CELL; aim.y = aimHit.z / CELL; aim.has = true; }
   }
   function onPointerDown(e) {
-    if (e.button !== 0 || !me || me.team !== 'cop') return;
+    if (GUN && e.button === 0 && me && me.dead > 0) { if (specCb) specCb(1); return; }      // fallen: a click switches to the next teammate
+    if (e.button !== 0 || !me || !isShooter()) return;
     onPointerMove(e);
-    fireTaser();
+    if (GUN) { gunHeld = true; fireGun(); } else fireTaser();
+  }
+  const isShooter = () => GUN ? (me && (me.team === 'red' || me.team === 'blue')) : (me && me.team === 'cop');
+  const gunStats = () => (world.gun.weapons[(me && me.weapon) || 'pistol']) || world.gun.weapons.pistol;
+  let gunHeld = false, gunReady = 0, specCb = null, specId = null, phaseNow = 'lobby';
+  const onPointerUp = () => { gunHeld = false; };
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+  function fireGun() {                                        // aim at the mouse; weapons with auto keep firing while the button is held
+    const now = performance.now() / 1000;
+    if (!me || !isShooter() || phaseNow !== 'playing' || me.frozen > 0 || me.dead > 0 || now < gunReady) return;
+    const st = gunStats();
+    gunReady = now + st.cooldown;
+    const dir = aim.has ? Math.atan2(aim.x - me.x, aim.y - me.y) : me.dir;
+    me.dir = dir;
+    muzzle(people.get(meId));
+    if (moveCb) { sinceSend = 0; moveCb({ x: +me.x.toFixed(3), y: +me.y.toFixed(3), dir: +me.dir.toFixed(3), moving: false, run: false }); }   // my latest spot first
+    if (shotCb) shotCb(+dir.toFixed(4));
   }
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -475,17 +632,18 @@ export function createRoomScene(container, { base, world }) {
   aimLine.visible = aimRing.visible = false;
   scene.add(aimLine, aimRing);
   function stepAim() {
-    const show = roundOn && me && me.team === 'cop' && aim.has && !(me.frozen > 0);
+    const show = roundOn && me && isShooter() && aim.has && !(me.frozen > 0) && !(me.dead > 0);
     aimLine.visible = aimRing.visible = !!show;
     if (!show) return;
-    const dx = aim.x - me.x, dy = aim.y - me.y, len = Math.min(world.taser.range, Math.hypot(dx, dy)) || 0.01;
+    const range = GUN ? gunStats().range : world.taser.range;
+    const dx = aim.x - me.x, dy = aim.y - me.y, len = Math.min(range, Math.hypot(dx, dy)) || 0.01;
     const a = Math.atan2(dx, dy), ex = me.x + Math.sin(a) * len, ey = me.y + Math.cos(a) * len;
     const h = heightAt(me.x, me.y) + 0.15;
     aimLine.scale.x = len * CELL;
     aimLine.position.set((me.x + ex) / 2 * CELL, h, (me.y + ey) / 2 * CELL);
     aimLine.rotation.y = a - Math.PI / 2;
     aimRing.position.set(ex * CELL, heightAt(ex, ey) + 0.16, ey * CELL);
-    const ready = performance.now() / 1000 >= taserReady;
+    const ready = performance.now() / 1000 >= (GUN ? gunReady : taserReady);
     aimLine.material.color.setHex(ready ? 0xfacc15 : 0x94a3b8);
     aimRing.material.color.setHex(ready ? 0xfacc15 : 0x94a3b8);
   }
@@ -529,7 +687,7 @@ export function createRoomScene(container, { base, world }) {
     if ((k === ' ' || k === 'shift') && !e.target.closest('input, textarea, button') && me) {
       e.preventDefault();
       if (me.team === 'thief') runHeld = true;                // thieves run while the key is held (stamina)
-      else if (k === ' ' && !e.repeat) fireTaser();
+      else if (k === ' ' && !e.repeat) { if (GUN) { gunHeld = true; fireGun(); } else fireTaser(); }
       return;
     }
     if (k === 'e' && !e.target.closest('input, textarea') && meId) {
@@ -551,10 +709,10 @@ export function createRoomScene(container, { base, world }) {
   const onKeyUp = (e) => {
     const k = e.key.toLowerCase();
     keys.delete(k);
-    if (k === ' ' || k === 'shift') runHeld = false;
+    if (k === ' ' || k === 'shift') { runHeld = false; if (GUN) gunHeld = false; }
     if (k === 'e') releaseGrab();
   };
-  const onBlur = () => { keys.clear(); runHeld = false; releaseGrab(); };
+  const onBlur = () => { keys.clear(); runHeld = false; gunHeld = false; releaseGrab(); };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlur);
@@ -666,7 +824,7 @@ export function createRoomScene(container, { base, world }) {
       v.copy(rec.actor.root.position).setY(6.2).project(camera);
       const age = rec.emote ? performance.now() / 1000 - rec.emote.born : 9;
       out[id] = { x: (v.x + 1) / 2 * container.clientWidth, y: (1 - v.y) / 2 * container.clientHeight, name: rec.name, me: id === meId,
-        online: rec.online !== false, team: rec.team, jailed: rec.jailed, reach: id === reachId, emote: age < 1.8 ? rec.emote.e : null, emoteAge: age };
+        online: rec.online !== false, team: rec.team, jailed: rec.jailed, reach: id === reachId, hp: rec.hp, dead: rec.dead > 0, emote: age < 1.8 ? rec.emote.e : null, emoteAge: age };
     }
     return out;
   }
@@ -681,7 +839,7 @@ export function createRoomScene(container, { base, world }) {
       const a = rec.actor;
       if (!a) continue;
       const mine = id === meId && me;
-      a.root.visible = mine || !rec.hidden;
+      a.root.visible = (mine || !rec.hidden) && !(rec.dead > 0);
       if (!a.root.visible) continue;
       const ahead = mine ? 0 : Math.min(0.12, performance.now() / 1000 - (rec.sampleAt || 0));
       const tx = mine ? me.x : rec.x + (rec.vx || 0) * ahead, ty = mine ? me.y : rec.y + (rec.vy || 0) * ahead;
@@ -693,11 +851,11 @@ export function createRoomScene(container, { base, world }) {
       const dashing = mine ? running : !!rec.running;          // running look: streaks, dust, bright ring
       if (rec.ring) {
         const flash = rec.safe > 0 && Math.floor(performance.now() / 150) % 2;
-        rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team] || 0x4f46e5);
+        rec.ring.material.color.setHex(rec.jailed ? 0x64748b : flash ? 0x22c55e : TEAM_RING[rec.team || rec.pref] || 0x4f46e5);
         if (dashing) rec.ring.material.color.lerp(WHITE, 0.45);
         rec.ring.scale.setScalar(dashing ? 1.45 : 1);
         rec.ring.material.opacity = dashing ? 1 : 0.8;
-        rec.ring.visible = !!rec.team || hitboxes.visible || mine || dashing;
+        rec.ring.visible = !!rec.team || !!rec.pref || hitboxes.visible || mine || dashing;
       }
       if (dashing && !rec.wasDashing) burst(tx, ty, rec.jailed ? 0x94a3b8 : TEAM_RING[rec.team] || 0x6366f1);
       rec.wasDashing = dashing;
@@ -721,13 +879,20 @@ export function createRoomScene(container, { base, world }) {
       a.update(dt);
     }
     findReach();
+    if (GUN) {
+      if (gunHeld && me && me.auto) fireGun();
+      stepTracers();
+      stepPickups();
+    }
     stepDarts();
     stepSight();
     stepDoors(dt);
     stepAim();
     stepRope();
+    if (GUN) stepGates();
     stepPuffs(dt);
-    if (me) focus.lerp(onFloor(me.x, me.y), Math.min(1, dt * 5));
+    const eye = eyePos();
+    if (eye) focus.lerp(onFloor(eye.x, eye.y), Math.min(1, dt * 5));
     if (padRing) padRing.material.opacity = 0.6 + Math.sin(performance.now() / 250) * 0.3;
     placeCamera();
     renderer.render(scene, camera);
@@ -778,7 +943,31 @@ export function createRoomScene(container, { base, world }) {
   function handleEvents(list) {
     const now = performance.now() / 1000;
     for (const ev of list || []) {
-      if (ev.t === 'shot') {
+      if (GUN && ev.t === 'gshot') {
+        if (ev.id !== meId) muzzle(people.get(ev.id));
+        const from = onFloor(ev.x, ev.y, 2.3);
+        for (const [ex, ey] of ev.ends) {
+          const to = onFloor(ex, ey, 2.3);
+          const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+          const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: ev.w === 'sniper' ? 0xe9d5ff : 0xfef08a, transparent: true, opacity: 0.95 }));
+          line.frustumCulled = false; line.userData.noSight = true;
+          scene.add(line);
+          tracers.push({ line, born: now });
+        }
+      } else if (GUN && ev.t === 'hit') {
+        const rec = people.get(ev.id);
+        if (rec && rec.actor && !rec.hidden) {
+          const hx = ev.id === meId && me ? me.x : rec.x, hy = ev.id === meId && me ? me.y : rec.y;
+          if (Number.isFinite(hx) && Number.isFinite(hy)) for (let k = 0; k < 4; k++) puff(hx + (Math.random() - 0.5) * 0.4, hy + (Math.random() - 0.5) * 0.4);
+        }
+        if (rec) rec.hitAt = now;
+      } else if (GUN && ev.t === 'kill') {
+        const rec = people.get(ev.victim);
+        if (rec && Number.isFinite(rec.x)) burst(ev.victim === meId && me ? me.x : rec.x, ev.victim === meId && me ? me.y : rec.y, 0xef4444);
+      } else if (GUN && ev.t === 'respawn') {
+        const rec = people.get(ev.id);
+        if (rec && Number.isFinite(rec.x)) burst(ev.id === meId && me ? me.x : rec.x, ev.id === meId && me ? me.y : rec.y, 0x22c55e);
+      } else if (ev.t === 'shot') {
         const m = new THREE.Mesh(dartGeo, dartMat);
         m.rotation.y = ev.dir;
         const wires = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3)), wireMat);
@@ -805,6 +994,55 @@ export function createRoomScene(container, { base, world }) {
       }
     }
   }
+  const tracers = [];                                         // gun mode: bullet lines that fade out fast
+  function stepTracers() {
+    const now = performance.now() / 1000;
+    for (let i = tracers.length - 1; i >= 0; i--) {
+      const t = tracers[i], age = now - t.born;
+      t.line.material.opacity = Math.max(0, 0.95 * (1 - age / 0.16));
+      if (age > 0.16) { scene.remove(t.line); t.line.geometry.dispose(); t.line.material.dispose(); tracers.splice(i, 1); }
+    }
+  }
+  // ── pickups (gun mode): a coloured crate on a glowing disc; bobs and turns, hidden while taken ──
+  const PICKUP_LOOK = { rifle: 0x22c55e, shotgun: 0xf97316, sniper: 0xa855f7, medkit: 0xef4444 };
+  const pickups = new Map();
+  function setPickups(list) {
+    for (const it of list || []) {
+      let rec = pickups.get(it.id);
+      if (!rec) {
+        const g = new THREE.Group();
+        const color = PICKUP_LOOK[it.kind] || 0xffffff;
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.15, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false }));
+        disc.userData.noSight = true;
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshStandardMaterial({ color, roughness: 0.4, emissive: color, emissiveIntensity: 0.35 }));
+        crate.castShadow = true;
+        if (it.kind === 'medkit') {
+          const cross = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 1.6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+          const cross2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.6, 1.6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+          crate.add(cross, cross2);
+        } else {
+          const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, it.kind === 'sniper' ? 2.4 : 1.8), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+          barrel.position.y = 1.0; barrel.rotation.y = 0.6;
+          crate.add(barrel);
+        }
+        g.add(disc, crate);
+        g.position.copy(onFloor(it.x, it.y, 0.2));
+        g.userData.crate = crate;
+        scene.add(g);
+        rec = { g, crate };
+        pickups.set(it.id, rec);
+      }
+      rec.g.visible = !!it.on;
+    }
+  }
+  function stepPickups() {
+    const t = performance.now() / 1000;
+    for (const rec of pickups.values()) {
+      if (!rec.g.visible) continue;
+      rec.crate.position.y = 2.1 + Math.sin(t * 2.4 + rec.g.position.x) * 0.35;
+      rec.crate.rotation.y = t * 1.2;
+    }
+  }
   function stepDarts() {
     const now = performance.now() / 1000, speed = world.taser.speed, range = world.taser.range;
     for (let i = darts.length - 1; i >= 0; i--) {
@@ -827,8 +1065,8 @@ export function createRoomScene(container, { base, world }) {
   }
   function muzzle(rec) {                                      // flash at the gun when a taser fires
     if (!rec || !rec.gun) return;
-    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.95 }));
-    flash.position.set(0, 0, 0.24);
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(GUN ? 0.13 : 0.09, 8, 6), new THREE.MeshBasicMaterial({ color: GUN ? 0xfde047 : 0x7dd3fc, transparent: true, opacity: 0.95 }));
+    flash.position.set(0, 0, GUN ? (rec.gun.userData.muzzle || 0.24) + 0.04 : 0.24);
     rec.gun.add(flash);
     setTimeout(() => { rec.gun && rec.gun.remove(flash); flash.material.dispose(); }, 120);
   }
@@ -910,8 +1148,16 @@ export function createRoomScene(container, { base, world }) {
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(sightify);
     });
   }
+  function eyePos() {                                         // where the sight cone is drawn from: me, or the teammate I'm spectating when I have fallen
+    if (GUN && me && me.dead > 0 && specId != null) {
+      const rec = people.get(specId);
+      if (rec && rec.actor) return { x: rec.actor.root.position.x / CELL, y: rec.actor.root.position.z / CELL };
+    }
+    return me;
+  }
   function stepSight() {
-    const on = roundOn && !!me && !!me.team;
+    const eye = eyePos();
+    const on = roundOn && !!eye && !!me.team;
     sightU.uSightOn.value = on ? 1 : 0;
     const now = performance.now();
     if (now - sightScanAt > 700) { sightScanAt = now; sightScan(); }
@@ -929,7 +1175,7 @@ export function createRoomScene(container, { base, world }) {
       const a = r / RAYS * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
       let after = -1;                                         // once a ray hits a wall, light a little more so the wall's face shows
       for (let d = 0; d <= R; d += STEP) {
-        const x = me.x + dx * d, y = me.y + dy * d;
+        const x = eye.x + dx * d, y = eye.y + dy * d;
         if (areaAt(x, y) < 0 && after < 0) after = 1;
         const v = d < R - FADE ? 1 : Math.max(0, (R - d) / FADE);
         light(x, y, v);
@@ -987,6 +1233,8 @@ export function createRoomScene(container, { base, world }) {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', onBlur);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerUp);
     renderer.domElement.removeEventListener('pointermove', onPointerMove);
     renderer.domElement.removeEventListener('pointerdown', onPointerDown);
     renderer.dispose();
@@ -1007,10 +1255,16 @@ export function createRoomScene(container, { base, world }) {
     onEmote(cb) { emoteCb = cb; },
     setPad,
     setOpenDoors,
+    setPickups,
+    setLock,
+    setSide,
     events: handleEvents,
-    setPhase(phase) { roundOn = phase === 'countdown' || phase === 'playing'; },
+    setPhase(phase) { phaseNow = phase; roundOn = phase === 'countdown' || phase === 'playing' || phase === 'buy'; },
+    setSpectate(id) { specId = id; },
+    onSpectate(cb) { specCb = cb; },
     abilityState() {                                           // what Space does for me right now, and how long until it's ready
       const now = performance.now() / 1000, team = me && me.team;
+      if (GUN) { const st = gunStats(); return me && isShooter() ? { kind: 'gun', name: st.name, ammo: me.ammo, ready: Math.max(0, gunReady - now), cooldown: st.cooldown } : { kind: null }; }
       if (team === 'cop') return { kind: 'taser', ready: Math.max(0, taserReady - now), cooldown: world.taser.cooldown, active: false };
       if (team === 'thief') return { kind: 'run', stamina: (me.stamina ?? world.run.stamina) / world.run.stamina, active: running, exhausted: !!me.exhausted };
       return { kind: null };

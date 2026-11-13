@@ -1,0 +1,581 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IPSE 놀이터 | 총게임{% endblock %}
+
+{% block content %}
+<style>
+    /* 총게임: 경찰과 도둑 화면과 같은 구조(ut- 접두사로 한정). 3D 그림은 Kenney Furniture Kit / Mini Characters (CC0) */
+    .ut-wrap { max-width: 1100px; margin: 0 auto; padding: 18px 14px 40px; }
+    .ut-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+    .ut-head h1 { margin: 0; font-size: 26px; font-weight: 900; color: #1e293b; }
+    .ut-head p { margin: 0; font-size: 13px; color: #64748b; }
+    .ut-card { background: #fff; border: 1px solid #e3e8ef; border-radius: 20px; padding: 18px; box-shadow: 0 2px 10px rgba(30, 58, 138, .06); display: grid; gap: 12px; max-width: 520px; }
+    .ut-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .ut-btn { border: 0; border-radius: 12px; padding: 11px 16px; font-weight: 800; font-size: 15px; cursor: pointer; color: #fff; background: #4f46e5; touch-action: manipulation; }
+    .ut-btn:hover { background: #4338ca; }
+    .ut-btn.sub { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+    .ut-btn.sub:hover { background: #f8fafc; }
+    .ut-input { flex: 1; min-width: 120px; font: inherit; font-size: 18px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; text-align: center; padding: 10px 12px; border-radius: 12px; border: 2px solid #e2e8f0; }
+    .ut-input:focus { outline: none; border-color: #4f46e5; }
+    .ut-note { font-size: 13px; color: #64748b; margin: 0; line-height: 1.7; }
+    .ut-note kbd { display: inline-block; min-width: 18px; padding: 0 5px; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 5px; background: #fff; font: 700 11px ui-monospace, monospace; color: #334155; text-align: center; }
+    .ut-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .ut-code { font-size: 15px; font-weight: 900; color: #1e293b; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 7px 12px; letter-spacing: .15em; }
+    .ut-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+    .ut-chip { font-size: 12.5px; font-weight: 700; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 99px; padding: 4px 10px; }
+    .ut-chip.me { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+    .ut-chip.off { opacity: .5; }
+    .ut-stage { position: relative; width: 100%; height: clamp(360px, min(70vh, 80vw + 40px), 760px); border-radius: 22px; overflow: hidden; user-select: none; -webkit-user-select: none;
+        background: radial-gradient(120% 90% at 50% 0%, #f5f3ff 0%, #ddd6fe 55%, #c4b5fd 100%); border: 1px solid #ddd6fe; }
+    .ut-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .ut-tag { position: absolute; transform: translate(-50%, -100%); background: rgba(15, 23, 42, .8); color: #fff; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+    .ut-tag.me { background: #4f46e5; }
+    .ut-emoji { position: absolute; left: 50%; bottom: 100%; font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(15, 23, 42, .35)); }
+    .ut-tag.off { opacity: .45; }
+    .ut-loading { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #4338ca; pointer-events: none; }
+    .ut-tag.blue { background: #1d4ed8; }
+    .ut-tag.red { background: #b91c1c; }
+    .ut-tag.dead { opacity: .35; }
+    .ut-tag .hp { display: block; width: 52px; height: 5px; margin: 3px auto 0; border-radius: 99px; background: rgba(255, 255, 255, .25); overflow: hidden; }
+    .ut-tag .hp u { display: block; height: 100%; background: #22c55e; }
+    .ut-tag .hp.low u { background: #ef4444; }
+    .ut-tag.me { outline: 2px solid #fff; }
+    .ut-game { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .ut-pill { font-size: 14px; font-weight: 800; color: #1e293b; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 7px 12px; font-variant-numeric: tabular-nums; }
+    .ut-pill.blue { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
+    .ut-pill.red { background: #fee2e2; border-color: #fca5a5; color: #7f1d1d; }
+    .ut-pill.timer { background: #1e293b; color: #fff; border-color: #1e293b; }
+    .ut-banner { position: absolute; left: 50%; top: 18%; transform: translate(-50%, -50%); z-index: 5; text-align: center; pointer-events: none; color: #fff; text-shadow: 0 3px 12px rgba(15, 23, 42, .6); }
+    .ut-banner b { display: block; font-size: 54px; font-weight: 900; line-height: 1.1; }
+    .ut-banner span { font-size: 18px; font-weight: 800; }
+    .ut-dash { position: absolute; left: 12px; bottom: 12px; z-index: 5; background: rgba(15, 23, 42, .85); color: #fff; border-radius: 12px; padding: 6px 10px; font-size: 13px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
+    .ut-dash i { display: block; width: 70px; height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+    .ut-dash i u { display: block; height: 100%; background: #facc15; }
+    .ut-dash.tired i u { background: #ef4444; }
+    .ut-hp { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 5; background: rgba(15, 23, 42, .85); color: #fff; border-radius: 12px; padding: 6px 12px; font-size: 13px; font-weight: 800; display: flex; gap: 8px; align-items: center; pointer-events: none; }
+    .ut-hp[hidden], .ut-dash[hidden] { display: none; }
+    .ut-hp i { display: block; width: 150px; height: 9px; border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+    .ut-hp i u { display: block; height: 100%; background: #22c55e; transition: width .15s; }
+    .ut-hp.low i u { background: #ef4444; }
+    .ut-feed { position: absolute; left: 12px; top: 12px; z-index: 5; display: grid; gap: 4px; pointer-events: none; }
+    .ut-feed div { background: rgba(15, 23, 42, .78); color: #fff; font-size: 12.5px; font-weight: 800; border-radius: 99px; padding: 3px 10px; width: fit-content; }
+    .ut-feed b.red { color: #fca5a5; } .ut-feed b.blue { color: #93c5fd; }
+    .ut-stage canvas { cursor: crosshair; }
+    .ut-shop { position: absolute; right: 12px; top: 50px; z-index: 6; width: 250px; background: rgba(15, 23, 42, .92); color: #fff; border-radius: 16px; padding: 12px; display: grid; gap: 8px; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); }
+    .ut-shop[hidden] { display: none; }
+    .ut-shop h3 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; font-weight: 900; }
+    .ut-shop h3 b { color: #facc15; font-variant-numeric: tabular-nums; }
+    .ut-shop button { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left; font: inherit; color: #fff; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .18); border-radius: 12px; padding: 7px 10px; cursor: pointer; }
+    .ut-shop button:hover:not(:disabled) { background: rgba(255, 255, 255, .18); }
+    .ut-shop button:disabled { opacity: .42; cursor: not-allowed; }
+    .ut-shop button.own { border-color: #22c55e; background: rgba(34, 197, 94, .18); }
+    .ut-shop button b { font-size: 13.5px; }
+    .ut-shop button em { font-style: normal; font-weight: 900; color: #facc15; font-size: 13px; }
+    .ut-shop button small { grid-column: 1 / -1; font-size: 11px; color: #cbd5e1; }
+    .ut-shop p { margin: 0; font-size: 11.5px; color: #94a3b8; }
+    .ut-money { position: absolute; left: 12px; bottom: 56px; z-index: 5; background: rgba(15, 23, 42, .85); color: #facc15; border-radius: 12px; padding: 4px 10px; font-size: 13px; font-weight: 900; pointer-events: none; font-variant-numeric: tabular-nums; }
+    .ut-money[hidden] { display: none; }
+    .ut-armor { color: #7dd3fc; }
+    .ut-btn.sub.on { background: #eef2ff; border-color: #6366f1; }
+    .ut-btn.team-red { border-color: #fca5a5; color: #991b1b; }
+    .ut-btn.team-blue { border-color: #93c5fd; color: #1e40af; }
+    .ut-hitflash { position: absolute; inset: 0; z-index: 4; pointer-events: none; box-shadow: inset 0 0 90px 20px rgba(239, 68, 68, .55); opacity: 0; transition: opacity .35s; }
+    .ut-hitflash.on { opacity: 1; transition: none; }
+    .ut-result { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(15, 23, 42, .45); }
+    .ut-result[hidden] { display: none; }
+    .ut-result > div { background: #fff; border-radius: 20px; padding: 20px 26px; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, .35); min-width: 260px; }
+    .ut-result h2 { margin: 0 0 6px; font-size: 26px; font-weight: 900; }
+    .ut-result p { margin: 4px 0; font-size: 14px; color: #475569; }
+    .ut-menu { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 860px) { .ut-menu { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+    .ut-menu > * { min-width: 0; }
+    .ut-card h2 { margin: 0; font-size: 16px; font-weight: 900; color: #1e293b; }
+    .ut-rooms { display: grid; gap: 8px; }
+    .ut-roomrow { display: flex; gap: 10px; align-items: center; border: 1px solid #e2e8f0; border-radius: 14px; padding: 10px 12px; background: #fff; cursor: pointer; text-align: left; font: inherit; width: 100%; }
+    .ut-roomrow:hover { border-color: #a5b4fc; background: #f5f3ff; }
+    .ut-roomrow b { flex: 1; min-width: 0; font-size: 15px; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ut-roomrow small { font-size: 12px; color: #64748b; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ut-roomrow .st { font-size: 11.5px; font-weight: 800; border-radius: 99px; padding: 2px 8px; background: #dcfce7; color: #166534; white-space: nowrap; }
+    .ut-roomrow .st.play { background: #fef3c7; color: #92400e; }
+    .ut-roomrow.full { opacity: .5; cursor: not-allowed; }
+    .ut-empty { font-size: 13px; color: #94a3b8; text-align: center; padding: 18px 8px; border: 1px dashed #e2e8f0; border-radius: 14px; }
+    .ut-text { flex: 1; min-width: 140px; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 12px; border: 2px solid #e2e8f0; }
+    .ut-text:focus { outline: none; border-color: #4f46e5; }
+    .ut-check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: #475569; font-weight: 700; }
+    .ut-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 95; background: #1e293b; color: #fff; padding: 10px 18px; border-radius: 99px; font-weight: 800; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); max-width: 90vw; text-align: center; }
+    .ut-toast.bad { background: #be123c; }
+    .ut-maps { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .ut-maps[hidden] { display: none; }
+    .ut-map { flex: 1 1 150px; min-width: 0; text-align: left; font: inherit; cursor: pointer; border: 2px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 8px 10px; }
+    .ut-map:hover { border-color: #a5b4fc; }
+    .ut-map.on { border-color: #4f46e5; background: #eef2ff; }
+    .ut-map b { display: flex; justify-content: space-between; gap: 6px; font-size: 14px; color: #1e293b; }
+    .ut-map b small { font-size: 11.5px; color: #6366f1; font-variant-numeric: tabular-nums; }
+    .ut-map span { display: block; font-size: 12px; color: #64748b; margin-top: 2px; line-height: 1.4; }
+    .ut-ping { position: absolute; right: 12px; top: 12px; z-index: 5; background: rgba(15, 23, 42, .75); color: #fff; border-radius: 99px; padding: 3px 10px; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; pointer-events: none; }
+    .ut-ping.mid { background: rgba(180, 83, 9, .9); }
+    .ut-ping.bad { background: rgba(190, 18, 60, .9); }
+    .ut-emotes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .ut-emotes button { font: inherit; font-size: 18px; line-height: 1; padding: 6px 9px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; display: flex; gap: 5px; align-items: center; }
+    .ut-emotes button:hover { border-color: #a5b4fc; background: #f5f3ff; }
+    .ut-emotes button kbd { font: 700 10px ui-monospace, monospace; color: #64748b; }
+    .ut-roomrow .mp { font-size: 11.5px; font-weight: 800; border-radius: 99px; padding: 2px 8px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
+</style>
+
+<div class="ut-wrap">
+    <div class="ut-head">
+        <h1>총게임</h1>
+        <p>레드와 블루로 나뉘어 라운드마다 총을 사서 싸우는 팀 대전이에요. 봇을 넣으면 혼자서도 할 수 있어요.</p>
+    </div>
+
+    <div class="ut-menu" id="ut-menu">
+        <section class="ut-card" aria-labelledby="ut-list-h" style="max-width:none">
+            <div class="ut-row" style="justify-content:space-between"><h2 id="ut-list-h">열린 방</h2><small class="ut-note" id="ut-list-note">불러오는 중…</small></div>
+            <div class="ut-rooms" id="ut-rooms"></div>
+        </section>
+        <div style="display:grid;gap:14px">
+            <form class="ut-card" id="ut-create-form" style="max-width:none">
+                <h2>방 만들기</h2>
+                <div class="ut-row"><input class="ut-text" id="ut-room-name" maxlength="24" placeholder="방 이름 (비워 두면 '닉네임의 방')" aria-label="방 이름"></div>
+                <label class="ut-check"><input type="checkbox" id="ut-private"> 비공개 (목록에 안 보이고 코드로만 들어와요)</label>
+                <div class="ut-row"><button type="submit" class="ut-btn" id="ut-create">방 만들기</button></div>
+            </form>
+            <form class="ut-card" id="ut-join-form" style="max-width:none">
+                <h2>코드로 들어가기</h2>
+                <div class="ut-row">
+                    <input class="ut-input" id="ut-code-input" maxlength="4" placeholder="코드" autocomplete="off" aria-label="방 코드">
+                    <button type="submit" class="ut-btn sub">입장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="ut-room" hidden>
+        <div class="ut-bar">
+            <span class="ut-code"><span id="ut-room-name-label"></span> · 코드 <span id="ut-room-code">----</span></span>
+            <button type="button" class="ut-btn sub" id="ut-copy">코드 복사</button>
+            <div class="ut-chips" id="ut-chips"></div>
+            <button type="button" class="ut-btn sub" id="ut-leave">나가기</button>
+        </div>
+        <div class="ut-game">
+            <span class="ut-pill" id="ut-phase">대기 중</span>
+            <span class="ut-pill" id="ut-map-name"></span>
+            <span class="ut-pill timer" id="ut-timer" hidden>3:00</span>
+            <span class="ut-pill" id="ut-role" hidden></span>
+            <span class="ut-pill" id="ut-round" hidden></span>
+            <span class="ut-pill" id="ut-count" hidden></span>
+            <span class="ut-pill" id="ut-alive" hidden></span>
+            <button type="button" class="ut-btn sub" id="ut-mute" title="소리 켜기/끄기">🔊</button>
+            <span class="ut-pill" id="ut-where" hidden></span>
+            <span class="ut-pill" id="ut-teamcount" hidden></span>
+            <button type="button" class="ut-btn sub team-red" id="ut-go-red" hidden>🔴 레드 자리로</button>
+            <button type="button" class="ut-btn sub team-blue" id="ut-go-blue" hidden>🔵 블루 자리로</button>
+            <button type="button" class="ut-btn sub" id="ut-go-none" hidden>⚪ 가운데로</button>
+            <button type="button" class="ut-btn sub" id="ut-bot-red" hidden>🤖 레드에 봇</button>
+            <button type="button" class="ut-btn sub" id="ut-bot-blue" hidden>🤖 블루에 봇</button>
+            <button type="button" class="ut-btn sub" id="ut-bot-remove" hidden>봇 빼기</button>
+            <button type="button" class="ut-btn" id="ut-start" hidden>🔫 시작</button>
+        </div>
+        <div class="ut-maps" id="ut-maps" role="radiogroup" aria-label="맵 고르기 (방장)" hidden></div>
+        <div class="ut-stage" id="ut-stage">
+            <div class="ut-loading" id="ut-loading">맵을 불러오는 중…</div>
+            <div class="ut-ping" id="ut-ping" title="서버까지 왕복 시간">핑 –</div>
+            <div class="ut-tags" id="ut-tags"></div>
+            <div class="ut-banner" id="ut-banner" hidden><b id="ut-banner-big"></b><span id="ut-banner-small"></span></div>
+            <div class="ut-hitflash" id="ut-hitflash"></div>
+            <div class="ut-feed" id="ut-feed"></div>
+            <div class="ut-hp" id="ut-hp" hidden>❤️ <i><u id="ut-hp-bar"></u></i><span id="ut-hp-t">100</span><span class="ut-armor" id="ut-armor-t"></span></div>
+            <div class="ut-money" id="ut-money" hidden></div>
+            <div class="ut-shop" id="ut-shop" hidden></div>
+            <div class="ut-dash" id="ut-dash" hidden><span id="ut-dash-name">권총</span> <i><u id="ut-dash-bar"></u></i><span id="ut-dash-t">∞</span></div>
+            <div class="ut-result" id="ut-result" hidden><div><h2 id="ut-result-title"></h2><p id="ut-result-text"></p><p id="ut-result-catch"></p><p style="font-size:12px">잠시 뒤 대기실로 돌아가요</p></div></div>
+        </div>
+        <div class="ut-emotes" id="ut-emotes" aria-label="이모티콘">
+            <button type="button" data-e="laugh">🤣<kbd>1</kbd></button><button type="button" data-e="taunt">😜<kbd>2</kbd></button>
+            <button type="button" data-e="wave">👋<kbd>3</kbd></button><button type="button" data-e="angry">😡<kbd>4</kbd></button>
+            <button type="button" data-e="cool">😎<kbd>5</kbd></button><button type="button" data-e="teabag">🫖 앉았다 일어나기<kbd>C</kbd></button>
+        </div>
+        <p class="ut-note" style="margin-top:8px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>나 방향키로 움직이고, 마우스로 겨눠 클릭해서 쏴요(연사 총은 누르고 있으면 계속 나가요) · <kbd>1</kbd>~<kbd>5</kbd> 이모티콘 · <kbd>C</kbd> 앉았다 일어나기<br>
+            <b>총게임</b>: 먼저 대기실에서 왼쪽 레드 자리나 오른쪽 블루 자리에 서서(버튼으로도 옮길 수 있어요) 팀을 정해요. 레드·블루 라운드제 팀 대전이에요. 라운드마다 12초 구매 시간에 돈으로 소총·샷건·저격총과 방어구를 사고, 구매 시간에는 기지 안에서 움직일 수 있지만 출구가 잠겨 있어요. 맵의 A·B 사이트를 지나 교전에서 상대 팀을 모두 쓰러뜨리면 라운드 승리예요(시간이 끝나면 살아 있는 사람이 많은 팀이 이겨요). 먼저 5라운드를 이기면 승리하고, 3라운드마다 시작 자리를 바꿔요.
+            이기면 3250원, 지면 1400원에서 연패마다 늘어나는 돈을 받고, 킬마다 추가로 받아요. 권총은 기본이고 탄이 무한이에요. 살아남으면 다음 라운드에도 총과 방어구를 그대로 들고 가요. 쓰러지면 이번 라운드가 끝날 때까지 팀원을 관전해요(클릭하면 다음 팀원). 총알은 벽·높은 가구·닫힌 문에 막히고, 같은 팀은 맞지 않고, 움직이며 쏘면 더 퍼져요.
+            벽 너머·멀리 있는 상대는 사각지대라 안 보이고, 그쪽에서 쏜 총알도 안 보여요.</p>
+    </div>
+</div>
+
+{{ world_json|json_script:"ut-world" }}
+<script src="{% static 'js/game-sound.js' %}?v={{ static_version }}"></script>
+<script type="module">
+import { createRoomScene } from "{% static 'game/untitled3d/untitled3d.js' %}?v={{ bundle_version }}";
+(function () {
+    'use strict';
+    const DATA = JSON.parse(document.getElementById('ut-world').textContent);
+    const WORLDS = DATA.worlds, RULES = WORLDS[DATA.default];
+    const BASE3D = "{% static 'game/untitled3d/' %}";
+    const $ = (id) => document.getElementById(id);
+    let ws = null, room = null, meId = null, scene3d = null, toastTimer = null;
+
+    function toast(msg, cls) {
+        document.querySelectorAll('.ut-toast').forEach((t) => t.remove());
+        const t = document.createElement('div');
+        t.className = 'ut-toast ' + (cls || '');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.remove(), 2400);
+    }
+    function dropScene() {
+        if (!scene3d) return;
+        scene3d.dispose();
+        scene3d = null;
+        Object.keys(tagEls).forEach((id) => { tagEls[id].remove(); delete tagEls[id]; });
+        $('ut-loading').hidden = false;
+    }
+    let failedMap = null;
+    function ensureScene(mapKey) {                       // one scene per map: switching maps builds a fresh one
+        const key = WORLDS[mapKey] ? mapKey : DATA.default;
+        if (scene3d && scene3d.mapKey === key) return scene3d;
+        if (failedMap === key) return null;              // already failed for this map: don't retry 10 times a second
+        dropScene();
+        try {
+            scene3d = createRoomScene($('ut-stage'), { base: BASE3D, world: WORLDS[key], mode: 'gun' });
+        } catch (err) {                                  // never leave "loading" up forever: say what to do instead
+            console.error(err);
+            failedMap = key;
+            $('ut-stage').querySelectorAll('canvas').forEach((c) => c.remove());
+            $('ut-loading').textContent = '맵을 그리지 못했어요. 새로고침(Ctrl+Shift+R) 해 주세요.';
+            return null;
+        }
+        scene3d.onMove((pos) => send({ type: 'move', ...pos }));
+        $('ut-loading').textContent = '맵을 불러오는 중…';
+        scene3d.onShot((dir) => { send({ type: 'shoot', dir: dir }); sfx('crShot'); });
+        scene3d.onEmote((e) => send({ type: 'emote', e: e }));
+        scene3d.onSpectate((step) => send({ type: 'spec', step: step }));
+        scene3d.onFrame(drawTags);
+        setTimeout(() => scene3d && scene3d.focus(), 50);
+        return scene3d;
+    }
+    function mapButtons(box, current, onPick) {
+        box.textContent = '';
+        DATA.maps.forEach((m) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ut-map' + (m.key === current ? ' on' : '');
+            b.setAttribute('role', 'radio');
+            b.setAttribute('aria-checked', m.key === current ? 'true' : 'false');
+            const t = document.createElement('b'); t.textContent = m.name;
+            const sz = document.createElement('small'); sz.textContent = m.w + '×' + m.h; t.appendChild(sz);
+            const d = document.createElement('span'); d.textContent = m.blurb;
+            b.append(t, d);
+            b.addEventListener('click', () => onPick(m.key));
+            box.appendChild(b);
+        });
+    }
+    const mapName = (key) => (DATA.maps.find((m) => m.key === key) || {}).name || '';
+    let shownMapPicker = null;
+    const tagEls = {};
+    function drawTags(anchors) {
+        $('ut-loading').hidden = true;
+        const layer = $('ut-tags');
+        Object.entries(anchors).forEach(([id, a]) => {
+            if (a.dead) { if (tagEls[id]) { tagEls[id].remove(); delete tagEls[id]; } return; }      // fallen players leave no name tag
+            let e = tagEls[id];
+            if (!e) { e = document.createElement('div'); layer.appendChild(e); tagEls[id] = e; }
+            e.className = 'ut-tag' + (a.me ? ' me' : '') + (a.online ? '' : ' off') + (a.team ? ' ' + a.team : '');
+            e.textContent = (a.team === 'red' ? '🔴 ' : a.team === 'blue' ? '🔵 ' : '') + a.name + (a.online ? '' : ' (자리 비움)');
+            if (a.hp != null && a.team) {                  // health bar under the name
+                const h = document.createElement('i'); h.className = 'hp' + (a.hp <= 35 ? ' low' : '');
+                const u = document.createElement('u'); u.style.width = Math.max(0, a.hp) + '%'; h.appendChild(u); e.appendChild(h);
+            }
+            if (a.emote) {                               // emote bubble: pops in, floats up, fades out
+                const b = document.createElement('span');
+                b.className = 'ut-emoji';
+                b.textContent = a.emote;
+                const t = a.emoteAge / 1.8;
+                b.style.transform = 'translate(-50%, ' + (-6 - t * 18) + 'px) scale(' + Math.min(1, t * 8) + ')';
+                b.style.opacity = t < 0.75 ? 1 : (1 - t) * 4;
+                e.appendChild(b);
+            }
+            e.style.left = a.x + 'px'; e.style.top = a.y + 'px';
+        });
+        Object.keys(tagEls).forEach((id) => { if (!anchors[id]) { tagEls[id].remove(); delete tagEls[id]; } });
+    }
+    function renderChips(players) {
+        const box = $('ut-chips');
+        box.textContent = '';
+        players.forEach((p) => {
+            const c = document.createElement('span');
+            c.className = 'ut-chip' + (p.id === meId ? ' me' : '') + (p.online ? '' : ' off');
+            c.textContent = (p.bot ? '🤖 ' : '') + p.name + (p.id === meId ? ' (나)' : '');
+            box.appendChild(c);
+        });
+    }
+    const fmt = (sec) => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+    let G = null;
+    const sfx = (name, arg) => { if (window.GameSound) window.GameSound.play(name, arg); };
+    const nameOf = (st, id) => (st.players.find((p) => p.id === id) || {}).name || '누군가';
+    const teamOf = (st, id) => (st.players.find((p) => p.id === id) || {}).team || '';
+    function feed(st, ev) {                              // kill feed: "killer 🔫 victim"
+        const box = $('ut-feed');
+        const row = document.createElement('div');
+        const k = document.createElement('b'); k.className = teamOf(st, ev.killer); k.textContent = nameOf(st, ev.killer);
+        const v = document.createElement('b'); v.className = teamOf(st, ev.victim); v.textContent = nameOf(st, ev.victim);
+        const gun = { pistol: '권총', rifle: '소총', shotgun: '샷건', sniper: '저격총' }[ev.w] || '';
+        row.append(k, document.createTextNode(' 🔫 ' + gun + ' → '), v);
+        box.appendChild(row);
+        while (box.children.length > 5) box.firstChild.remove();
+        setTimeout(() => row.remove(), 5000);
+    }
+    let lastHp = null, shopKey = '';
+    const GUN_RULES = RULES.gun;
+    function shop(mine, st) {                            // buy menu during the buy phase: rebuilt only when what it shows changes
+        const box = $('ut-shop');
+        const show = st.phase === 'buy' && mine.team && mine.alive !== false;
+        box.hidden = !show;
+        if (!show) { shopKey = ''; return; }
+        const key = [mine.money, mine.weapon, mine.ammo, mine.armor].join('|');
+        if (key === shopKey) return;
+        shopKey = key;
+        box.textContent = '';
+        const h = document.createElement('h3');
+        h.append('🛒 구매', Object.assign(document.createElement('b'), { textContent: mine.money + '원' }));
+        box.appendChild(h);
+        const items = [['rifle', '소총'], ['shotgun', '샷건'], ['sniper', '저격총'], ['armor', '방어구']];
+        items.forEach(([id, label]) => {
+            const price = GUN_RULES.prices[id], w = GUN_RULES.weapons[id];
+            const owned = id === 'armor' ? mine.armor >= GUN_RULES.armor_max : mine.weapon === id && mine.ammo === w.ammo;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = owned ? 'own' : '';
+            b.disabled = owned || price > mine.money;
+            const n = document.createElement('b'); n.textContent = label + (owned ? ' ✓' : '');
+            const pr = document.createElement('em'); pr.textContent = price + '원';
+            const d = document.createElement('small');
+            d.textContent = id === 'armor' ? '받는 피해 절반을 막아 줘요' : '피해 ' + w.dmg + (w.pellets > 1 ? '×' + w.pellets : '') + ' · ' + (w.auto ? '연사' : '단발') + ' · 사거리 ' + w.range + ' · 탄 ' + w.ammo;
+            b.append(n, pr, d);
+            b.addEventListener('click', () => { send({ type: 'buy', item: id }); if (scene3d) scene3d.focus(); });
+            box.appendChild(b);
+        });
+        const p = document.createElement('p');
+        p.textContent = '권총은 기본이고 탄이 무한이에요. 구매 시간이 끝나면 교전이 시작돼요.';
+        box.appendChild(p);
+    }
+    function renderGame(st) {
+        G = st;
+        const mine = st.players.find((p) => p.id === meId) || {};
+        const inGame = ['buy', 'playing', 'round_end'].includes(st.phase);
+        const fallen = inGame && mine.team && mine.alive === false;
+        $('ut-phase').textContent = { lobby: '대기 중', buy: '구매 시간', playing: '교전', round_end: '라운드 끝', result: '끝' }[st.phase];
+        $('ut-timer').hidden = !(st.phase === 'playing' || st.phase === 'buy');
+        if (st.phase === 'playing' || st.phase === 'buy') $('ut-timer').textContent = fmt(st.left);
+        $('ut-role').hidden = !mine.team;
+        $('ut-role').className = 'ut-pill ' + (mine.team || '');
+        $('ut-role').textContent = mine.team === 'red' ? '🔴 나는 레드' : '🔵 나는 블루';
+        $('ut-round').hidden = !inGame;
+        $('ut-round').textContent = '라운드 ' + st.round;
+        $('ut-count').hidden = !inGame;
+        $('ut-count').textContent = '🔴 ' + st.score.red + ' : ' + st.score.blue + ' 🔵 (먼저 ' + st.target + '승)';
+        $('ut-alive').hidden = !inGame;
+        const alive = (t) => st.players.filter((p) => p.team === t && p.alive !== false).length;
+        $('ut-alive').textContent = '생존 🔴 ' + alive('red') + ' · 🔵 ' + alive('blue');
+        $('ut-hp').hidden = !(inGame && mine.team);
+        $('ut-money').hidden = !(inGame && mine.team);
+        if (mine.team) {
+            $('ut-hp-bar').style.width = Math.max(0, mine.hp) + '%';
+            $('ut-hp').classList.toggle('low', mine.hp <= 35);
+            $('ut-hp-t').textContent = Math.max(0, mine.hp);
+            $('ut-armor-t').textContent = mine.armor > 0 ? '🛡 ' + mine.armor : '';
+            $('ut-money').textContent = '💰 ' + mine.money + '원';
+            if (lastHp != null && mine.hp < lastHp && st.phase === 'playing') {           // took damage: red edge flash
+                const f = $('ut-hitflash'); f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 60);
+            }
+            lastHp = mine.hp;
+        } else lastHp = null;
+        shop(mine, st);
+        const hostLobby = st.phase === 'lobby' && st.host === meId;
+        $('ut-room-name-label').textContent = st.name + (st.private ? ' 🔒' : '');
+        $('ut-map-name').textContent = '🗺 ' + (st.phase === 'lobby' ? '다음 판: ' : '') + mapName(st.choice);
+        $('ut-maps').hidden = !hostLobby;
+        if (hostLobby && shownMapPicker !== st.choice) {
+            shownMapPicker = st.choice;
+            mapButtons($('ut-maps'), st.choice, (key) => { if (key !== (G && G.choice)) send({ type: 'map', map: key }); });
+        }
+        if (!hostLobby) shownMapPicker = null;
+        const inLobby = st.phase === 'lobby';
+        const nRed = st.players.filter((p) => p.pref === 'red').length, nBlue = st.players.filter((p) => p.pref === 'blue').length;
+        const nMid = st.players.length - nRed - nBlue;
+        $('ut-teamcount').hidden = !inLobby;
+        $('ut-teamcount').textContent = '🔴 ' + nRed + '명 · 🔵 ' + nBlue + '명 · 가운데 ' + nMid + '명';
+        ['ut-go-red', 'ut-go-blue', 'ut-go-none'].forEach((id) => { $(id).hidden = !inLobby; });
+        $('ut-go-red').classList.toggle('on', mine.pref === 'red');
+        $('ut-go-blue').classList.toggle('on', mine.pref === 'blue');
+        $('ut-start').hidden = !hostLobby;
+        ['ut-bot-red', 'ut-bot-blue'].forEach((id) => { $(id).hidden = !hostLobby; $(id).disabled = st.players.length >= 8; });
+        $('ut-bot-remove').hidden = !(hostLobby && st.players.some((p) => p.bot));
+        const canStart = st.players.length >= 2 && !(nMid === 0 && (nRed === 0 || nBlue === 0));
+        $('ut-start').disabled = !canStart;
+        $('ut-start').title = st.players.length < 2 ? '두 명 이상 있어야 시작할 수 있어요' : !canStart ? '레드와 블루 팀에 각각 한 명 이상 있어야 해요' : '';
+        const layout = WORLDS[st.map] && WORLDS[st.map].gun_layout, where = $('ut-where');
+        where.hidden = !(inGame && layout && mine.x != null && mine.alive !== false);
+        if (!where.hidden) {
+            const at = (rs) => rs.some((r) => mine.x >= r[0] && mine.x < r[2] && mine.y >= r[1] && mine.y < r[3]);
+            const site = layout.sites.find((q) => at(q.rects));
+            const base = layout.bases.findIndex((b) => at(b.rects));
+            where.textContent = '📍 ' + (site ? site.id + ' 사이트 · ' + site.name : base >= 0 ? (base === st.side ? '🔴 레드' : '🔵 블루') + ' 기지' : '통로');
+        }
+        const banner = $('ut-banner');
+        banner.hidden = true;
+        const say = (big, small) => { banner.hidden = false; $('ut-banner-big').textContent = big; $('ut-banner-small').textContent = small || ''; };
+        if (st.phase === 'buy') say(Math.ceil(st.left), '구매 시간 · 기지 안에서만 움직일 수 있어요 · 오른쪽에서 무기를 사세요');
+        else if (st.phase === 'round_end' && st.round_result) {
+            const w = st.round_result.winner, b = st.round_result.bonus;
+            say(w === 'draw' ? '무승부' : (w === 'red' ? '🔴 레드' : '🔵 블루') + ' 승리', mine.team ? '+' + b[mine.team] + '원' + (st.result ? '' : ' · 곧 다음 라운드') : '');
+        } else if (st.phase === 'playing' && fallen) {
+            const who = st.players.find((p) => p.id === mine.spec);
+            say('👁', who ? '관전 중: ' + who.name + ' · 클릭하면 다음 팀원' : '쓰러졌어요');
+        }
+        $('ut-dash').hidden = !(inGame && mine.team && !fallen);
+        const res = $('ut-result');
+        res.hidden = st.phase !== 'result' || !st.result;
+        if (st.result) {
+            const win = st.result.winner;
+            $('ut-result-title').textContent = win === 'red' ? '🔴 레드 승리!' : '🔵 블루 승리!';
+            $('ut-result-title').style.color = win === 'red' ? '#b91c1c' : '#1d4ed8';
+            $('ut-result-text').textContent = (mine.team === win ? '이겼어요! ' : mine.team ? '아쉽게 졌어요. ' : '') + '레드 ' + st.result.score.red + ' : ' + st.result.score.blue + ' 블루 (' + st.result.rounds + '라운드)';
+            const best = Object.entries(st.result.stats || {}).sort((a, b) => b[1].kills - a[1].kills)[0];
+            const who = best && st.players.find((p) => String(p.id) === String(best[0]));
+            $('ut-result-catch').textContent = who && best[1].kills ? '최다 킬: ' + who.name + ' (' + best[1].kills + '킬 ' + best[1].deaths + '데스)' : '';
+        }
+        (st.events || []).forEach((ev) => {
+            const seenBy = (id) => { const p = st.players.find((q) => q.id === id); return p && !p.hidden; };
+            if (ev.t === 'start') sfx('crBeep');
+            else if (ev.t === 'go') sfx('crGo');
+            else if (ev.t === 'round') sfx('crBeep');
+            else if (ev.t === 'gshot' && ev.id !== meId) sfx('crShot');
+            else if (ev.t === 'hit' && (ev.by === meId || ev.id === meId)) sfx('crZap');
+            else if (ev.t === 'kill') { sfx('crCaught'); feed(st, ev); }
+            else if (ev.t === 'buy' && ev.id === meId) sfx('crBeep');
+            else if (ev.t === 'round_end') sfx(ev.winner === mine.team ? 'success' : ev.winner === 'draw' ? 'tap' : 'lose');
+            else if (ev.t === 'emote' && seenBy(ev.id)) sfx('pop');
+            else if (ev.t === 'end') sfx(mine.team === ev.winner ? 'fanfare' : mine.team ? 'lose' : 'success');
+            if (ev.t === 'go') toast('교전 시작!');
+            else if (ev.t === 'round') toast('라운드 ' + ev.n + ' · 구매 시간');
+            else if (ev.t === 'kill' && ev.victim === meId) toast('💀 ' + nameOf(st, ev.killer) + '에게 쓰러졌어요', 'bad');
+            else if (ev.t === 'kill' && ev.killer === meId) toast('🎯 ' + nameOf(st, ev.victim) + ' 처치!');
+            else if (ev.t === 'map') toast('🗺 다음 판 맵: ' + mapName(ev.map));
+        });
+    }
+    setInterval(() => {
+        if (!scene3d || !G) return;
+        const d = scene3d.abilityState();
+        if (d.kind !== 'gun') return;
+        $('ut-dash-name').textContent = '🔫 ' + d.name;
+        $('ut-dash-bar').style.width = (d.ready > 0 ? (1 - d.ready / d.cooldown) * 100 : 100) + '%';
+        $('ut-dash-t').textContent = d.ammo == null ? '∞' : d.ammo + '발';
+    }, 100);
+
+    function showRoom(code) {
+        room = code;
+        $('ut-menu').hidden = !!code;
+        $('ut-room').hidden = !code;
+        if (code) $('ut-room-code').textContent = code;
+        else { dropScene(); G = null; shownMapPicker = null; }
+    }
+
+    function connect() {
+        ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/gun/');
+        ws.onmessage = (m) => {
+            const d = JSON.parse(m.data);
+            if (d.type === 'hello') { meId = d.me || meId; showRoom(d.room); if (!d.room) send({ type: 'list' }); }
+            else if (d.type === 'rooms') renderRooms(d.rooms);
+            else if (d.type === 'state' && room) {
+                const sc = ensureScene(d.state.map);
+                if (sc) {
+                    sc.setPhase(d.state.phase);
+                    sc.setPlayers(d.state.players, meId);
+                    sc.setLock(d.state.lock || null);
+                    sc.setSide(d.state.side || 0);
+                    sc.events(d.state.events);
+                    const myRec = d.state.players.find((p) => p.id === meId);
+                    sc.setSpectate(myRec && myRec.alive === false ? myRec.spec : null);
+                    sc.setOpenDoors(d.state.doors);
+                }
+                renderChips(d.state.players); renderGame(d.state);
+            }
+            else if (d.type === 'pong' && typeof d.t === 'number') showPing(performance.now() - d.t);
+            else if (d.type === 'correct' && scene3d) scene3d.correct(d.x, d.y);
+            else if (d.type === 'error') toast(d.message, 'bad');
+        };
+        ws.onclose = () => setTimeout(connect, 2000);
+    }
+    const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+    let lastRtt = null;
+    setInterval(() => send({ type: '__ping__', t: performance.now(), rtt: lastRtt }), 2000);   // also keeps the socket alive
+    function showPing(ms) {
+        lastRtt = Math.round(ms) / 1000;
+        const el = $('ut-ping');
+        el.textContent = '핑 ' + Math.round(ms) + 'ms';
+        el.className = 'ut-ping' + (ms > 180 ? ' bad' : ms > 80 ? ' mid' : '');
+    }
+
+    function renderRooms(rooms) {
+        const box = $('ut-rooms');
+        box.textContent = '';
+        $('ut-list-note').textContent = rooms.length + '개';
+        if (!rooms.length) {
+            const e = document.createElement('div');
+            e.className = 'ut-empty';
+            e.textContent = '열린 방이 없어요. 오른쪽에서 방을 만들어 보세요.';
+            box.appendChild(e);
+            return;
+        }
+        rooms.forEach((r) => {
+            const full = r.players + r.bots >= r.max;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ut-roomrow' + (full ? ' full' : '');
+            b.dataset.code = r.code;
+            b.disabled = full;
+            const name = document.createElement('b'); name.textContent = r.name;
+            const st = document.createElement('span'); st.className = 'st' + (r.phase === 'lobby' ? '' : ' play'); st.textContent = r.phase === 'lobby' ? '대기 중' : '진행 중 · 구경';
+            const n = document.createElement('small'); n.textContent = (r.players + r.bots) + ' / ' + r.max + (r.bots ? ' (봇 ' + r.bots + ')' : '');
+            const mp = document.createElement('span'); mp.className = 'mp'; mp.textContent = r.map || '';
+            b.append(name, mp, st, n);
+            box.appendChild(b);
+        });
+    }
+    $('ut-rooms').addEventListener('click', (e) => { const b = e.target.closest('[data-code]'); if (b && !b.disabled) send({ type: 'join', code: b.dataset.code }); });
+    setInterval(() => { if (!room) send({ type: 'list' }); }, 2000);
+    $('ut-create-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        send({ type: 'create', name: $('ut-room-name').value.trim(), private: $('ut-private').checked });
+    });
+    const focusScene = () => { if (scene3d) scene3d.focus(); };
+    $('ut-go-red').addEventListener('click', () => { send({ type: 'team', team: 'red' }); focusScene(); });
+    $('ut-go-blue').addEventListener('click', () => { send({ type: 'team', team: 'blue' }); focusScene(); });
+    $('ut-go-none').addEventListener('click', () => { send({ type: 'team', team: 'none' }); focusScene(); });
+    $('ut-bot-red').addEventListener('click', () => send({ type: 'add_bot', team: 'red' }));
+    $('ut-bot-blue').addEventListener('click', () => send({ type: 'add_bot', team: 'blue' }));
+    $('ut-emotes').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-e]');
+        if (b) { send({ type: 'emote', e: b.dataset.e }); if (scene3d) scene3d.focus(); }
+    });
+    const muteLabel = () => { $('ut-mute').textContent = window.GameSound && window.GameSound.isMuted() ? '🔇' : '🔊'; };
+    $('ut-mute').addEventListener('click', () => { if (window.GameSound) window.GameSound.toggleMute(); muteLabel(); if (scene3d) scene3d.focus(); });
+    muteLabel();
+    $('ut-bot-remove').addEventListener('click', () => send({ type: 'remove_bot' }));
+    $('ut-join-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const code = $('ut-code-input').value.trim().toUpperCase();
+        if (code.length !== 4) { toast('방 코드 4자리를 입력해 주세요', 'bad'); return; }
+        send({ type: 'join', code: code });
+    });
+    $('ut-leave').addEventListener('click', () => send({ type: 'leave' }));
+    $('ut-start').addEventListener('click', () => { send({ type: 'start' }); if (scene3d) scene3d.focus(); });
+    $('ut-copy').addEventListener('click', () => {
+        navigator.clipboard.writeText(room || '').then(() => toast('코드를 복사했어요'), () => toast('복사하지 못했어요. 코드를 직접 알려 주세요', 'bad'));
+    });
+    connect();
+})();
+</script>
+{% endblock %}
