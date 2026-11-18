@@ -108,6 +108,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-xs text-slate-500"><i class="fa-solid fa-pen-nib text-amber-500 mr-1"></i>자료를 골라 <b>요약 노트</b>나 <b>모의고사</b>를 만들 수 있어요.</p>
                 <div id="select-toolbar" class="flex flex-wrap gap-2">
+                    <button type="button" id="manage-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition" title="여러 자료를 골라 한 번에 삭제하거나 폴더로 옮겨요"><i class="fa-regular fa-square-check mr-1"></i>선택</button>
                     <button type="button" id="cram-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition">요약 노트 만들기</button>
                     <a href="{% url 'mypage:wrong_notes' %}" class="text-xs font-bold px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"><i class="fa-solid fa-book-bookmark mr-1"></i>오답노트</a>
                     <button type="button" id="mock-toggle" class="text-xs font-bold px-3 py-2 rounded-xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition">모의고사</button>
@@ -131,7 +132,7 @@
                     </div>
                     {% endfor %}
                 {% for document in documents %}
-                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group"{% if document.document_type != 'note' and document.document_type != 'mock' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}" data-doc-type="{{ document.document_type }}"{% endif %}{% if document.document_type == 'note' or document.document_type == 'mock' %}{% if document.summary_status == 'processing' %} data-note-processing="1"{% endif %}{% endif %}>
+                <div class="bg-white rounded-2xl border border-slate-100 p-5 hover:border-emerald-200 hover:shadow-sm transition flex flex-col gap-2 relative group" data-doc-id="{{ document.pk }}"{% if document.document_type != 'note' and document.document_type != 'mock' and document.summary and document.summary_status == 'done' %} data-cram-id="{{ document.pk }}" data-doc-type="{{ document.document_type }}"{% endif %}{% if document.document_type == 'note' or document.document_type == 'mock' %}{% if document.summary_status == 'processing' %} data-note-processing="1"{% endif %}{% endif %}>
                     <a href="{% url 'mypage:document_preview' document.pk %}" class="flex flex-col items-center text-center gap-2">
                         {% if document.document_type == 'note' %}
                             {% if document.file and document.summary_status == 'done' %}
@@ -256,6 +257,98 @@
     if (document.querySelector('[data-note-processing]')) {
         setTimeout(function poll() { if (!mode) location.reload(); else setTimeout(poll, 4000); }, 4000);
     }
+})();
+</script>
+
+<div id="manage-bar" style="bottom:16px;left:16px;right:16px" class="hidden fixed z-40 mx-auto max-w-2xl flex-wrap items-center justify-between gap-3 bg-white border border-emerald-200 shadow-xl rounded-2xl px-4 py-3">
+    <p class="text-sm text-slate-700"><b id="manage-count">0</b>개 선택 <button type="button" id="manage-all" class="ml-2 text-xs font-bold text-emerald-700 underline">전체 선택</button></p>
+    <div class="flex flex-wrap items-center gap-2">
+        <button type="button" id="manage-cancel" class="text-xs font-bold text-slate-500 px-3 py-2">취소</button>
+        <button type="button" id="manage-move" disabled class="text-xs font-bold px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-folder-open mr-1"></i>폴더로 이동</button>
+        <button type="button" id="manage-delete" disabled class="text-xs font-bold px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white disabled:opacity-50"><i class="fa-solid fa-trash-can mr-1"></i>삭제</button>
+    </div>
+</div>
+<form id="bulk-form" method="post" action="{% url 'mypage:document_bulk' %}" class="hidden">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <input type="hidden" name="action" value="delete">
+</form>
+<style>
+    /* 선택 모드: 카드 위의 이름 바꾸기·이동·삭제 버튼은 숨긴다 (카드 전체를 눌러 고른다). 모바일 CSS(#doc-grid > div > button)보다 앞서도록 ID까지 쓴다 */
+    body.manage-on #doc-grid > [data-doc-id] > button, body.manage-on #doc-grid > [data-doc-id] > form { display: none !important; }
+    /* 선택 막대의 오른쪽 버튼(삭제)을 어시스턴트 버튼(z-50)이 가리지 않게 선택하는 동안만 숨긴다 */
+    body.manage-on #assistant-fab-container { display: none !important; }
+    /* 고르는 동안 위 툴바를 숨긴다: 모바일 CSS의 #select-toolbar { display: flex }가 hidden 클래스를 이기지 않게 (요약 노트·모의고사 선택에도 같이 적용) */
+    #select-toolbar.hidden { display: none !important; }
+    [data-doc-id][data-picked="1"]::after { content: "\2713"; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 999px; background: #10b981; color: #fff; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+</style>
+<script>
+// 자료 관리용 선택 모드: 여러 자료를 골라 한 번에 삭제하거나 폴더로 옮긴다 (요약 노트·모의고사용 선택과는 따로, 모든 자료를 고를 수 있다)
+(function () {
+    const toggle = document.getElementById('manage-toggle'), bar = document.getElementById('manage-bar');
+    if (!toggle || !bar) return;
+    const cards = Array.from(document.querySelectorAll('[data-doc-id]'));
+    const count = document.getElementById('manage-count'), allBtn = document.getElementById('manage-all');
+    const moveBtn = document.getElementById('manage-move'), delBtn = document.getElementById('manage-delete');
+    const bulkForm = document.getElementById('bulk-form'), BULK_URL = "{% url 'mypage:document_bulk' %}";
+    let on = false;
+    const picked = () => cards.filter((c) => c.dataset.picked === '1');
+    function mark(card, value) {
+        card.dataset.picked = value ? '1' : '';
+        card.style.boxShadow = value ? '0 0 0 3px #10b981' : '';
+        card.setAttribute('aria-selected', value ? 'true' : 'false');
+    }
+    function refresh() {
+        const n = picked().length;
+        count.textContent = n;
+        moveBtn.disabled = delBtn.disabled = n === 0;
+        allBtn.textContent = n && n === cards.length ? '선택 해제' : '전체 선택';
+    }
+    function setOn(next) {
+        on = next;
+        bar.classList.toggle('hidden', !on); bar.classList.toggle('flex', on);
+        document.getElementById('select-toolbar').classList.toggle('hidden', on);
+        document.body.classList.toggle('manage-on', on);
+        cards.forEach((c) => {
+            mark(c, false);
+            c.classList.toggle('cursor-pointer', on);
+            const link = c.querySelector('a');
+            if (link) link.classList.toggle('pointer-events-none', on);     // 카드를 눌러도 자료가 열리지 않고 선택된다
+        });
+        refresh();
+    }
+    function addIds(form, extra) {
+        form.querySelectorAll('.bulk-field').forEach((i) => i.remove());
+        const add = (name, value) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = name; i.value = value; i.className = 'bulk-field'; form.appendChild(i); };
+        picked().forEach((c) => add('ids', c.dataset.docId));
+        Object.entries(extra || {}).forEach(([k, v]) => add(k, v));
+    }
+    toggle.addEventListener('click', () => setOn(true));
+    document.getElementById('manage-cancel').addEventListener('click', () => setOn(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && on && document.getElementById('move-modal').classList.contains('hidden')) setOn(false); });
+    cards.forEach((c) => c.addEventListener('click', (e) => {
+        if (!on || e.target.closest('button, form')) return;
+        e.preventDefault();
+        mark(c, c.dataset.picked !== '1');
+        refresh();
+    }));
+    allBtn.addEventListener('click', () => { const all = picked().length !== cards.length; cards.forEach((c) => mark(c, all)); refresh(); });
+    delBtn.addEventListener('click', () => {
+        const n = picked().length;
+        if (!n || !window.confirm('고른 자료 ' + n + '개를 삭제할까요?')) return;
+        addIds(bulkForm);
+        bulkForm.submit();
+    });
+    moveBtn.addEventListener('click', () => {      // 하나씩 옮길 때와 같은 '어느 폴더로 옮길까요?' 창을 쓴다 (폴더 경로로 고른다)
+        const modal = document.getElementById('move-modal'), form = document.getElementById('move-form'), select = document.getElementById('move-select');
+        form.action = BULK_URL;
+        select.name = 'folder';
+        Array.from(select.options).forEach((o) => { o.disabled = false; });
+        select.value = '';
+        addIds(form, { action: 'move' });
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+        select.focus();
+    });
 })();
 </script>
 
@@ -573,6 +666,7 @@
         const btn = e.target.closest('[data-move-url]');
         if (!btn) return;
         e.preventDefault();
+        form.querySelectorAll('.bulk-field').forEach((i) => i.remove());     // 여러 개 옮기기에서 남은 값은 버린다
         form.action = btn.dataset.moveUrl;
         select.name = btn.dataset.moveField || 'folder';       // 자료는 folder, 폴더는 parent(상위 폴더)로 보낸다
         // 폴더를 옮길 때: 자기와 그 아래 폴더, 그리고 깊이 제한을 넘는 곳은 고를 수 없게 한다 (서버도 다시 확인한다)
