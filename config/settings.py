@@ -266,9 +266,9 @@ JUDGE_MEMORY_MB = config("JUDGE_MEMORY_MB", default=256, cast=int)
 
 # ── AI (core/ai.py) ─────────────────────────────────────────────────────
 OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
-# 예전 설정 이름 — 아래 작업별 모델의 기본값으로만 쓴다
-MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.5")
-ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.5")
+# 기본 모델: 모든 AI 작업이 이 모델을 쓴다 (아래 작업별 설정으로 하나씩 바꿀 수 있다). 키가 없는 공급자의 대체 모델로도 쓰인다
+MYPAGE_CHAT_MODEL = config("MYPAGE_CHAT_MODEL", default="gpt-5.4-mini")
+ASSISTANT_CHAT_MODEL = config("ASSISTANT_CHAT_MODEL", default="gpt-5.4-mini")
 # 공급자: 키가 있는 곳만 쓴다. Gemini·Claude는 OpenAI SDK와 호환되는 주소로 부르므로 새 패키지가 필요 없다.
 # 작업에 지정된 공급자의 키가 없으면 OpenAI(MYPAGE_CHAT_MODEL)로 대신 부른다 — 키를 넣기 전까지는 예전과 똑같이 동작.
 # 테스트는 로컬 .env의 키와 무관하게 늘 같은 경로(OpenAI 대체)를 타도록 Gemini·Claude 키를 비운다
@@ -285,27 +285,30 @@ AI_PROVIDERS = {
     "anthropic": {"key": ANTHROPIC_API_KEY, "base_url": "https://api.anthropic.com/v1/"},
 }
 # 작업별 (공급자, 모델). 환경변수로 하나씩 바꿀 수 있다: AI_PROVIDER_<작업>, AI_MODEL_<작업>
-#   기본은 모두 Gemini (gemini-3.5-flash-lite). 작업별로 환경변수로 openai·anthropic으로 바꿀 수 있다
+#   기본은 모두 OpenAI (MYPAGE_CHAT_MODEL = gpt-5.4-mini). 작업별로 환경변수로 gemini·anthropic으로 바꿀 수 있다
+_DEFAULT_AI = ("openai", MYPAGE_CHAT_MODEL)
+# 작업의 공급자만 바꾸고(AI_PROVIDER_<작업>) 모델은 정하지 않았을 때 그 공급자에서 쓰는 모델
+AI_PROVIDER_DEFAULT_MODELS = {"openai": MYPAGE_CHAT_MODEL, "gemini": "gemini-3.5-flash-lite"}
 _AI_TASK_DEFAULTS = {
-    "chat": ("gemini", "gemini-3.5-flash-lite"),                 # 챗봇 답변 (도구 호출)
-    "chat_compact": ("gemini", "gemini-3.5-flash-lite"),         # 긴 대화 압축
-    "summary": ("gemini", "gemini-3.5-flash-lite"),              # 자료 요약
-    "ocr": ("gemini", "gemini-3.5-flash-lite"),  # 이미지 자료 글자 읽기
-    "question": ("gemini", "gemini-3.5-flash-lite"),  # 복습 문제 생성
-    "grading": ("gemini", "gemini-3.5-flash-lite"),  # 단답·서술형 채점
-    "classify": ("gemini", "gemini-3.5-flash-lite"),        # 자료 주제 분류
-    "course_readiness": ("gemini", "gemini-3.5-flash-lite"),  # (더 이상 쓰지 않음)
-    "course_outline": ("gemini", "gemini-3.5-flash-lite"),  # 강의 목차
-    "course_chapter": ("gemini", "gemini-3.5-flash-lite"),  # 강의 챕터 본문
-    "exam_style": ("gemini", "gemini-3.5-flash-lite"),      # 족보에서 교수 출제 스타일 뽑기
-    "mock_exam": ("gemini", "gemini-3.5-flash-lite"),       # 모의 출제
-    "concepts": ("gemini", "gemini-3.5-flash-lite"),        # 수업 자료 요약의 개념 태그
-    "exam_analysis": ("gemini", "gemini-3.5-flash-lite"),   # 족보를 문제 단위로 분석(유형·개념)
-    "cram_note": ("gemini", "gemini-3.5-flash-lite"),       # 요약 노트 내용
-    "doctype_rules": ("gemini", "gemini-3.5-flash-lite"),   # 자료 구분(족보/수업 자료) 판단 규칙값 정리 (mypage/doctype.py)
-    "scope": ("gemini", "gemini-3.5-flash-lite"),            # 추가 요청이 정한 범위에 맞는 소제목 고르기 (mypage/scope.py)
-    "assignment": ("gemini", "gemini-3.6-flash"),            # 과제 풀이 (mypage/ai.py generate_solution) — 풀이 품질이 중요해 lite보다 큰 모델을 쓴다. AI_MODEL_ASSIGNMENT로 바꾼다
-    "answer_scan": ("gemini", "gemini-3.5-flash-lite"),      # 손으로 푼 답안 사진 읽기 (mypage/answer_scan.py) — 손글씨가 잘 안 읽히면 AI_MODEL_ANSWER_SCAN으로 상위 모델 지정
+    "chat": _DEFAULT_AI,                 # 챗봇 답변 (도구 호출)
+    "chat_compact": _DEFAULT_AI,         # 긴 대화 압축
+    "summary": _DEFAULT_AI,              # 자료 요약
+    "ocr": _DEFAULT_AI,  # 이미지 자료 글자 읽기
+    "question": _DEFAULT_AI,  # 복습 문제 생성
+    "grading": _DEFAULT_AI,  # 단답·서술형 채점
+    "classify": _DEFAULT_AI,        # 자료 주제 분류
+    "course_readiness": _DEFAULT_AI,  # (더 이상 쓰지 않음)
+    "course_outline": _DEFAULT_AI,  # 강의 목차
+    "course_chapter": _DEFAULT_AI,  # 강의 챕터 본문
+    "exam_style": _DEFAULT_AI,      # 족보에서 교수 출제 스타일 뽑기
+    "mock_exam": _DEFAULT_AI,       # 모의 출제
+    "concepts": _DEFAULT_AI,        # 수업 자료 요약의 개념 태그
+    "exam_analysis": _DEFAULT_AI,   # 족보를 문제 단위로 분석(유형·개념)
+    "cram_note": _DEFAULT_AI,       # 요약 노트 내용
+    "doctype_rules": _DEFAULT_AI,   # 자료 구분(족보/수업 자료) 판단 규칙값 정리 (mypage/doctype.py)
+    "scope": _DEFAULT_AI,            # 추가 요청이 정한 범위에 맞는 소제목 고르기 (mypage/scope.py)
+    "assignment": _DEFAULT_AI,            # 과제 풀이 (mypage/ai.py generate_solution) — 풀이 품질이 중요하면 AI_MODEL_ASSIGNMENT로 더 큰 모델을 지정한다
+    "answer_scan": _DEFAULT_AI,      # 손으로 푼 답안 사진 읽기 (mypage/answer_scan.py) — 손글씨가 잘 안 읽히면 AI_MODEL_ANSWER_SCAN으로 상위 모델 지정
 }
 AI_TASK_DEFAULTS = _AI_TASK_DEFAULTS
 
@@ -348,6 +351,7 @@ AI_LIMIT_SUMMARY_WINDOW_CHARS = config("AI_LIMIT_SUMMARY_WINDOW_CHARS", default=
 AI_WEEKLY_LIMIT_POINTS = config("AI_WEEKLY_LIMIT_POINTS", default=300, cast=int)
 AI_POINT_USD = config("AI_POINT_USD", default=0.00177, cast=float)
 AI_MODEL_PRICES = {                 # (입력, 출력, 캐시 입력) 100만 토큰당 달러
+    "gpt-5.4-mini": (0.75, 4.50, 0.075),         # OpenAI 모델 페이지(developers.openai.com/api/docs/models/gpt-5.4-mini) 기준. 가격이 바뀌면 여기를 고친다
     "gemini-3.6-flash": (1.50, 7.50, 0.15),
     "gemini-3.5-flash-lite": (0.30, 2.50, 0.03),
 }

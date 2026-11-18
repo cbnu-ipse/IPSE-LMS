@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.conf import settings
 from django.test import TestCase, override_settings
 from PIL import Image
 
@@ -65,7 +66,8 @@ class ExamPhotoFlowTests(TestCase):
             return type("R", (), {"choices": [type("C", (), {"message": type("M", (), {"content": "1. 문제", "tool_calls": None})()})()],
                                   "usage": None})()
 
-        with override_settings(AI_BLOCK_NETWORK=False, AI_CREDIT_COSTS={}), patch("core.vertex.generate", side_effect=fake_generate), \
+        with override_settings(AI_BLOCK_NETWORK=False, AI_CREDIT_COSTS={}, AI_TASK_PROVIDERS={**settings.AI_TASK_PROVIDERS, "ocr": "gemini"}), \
+                patch("core.vertex.generate", side_effect=fake_generate), \
                 patch.dict("django.conf.settings.AI_PROVIDERS", {"gemini": {"key": "k", "base_url": None, "native": "vertex"}}):
             text = extract_text(io.BytesIO(jpeg((300, 200), exif_orientation=6)), "족보.jpg", user=None)
         self.assertEqual(text, "1. 문제")

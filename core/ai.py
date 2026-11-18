@@ -1,7 +1,7 @@
 """
 AI 호출의 공통 입구. 모든 앱(mypage, assistant, course)은 AI를 직접 부르지 않고 여기를 거친다.
 
-- 작업(task)마다 공급자(OpenAI·Gemini·Claude)와 모델을 따로 고른다 (settings.AI_TASK_PROVIDERS·AI_MODELS,
+- 작업(task)마다 공급자(OpenAI·Gemini·Claude)와 모델을 따로 고른다 (기본은 모두 OpenAI의 MYPAGE_CHAT_MODEL) (settings.AI_TASK_PROVIDERS·AI_MODELS,
   환경변수 AI_PROVIDER_<작업>·AI_MODEL_<작업>). 지정한 공급자의 키가 없으면 OpenAI로 대신 부른다.
 - 사용은 주간 한도 안에서 하고(core/usage.py), 한도를 넘은 만큼은 크레딧(User.credits)으로 낸다. 호출이 끝나 토큰이 기록되면 초과분을 차감한다.
   강의자와 시스템 작업(user=None)은 한도도 크레딧도 쓰지 않는다. 이미 시작된 백그라운드 작업은 도중에 끊지 않는다.
@@ -72,9 +72,11 @@ def route(task):
         logger.warning("AI provider %s has no API key; task %s falls back to OpenAI", provider, task)
         return "openai", settings.MYPAGE_CHAT_MODEL
     model = settings.AI_MODELS.get(task)
-    if not model:   # 비어 있으면 그 공급자의 기본 모델 (다른 공급자 모델 이름을 보내면 404가 난다)
-        default_provider, default_model = settings.AI_TASK_DEFAULTS.get(task, ("openai", settings.MYPAGE_CHAT_MODEL))
-        model = default_model if default_provider == provider else settings.MYPAGE_CHAT_MODEL
+    default_provider, default_model = settings.AI_TASK_DEFAULTS.get(task, ("openai", settings.MYPAGE_CHAT_MODEL))
+    if not model or (provider != default_provider and model == default_model):
+        # 모델을 정하지 않았거나, 공급자만 바꾸고 모델은 기본값 그대로인 경우: 그 공급자의 기본 모델을 쓴다 (다른 공급자 모델 이름을 보내면 404가 난다)
+        model = (default_model if default_provider == provider
+                 else settings.AI_PROVIDER_DEFAULT_MODELS.get(provider) or settings.MYPAGE_CHAT_MODEL)
     return provider, model
 
 
@@ -259,7 +261,8 @@ def _with_retry(call):
 
 
 def _truncated(response):
-    return bool(getattr(response.choices[0], "finish_reason", None) == "MAX_TOKENS")
+    """출력 상한에서 답이 잘렸는지 (Gemini 어댑터는 MAX_TOKENS, OpenAI는 length)."""
+    return getattr(response.choices[0], "finish_reason", None) in ("MAX_TOKENS", "length")
 
 
 def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_mode=False,
@@ -279,18 +282,19 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
     charged = _charge(user, task, cost) if counts_as_request else 0
 
-    def call():
+    token_key = "max_completion_tokens" if provider == "openai" else "max_tokens"
+
+    def call(scale=1):
         if native == "vertex":
-            return _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
-        if provider == "openai":
-            return _client().chat.completions.create(**params)
-        return _client(provider).chat.completions.create(**params)
+            return _vertex_generate(model, messages, limit * scale, json_mode, kwargs.get("tools"))
+        sent = {**params, token_key: limit * scale}
+        return _client("openai" if provider == "openai" else provider).chat.completions.create(**sent)
 
     try:
         response = _with_retry(call)
-        if native == "vertex" and json_mode and _truncated(response):     # 그래도 잘렸으면 상한을 크게 올려 한 번 더 (크레딧은 다시 받지 않는다)
+        if json_mode and _truncated(response):     # 그래도 잘렸으면 상한을 크게 올려 한 번 더 (크레딧은 다시 받지 않는다)
             logger.warning("AI 답이 출력 상한에서 잘려 상한을 올려 다시 부릅니다: task=%s", task)
-            response = _with_retry(lambda: _vertex_generate(model, messages, limit * 4, json_mode, kwargs.get("tools")))
+            response = _with_retry(lambda: call(4))
     except Exception:
         refund(user, task, charged)
         raise
@@ -309,6 +313,8 @@ def stream_complete(task, messages, *, user=None, max_tokens=None, cost=None, on
     스트리밍을 못 하는 공급자는 다 만든 뒤 한 번에 넘긴다."""
     provider, model = route(task)
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
+    if provider == "openai":
+        return _openai_stream(task, model, messages, user, max_tokens, cost, on_delta)
     if native != "vertex":
         text = complete(task, messages, user=user, max_tokens=max_tokens, cost=cost)
         if on_delta and text:
@@ -335,6 +341,33 @@ def stream_complete(task, messages, *, user=None, max_tokens=None, cost=None, on
     _record(user, task, model, SimpleNamespace(usage=SimpleNamespace(
         prompt_tokens=usage.get("promptTokenCount", 0), completion_tokens=(usage.get("candidatesTokenCount", 0) or 0) + (usage.get("thoughtsTokenCount", 0) or 0),
         prompt_tokens_details=SimpleNamespace(cached_tokens=usage.get("cachedContentTokenCount", 0)))), True)
+    return "".join(parts).strip()
+
+
+def _openai_stream(task, model, messages, user, max_tokens, cost, on_delta):
+    """OpenAI 스트리밍: 답을 만드는 대로 글자 조각을 on_delta(text)로 넘기고, 끝나면 마지막 조각에 실려 오는 실제 토큰 수로 사용량을 기록한다."""
+    limit = max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000)
+    params = {"model": model, "messages": messages, "max_completion_tokens": limit, "stream": True,
+              "stream_options": {"include_usage": True}}
+    charged = _charge(user, task, cost)
+    parts, usage = [], None
+    try:
+        stream = _with_retry(lambda: _client().chat.completions.create(**params))
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            if chunk.choices:
+                piece = chunk.choices[0].delta.content
+                if piece:
+                    parts.append(piece)
+                    if on_delta:
+                        on_delta(piece)
+    except Exception:
+        refund(user, task, charged)
+        raise
+    from types import SimpleNamespace
+
+    _record(user, task, model, SimpleNamespace(usage=usage or SimpleNamespace(prompt_tokens=0, completion_tokens=0, prompt_tokens_details=None)), True)
     return "".join(parts).strip()
 
 
