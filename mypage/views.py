@@ -755,6 +755,39 @@ def submit_answer_view(request, pk, question_id):
     return redirect(redirect_base)
 
 
+BULK_MAX = 500      # 한 번에 고를 수 있는 자료 수 (요청 하나가 너무 커지지 않게)
+
+
+@login_required
+@require_POST
+def document_bulk(request):
+    """고른 자료 여러 개를 한 번에 삭제하거나 다른 폴더로 옮긴다. 본인 자료만 처리하고 남의 자료·없는 id는 조용히 건너뛴다.
+    삭제는 하나씩 지울 때와 같이 숨김 처리다 (강의 생성용 데이터는 남는다). AI를 부르지 않는다."""
+    back = request.POST.get("next") if request.POST.get("next", "").startswith("/mypage/") else None
+    ids = [int(x) for x in request.POST.getlist("ids") if str(x).isdigit()][:BULK_MAX]
+    docs = PersonalDocument.objects.filter(pk__in=ids, user=request.user, is_deleted=False)
+    action = request.POST.get("action")
+    if not ids or not docs.exists():
+        messages.error(request, "처리할 자료를 고르지 않았거나 찾지 못했습니다.")
+        return redirect(back or "mypage:document_list")
+    if action == "delete":
+        count = docs.update(is_deleted=True)
+        messages.success(request, f"자료 {count}개를 삭제했습니다.")
+    elif action == "move":
+        raw = request.POST.get("folder", "")
+        folder = None
+        if raw:
+            folder = PersonalFolder.objects.filter(pk=raw if raw.isdigit() else 0, user=request.user).first()
+            if folder is None:
+                messages.error(request, "옮길 폴더를 찾지 못했습니다.")
+                return redirect(back or "mypage:document_list")
+        count = docs.update(folder=folder)
+        messages.success(request, f"자료 {count}개를 {folder.name if folder else '맨 위(폴더 밖)'}(으)로 옮겼습니다.")
+    else:
+        messages.error(request, "알 수 없는 작업입니다.")
+    return redirect(back or "mypage:document_list")
+
+
 @login_required
 @require_POST
 def document_delete(request, pk):
