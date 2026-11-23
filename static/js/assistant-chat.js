@@ -59,7 +59,13 @@
         bubble.className = role === 'user'
             ? 'ml-auto max-w-[85%] bg-emerald-600 text-white rounded-2xl rounded-br-sm px-3 py-2'
             : 'mr-auto max-w-[85%] bg-slate-100 text-slate-700 rounded-2xl rounded-bl-sm px-3 py-2';
-        bubble.innerHTML = window.renderMarkdown(content);
+        if (role === 'user') {                 // 내 질문은 입력한 그대로 (Shift+Enter로 넣은 줄바꿈이 보이게. 마크다운 렌더러는 한 줄 바꿈을 공백으로 합친다)
+            bubble.textContent = content;
+            bubble.style.whiteSpace = 'pre-wrap';
+            bubble.style.overflowWrap = 'anywhere';
+        } else {
+            bubble.innerHTML = window.renderMarkdown(content);
+        }
         messagesEl.appendChild(bubble);
         messagesEl.scrollTop = messagesEl.scrollHeight;
     }
@@ -394,6 +400,21 @@
         form.parentNode.insertBefore(chips, form);
     }
 
+    // 입력칸: PC는 Enter가 보내기, Shift+Enter가 줄바꿈. 한글을 조합하는 중에 누른 Enter는 글자 확정용이라 보내지 않는다.
+    // 휴대폰·태블릿(마우스 없이 손가락으로 쓰는 기기)은 Shift가 없으므로 Enter가 줄바꿈이고 보내기는 전송 버튼으로만 한다.
+    const touchKeyboard = !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+    if (touchKeyboard) {
+        input.setAttribute('enterkeyhint', 'enter');        // 키보드의 Enter 키도 '줄바꿈' 모양으로
+        input.placeholder = '무엇이든 물어보세요 (보내기는 전송 버튼)';
+    }
+    function fitInput() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 128) + 'px'; }
+    input.addEventListener('input', fitInput);
+    input.addEventListener('keydown', (e) => {
+        if (touchKeyboard || e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        form.requestSubmit();
+    });
+
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (isWaiting) return;
@@ -402,6 +423,7 @@
 
         appendMessage('user', message);
         input.value = '';
+        fitInput();
         isWaiting = true;
         input.disabled = true;
         showTyping();

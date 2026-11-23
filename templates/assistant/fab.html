@@ -32,9 +32,10 @@
                 <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 cursor-pointer select-none" title="지금 보고 있는 화면의 글을 함께 보내 '이거 이해가 안 돼'처럼 물어도 알아들어요"><input type="checkbox" id="assistant-screen-text" class="accent-emerald-600">화면 내용 함께 보내기</label>
                 <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 cursor-pointer select-none" title="이번 질문에만 화면 스크린샷을 붙여요 (그림·표처럼 글로 안 읽히는 것이 있을 때). 사용량이 더 들어요"><input type="checkbox" id="assistant-screenshot" class="accent-emerald-600"><i class="fa-solid fa-camera"></i>스크린샷도 첨부</label>
             </div>
-            <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex gap-2">
-                <input id="assistant-chat-input" type="text" autocomplete="off" placeholder="무엇이든 물어보세요" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition">전송{% include 'includes/credit_cost.html' with cost=ai_cost.chat %}</button>
+            <form id="assistant-chat-form" class="border-t border-slate-100 p-2 flex items-end gap-2">
+                {# Enter는 보내기, Shift+Enter는 줄바꿈 (static/js/assistant-chat.js). 내용에 맞춰 최대 약 5줄까지 늘어난다 #}
+                <textarea id="assistant-chat-input" rows="1" autocomplete="off" placeholder="무엇이든 물어보세요 (Shift+Enter 줄바꿈)" class="flex-grow px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500" style="resize:none;max-height:8rem;overflow-y:auto;line-height:1.4"></textarea>
+                <button type="submit" class="self-stretch bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 rounded-lg transition" style="max-height:2.6rem">전송{% include 'includes/credit_cost.html' with cost=ai_cost.chat %}</button>
             </form>
         </div>
     </div>
