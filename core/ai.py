@@ -213,13 +213,17 @@ def _record(user, task, model, response, counts_as_request):
 
     usage = getattr(response, "usage", None)
     details = getattr(usage, "prompt_tokens_details", None)
+    prompt = getattr(usage, "prompt_tokens", 0) or 0
+    # Gemini API(OpenAI 호환 주소)는 생각(thinking)에 쓴 토큰을 completion_tokens가 아니라 total_tokens에만 넣는다.
+    # 생각 토큰도 출력 요금으로 청구되므로 total - prompt가 더 크면 그것을 출력 토큰으로 센다 (OpenAI는 둘이 같다)
+    completion = max(getattr(usage, "completion_tokens", 0) or 0, (getattr(usage, "total_tokens", 0) or 0) - prompt)
     try:
         AIUsage.objects.create(
             user=user if getattr(user, "pk", None) else None,
             task=task, model=model,
-            prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            prompt_tokens=prompt,
             cached_tokens=getattr(details, "cached_tokens", 0) or 0,
-            completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            completion_tokens=completion,
             counts_as_request=counts_as_request,
         )
     except Exception:  # 기록 실패가 사용자 요청을 깨뜨리지 않게
@@ -259,7 +263,8 @@ def _with_retry(call):
 
 
 def _truncated(response):
-    return bool(getattr(response.choices[0], "finish_reason", None) == "MAX_TOKENS")
+    """출력 상한에서 답이 잘렸는지 (Gemini 네이티브 어댑터는 MAX_TOKENS, OpenAI 호환 주소는 length)."""
+    return getattr(response.choices[0], "finish_reason", None) in ("MAX_TOKENS", "length")
 
 
 def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_mode=False,
@@ -279,18 +284,20 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
     charged = _charge(user, task, cost) if counts_as_request else 0
 
-    def call():
+    token_key = "max_completion_tokens" if provider == "openai" else "max_tokens"
+    # Gemini는 호환 주소에서도 생각 토큰이 출력 상한에 들어간다 (생각하는 모델은 작은 상한에서 답이 잘린다) → 생각 여유분을 더한다
+    sent_limit = _output_limit(limit) if provider == "gemini" else limit
+
+    def call(scale=1):
         if native == "vertex":
-            return _vertex_generate(model, messages, limit, json_mode, kwargs.get("tools"))
-        if provider == "openai":
-            return _client().chat.completions.create(**params)
-        return _client(provider).chat.completions.create(**params)
+            return _vertex_generate(model, messages, limit * scale, json_mode, kwargs.get("tools"))
+        return _client(provider).chat.completions.create(**{**params, token_key: sent_limit * scale})
 
     try:
         response = _with_retry(call)
-        if native == "vertex" and json_mode and _truncated(response):     # 그래도 잘렸으면 상한을 크게 올려 한 번 더 (크레딧은 다시 받지 않는다)
+        if json_mode and _truncated(response):     # 그래도 잘렸으면 상한을 크게 올려 한 번 더 (크레딧은 다시 받지 않는다)
             logger.warning("AI 답이 출력 상한에서 잘려 상한을 올려 다시 부릅니다: task=%s", task)
-            response = _with_retry(lambda: _vertex_generate(model, messages, limit * 4, json_mode, kwargs.get("tools")))
+            response = _with_retry(lambda: call(4))
     except Exception:
         refund(user, task, charged)
         raise
@@ -304,11 +311,13 @@ def chat(task, messages, *, user=None, counts_as_request=True, check=True, json_
 
 
 def stream_complete(task, messages, *, user=None, max_tokens=None, cost=None, on_delta=None):
-    """complete처럼 전체 답변을 돌려주되, Gemini(네이티브)는 답을 만드는 대로 글자 조각을 on_delta(text)로 넘긴다.
+    """complete처럼 전체 답변을 돌려주되, 답을 만드는 대로 글자 조각을 on_delta(text)로 넘긴다 (Gemini API·OpenAI는 호환 주소 스트리밍, Gemini 네이티브는 core/vertex.py).
     크레딧은 호출 전에 차감하고 실패하면 돌려준다 (연결을 여는 단계의 일시 오류는 다시 시도, 글자가 나오기 시작한 뒤의 오류는 올린다).
     스트리밍을 못 하는 공급자는 다 만든 뒤 한 번에 넘긴다."""
     provider, model = route(task)
     native = (settings.AI_PROVIDERS.get(provider) or {}).get("native")
+    if native != "vertex" and provider in ("openai", "gemini"):
+        return _compat_stream(task, provider, model, messages, user, max_tokens, cost, on_delta)
     if native != "vertex":
         text = complete(task, messages, user=user, max_tokens=max_tokens, cost=cost)
         if on_delta and text:
@@ -335,6 +344,34 @@ def stream_complete(task, messages, *, user=None, max_tokens=None, cost=None, on
     _record(user, task, model, SimpleNamespace(usage=SimpleNamespace(
         prompt_tokens=usage.get("promptTokenCount", 0), completion_tokens=(usage.get("candidatesTokenCount", 0) or 0) + (usage.get("thoughtsTokenCount", 0) or 0),
         prompt_tokens_details=SimpleNamespace(cached_tokens=usage.get("cachedContentTokenCount", 0)))), True)
+    return "".join(parts).strip()
+
+
+def _compat_stream(task, provider, model, messages, user, max_tokens, cost, on_delta):
+    """OpenAI 호환 주소(OpenAI, Gemini API)로 스트리밍: 답을 만드는 대로 글자 조각을 on_delta(text)로 넘기고,
+    끝나면 마지막 조각에 실려 오는 실제 토큰 수로 사용량을 기록한다 (Gemini의 생각 토큰은 _record가 total로 센다)."""
+    limit = max_tokens or MAX_OUTPUT_TOKENS.get(task, 2000)
+    token_key, sent_limit = ("max_completion_tokens", limit) if provider == "openai" else ("max_tokens", _output_limit(limit))
+    params = {"model": model, "messages": messages, token_key: sent_limit, "stream": True, "stream_options": {"include_usage": True}}
+    charged = _charge(user, task, cost)
+    parts, usage = [], None
+    try:
+        stream = _with_retry(lambda: _client(provider).chat.completions.create(**params))
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            if chunk.choices:
+                piece = chunk.choices[0].delta.content
+                if piece:
+                    parts.append(piece)
+                    if on_delta:
+                        on_delta(piece)
+    except Exception:
+        refund(user, task, charged)
+        raise
+    from types import SimpleNamespace
+
+    _record(user, task, model, SimpleNamespace(usage=usage or SimpleNamespace(prompt_tokens=0, completion_tokens=0, prompt_tokens_details=None)), True)
     return "".join(parts).strip()
 
 
