@@ -4,8 +4,19 @@
 //   인라인: **굵게**, *기울임*, `코드`, ==형광펜==, ~밑줄 강조~(물결 밑줄), ~~취소선~~
 // 스타일은 static/css/markdown-lite.css (md-* 클래스). 전체 CommonMark를 다루지는 않는다.
 // 수식: $...$ (인라인), $$...$$ (가운데 줄) 은 <span class="md-math" data-tex>로 남기고 static/js/math-render.js(KaTeX)가 그린다.
-// 코드 표시(`...`)로 한 번 더 감싼 수식(`$x$`)도 수식으로 그린다 (모델이 이렇게 쓰는 일이 잦다). $5 와 $10 같은 금액은 수식으로 보지 않는다 (여는 $ 뒤·닫는 $ 앞이 공백이 아니고, 닫는 $ 뒤에 숫자가 없을 때만).
+// 코드 표시(`...`)로 한 번 더 감싼 수식(`$x$`)과 $ 없이 코드 표시로만 감싼 수식(`x_1 + \cdots`)도 수식으로 그린다 (모델이 이렇게 쓰는 일이 잦다). $5 와 $10 같은 금액은 수식으로 보지 않는다 (여는 $ 뒤·닫는 $ 앞이 공백이 아니고, 닫는 $ 뒤에 숫자가 없을 때만).
 const MD_MATH = /(```[\s\S]*?```|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g;
+// $ 없이 코드 표시로만 감싼 수식(`v = c_1v_1 + \cdots + c_nv_n`)도 수식으로 그린다. 진짜 코드(변수 이름 max_len, 함수 호출, 문자열)는 그대로 둔다.
+const MD_TEX_CMD = /\\(?:cdots|ldots|vdots|ddots|dots|cdot|times|div|pm|mp|frac|dfrac|tfrac|sqrt|sum|prod|int|oint|lim|infty|le|leq|ge|geq|ne|neq|approx|equiv|sim|propto|in|notin|subset|subseteq|supset|cup|cap|emptyset|forall|exists|neg|land|lor|to|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|iff|mapsto|mathbb|mathbf|mathrm|mathcal|vec|bar|hat|tilde|dot|overline|underline|alpha|beta|gamma|Gamma|delta|Delta|epsilon|varepsilon|zeta|eta|theta|Theta|iota|kappa|lambda|Lambda|mu|nu|xi|pi|Pi|rho|sigma|Sigma|tau|phi|Phi|varphi|chi|psi|Psi|omega|Omega|det|log|ln|exp|sin|cos|tan|partial|nabla|langle|rangle|left|right|binom|top|perp|parallel|angle|circ|deg)(?![A-Za-z])/;
+function mdLooksLikeMath(c) {
+    c = c.trim();
+    if (!c || /[;"'`$]|=>|::|\/\/|[가-힣]/.test(c)) return false;                     // 문자열·주석·한글이 섞이면 코드나 글이다
+    if (/\b(?:def|return|print|function|class|import|const|let|var|if|for|while|true|false|null|None)\b/.test(c)) return false;
+    if (MD_TEX_CMD.test(c)) return /^[A-Za-z0-9_^{}()\[\]+\-=*\/<>|.,:!'\s\\]+$/.test(c);
+    if (/[A-Za-z]{2,}_[A-Za-z]{2,}|_[A-Za-z0-9]_/.test(c)) return false;                  // snake_case 변수 이름, a_b_c (LaTeX로도 이중 첨자 오류)
+    if (!/^[A-Za-z0-9_^{}()\[\]+\-=*\/<>|.,'\s]+$/.test(c)) return false;
+    return /[A-Za-z0-9)}\]]\s*[_^]\s*(?:\{|[A-Za-z0-9])/.test(c);                        // x_1, c_1v_1, a^2, x_{ij} 같은 첨자가 있다
+}
 const MD_BASE = (document.currentScript && document.currentScript.src || '').replace(/markdown-lite\.js.*$/, '');
 
 window.renderMarkdown = function (text) {
@@ -17,8 +28,9 @@ window.renderMarkdown = function (text) {
         raw = raw.replace(MD_MATH, (m, code, block, inl) => {
             if (code) {                                      // 코드 안의 $ 는 그대로. 다만 `$\vec{v}$`처럼 코드 표시 안에 수식만 든 것은 수식으로 그린다
                 const only = /^`\$(?!\s)([^$\n]+?)(?<!\s)\$`$/.exec(code);
-                if (!only) return m;
-                maths.push({ tex: only[1].trim(), display: false });
+                const bare = !only && !code.startsWith('```') && mdLooksLikeMath(code.slice(1, -1)) ? code.slice(1, -1) : null;
+                if (!only && !bare) return m;
+                maths.push({ tex: (only ? only[1] : bare).trim(), display: false });
                 return '\uE000' + (maths.length - 1) + '\uE001';
             }
             maths.push({ tex: (block || inl).trim(), display: !!block });
