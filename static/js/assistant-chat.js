@@ -59,7 +59,13 @@
         bubble.className = role === 'user'
             ? 'ml-auto max-w-[85%] bg-emerald-600 text-white rounded-2xl rounded-br-sm px-3 py-2'
             : 'mr-auto max-w-[85%] bg-slate-100 text-slate-700 rounded-2xl rounded-bl-sm px-3 py-2';
-        bubble.innerHTML = window.renderMarkdown(content);
+        if (role === 'user') {                 // 내 질문은 입력한 그대로 (Shift+Enter로 넣은 줄바꿈이 보이게. 마크다운 렌더러는 한 줄 바꿈을 공백으로 합친다)
+            bubble.textContent = content;
+            bubble.style.whiteSpace = 'pre-wrap';
+            bubble.style.overflowWrap = 'anywhere';
+        } else {
+            bubble.innerHTML = window.renderMarkdown(content);
+        }
         messagesEl.appendChild(bubble);
         messagesEl.scrollTop = messagesEl.scrollHeight;
     }
@@ -394,6 +400,15 @@
         form.parentNode.insertBefore(chips, form);
     }
 
+    // 입력칸: Enter는 보내기, Shift+Enter는 줄바꿈. 한글을 조합하는 중에 누른 Enter는 글자 확정용이라 보내지 않는다
+    function fitInput() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 128) + 'px'; }
+    input.addEventListener('input', fitInput);
+    input.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        form.requestSubmit();
+    });
+
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (isWaiting) return;
@@ -402,6 +417,7 @@
 
         appendMessage('user', message);
         input.value = '';
+        fitInput();
         isWaiting = true;
         input.disabled = true;
         showTyping();
