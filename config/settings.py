@@ -277,10 +277,10 @@ GEMINI_API_KEY = "" if _TESTING else config("GEMINI_API_KEY", default="")
 ANTHROPIC_API_KEY = "" if _TESTING else config("ANTHROPIC_API_KEY", default="")
 AI_PROVIDERS = {
     "openai": {"key": OPENAI_API_KEY, "base_url": None},
-    # GEMINI_BACKEND=vertex(기본): Google Cloud Agent Platform 네이티브 API (Cloud 무료 체험 크레딧 사용 가능, core/vertex.py),
-    # studio: AI Studio의 OpenAI 호환 주소 (Gemini API 선불 크레딧 필요). 키 종류에 맞춰 고른다.
+    # GEMINI_BACKEND=studio(기본): Gemini API (AI Studio 키)의 OpenAI 호환 주소. 스트리밍·생각 여유분·잘림 재시도는 core/ai.py가 처리한다.
+    # vertex: Google Cloud Agent Platform 네이티브 API (Agent Platform 전용 키, core/vertex.py). 예전 방식이며 키 종류에 맞춰 고른다.
     "gemini": ({"key": GEMINI_API_KEY, "base_url": None, "native": "vertex"}
-               if config("GEMINI_BACKEND", default="vertex").strip().lower() != "studio" else
+               if config("GEMINI_BACKEND", default="studio").strip().lower() == "vertex" else
                {"key": GEMINI_API_KEY, "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"}),
     "anthropic": {"key": ANTHROPIC_API_KEY, "base_url": "https://api.anthropic.com/v1/"},
 }

@@ -101,7 +101,9 @@ class StreamCompleteTests(TestCase):
         self.assertEqual(len(calls), 2)
 
     def test_non_streaming_provider_still_delivers_whole_text_once(self):
-        with override_settings(AI_PROVIDERS={**settings.AI_PROVIDERS, "gemini": {"key": "k", "base_url": "x"}}), \
+        # 스트리밍을 하지 않는 공급자(Claude 호환 주소)는 다 만든 뒤 한 번에 넘긴다 (Gemini API·OpenAI는 이제 스트리밍한다)
+        with override_settings(AI_PROVIDERS={**settings.AI_PROVIDERS, "anthropic": {"key": "k", "base_url": "x"}},
+                               AI_TASK_PROVIDERS={**settings.AI_TASK_PROVIDERS, "summary": "anthropic"}), \
                 patch("core.ai.complete", return_value="전체 답") as complete:
             pieces = []
             self.assertEqual(core_ai.stream_complete("summary", [], user=self.user, on_delta=pieces.append), "전체 답")
