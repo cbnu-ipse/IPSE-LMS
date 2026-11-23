@@ -24,3 +24,8 @@ class ChatInputTests(TestCase):
         self.assertIn("e.isComposing", js)          # 한글 조합 중 Enter는 글자 확정이지 보내기가 아니다
         self.assertIn("form.requestSubmit()", js)
         self.assertIn("bubble.style.whiteSpace = 'pre-wrap'", js)   # 보낸 줄바꿈이 내 말풍선에도 보인다
+
+    def test_touch_devices_use_enter_for_a_new_line_and_send_with_the_button(self):
+        js = (Path(settings.BASE_DIR) / "static" / "js" / "assistant-chat.js").read_text(encoding="utf-8")
+        self.assertIn("(hover: none) and (pointer: coarse)", js)
+        self.assertIn("if (touchKeyboard || e.key !== 'Enter'", js)

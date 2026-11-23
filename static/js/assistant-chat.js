@@ -400,11 +400,17 @@
         form.parentNode.insertBefore(chips, form);
     }
 
-    // 입력칸: Enter는 보내기, Shift+Enter는 줄바꿈. 한글을 조합하는 중에 누른 Enter는 글자 확정용이라 보내지 않는다
+    // 입력칸: PC는 Enter가 보내기, Shift+Enter가 줄바꿈. 한글을 조합하는 중에 누른 Enter는 글자 확정용이라 보내지 않는다.
+    // 휴대폰·태블릿(마우스 없이 손가락으로 쓰는 기기)은 Shift가 없으므로 Enter가 줄바꿈이고 보내기는 전송 버튼으로만 한다.
+    const touchKeyboard = !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+    if (touchKeyboard) {
+        input.setAttribute('enterkeyhint', 'enter');        // 키보드의 Enter 키도 '줄바꿈' 모양으로
+        input.placeholder = '무엇이든 물어보세요 (보내기는 전송 버튼)';
+    }
     function fitInput() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 128) + 'px'; }
     input.addEventListener('input', fitInput);
     input.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        if (touchKeyboard || e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
         form.requestSubmit();
     });
