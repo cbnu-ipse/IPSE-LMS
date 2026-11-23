@@ -8,14 +8,44 @@
 const MD_MATH = /(```[\s\S]*?```|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g;
 // $ 없이 코드 표시로만 감싼 수식(`v = c_1v_1 + \cdots + c_nv_n`)도 수식으로 그린다. 진짜 코드(변수 이름 max_len, 함수 호출, 문자열)는 그대로 둔다.
 const MD_TEX_CMD = /\\(?:cdots|ldots|vdots|ddots|dots|cdot|times|div|pm|mp|frac|dfrac|tfrac|sqrt|sum|prod|int|oint|lim|infty|le|leq|ge|geq|ne|neq|approx|equiv|sim|propto|in|notin|subset|subseteq|supset|cup|cap|emptyset|forall|exists|neg|land|lor|to|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|iff|mapsto|mathbb|mathbf|mathrm|mathcal|vec|bar|hat|tilde|dot|overline|underline|alpha|beta|gamma|Gamma|delta|Delta|epsilon|varepsilon|zeta|eta|theta|Theta|iota|kappa|lambda|Lambda|mu|nu|xi|pi|Pi|rho|sigma|Sigma|tau|phi|Phi|varphi|chi|psi|Psi|omega|Omega|det|log|ln|exp|sin|cos|tan|partial|nabla|langle|rangle|left|right|binom|top|perp|parallel|angle|circ|deg)(?![A-Za-z])/;
+// 수학 함수 이름 (dim(V), rank(A) 처럼 괄호와 함께 쓰면 수식으로 본다). max·min·log처럼 코드에도 흔한 이름은 넣지 않는다
+const MD_MATH_FUNCS = /(^|[^\\A-Za-z])(dim|rank|nullity|span|ker|det|tr|proj|deg)(?=\s*\()/;
 function mdLooksLikeMath(c) {
     c = c.trim();
-    if (!c || /[;"'`$]|=>|::|\/\/|[가-힣]/.test(c)) return false;                     // 문자열·주석·한글이 섞이면 코드나 글이다
+    if (/\$/.test(c)) {                                   // `dim($\mathbb{R}^3$)=3`처럼 $가 일부만 섞인 식: $를 짝지어 지운 나머지로 판단
+        if ((c.match(/\$/g) || []).length % 2) return false;
+        c = c.replace(/\$/g, '').trim();
+    }
+    if (/^-?\d+(?:\.\d+)?$/.test(c)) return true;           // `3`, `0` 처럼 숫자만 감싼 것
+    if (!c || /[;"'`]|=>|::|\/\/|[가-힣]/.test(c)) return false;                      // 문자열·주석·한글이 섞이면 코드나 글이다
     if (/\b(?:def|return|print|function|class|import|const|let|var|if|for|while|true|false|null|None)\b/.test(c)) return false;
     if (MD_TEX_CMD.test(c)) return /^[A-Za-z0-9_^{}()\[\]+\-=*\/<>|.,:!'\s\\]+$/.test(c);
     if (/[A-Za-z]{2,}_[A-Za-z]{2,}|_[A-Za-z0-9]_/.test(c)) return false;                  // snake_case 변수 이름, a_b_c (LaTeX로도 이중 첨자 오류)
     if (!/^[A-Za-z0-9_^{}()\[\]+\-=*\/<>|.,'\s]+$/.test(c)) return false;
-    return /[A-Za-z0-9)}\]]\s*[_^]\s*(?:\{|[A-Za-z0-9])/.test(c);                        // x_1, c_1v_1, a^2, x_{ij} 같은 첨자가 있다
+    return /[A-Za-z0-9)}\]]\s*[_^]\s*(?:\{|[A-Za-z0-9])/.test(c)                         // x_1, c_1v_1, a^2, x_{ij} 같은 첨자가 있다
+        || MD_MATH_FUNCS.test(c);                                                          // dim(V), dim({0})=0, rank(A)
+}
+
+// 백틱으로 감쌌던 식을 KaTeX 식으로: 섞여 있던 $는 지우고, 수학 함수 이름은 정체로(\dim, \operatorname{rank}),
+// LaTeX 명령이 없는 식의 중괄호는 첨자 묶음이 아니면 집합 괄호로 본다 (dim({0}) → \dim(\{0\})).
+function mdToTex(c) {
+    let t = c.replace(/\$/g, '').trim();
+    const plain = !/\\[A-Za-z]/.test(t);
+    t = t.replace(/(^|[^\\A-Za-z])(dim|det|ker|deg)(?=\s*\()/g, '$1\\$2')
+         .replace(/(^|[^\\A-Za-z])(rank|nullity|span|tr|proj)(?=\s*\()/g, '$1\\operatorname{$2}');
+    if (!plain) return t;
+    let out = '', stack = [];
+    for (let i = 0; i < t.length; i++) {
+        const ch = t[i];
+        if (ch === '{') {
+            const before = t.slice(0, i).replace(/\s+$/, '').slice(-1);
+            const group = before === '_' || before === '^' || /\\operatorname$/.test(t.slice(0, i));
+            stack.push(group); out += group ? '{' : '\\{';
+        } else if (ch === '}') {
+            out += stack.pop() === false ? '\\}' : '}';
+        } else out += ch;
+    }
+    return out;
 }
 const MD_BASE = (document.currentScript && document.currentScript.src || '').replace(/markdown-lite\.js.*$/, '');
 
@@ -30,7 +60,7 @@ window.renderMarkdown = function (text) {
                 const only = /^`\$(?!\s)([^$\n]+?)(?<!\s)\$`$/.exec(code);
                 const bare = !only && !code.startsWith('```') && mdLooksLikeMath(code.slice(1, -1)) ? code.slice(1, -1) : null;
                 if (!only && !bare) return m;
-                maths.push({ tex: (only ? only[1] : bare).trim(), display: false });
+                maths.push({ tex: only ? only[1].trim() : mdToTex(bare), display: false });
                 return '\uE000' + (maths.length - 1) + '\uE001';
             }
             maths.push({ tex: (block || inl).trim(), display: !!block });

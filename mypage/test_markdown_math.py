@@ -43,11 +43,27 @@ class BacktickedMathTests(SimpleTestCase):
             self.assertIn(f'data-tex="{tex}"', html)
         self.assertNotIn("md-code", html)
 
+    def test_function_notation_numbers_and_half_dollar_formulas_are_math(self):
+        """요약에 `dim(V)`, `3`, `dim($\\mathbb{R}^3$)=3`, `dim({0})=0`가 코드 글씨로 보였다."""
+        if not NODE:
+            self.skipTest("node가 없어 건너뜁니다")
+        html = self.render("차원(`dimension`)이라 하고 `dim(V)`로 표기한다. 차원은 `3`(`dim($\\mathbb{R}^3$)=3`), 영벡터공간은 `0`(`dim({0})=0`), `rank(A) + nullity(A) = n`")
+        for tex in ("\\dim(V)", "3", "\\dim(\\mathbb{R}^3)=3", "0", "\\dim(\\{0\\})=0",
+                    "\\operatorname{rank}(A) + \\operatorname{nullity}(A) = n"):
+            self.assertIn(f'data-tex="{tex}"', html)
+        self.assertIn('<code class="md-code">dimension</code>', html)          # 영어 용어는 코드 이름과 구별할 수 없어 그대로 둔다
+
+    def test_subscript_braces_stay_grouping_braces(self):
+        if not NODE:
+            self.skipTest("node가 없어 건너뜁니다")
+        self.assertIn('data-tex="x_{ij} + y^{2}"', self.render("`x_{ij} + y^{2}`"))
+
     def test_real_code_in_backticks_stays_code(self):
         if not NODE:
             self.skipTest("node가 없어 건너뜁니다")
         samples = ["max_len", "arr[i]", "__init__", "print(x_1)", 'name = "a_b"', "std::vector", "x => x_1", "a_b_c",
-                   "for i in range(n)", "self.max_value", "return x_1", "np.matmul()", "x_1; y_2", "변수 x_1"]
+                   "for i in range(n)", "self.max_value", "return x_1", "np.matmul()", "x_1; y_2", "변수 x_1",
+                   "max(a, b)", "len(arr)", "str(x)", "a=$x$ 와", "cost $5"]
         html = self.render(" ".join(f"`{c}`" for c in samples))
         self.assertNotIn("md-math", html)
         self.assertEqual(html.count('<code class="md-code">'), len(samples))
