@@ -34,9 +34,29 @@ class BacktickedMathTests(SimpleTestCase):
         self.assertIn("np.matmul()", html)
         self.assertIn('<code class="md-code">a=$x$ 와 $y$</code>', html)      # 수식 밖의 글이 섞인 코드는 그대로
 
+    def test_math_backticked_without_dollars_is_drawn_as_math(self):
+        """요약에 `v = c_1v_1 + c_2v_2 + \\cdots + c_n v_n`처럼 $ 없이 백틱으로만 감싼 식이 빨간 코드 글씨로 보였다."""
+        if not NODE:
+            self.skipTest("node가 없어 건너뜁니다")
+        html = self.render("벡터 $v_1$에 대해, `v = c_1v_1 + c_2v_2 + \\cdots + c_n v_n`과 같이 표현한다. 또 `x_1 + x_2`, `a^2 + b^2 = c^2`, `O(n^2)`, `\\frac{1}{2}`")
+        for tex in ("v = c_1v_1 + c_2v_2 + \\cdots + c_n v_n", "x_1 + x_2", "a^2 + b^2 = c^2", "O(n^2)", "\\frac{1}{2}"):
+            self.assertIn(f'data-tex="{tex}"', html)
+        self.assertNotIn("md-code", html)
+
+    def test_real_code_in_backticks_stays_code(self):
+        if not NODE:
+            self.skipTest("node가 없어 건너뜁니다")
+        samples = ["max_len", "arr[i]", "__init__", "print(x_1)", 'name = "a_b"', "std::vector", "x => x_1", "a_b_c",
+                   "for i in range(n)", "self.max_value", "return x_1", "np.matmul()", "x_1; y_2", "변수 x_1"]
+        html = self.render(" ".join(f"`{c}`" for c in samples))
+        self.assertNotIn("md-math", html)
+        self.assertEqual(html.count('<code class="md-code">'), len(samples))
+
     def test_summary_prompt_does_not_tell_the_model_to_backtick_math(self):
         self.assertIn("수식을 백틱(`)으로 한 번 더 감싸지 마세요", ai.SUMMARY_INSTRUCTIONS)
         self.assertNotIn("코드·수식·고유 표기는", ai.SUMMARY_INSTRUCTIONS)
+        self.assertNotIn("고유 표기는 `인라인 코드`", ai.SUMMARY_INSTRUCTIONS)        # 식을 '고유 표기'로 보고 코드로 감싸던 원인
+        self.assertIn("프로그래밍 코드·함수 이름만 `인라인 코드`", ai.SUMMARY_INSTRUCTIONS)
 
 
 class SummaryColumnCenteringTests(SimpleTestCase):
